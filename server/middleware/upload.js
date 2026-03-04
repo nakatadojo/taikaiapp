@@ -1,6 +1,4 @@
 const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
-const path = require('path');
 
 /**
  * Multer config for file uploads (photos, logos).

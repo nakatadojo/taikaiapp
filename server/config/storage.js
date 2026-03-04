@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 let s3Client = null;
 
@@ -29,7 +29,7 @@ if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID) {
  */
 async function uploadFile(buffer, originalFilename, contentType) {
   const ext = path.extname(originalFilename).toLowerCase();
-  const key = `${uuidv4()}${ext}`;
+  const key = `${crypto.randomUUID()}${ext}`;
 
   if (s3Client) {
     // Upload to Cloudflare R2
