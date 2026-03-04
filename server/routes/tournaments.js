@@ -89,6 +89,13 @@ router.put('/:id',
   tournamentController.updateTournament
 );
 
+// GET /api/tournaments/:id/registrations — Director view of registrants
+router.get('/:id/registrations',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  tournamentController.getRegistrants
+);
+
 // PUT /api/tournaments/:id/publish — Publish/unpublish tournament
 router.put('/:id/publish',
   requireAuth,

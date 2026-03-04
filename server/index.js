@@ -14,6 +14,10 @@ app.use(helmet({
   contentSecurityPolicy: false
 }));
 
+// Stripe webhook — must be mounted BEFORE express.json() so the raw body
+// is available for signature verification
+app.use('/api/webhooks', require('./routes/webhook'));
+
 // Body parsing (10mb limit for base64 photos)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));

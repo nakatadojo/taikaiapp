@@ -1,5 +1,6 @@
 const tournamentQueries = require('../db/queries/tournaments');
 const userQueries = require('../db/queries/users');
+const pool = require('../db/pool');
 const storage = require('../config/storage');
 const { sendTournamentPublishedEmail } = require('../email');
 
@@ -447,6 +448,88 @@ async function syncEvents(req, res, next) {
   }
 }
 
+/**
+ * GET /api/tournaments/:id/registrations
+ * Director-facing: list all registrants for a tournament they own.
+ */
+async function getRegistrants(req, res, next) {
+  try {
+    // Check ownership (unless super_admin)
+    if (!req.user.roles.includes('super_admin')) {
+      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+      if (!owned) {
+        return res.status(403).json({ error: 'You do not own this tournament' });
+      }
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         r.id AS registration_id,
+         r.status,
+         r.payment_status,
+         r.amount_paid,
+         r.created_at AS registered_at,
+         cp.first_name,
+         cp.last_name,
+         cp.date_of_birth,
+         cp.gender,
+         cp.belt_rank,
+         cp.experience_level,
+         cp.academy_name,
+         u.email,
+         COALESCE(
+           json_agg(
+             json_build_object(
+               'eventId', te.id,
+               'eventName', te.name,
+               'eventType', te.event_type,
+               'isPrimary', re.is_primary,
+               'price', re.price
+             )
+             ORDER BY re.selection_order
+           ) FILTER (WHERE te.id IS NOT NULL),
+           '[]'
+         ) AS events
+       FROM registrations r
+       JOIN users u ON u.id = r.user_id
+       LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+       LEFT JOIN registration_events re ON re.registration_id = r.id
+       LEFT JOIN tournament_events te ON te.id = re.event_id
+       WHERE r.tournament_id = $1 AND r.status != 'cancelled'
+       GROUP BY r.id, cp.first_name, cp.last_name, cp.date_of_birth,
+                cp.gender, cp.belt_rank, cp.experience_level, cp.academy_name,
+                u.email
+       ORDER BY r.created_at DESC`,
+      [req.params.id]
+    );
+
+    // Summary stats
+    const totalCompetitors = rows.length;
+    const totalRevenue = rows.reduce((sum, r) => sum + parseFloat(r.amount_paid || 0), 0);
+
+    // Event breakdown
+    const eventCounts = {};
+    for (const reg of rows) {
+      for (const evt of reg.events) {
+        if (evt.eventName) {
+          eventCounts[evt.eventName] = (eventCounts[evt.eventName] || 0) + 1;
+        }
+      }
+    }
+
+    res.json({
+      registrants: rows,
+      summary: {
+        totalCompetitors,
+        totalRevenue,
+        eventCounts,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -462,4 +545,5 @@ module.exports = {
   updateEvent,
   deleteEvent,
   syncEvents,
+  getRegistrants,
 };

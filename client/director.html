@@ -205,6 +205,170 @@
             margin: 40px 0;
         }
 
+        /* ===== REGISTRANTS VIEW ===== */
+        .registrants-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .registrants-back {
+            font-size: 14px;
+            color: var(--text-muted);
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.2s;
+            background: none;
+            border: none;
+            font-family: var(--font);
+        }
+        .registrants-back:hover { color: var(--accent); }
+
+        .registrants-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .registrants-stat-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            text-align: center;
+        }
+        .registrants-stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+        .registrants-stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .registrants-filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .registrants-search {
+            flex: 1;
+            min-width: 200px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: var(--font);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .registrants-search:focus {
+            border-color: var(--accent);
+        }
+        .registrants-search::placeholder { color: var(--text-dim); }
+
+        .registrants-filter-select {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: var(--font);
+            outline: none;
+            cursor: pointer;
+        }
+
+        .registrants-table-wrap {
+            overflow-x: auto;
+            border-radius: var(--radius);
+            border: 1px solid var(--glass-border);
+        }
+        .registrants-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .registrants-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.03);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .registrants-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            white-space: nowrap;
+        }
+        .registrants-table tr:last-child td { border-bottom: none; }
+        .registrants-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .reg-events-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .reg-event-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            background: rgba(230,126,34,0.1);
+            border: 1px solid rgba(230,126,34,0.2);
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        .reg-status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .reg-status-paid {
+            background: rgba(46,204,113,0.1);
+            border: 1px solid rgba(46,204,113,0.2);
+            color: var(--success);
+        }
+        .reg-status-unpaid {
+            background: rgba(243,156,18,0.1);
+            border: 1px solid rgba(243,156,18,0.2);
+            color: var(--warning);
+        }
+
+        .registrants-export-btn {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: var(--font);
+            transition: all 0.2s;
+        }
+        .registrants-export-btn:hover {
+            background: var(--glass-hover);
+        }
+
         /* ===== MAIN CONTENT ===== */
         .main-content {
             position: relative;
@@ -1190,6 +1354,56 @@
             </div>
         </div>
 
+        <!-- ===== REGISTRANTS VIEW ===== -->
+        <div class="view" id="view-registrants">
+            <div class="registrants-header">
+                <div>
+                    <h1 id="registrants-title">Registrants</h1>
+                    <p style="color:var(--text-muted);font-size:14px;margin-top:4px;" id="registrants-subtitle"></p>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <button class="registrants-export-btn" onclick="exportRegistrantsCSV()">&#128196; Export CSV</button>
+                    <button class="registrants-back" onclick="navigateTo('dashboard')">&larr; Back to Dashboard</button>
+                </div>
+            </div>
+
+            <div class="registrants-stats" id="registrants-stats"></div>
+
+            <div class="registrants-filters">
+                <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or academy..." oninput="filterRegistrants()">
+                <select class="registrants-filter-select" id="registrants-event-filter" onchange="filterRegistrants()">
+                    <option value="">All Events</option>
+                </select>
+            </div>
+
+            <div id="registrants-loading" class="loading-overlay">
+                <span class="spinner"></span> Loading registrants...
+            </div>
+            <div id="registrants-empty" class="empty-state" style="display:none;">
+                <div class="empty-state-icon">&#128101;</div>
+                <h3>No registrants yet</h3>
+                <p>Share your tournament's public page to start receiving registrations.</p>
+            </div>
+            <div class="registrants-table-wrap" id="registrants-table-wrap" style="display:none;">
+                <table class="registrants-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Academy</th>
+                            <th>Belt</th>
+                            <th>Events</th>
+                            <th>Paid</th>
+                            <th>Status</th>
+                            <th>Registered</th>
+                        </tr>
+                    </thead>
+                    <tbody id="registrants-body"></tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- ===== CREDITS SUCCESS VIEW ===== -->
         <div class="view" id="view-credits-success">
             <div class="success-view">
@@ -1257,7 +1471,7 @@
         // ============================================================
         // ROUTING
         // ============================================================
-        const views = ['signup', 'dashboard', 'create', 'settings', 'credits-success'];
+        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'credits-success'];
 
         function getHashRoute() {
             const hash = window.location.hash.replace('#', '').split('?')[0];
@@ -1284,6 +1498,7 @@
             if (route === 'dashboard') loadDashboard();
             else if (route === 'create') initCreateForm();
             else if (route === 'settings') loadSettingsView();
+            else if (route === 'registrants') loadRegistrantsView();
             else if (route === 'credits-success') handleCreditsSuccess();
         }
 
@@ -1474,7 +1689,7 @@
                 </div>
                 <div class="tournament-card-actions">
                     <a href="/director/tournaments/${t.id}/wizard" class="btn btn-primary btn-sm">Edit</a>
-                    <a href="/index.html?tournamentId=${t.id}" class="btn btn-secondary btn-sm">Manage</a>
+                    <a href="#registrants?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Registrants</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
@@ -1795,6 +2010,206 @@
                 showToast(err.message || 'Failed to confirm payment', 'error');
             }
         }
+
+        // ============================================================
+        // REGISTRANTS VIEW
+        // ============================================================
+        let currentRegistrants = [];
+        let currentTournamentId = null;
+
+        async function loadRegistrantsView() {
+            const params = getHashParams();
+            currentTournamentId = params.tournamentId;
+
+            if (!currentTournamentId) {
+                navigateTo('dashboard');
+                return;
+            }
+
+            const loading = $('#registrants-loading');
+            const empty = $('#registrants-empty');
+            const tableWrap = $('#registrants-table-wrap');
+            const body = $('#registrants-body');
+            const stats = $('#registrants-stats');
+            const eventFilter = $('#registrants-event-filter');
+
+            loading.style.display = 'flex';
+            empty.style.display = 'none';
+            tableWrap.style.display = 'none';
+            body.innerHTML = '';
+            stats.innerHTML = '';
+
+            try {
+                const data = await apiFetch(`/api/tournaments/${currentTournamentId}/registrations`);
+                currentRegistrants = data.registrants || [];
+                const summary = data.summary || {};
+
+                loading.style.display = 'none';
+
+                // Load tournament name for title
+                try {
+                    const tData = await apiFetch(`/api/tournaments/${currentTournamentId}`);
+                    const t = tData.tournament || tData;
+                    $('#registrants-title').textContent = t.name || 'Registrants';
+                    $('#registrants-subtitle').textContent = t.date
+                        ? new Date(t.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                        : '';
+                } catch (e) { /* ignore */ }
+
+                // Stats cards
+                stats.innerHTML = `
+                    <div class="registrants-stat-card">
+                        <div class="registrants-stat-value">${summary.totalCompetitors || 0}</div>
+                        <div class="registrants-stat-label">Competitors</div>
+                    </div>
+                    <div class="registrants-stat-card">
+                        <div class="registrants-stat-value">$${(summary.totalRevenue || 0).toFixed(2)}</div>
+                        <div class="registrants-stat-label">Revenue</div>
+                    </div>
+                    <div class="registrants-stat-card">
+                        <div class="registrants-stat-value">${Object.keys(summary.eventCounts || {}).length}</div>
+                        <div class="registrants-stat-label">Events</div>
+                    </div>
+                `;
+
+                // Populate event filter dropdown
+                eventFilter.innerHTML = '<option value="">All Events</option>';
+                const eventCounts = summary.eventCounts || {};
+                Object.keys(eventCounts)
+                    .sort()
+                    .forEach(name => {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = `${name} (${eventCounts[name]})`;
+                        eventFilter.appendChild(opt);
+                    });
+
+                if (currentRegistrants.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                renderRegistrantsTable(currentRegistrants);
+            } catch (err) {
+                loading.style.display = 'none';
+                empty.style.display = 'block';
+                if (err.status !== 404) {
+                    showToast(err.message || 'Failed to load registrants', 'error');
+                }
+            }
+        }
+
+        function renderRegistrantsTable(registrants) {
+            const body = $('#registrants-body');
+            const tableWrap = $('#registrants-table-wrap');
+            const empty = $('#registrants-empty');
+
+            body.innerHTML = '';
+
+            if (registrants.length === 0) {
+                tableWrap.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+
+            empty.style.display = 'none';
+            tableWrap.style.display = 'block';
+
+            registrants.forEach((reg, i) => {
+                const row = document.createElement('tr');
+                const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim() || 'Unknown';
+                const dateStr = reg.registered_at
+                    ? new Date(reg.registered_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '--';
+
+                const events = (reg.events || [])
+                    .filter(e => e.eventName)
+                    .map(e => `<span class="reg-event-tag">${escapeHtml(e.eventName)}</span>`)
+                    .join('');
+
+                const paid = parseFloat(reg.amount_paid || 0);
+                const payStatus = (reg.payment_status || 'unpaid').toLowerCase();
+                const statusClass = payStatus === 'paid' ? 'reg-status-paid' : 'reg-status-unpaid';
+
+                row.innerHTML = `
+                    <td style="color:var(--text-dim);">${i + 1}</td>
+                    <td><strong>${escapeHtml(name)}</strong></td>
+                    <td style="color:var(--text-muted);">${escapeHtml(reg.email || '--')}</td>
+                    <td style="color:var(--text-muted);">${escapeHtml(reg.academy_name || '--')}</td>
+                    <td style="color:var(--text-muted);">${escapeHtml(reg.belt_rank || '--')}</td>
+                    <td><div class="reg-events-list">${events || '--'}</div></td>
+                    <td>$${paid.toFixed(2)}</td>
+                    <td><span class="reg-status-badge ${statusClass}">${payStatus}</span></td>
+                    <td style="color:var(--text-muted);">${dateStr}</td>
+                `;
+                body.appendChild(row);
+            });
+        }
+
+        window.filterRegistrants = function() {
+            const search = ($('#registrants-search').value || '').toLowerCase();
+            const eventFilter = $('#registrants-event-filter').value;
+
+            const filtered = currentRegistrants.filter(reg => {
+                // Text search
+                if (search) {
+                    const name = `${reg.first_name || ''} ${reg.last_name || ''}`.toLowerCase();
+                    const email = (reg.email || '').toLowerCase();
+                    const academy = (reg.academy_name || '').toLowerCase();
+                    if (!name.includes(search) && !email.includes(search) && !academy.includes(search)) {
+                        return false;
+                    }
+                }
+
+                // Event filter
+                if (eventFilter) {
+                    const hasEvent = (reg.events || []).some(e => e.eventName === eventFilter);
+                    if (!hasEvent) return false;
+                }
+
+                return true;
+            });
+
+            renderRegistrantsTable(filtered);
+        };
+
+        window.exportRegistrantsCSV = function() {
+            if (!currentRegistrants || currentRegistrants.length === 0) {
+                showToast('No registrants to export', 'error');
+                return;
+            }
+
+            const headers = ['Name', 'Email', 'Academy', 'Belt', 'Experience', 'Gender', 'DOB', 'Events', 'Amount Paid', 'Status', 'Registered'];
+            const rows = currentRegistrants.map(reg => {
+                const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim();
+                const events = (reg.events || []).filter(e => e.eventName).map(e => e.eventName).join('; ');
+                const dob = reg.date_of_birth ? new Date(reg.date_of_birth).toLocaleDateString('en-US') : '';
+                const regDate = reg.registered_at ? new Date(reg.registered_at).toLocaleDateString('en-US') : '';
+                return [
+                    name,
+                    reg.email || '',
+                    reg.academy_name || '',
+                    reg.belt_rank || '',
+                    reg.experience_level || '',
+                    reg.gender || '',
+                    dob,
+                    events,
+                    parseFloat(reg.amount_paid || 0).toFixed(2),
+                    reg.payment_status || '',
+                    regDate,
+                ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+            });
+
+            const csv = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `registrants-${currentTournamentId}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('CSV downloaded', 'success');
+        };
 
         // ============================================================
         // HELPERS

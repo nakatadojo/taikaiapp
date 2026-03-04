@@ -292,6 +292,17 @@ async function checkout(req, res, next) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
+    // Registration deadline enforcement
+    if (tournament.registration_deadline) {
+      const deadline = new Date(tournament.registration_deadline);
+      if (new Date() > deadline) {
+        return res.status(400).json({
+          error: 'Registration for this tournament has closed.',
+          code: 'REGISTRATION_CLOSED',
+        });
+      }
+    }
+
     // Credit check: ensure Event Director has enough credits
     if (tournament.created_by) {
       const directorBalance = await creditQueries.getBalance(tournament.created_by);
@@ -341,6 +352,17 @@ async function checkout(req, res, next) {
           return res.status(400).json({
             error: `${profile.first_name} ${profile.last_name} is already registered for ${event.name}`,
           });
+        }
+
+        // Sold-out capacity check
+        if (event.max_competitors) {
+          const currentCount = await tournamentQueries.getEventRegistrationCount(eventId);
+          if (currentCount >= event.max_competitors) {
+            return res.status(400).json({
+              error: `${event.name} is full (${event.max_competitors}/${event.max_competitors} spots taken).`,
+              code: 'EVENT_FULL',
+            });
+          }
         }
 
         const isPrimary = i === 0;
