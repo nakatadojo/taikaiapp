@@ -48,25 +48,6 @@
  * Version: 1.0
  */
 
-/* ─── Theme Switcher ─── */
-function switchTheme(theme) {
-    if (theme === 'ember') {
-        document.documentElement.removeAttribute('data-theme');
-    } else {
-        document.documentElement.setAttribute('data-theme', theme);
-    }
-    localStorage.setItem('preferred-theme', theme);
-}
-(function restoreTheme() {
-    const saved = localStorage.getItem('preferred-theme');
-    if (saved && saved !== 'ember') {
-        document.documentElement.setAttribute('data-theme', saved);
-    }
-    // Sync the theme select dropdown if it exists
-    const sel = document.getElementById('theme-select');
-    if (sel) sel.value = saved || 'ember';
-})();
-
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * DATABASE CLASS - LocalStorage Abstraction Layer

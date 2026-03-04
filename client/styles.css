@@ -5,20 +5,20 @@
 }
 
 :root {
-    /* ─── Ember Design System ─── */
-    --bg: #0f0f14;
-    --bg-gradient-1: rgba(230,126,34,0.08);
-    --bg-gradient-2: rgba(52,152,219,0.05);
-    --accent: #e67e22;
-    --accent-text: #f39c12;
-    --accent-glow: rgba(230,126,34,0.25);
+    /* ─── Design System ─── */
+    --bg: #0a0a0e;
+    --bg-gradient-1: rgba(255,255,255,0.04);
+    --bg-gradient-2: rgba(255,255,255,0.02);
+    --accent: #dc2626;
+    --accent-text: #ef4444;
+    --accent-glow: rgba(220,38,38,0.25);
     --surface: rgba(255,255,255,0.04);
     --surface-hover: rgba(255,255,255,0.07);
     --glass: rgba(255,255,255,0.06);
     --glass-border: rgba(255,255,255,0.08);
     --card-bg: var(--glass);
     --border: var(--glass-border);
-    --sidebar-active: rgba(230,126,34,0.15);
+    --sidebar-active: rgba(220,38,38,0.15);
     --text: #ffffff;
     --text-muted: rgba(255,255,255,0.6);
     --text-dim: rgba(255,255,255,0.35);
@@ -2428,87 +2428,6 @@ body {
 /* Actions row */
 .sc-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   THEME PRESETS
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-[data-theme="ocean"] {
-    --bg: #0a1628;
-    --accent: #0ea5e9;
-    --accent-text: #38bdf8;
-    --accent-glow: rgba(14,165,233,0.25);
-    --sidebar-active: rgba(14,165,233,0.15);
-    --bg-gradient-1: rgba(14,165,233,0.08);
-    --bg-gradient-2: rgba(6,182,212,0.05);
-}
-
-[data-theme="forest"] {
-    --bg: #0f1a14;
-    --accent: #22c55e;
-    --accent-text: #4ade80;
-    --accent-glow: rgba(34,197,94,0.25);
-    --sidebar-active: rgba(34,197,94,0.15);
-    --bg-gradient-1: rgba(34,197,94,0.08);
-    --bg-gradient-2: rgba(16,185,129,0.05);
-}
-
-[data-theme="violet"] {
-    --bg: #13111c;
-    --accent: #8b5cf6;
-    --accent-text: #a78bfa;
-    --accent-glow: rgba(139,92,246,0.25);
-    --sidebar-active: rgba(139,92,246,0.15);
-    --bg-gradient-1: rgba(139,92,246,0.08);
-    --bg-gradient-2: rgba(168,85,247,0.05);
-}
-
-[data-theme="midnight"] {
-    --bg: #0f0f12;
-    --accent: #64748b;
-    --accent-text: #94a3b8;
-    --accent-glow: rgba(100,116,139,0.25);
-    --sidebar-active: rgba(100,116,139,0.15);
-    --bg-gradient-1: rgba(100,116,139,0.08);
-    --bg-gradient-2: rgba(71,85,105,0.05);
-}
-
-[data-theme="rose"] {
-    --bg: #18101a;
-    --accent: #f43f5e;
-    --accent-text: #fb7185;
-    --accent-glow: rgba(244,63,94,0.25);
-    --sidebar-active: rgba(244,63,94,0.15);
-    --bg-gradient-1: rgba(244,63,94,0.08);
-    --bg-gradient-2: rgba(236,72,153,0.05);
-}
-
-/* Theme Switcher */
-.theme-switcher {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.theme-switcher label {
-    font-size: 12px;
-    color: var(--text-dim);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.theme-switcher select {
-    padding: 6px 10px;
-    background: var(--surface);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: 12px;
-    cursor: pointer;
-}
-.theme-switcher select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AUTH GATE — Full-screen login/signup overlay
