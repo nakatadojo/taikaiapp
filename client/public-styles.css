@@ -9,8 +9,8 @@
     --bg-secondary: #f5f5f7;
     --text-primary: #1d1d1f;
     --text-secondary: #6e6e73;
-    --accent-blue: #e67e22;
-    --accent-blue-hover: #d35400;
+    --accent-blue: #dc2626;
+    --accent-blue-hover: #b91c1c;
     --border-color: #d2d2d7;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.12);
@@ -32,7 +32,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
     background-size: cover;
     background-position: center;
     color: white;
@@ -236,7 +236,7 @@ h2 {
 .btn-primary:hover {
     background: var(--accent-blue-hover);
     transform: scale(1.02);
-    box-shadow: 0 4px 16px rgba(230, 126, 34, 0.3);
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
 }
 
 .btn-secondary {
@@ -376,7 +376,7 @@ h2 {
 .form-group select:focus {
     outline: none;
     border-color: var(--accent-blue);
-    box-shadow: 0 0 0 4px rgba(230, 126, 34, 0.1);
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
 }
 
 .form-actions {
@@ -800,7 +800,7 @@ body {
 }
 
 .pub-role-pill.selected {
-    background: rgba(230, 126, 34, 0.1);
+    background: rgba(220, 38, 38, 0.1);
     border-color: var(--accent-blue);
     color: var(--accent-blue);
 }
@@ -850,7 +850,7 @@ body {
 }
 
 .autocomplete-dropdown .autocomplete-item.selected {
-    background: rgba(230, 126, 34, 0.08);
+    background: rgba(220, 38, 38, 0.08);
     color: var(--accent-blue);
     font-weight: 500;
 }

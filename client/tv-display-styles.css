@@ -8,7 +8,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
     background-color: #0f0f14;
     background-image:
-        radial-gradient(ellipse at 15% 15%, rgba(230,126,34,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 15% 15%, rgba(220,38,38,0.08) 0%, transparent 50%),
         radial-gradient(ellipse at 85% 85%, rgba(52,152,219,0.05) 0%, transparent 50%);
     background-attachment: fixed;
     min-height: 100vh;
@@ -36,7 +36,7 @@ body {
 .tournament-header h1 {
     font-size: 3.5em;
     font-weight: 700;
-    background: linear-gradient(135deg, #e67e22, #f39c12);
+    background: linear-gradient(135deg, #dc2626, #ef4444);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 16px;
@@ -428,30 +428,30 @@ body {
 
 /* Ready — all scores entered, awaiting reveal */
 .kata-judge-ready {
-    border-color: rgba(230, 126, 34, 0.38);
+    border-color: rgba(220, 38, 38, 0.38);
     animation: judgeReadyPulse 1.8s ease-in-out infinite;
 }
 
 @keyframes judgeReadyPulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(230, 126, 34, 0); }
-    50%       { box-shadow: 0 0 20px 4px rgba(230, 126, 34, 0.18); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+    50%       { box-shadow: 0 0 20px 4px rgba(220, 38, 38, 0.18); }
 }
 
 /* Revealed — score visible with pop animation */
 .kata-judge-revealed {
-    border-color: rgba(230, 126, 34, 0.5);
-    background: rgba(230, 126, 34, 0.07);
-    box-shadow: 0 0 28px rgba(230, 126, 34, 0.14);
+    border-color: rgba(220, 38, 38, 0.5);
+    background: rgba(220, 38, 38, 0.07);
+    box-shadow: 0 0 28px rgba(220, 38, 38, 0.14);
     animation: judgeReveal 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .kata-judge-revealed .kata-judge-label {
-    color: rgba(230, 126, 34, 0.65);
+    color: rgba(220, 38, 38, 0.65);
 }
 
 .kata-judge-revealed .kata-judge-score {
     color: #fff;
-    text-shadow: 0 0 22px rgba(230, 126, 34, 0.4);
+    text-shadow: 0 0 22px rgba(220, 38, 38, 0.4);
 }
 
 @keyframes judgeReveal {

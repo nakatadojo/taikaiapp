@@ -7966,7 +7966,7 @@ function renderBracketPreview(bracket) {
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Remaining</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #e67e22;">${timing.estimatedRemainingTime}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #dc2626;">${timing.estimatedRemainingTime}</div>
                 </div>
             </div>
         `;
@@ -8012,7 +8012,7 @@ function renderBracketPreview(bracket) {
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Remaining</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #e67e22;">${timing.estimatedRemainingTime}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #dc2626;">${timing.estimatedRemainingTime}</div>
                 </div>
             </div>
         `;
@@ -8047,7 +8047,7 @@ function renderBracketPreview(bracket) {
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Remaining</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #e67e22;">${timing.estimatedRemainingTime}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #dc2626;">${timing.estimatedRemainingTime}</div>
                 </div>
             </div>
         `;
@@ -8081,7 +8081,7 @@ function renderBracketPreview(bracket) {
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Remaining</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #e67e22;">${timing.estimatedRemainingTime}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #dc2626;">${timing.estimatedRemainingTime}</div>
                 </div>
             </div>
         `;
@@ -8110,7 +8110,7 @@ function renderBracketPreview(bracket) {
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Remaining</div>
-                    <div style="font-size: 20px; font-weight: 700; color: #e67e22;">${timing.estimatedRemainingTime}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #dc2626;">${timing.estimatedRemainingTime}</div>
                 </div>
             </div>
         `;
@@ -8683,9 +8683,9 @@ function renderMatchCard(match, matchIdx, roundNum) {
 
                 <div style="text-align: center; font-size: 20px; color: var(--text-secondary); font-weight: 300;">vs</div>
 
-                <div ${dragAttr2} class="${bracketEditMode ? 'draggable-competitor' : ''}" style="padding: 12px; background: ${blueIsWinner ? 'rgba(230,126,34,0.2)' : 'rgba(230,126,34,0.1)'}; border: 2px solid ${blueIsWinner ? '#0a84ff' : 'rgba(230,126,34,0.3)'}; border-radius: 8px; ${bracketEditMode && blueCompetitor ? 'cursor: grab;' : ''}">
+                <div ${dragAttr2} class="${bracketEditMode ? 'draggable-competitor' : ''}" style="padding: 12px; background: ${blueIsWinner ? 'rgba(220,38,38,0.2)' : 'rgba(220,38,38,0.1)'}; border: 2px solid ${blueIsWinner ? '#0a84ff' : 'rgba(220,38,38,0.3)'}; border-radius: 8px; ${bracketEditMode && blueCompetitor ? 'cursor: grab;' : ''}">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 8px; height: 8px; background: #e67e22; border-radius: 50%;"></div>
+                        <div style="width: 8px; height: 8px; background: #dc2626; border-radius: 50%;"></div>
                         <div style="flex: 1;">
                             <div style="font-weight: ${blueIsWinner ? '700' : '600'}; font-size: 14px;">${blueName}</div>
                             ${blueClub ? `<div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${blueClub}</div>` : ''}
@@ -9073,7 +9073,7 @@ function renderDivisionTransferModal(competitor, currentDivision, eligibleDivisi
     const competitorDetails = `${getDisplayAge(competitor)} years • ${competitor.gender || 'Unknown'} • ${competitor.experience || '?'} years experience`;
 
     let html = `
-        <div class="glass-panel" style="background: rgba(230, 126, 34, 0.1); border: 1px solid rgba(230, 126, 34, 0.3); margin-bottom: 24px;">
+        <div class="glass-panel" style="background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); margin-bottom: 24px;">
             <h3 style="margin-bottom: 8px; color: var(--accent-blue);">Competitor to Transfer</h3>
             <div style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">${competitorName}</div>
             <div style="font-size: 14px; color: var(--text-secondary);">${competitorDetails}</div>
@@ -9870,7 +9870,7 @@ function generateDynamicTimeline(matId) {
         const progressLabel = progress.total > 0 ? `${progress.completed}/${progress.total}` : '';
 
         // Progress bar color based on status
-        let progressColor = 'rgba(230, 126, 34, 0.6)'; // blue - in progress
+        let progressColor = 'rgba(220, 38, 38, 0.6)'; // blue - in progress
         if (progress.status === 'completed') progressColor = 'rgba(34, 197, 94, 0.7)'; // green
         else if (progress.status === 'upcoming') progressColor = 'rgba(255, 255, 255, 0.15)'; // dim
 
@@ -9917,7 +9917,7 @@ function generateDynamicTimeline(matId) {
     // Summary footer
     const matStart = settings.matStartTimes[matId] || '08:00';
     html += `
-        <div style="padding: 8px 12px; background: rgba(230, 126, 34, 0.05); border-top: 1px solid var(--glass-border); font-size: 11px; color: var(--text-secondary);">
+        <div style="padding: 8px 12px; background: rgba(220, 38, 38, 0.05); border-top: 1px solid var(--glass-border); font-size: 11px; color: var(--text-secondary);">
             ${matSlots.length} divisions | ${matStart} - ${matEndTime}
         </div>
     `;
@@ -10271,7 +10271,7 @@ function loadQueueManagementGrid() {
 
                                     const statusIcon = getStatusIcon(slot);
                                     const statusBg = slot.status === 'completed' ? 'rgba(34, 197, 94, 0.08)' :
-                                                     slot.status === 'in-progress' ? 'rgba(230, 126, 34, 0.08)' : 'var(--bg-secondary)';
+                                                     slot.status === 'in-progress' ? 'rgba(220, 38, 38, 0.08)' : 'var(--bg-secondary)';
 
                                     return `
                                         <div class="queue-item" draggable="true" data-mat="${mat.id}" data-index="${idx}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: ${statusBg}; border-radius: 8px; cursor: move; border: 1px solid var(--glass-border);">
@@ -11471,9 +11471,9 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         const nextBlueName = nextMatch.blueCorner ? `${nextMatch.blueCorner.firstName} ${nextMatch.blueCorner.lastName}` : 'TBD';
 
         nextMatchHTML += `
-            <div class="glass-panel" style="background: rgba(230, 126, 34, 0.1); border-color: rgba(230, 126, 34, 0.3); flex-shrink: 0;">
+            <div class="glass-panel" style="background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.3); flex-shrink: 0;">
                 <div style="display: flex; align-items: center; justify-content: center; gap: clamp(8px, 1vw, 16px); font-size: clamp(11px, 1.2vw, 14px);">
-                    <span style="color: #e67e22; font-weight: 600; font-size: 11px;">NEXT:</span>
+                    <span style="color: #dc2626; font-weight: 600; font-size: 11px;">NEXT:</span>
                     <span style="font-weight: 600; color: ${corner1Color};">${nextRedName}</span>
                     <span style="color: var(--text-secondary);">vs</span>
                     <span style="font-weight: 600; color: ${corner2Color};">${nextBlueName}</span>
@@ -13292,13 +13292,13 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
                 ${kataDivProgressHTML}
             </div>
 
-            <div class="glass-panel" style="text-align: center; background: linear-gradient(135deg, rgba(230, 126, 34, 0.1), rgba(230, 126, 34, 0.05)); border: 2px solid #e67e22; flex-shrink: 0;">
+            <div class="glass-panel" style="text-align: center; background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.05)); border: 2px solid #dc2626; flex-shrink: 0;">
                 <div style="display: flex; align-items: center; justify-content: center; gap: clamp(12px, 2vw, 24px);">
                     ${currentKataCompetitor?.photo ? `
-                        <img src="${currentKataCompetitor.photo}" style="width: clamp(50px, 8vh, 100px); height: clamp(50px, 8vh, 100px); border-radius: 50%; object-fit: cover; border: 3px solid #e67e22; flex-shrink: 0;">
+                        <img src="${currentKataCompetitor.photo}" style="width: clamp(50px, 8vh, 100px); height: clamp(50px, 8vh, 100px); border-radius: 50%; object-fit: cover; border: 3px solid #dc2626; flex-shrink: 0;">
                     ` : ''}
                     <div>
-                        <div style="font-size: clamp(20px, 2.5vw, 32px); font-weight: 700; color: #e67e22;">
+                        <div style="font-size: clamp(20px, 2.5vw, 32px); font-weight: 700; color: #dc2626;">
                             ${currentKataCompetitor ? `${currentKataCompetitor.firstName} ${currentKataCompetitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}
                         </div>
                         ${currentKataCompetitor ? `
@@ -13342,9 +13342,9 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
                 </div>
 
                 ${!isFlags ? `
-                    <div style="text-align: center; padding: clamp(8px, 1vh, 16px); background: rgba(230, 126, 34, 0.1); border-radius: 10px; border: 1px solid #e67e22;">
+                    <div style="text-align: center; padding: clamp(8px, 1vh, 16px); background: rgba(220, 38, 38, 0.1); border-radius: 10px; border: 1px solid #dc2626;">
                         <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Total Score</div>
-                        <div id="kata-total-score" style="font-size: clamp(32px, 4vh, 48px); font-weight: 900; color: #e67e22;">0.0</div>
+                        <div id="kata-total-score" style="font-size: clamp(32px, 4vh, 48px); font-weight: 900; color: #dc2626;">0.0</div>
                         <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Average: <span id="kata-avg-score">0.0</span></div>
                     </div>
                 ` : ''}
@@ -13502,7 +13502,7 @@ function updateKataLeaderboard(bracket) {
                 <span style="font-size: 20px; font-weight: 700; color: ${idx === 0 ? '#22c55e' : 'var(--text-primary)'};">${idx + 1}</span>
                 <span style="font-weight: 600;">${perf.competitor.firstName} ${perf.competitor.lastName}</span>
             </div>
-            <div style="font-size: 18px; font-weight: 700; color: ${idx === 0 ? '#22c55e' : '#e67e22'};">
+            <div style="font-size: 18px; font-weight: 700; color: ${idx === 0 ? '#22c55e' : '#dc2626'};">
                 ${perf.averageScore.toFixed(bracket.type === 'kata-flags' ? 0 : 2)}
             </div>
         </div>
@@ -13559,8 +13559,8 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
             </div>
 
             ${currentEntry ? `
-                <div class="glass-panel" style="text-align: center; background: linear-gradient(135deg, rgba(230, 126, 34, 0.1), rgba(230, 126, 34, 0.05)); border: 2px solid #e67e22; flex-shrink: 0;">
-                    <div style="font-size: clamp(20px, 2.5vw, 32px); font-weight: 700; color: #e67e22;">
+                <div class="glass-panel" style="text-align: center; background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(220, 38, 38, 0.05)); border: 2px solid #dc2626; flex-shrink: 0;">
+                    <div style="font-size: clamp(20px, 2.5vw, 32px); font-weight: 700; color: #dc2626;">
                         ${competitor ? `${competitor.firstName} ${competitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}
                     </div>
                     ${competitor ? `
@@ -13591,9 +13591,9 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
                         `).join('')}
                     </div>
 
-                    <div style="text-align: center; padding: clamp(8px, 1vh, 16px); background: rgba(230, 126, 34, 0.1); border-radius: 10px; border: 1px solid #e67e22;">
+                    <div style="text-align: center; padding: clamp(8px, 1vh, 16px); background: rgba(220, 38, 38, 0.1); border-radius: 10px; border: 1px solid #dc2626;">
                         <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Total Score</div>
-                        <div id="rl-total-score" style="font-size: clamp(32px, 4vh, 48px); font-weight: 900; color: #e67e22;">0.0</div>
+                        <div id="rl-total-score" style="font-size: clamp(32px, 4vh, 48px); font-weight: 900; color: #dc2626;">0.0</div>
                         <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Average: <span id="rl-avg-score">0.0</span></div>
                     </div>
                 </div>
@@ -14109,8 +14109,8 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
 
         nextDivHTML = `
-            <div class="glass-panel" style="margin-bottom: 20px; padding: 20px; background: rgba(230, 126, 34, 0.1); border-color: #e67e22;">
-                <h4 style="text-align: center; margin-bottom: 12px; color: #e67e22;">Up Next</h4>
+            <div class="glass-panel" style="margin-bottom: 20px; padding: 20px; background: rgba(220, 38, 38, 0.1); border-color: #dc2626;">
+                <h4 style="text-align: center; margin-bottom: 12px; color: #dc2626;">Up Next</h4>
                 <div style="text-align: center; font-size: 18px; font-weight: 700; margin-bottom: 4px;">${nextDivision.division}</div>
                 <div style="text-align: center; font-size: 13px; color: var(--text-secondary);">${nextEvent?.name || ''}</div>
                 ${!hasBracket ? `
@@ -14122,7 +14122,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
 
             <div style="text-align: center; margin-bottom: 20px;">
                 <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">Auto-advancing in</div>
-                <div id="auto-advance-countdown" style="font-size: 64px; font-weight: 900; color: #e67e22; font-variant-numeric: tabular-nums;">${autoAdvanceCountdown}</div>
+                <div id="auto-advance-countdown" style="font-size: 64px; font-weight: 900; color: #dc2626; font-variant-numeric: tabular-nums;">${autoAdvanceCountdown}</div>
                 <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">seconds</div>
             </div>
 
@@ -14516,7 +14516,7 @@ function openEditRankingListPanel(matId, divisionName, eventId, bracketId, brack
                                     ${Array.from({ length: numJudges }, (_, i) => `
                                         <td style="padding: 8px; text-align: center; font-variant-numeric: tabular-nums;">${judgeScores[i] !== undefined ? judgeScores[i].toFixed(1) : '—'}</td>
                                     `).join('')}
-                                    <td style="padding: 8px; text-align: center; font-weight: 700; color: #e67e22;">${entry.score.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-weight: 700; color: #dc2626;">${entry.score.toFixed(2)}</td>
                                     <td style="padding: 8px; text-align: center;">
                                         <button class="btn btn-secondary" onclick="editRankingListEntry(${entryIndex}, '${bracketId}', ${numJudges}, ${scoringRange.min}, ${scoringRange.max})"
                                             style="font-size: 11px; padding: 4px 10px; border-radius: 6px;">
@@ -14563,11 +14563,11 @@ function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxSco
                 <input type="number" id="edit-judge-${entryIndex}-${i}" value="${judgeScores[i] !== undefined ? judgeScores[i] : ''}"
                     min="${minScore}" max="${maxScore}" step="0.1"
                     style="width: 60px; padding: 4px; border-radius: 6px; text-align: center; font-size: 14px; font-weight: 600;
-                    background: var(--bg-secondary); color: var(--text-primary); border: 2px solid #e67e22;">
+                    background: var(--bg-secondary); color: var(--text-primary); border: 2px solid #dc2626;">
             </td>
         `).join('')}
         <td style="padding: 8px; text-align: center;">
-            <span id="edit-avg-${entryIndex}" style="font-weight: 700; color: #e67e22;">—</span>
+            <span id="edit-avg-${entryIndex}" style="font-weight: 700; color: #dc2626;">—</span>
         </td>
         <td style="padding: 8px; text-align: center;">
             <button class="btn btn-primary" onclick="saveRankingListEdit(${entryIndex}, '${bracketId}', ${numJudges})"
@@ -14580,7 +14580,7 @@ function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxSco
             </button>
         </td>
     `;
-    row.style.background = 'rgba(230, 126, 34, 0.1)';
+    row.style.background = 'rgba(220, 38, 38, 0.1)';
 
     // Add live average calculation
     for (let i = 0; i < numJudges; i++) {
@@ -14793,7 +14793,7 @@ function editKumiteMatch(matchId, bracketId) {
     if (!row) return;
 
     row.innerHTML = `
-        <div style="width: 100%; padding: 12px; background: rgba(230, 126, 34, 0.05); border-radius: 8px;">
+        <div style="width: 100%; padding: 12px; background: rgba(220, 38, 38, 0.05); border-radius: 8px;">
             <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; margin-bottom: 12px;">
                 <div style="text-align: center;">
                     <div style="font-weight: 600; color: ${corner1Color}; margin-bottom: 8px;">${redName}</div>
