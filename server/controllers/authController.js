@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const userQueries = require('../db/queries/users');
 const roleQueries = require('../db/queries/roles');
+const profileQueries = require('../db/queries/profiles');
+const pool = require('../db/pool');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/email');
 
 const BCRYPT_ROUNDS = 12;
@@ -36,7 +38,25 @@ function setAuthCookie(res, user, roles) {
  */
 async function signup(req, res, next) {
   try {
-    const { email, password, firstName, lastName, phone, dateOfBirth, roles } = req.body;
+    const { email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType } = req.body;
+
+    // Validate account type if provided
+    const validAccountTypes = ['competitor', 'guardian', 'both'];
+    const acctType = accountType && validAccountTypes.includes(accountType) ? accountType : null;
+
+    // If accountType includes competitor, validate 18+ age
+    if (acctType && (acctType === 'competitor' || acctType === 'both') && dateOfBirth) {
+      const dob = new Date(dateOfBirth);
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const monthDiff = today.getMonth() - dob.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
+      if (age < 18) {
+        return res.status(400).json({
+          error: 'Competitors must be 18 or older to create an account. If you are a minor, your parent or guardian should create an account and add you as a competitor.',
+        });
+      }
+    }
 
     // Check for existing user
     const existing = await userQueries.findByEmail(email);
@@ -63,11 +83,45 @@ async function signup(req, res, next) {
       verificationTokenExpires,
     });
 
-    // Assign roles (filter out 'admin' — can't self-assign admin)
-    const validRoles = ['competitor', 'coach', 'judge', 'assistant_coach'];
-    const selectedRoles = (roles || ['competitor']).filter(r => validRoles.includes(r));
-    if (selectedRoles.length === 0) selectedRoles.push('competitor');
+    // Set account_type on user record
+    if (acctType) {
+      await pool.query(
+        'UPDATE users SET account_type = $1 WHERE id = $2',
+        [acctType, user.id]
+      );
+    }
+
+    // Assign roles based on accountType
+    let selectedRoles;
+    if (acctType === 'competitor') {
+      selectedRoles = ['competitor'];
+    } else if (acctType === 'guardian') {
+      selectedRoles = ['competitor']; // Guardians still get competitor role for system access
+    } else if (acctType === 'both') {
+      selectedRoles = ['competitor'];
+    } else {
+      // Fallback: use provided roles or default
+      const validRoles = ['competitor', 'coach', 'judge', 'assistant_coach'];
+      selectedRoles = (roles || ['competitor']).filter(r => validRoles.includes(r));
+      if (selectedRoles.length === 0) selectedRoles.push('competitor');
+    }
     await roleQueries.addRoles(user.id, selectedRoles);
+
+    // Auto-create self-profile for competitors
+    if (acctType === 'competitor' || acctType === 'both') {
+      try {
+        await profileQueries.create({
+          userId: user.id,
+          firstName,
+          lastName,
+          dateOfBirth: dateOfBirth || '2000-01-01',
+          gender: gender || 'male',
+          isSelf: true,
+        });
+      } catch (profileErr) {
+        console.warn('Failed to auto-create self-profile:', profileErr.message);
+      }
+    }
 
     // Send verification email
     await sendVerificationEmail(email, verificationToken);
@@ -80,6 +134,7 @@ async function signup(req, res, next) {
         firstName: user.first_name,
         lastName: user.last_name,
         roles: selectedRoles,
+        accountType: acctType,
       },
     });
   } catch (err) {
@@ -156,6 +211,7 @@ async function login(req, res, next) {
         profilePhotoUrl: user.profile_photo_url,
         roles,
         emailVerified: user.email_verified,
+        accountType: user.account_type,
       },
     });
   } catch (err) {
@@ -237,6 +293,7 @@ async function getMe(req, res, next) {
         profilePhotoUrl: user.profile_photo_url,
         roles,
         emailVerified: user.email_verified,
+        accountType: user.account_type,
       },
     });
   } catch (err) {

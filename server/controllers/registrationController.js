@@ -2,7 +2,11 @@ const registrationQueries = require('../db/queries/registrations');
 const guardianQueries = require('../db/queries/guardians');
 const membershipRequestQueries = require('../db/queries/membershipRequests');
 const userQueries = require('../db/queries/users');
-const { sendGuardianConfirmationEmail } = require('../config/email');
+const tournamentQueries = require('../db/queries/tournaments');
+const profileQueries = require('../db/queries/profiles');
+const discountQueries = require('../db/queries/discounts');
+const pool = require('../db/pool');
+const { sendGuardianConfirmationEmail, sendRegistrationConfirmationEmail } = require('../config/email');
 
 /**
  * POST /api/registrations/competitor
@@ -268,10 +272,461 @@ function calculateAgeForRegistration(dob) {
   return age;
 }
 
+/**
+ * POST /api/registrations/checkout
+ * Validate cart and create Stripe Checkout Session.
+ */
+async function checkout(req, res, next) {
+  try {
+    const { tournamentId, competitors, discountCode } = req.body;
+
+    if (!tournamentId || !Array.isArray(competitors) || competitors.length === 0) {
+      return res.status(400).json({ error: 'Tournament ID and at least one competitor are required' });
+    }
+
+    // Load tournament
+    const tournament = await tournamentQueries.findByIdWithEvents(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    const basePrice = parseFloat(tournament.base_event_price) || 75;
+    const addonPrice = parseFloat(tournament.addon_event_price) || 25;
+    const eventMap = new Map(tournament.events.map(e => [e.id, e]));
+
+    // Validate cart and calculate server-side pricing
+    let cartTotal = 0;
+    const validatedCompetitors = [];
+
+    for (const comp of competitors) {
+      // Verify profile ownership
+      const profile = await profileQueries.findById(comp.profileId);
+      if (!profile || profile.user_id !== req.user.id) {
+        return res.status(400).json({ error: `Invalid profile: ${comp.profileId}` });
+      }
+
+      // Verify events exist and calculate pricing
+      const validatedEvents = [];
+      let competitorSubtotal = 0;
+
+      for (let i = 0; i < comp.events.length; i++) {
+        const eventId = comp.events[i].eventId;
+        const event = eventMap.get(eventId);
+        if (!event) {
+          return res.status(400).json({ error: `Event not found: ${eventId}` });
+        }
+
+        // Check for duplicate registration in same tournament
+        const existingReg = await pool.query(
+          `SELECT re.id FROM registration_events re
+           JOIN registrations r ON r.id = re.registration_id
+           WHERE r.tournament_id = $1 AND r.profile_id = $2 AND re.event_id = $3
+             AND r.status != 'cancelled'`,
+          [tournamentId, comp.profileId, eventId]
+        );
+        if (existingReg.rows.length > 0) {
+          return res.status(400).json({
+            error: `${profile.first_name} ${profile.last_name} is already registered for ${event.name}`,
+          });
+        }
+
+        const isPrimary = i === 0;
+        const eventBasePrice = event.price_override !== null ? parseFloat(event.price_override) : basePrice;
+        const eventAddonPrice = event.addon_price_override !== null ? parseFloat(event.addon_price_override) : addonPrice;
+        const price = isPrimary ? eventBasePrice : eventAddonPrice;
+
+        validatedEvents.push({
+          eventId,
+          name: event.name,
+          isPrimary,
+          price,
+        });
+        competitorSubtotal += price;
+      }
+
+      validatedCompetitors.push({
+        profileId: comp.profileId,
+        name: `${profile.first_name} ${profile.last_name}`,
+        events: validatedEvents,
+        subtotal: competitorSubtotal,
+      });
+      cartTotal += competitorSubtotal;
+    }
+
+    // Validate discount code if provided
+    let discountData = null;
+    let discountAmount = 0;
+    if (discountCode) {
+      const discountResult = await discountQueries.validate(discountCode, tournamentId);
+      if (!discountResult.valid) {
+        return res.status(400).json({ error: discountResult.error });
+      }
+      discountData = discountResult.discount;
+      if (discountData.type === 'percentage') {
+        discountAmount = Math.round(cartTotal * (parseFloat(discountData.value) / 100) * 100) / 100;
+      } else {
+        discountAmount = Math.min(parseFloat(discountData.value), cartTotal);
+      }
+    }
+
+    const finalTotal = Math.max(0, cartTotal - discountAmount);
+
+    // Create Stripe Checkout Session
+    let stripeSessionUrl = null;
+    let stripeSessionId = null;
+
+    if (finalTotal > 0 && process.env.STRIPE_SECRET_KEY) {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+      const lineItems = validatedCompetitors.map(comp => ({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `${comp.name} — ${comp.events.map(e => e.name).join(', ')}`,
+          },
+          unit_amount: Math.round(comp.subtotal * 100), // cents
+        },
+        quantity: 1,
+      }));
+
+      // Add discount as negative line item if applicable
+      if (discountAmount > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Discount (${discountCode.toUpperCase()})`,
+            },
+            unit_amount: Math.round(discountAmount * 100),
+          },
+          quantity: 1,
+        });
+      }
+
+      const appUrl = process.env.APP_URL || 'http://localhost:3000';
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: discountAmount > 0
+          ? [{
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${tournament.name} — Tournament Registration`,
+                description: validatedCompetitors.map(c => `${c.name}: ${c.events.length} event(s)`).join('; '),
+              },
+              unit_amount: Math.round(finalTotal * 100),
+            },
+            quantity: 1,
+          }]
+          : lineItems,
+        success_url: `${appUrl}/register.html#success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/register.html#cart`,
+        metadata: {
+          userId: req.user.id,
+          tournamentId,
+          discountCode: discountCode || '',
+          cartData: JSON.stringify({
+            competitors: validatedCompetitors,
+            discountAmount,
+            total: finalTotal,
+          }),
+        },
+      });
+
+      stripeSessionUrl = session.url;
+      stripeSessionId = session.id;
+    } else if (finalTotal === 0) {
+      // Free registration (100% discount) — auto-confirm
+      stripeSessionId = `free_${Date.now()}_${req.user.id}`;
+    }
+
+    // Create payment transaction record
+    const txResult = await pool.query(
+      `INSERT INTO payment_transactions
+        (user_id, tournament_id, stripe_session_id, amount_total,
+         discount_code_id, discount_amount, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        req.user.id,
+        tournamentId,
+        stripeSessionId,
+        Math.round(finalTotal * 100),
+        discountData?.id || null,
+        Math.round(discountAmount * 100),
+        finalTotal === 0 ? 'completed' : 'pending',
+      ]
+    );
+
+    // If free (0 total), create registrations immediately
+    if (finalTotal === 0) {
+      await createRegistrationsFromCart(
+        req.user.id, tournamentId, validatedCompetitors,
+        txResult.rows[0].id, stripeSessionId, discountData
+      );
+
+      // Send confirmation email
+      try {
+        await sendRegistrationConfirmationEmail(
+          req.user.email, tournament, validatedCompetitors,
+          finalTotal, discountAmount, stripeSessionId
+        );
+      } catch (emailErr) {
+        console.warn('Failed to send confirmation email:', emailErr.message);
+      }
+
+      return res.json({
+        status: 'completed',
+        message: 'Registration confirmed (free with discount)',
+        sessionId: stripeSessionId,
+        total: finalTotal,
+      });
+    }
+
+    // Return Stripe session URL for paid registrations
+    res.json({
+      status: 'pending',
+      checkoutUrl: stripeSessionUrl,
+      sessionId: stripeSessionId,
+      total: finalTotal,
+      discountAmount,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/registrations/confirm
+ * Confirm payment and create registration records.
+ */
+async function confirmPayment(req, res, next) {
+  try {
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    // Check if already confirmed
+    const existing = await pool.query(
+      'SELECT * FROM payment_transactions WHERE stripe_session_id = $1',
+      [sessionId]
+    );
+    if (!existing.rows[0]) {
+      return res.status(404).json({ error: 'Payment session not found' });
+    }
+    if (existing.rows[0].status === 'completed') {
+      return res.json({ status: 'already_confirmed', message: 'Registration already confirmed' });
+    }
+
+    // Verify payment with Stripe
+    if (process.env.STRIPE_SECRET_KEY && !sessionId.startsWith('free_')) {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status !== 'paid') {
+        return res.status(400).json({ error: 'Payment not completed' });
+      }
+
+      // Parse cart data from metadata
+      const { userId, tournamentId, discountCode } = session.metadata;
+      const cartData = JSON.parse(session.metadata.cartData);
+
+      // Load tournament for email
+      const tournament = await tournamentQueries.findById(tournamentId);
+
+      // Get discount data if applicable
+      let discountData = null;
+      if (discountCode) {
+        discountData = await discountQueries.findByCode(discountCode);
+      }
+
+      // Create all registrations
+      await createRegistrationsFromCart(
+        userId, tournamentId, cartData.competitors,
+        existing.rows[0].id, sessionId, discountData
+      );
+
+      // Mark payment as completed
+      await pool.query(
+        `UPDATE payment_transactions SET status = 'completed', completed_at = NOW()
+         WHERE stripe_session_id = $1`,
+        [sessionId]
+      );
+
+      // Send confirmation email
+      const user = await userQueries.findById(userId);
+      try {
+        await sendRegistrationConfirmationEmail(
+          user.email, tournament, cartData.competitors,
+          cartData.total, cartData.discountAmount, sessionId
+        );
+      } catch (emailErr) {
+        console.warn('Failed to send confirmation email:', emailErr.message);
+      }
+
+      res.json({
+        status: 'confirmed',
+        message: 'Registration confirmed! Check your email for details.',
+      });
+    } else {
+      // Non-Stripe or free confirmation
+      res.json({ status: 'confirmed', message: 'Registration confirmed' });
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/registrations/my
+ * Get logged-in user's registrations (read-only).
+ */
+async function getMyRegistrations(req, res, next) {
+  try {
+    const result = await pool.query(
+      `SELECT r.*, t.name AS tournament_name, t.date AS tournament_date,
+              t.location AS tournament_location,
+              cp.first_name AS profile_first_name, cp.last_name AS profile_last_name,
+              pt.amount_total AS payment_amount, pt.status AS payment_status_detail,
+              pt.stripe_session_id AS payment_session_id,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'eventId', re.event_id,
+                    'eventName', te.name,
+                    'eventType', te.event_type,
+                    'isPrimary', re.is_primary,
+                    'price', re.price
+                  )
+                ) FILTER (WHERE re.id IS NOT NULL),
+                '[]'
+              ) AS events
+       FROM registrations r
+       LEFT JOIN tournaments t ON t.id = r.tournament_id
+       LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+       LEFT JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+       LEFT JOIN registration_events re ON re.registration_id = r.id
+       LEFT JOIN tournament_events te ON te.id = re.event_id
+       WHERE r.user_id = $1 AND r.status != 'cancelled'
+       GROUP BY r.id, t.name, t.date, t.location, cp.first_name, cp.last_name,
+                pt.amount_total, pt.status, pt.stripe_session_id
+       ORDER BY r.created_at DESC`,
+      [req.user.id]
+    );
+
+    // Also get registrations for profiles owned by this user
+    const profileRegs = await pool.query(
+      `SELECT r.*, t.name AS tournament_name, t.date AS tournament_date,
+              t.location AS tournament_location,
+              cp.first_name AS profile_first_name, cp.last_name AS profile_last_name,
+              pt.amount_total AS payment_amount, pt.status AS payment_status_detail,
+              pt.stripe_session_id AS payment_session_id,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'eventId', re.event_id,
+                    'eventName', te.name,
+                    'eventType', te.event_type,
+                    'isPrimary', re.is_primary,
+                    'price', re.price
+                  )
+                ) FILTER (WHERE re.id IS NOT NULL),
+                '[]'
+              ) AS events
+       FROM registrations r
+       JOIN competitor_profiles cp ON cp.id = r.profile_id AND cp.user_id = $1
+       LEFT JOIN tournaments t ON t.id = r.tournament_id
+       LEFT JOIN payment_transactions pt ON pt.id = r.payment_transaction_id
+       LEFT JOIN registration_events re ON re.registration_id = r.id
+       LEFT JOIN tournament_events te ON te.id = re.event_id
+       WHERE r.user_id != $1 AND r.status != 'cancelled'
+       GROUP BY r.id, t.name, t.date, t.location, cp.first_name, cp.last_name,
+                pt.amount_total, pt.status, pt.stripe_session_id
+       ORDER BY r.created_at DESC`,
+      [req.user.id]
+    );
+
+    const allRegs = [...result.rows, ...profileRegs.rows];
+
+    // Deduplicate by id
+    const seen = new Set();
+    const registrations = allRegs.filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+
+    res.json({ registrations });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Helper: Create registration records from validated cart data.
+ */
+async function createRegistrationsFromCart(
+  userId, tournamentId, competitors, paymentTransactionId, stripeSessionId, discountData
+) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    for (const comp of competitors) {
+      // Create registration
+      const regResult = await client.query(
+        `INSERT INTO registrations
+          (tournament_id, user_id, profile_id, registered_by, payment_status,
+           amount_paid, total_due, payment_transaction_id, stripe_session_id, status)
+         VALUES ($1, $2, $3, $4, 'paid', $5, $5, $6, $7, 'active')
+         RETURNING *`,
+        [
+          tournamentId, userId, comp.profileId, userId,
+          comp.subtotal, paymentTransactionId, stripeSessionId,
+        ]
+      );
+      const registration = regResult.rows[0];
+
+      // Create registration events
+      for (let i = 0; i < comp.events.length; i++) {
+        const evt = comp.events[i];
+        await client.query(
+          `INSERT INTO registration_events
+            (registration_id, event_id, is_primary, price, selection_order)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (registration_id, event_id) DO NOTHING`,
+          [registration.id, evt.eventId, evt.isPrimary, evt.price, i]
+        );
+      }
+    }
+
+    // Increment discount code usage if applicable
+    if (discountData?.id) {
+      await client.query(
+        'UPDATE discount_codes SET times_used = times_used + 1 WHERE id = $1',
+        [discountData.id]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   registerCompetitor,
   registerInstructor,
   registerClub,
   getRegistrations,
   activateRegistration,
+  checkout,
+  confirmPayment,
+  getMyRegistrations,
 };

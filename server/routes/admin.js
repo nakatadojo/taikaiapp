@@ -4,6 +4,7 @@ const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roles');
 const adminController = require('../controllers/adminController');
+const discountController = require('../controllers/discountController');
 
 const router = express.Router();
 
@@ -23,5 +24,43 @@ router.post('/users/:id/roles',
 router.delete('/users/:id/roles/:role',
   adminController.removeUserRole
 );
+
+// ── Discount Codes ───────────────────────────────────────────────────────────
+
+// POST /api/admin/discount-codes — Create discount code
+router.post('/discount-codes',
+  [
+    body('code').trim().notEmpty().withMessage('Code is required'),
+    body('type').isIn(['percentage', 'fixed']).withMessage('Type must be percentage or fixed'),
+    body('value').isFloat({ min: 0 }).withMessage('Value must be a positive number'),
+    body('maxUses').optional({ nullable: true }).isInt({ min: 1 }),
+    body('expiresAt').optional({ nullable: true }).isISO8601(),
+    body('active').optional().isBoolean(),
+    body('tournamentId').optional({ nullable: true }).isUUID(),
+  ],
+  validate,
+  discountController.createDiscount
+);
+
+// GET /api/admin/discount-codes — List all discount codes
+router.get('/discount-codes', discountController.getDiscounts);
+
+// PUT /api/admin/discount-codes/:id — Update discount code
+router.put('/discount-codes/:id',
+  [
+    body('code').optional().trim().notEmpty(),
+    body('type').optional().isIn(['percentage', 'fixed']),
+    body('value').optional().isFloat({ min: 0 }),
+    body('maxUses').optional({ nullable: true }),
+    body('expiresAt').optional({ nullable: true }),
+    body('active').optional().isBoolean(),
+    body('tournamentId').optional({ nullable: true }),
+  ],
+  validate,
+  discountController.updateDiscount
+);
+
+// DELETE /api/admin/discount-codes/:id — Delete discount code
+router.delete('/discount-codes/:id', discountController.deleteDiscount);
 
 module.exports = router;

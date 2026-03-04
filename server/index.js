@@ -33,6 +33,8 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/academies', require('./routes/academies'));
+app.use('/api/tournaments', require('./routes/tournaments'));
+app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/registrations', require('./routes/registrations'));
 app.use('/api/guardians', require('./routes/guardians'));
 
@@ -44,9 +46,12 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 // Serve client files (HTML, JS, CSS, images)
 app.use(express.static(path.join(__dirname, '..', 'client')));
 
-// Admin route alias
+// Route aliases
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'index.html'));
+});
+app.get('/register', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'register.html'));
 });
 
 // ── Error Handler ───────────────────────────────────────────────────────────

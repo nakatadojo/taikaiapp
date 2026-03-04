@@ -207,6 +207,69 @@ async function sendMembershipRequestEmail(coachEmail, applicantName, academyName
   });
 }
 
+/**
+ * Send registration confirmation email after successful payment.
+ */
+async function sendRegistrationConfirmationEmail(email, tournament, competitors, totalPaid, discountAmount, transactionId) {
+  const competitorRows = competitors.map(c => {
+    const evtList = c.events.map(e =>
+      `<li style="color:#6e6e73;font-size:14px;padding:2px 0;">${e.name} — $${e.price.toFixed(2)}</li>`
+    ).join('');
+    return `
+      <div style="margin-bottom:16px;padding:12px;background:#f5f5f7;border-radius:8px;">
+        <strong style="color:#1d1d1f;">${c.name}</strong>
+        <ul style="margin:8px 0 0;padding-left:20px;">${evtList}</ul>
+        <p style="color:#1d1d1f;font-size:14px;margin:8px 0 0;font-weight:600;">Subtotal: $${c.subtotal.toFixed(2)}</p>
+      </div>
+    `;
+  }).join('');
+
+  const discountLine = discountAmount > 0
+    ? `<p style="color:#e67e22;font-size:15px;">Discount: -$${discountAmount.toFixed(2)}</p>`
+    : '';
+
+  const tournamentDate = tournament.date
+    ? new Date(tournament.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'TBD';
+
+  if (!resend) {
+    console.log('\n📧 REGISTRATION CONFIRMATION EMAIL (dev mode)');
+    console.log(`   To: ${email}`);
+    console.log(`   Tournament: ${tournament.name}`);
+    console.log(`   Competitors: ${competitors.map(c => c.name).join(', ')}`);
+    console.log(`   Total: $${totalPaid.toFixed(2)}`);
+    console.log(`   Transaction: ${transactionId}\n`);
+    return;
+  }
+
+  await resend.emails.send({
+    from: EMAIL_FROM,
+    to: email,
+    subject: `Registration Confirmed — ${tournament.name}`,
+    html: `
+      <div style="${EMAIL_STYLE}">
+        <h2 style="color:#1d1d1f;margin-bottom:8px;">Registration Confirmed! ✓</h2>
+        <p style="color:#6e6e73;font-size:15px;line-height:1.6;">Your registration for <strong>${tournament.name}</strong> has been confirmed.</p>
+
+        <div style="margin:20px 0;padding:16px;background:#f0f0f2;border-radius:12px;">
+          <p style="color:#6e6e73;font-size:14px;margin:0;"><strong>Date:</strong> ${tournamentDate}</p>
+          <p style="color:#6e6e73;font-size:14px;margin:4px 0 0;"><strong>Location:</strong> ${tournament.location || 'TBD'}</p>
+        </div>
+
+        <h3 style="color:#1d1d1f;margin-bottom:12px;">Registered Competitors</h3>
+        ${competitorRows}
+
+        ${discountLine}
+        <p style="color:#1d1d1f;font-size:18px;font-weight:700;margin:16px 0;">Total Paid: $${totalPaid.toFixed(2)}</p>
+        <p style="color:#999;font-size:12px;">Transaction ID: ${transactionId}</p>
+
+        <hr style="border:none;border-top:1px solid #e5e5e7;margin:24px 0;">
+        <p style="color:#999;font-size:13px;">If you need to make changes to your registration, please contact the tournament organizer.</p>
+      </div>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -215,4 +278,5 @@ module.exports = {
   sendGuardianConfirmationEmail,
   sendGuardianConfirmedEmail,
   sendMembershipRequestEmail,
+  sendRegistrationConfirmationEmail,
 };

@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Register — Karate Tournament</title>
+    <link rel="stylesheet" href="public-styles.css">
+    <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       REGISTER PAGE — Dark theme glassmorphism overrides
+       ═══════════════════════════════════════════════════════════════════════ */
+    :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #12121a;
+        --bg-surface: rgba(255,255,255,0.04);
+        --bg-surface-hover: rgba(255,255,255,0.07);
+        --bg-surface-active: rgba(255,255,255,0.10);
+        --text-primary: #f0f0f5;
+        --text-secondary: #8888a0;
+        --text-muted: #55556a;
+        --accent: #e67e22;
+        --accent-hover: #d35400;
+        --accent-glow: rgba(230,126,34,0.25);
+        --accent-subtle: rgba(230,126,34,0.08);
+        --border-color: rgba(255,255,255,0.08);
+        --border-active: rgba(230,126,34,0.4);
+        --danger: #ef4444;
+        --danger-bg: rgba(239,68,68,0.1);
+        --success: #22c55e;
+        --success-bg: rgba(34,197,94,0.1);
+        --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
+        --glass: rgba(255,255,255,0.04);
+        --glass-border: rgba(255,255,255,0.08);
+        --radius: 14px;
+        --radius-sm: 10px;
+        --radius-lg: 20px;
+        --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    body {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        overflow-x: hidden;
+    }
+
+    /* ── Top Bar ────────────────────────────────────────────────────────── */
+    .reg-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        background: rgba(10,10,15,0.85);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border-bottom: 1px solid var(--glass-border);
+        padding: 0 20px;
+    }
+    .reg-topbar-inner {
+        max-width: 960px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+    }
+    .reg-topbar-brand {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--text-primary);
+        text-decoration: none;
+        letter-spacing: -0.3px;
+    }
+    .reg-topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .reg-topbar-user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+    .reg-topbar-avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .btn-topbar {
+        padding: 7px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all var(--transition);
+    }
+    .btn-topbar-outline {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+    }
+    .btn-topbar-outline:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+    /* ── Container / Layout ─────────────────────────────────────────────── */
+    .reg-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 0 20px;
+    }
+
+    /* ── Panels (hash router) ──────────────────────────────────────────── */
+    .reg-panel {
+        display: none;
+        animation: panelFadeIn 0.35s ease-out;
+    }
+    .reg-panel.active {
+        display: block;
+    }
+    @keyframes panelFadeIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Glass Card ────────────────────────────────────────────────────── */
+    .glass-card {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        padding: 32px;
+        transition: all var(--transition);
+    }
+    .glass-card:hover {
+        background: var(--bg-surface-hover);
+    }
+    .glass-card-sm {
+        padding: 20px;
+        border-radius: var(--radius);
+    }
+
+    /* ── Section Headers ───────────────────────────────────────────────── */
+    .reg-section-title {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        margin-bottom: 8px;
+        color: var(--text-primary);
+        text-align: left;
+    }
+    .reg-section-sub {
+        font-size: 15px;
+        color: var(--text-secondary);
+        margin-bottom: 28px;
+        letter-spacing: -0.2px;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn-accent {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 28px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--radius-sm);
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--transition);
+        letter-spacing: -0.3px;
+        min-height: 48px;
+    }
+    .btn-accent:hover {
+        background: var(--accent-hover);
+        box-shadow: 0 4px 20px var(--accent-glow);
+        transform: translateY(-1px);
+    }
+    .btn-accent:active {
+        transform: translateY(0) scale(0.98);
+    }
+    .btn-accent:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+    .btn-accent.btn-block {
+        width: 100%;
+    }
+    .btn-ghost {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 24px;
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition);
+        min-height: 44px;
+    }
+    .btn-ghost:hover {
+        background: var(--bg-surface-hover);
+        border-color: var(--text-muted);
+    }
+    .btn-ghost.btn-block {
+        width: 100%;
+    }
+    .btn-danger-ghost {
+        color: var(--danger);
+        border-color: rgba(239,68,68,0.2);
+    }
+    .btn-danger-ghost:hover {
+        background: var(--danger-bg);
+        border-color: var(--danger);
+    }
+    .btn-sm {
+        padding: 8px 16px;
+        font-size: 13px;
+        min-height: 36px;
+        border-radius: 8px;
+    }
+    .btn-link {
+        background: none;
+        border: none;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 4px 0;
+        transition: opacity var(--transition);
+    }
+    .btn-link:hover {
+        opacity: 0.8;
+        text-decoration: underline;
+    }
+
+    /* ── Form Fields (dark override) ───────────────────────────────────── */
+    .reg-form .form-group input,
+    .reg-form .form-group select,
+    .reg-form .form-group textarea {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: var(--radius-sm);
+        padding: 13px 16px;
+        font-size: 15px;
+        transition: all var(--transition);
+        width: 100%;
+    }
+    .reg-form .form-group input::placeholder,
+    .reg-form .form-group textarea::placeholder {
+        color: var(--text-muted);
+    }
+    .reg-form .form-group input:focus,
+    .reg-form .form-group select:focus,
+    .reg-form .form-group textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+        background: rgba(255,255,255,0.06);
+    }
+    .reg-form .form-group label {
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 6px;
+        letter-spacing: -0.1px;
+    }
+    .reg-form .form-group select option {
+        background: #1a1a2e;
+        color: var(--text-primary);
+    }
+    .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    /* ── Error / Success Messages ──────────────────────────────────────── */
+    .msg-error {
+        background: var(--danger-bg);
+        border: 1px solid rgba(239,68,68,0.3);
+        color: #f87171;
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+    .msg-success {
+        background: var(--success-bg);
+        border: 1px solid rgba(34,197,94,0.3);
+        color: #4ade80;
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        margin-bottom: 16px;
+        line-height: 1.5;
+    }
+    .msg-hidden {
+        display: none;
+    }
+
+    /* ── Loading Spinner ───────────────────────────────────────────────── */
+    .spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        display: inline-block;
+    }
+    .spinner-lg {
+        width: 36px;
+        height: 36px;
+        border-width: 3px;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+        color: var(--text-secondary);
+        font-size: 14px;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 48px 20px;
+        color: var(--text-muted);
+    }
+    .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+    .empty-state-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+    .empty-state-text {
+        font-size: 14px;
+        color: var(--text-muted);
+        max-width: 320px;
+        margin: 0 auto 20px;
+        line-height: 1.5;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #info — Tournament Info Section
+       ═══════════════════════════════════════════════════════════════════════ */
+    .info-hero {
+        text-align: center;
+        padding: 80px 20px 60px;
+    }
+    .info-hero-title {
+        font-size: clamp(32px, 6vw, 52px);
+        font-weight: 800;
+        letter-spacing: -2px;
+        line-height: 1.1;
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    .info-meta {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        color: var(--text-secondary);
+        font-size: 15px;
+        margin-bottom: 32px;
+    }
+    .info-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .info-stats {
+        display: flex;
+        justify-content: center;
+        gap: 32px;
+        margin-bottom: 40px;
+        flex-wrap: wrap;
+    }
+    .info-stat {
+        text-align: center;
+    }
+    .info-stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--accent);
+    }
+    .info-stat-label {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       Auth Modal — Dark theme override
+       ═══════════════════════════════════════════════════════════════════════ */
+    .auth-modal {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .auth-modal.open {
+        display: flex;
+    }
+    .auth-overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(8px);
+    }
+    .auth-card {
+        position: relative;
+        background: var(--bg-secondary);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg);
+        padding: 36px 32px;
+        max-width: 440px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+        z-index: 1;
+    }
+    .auth-close {
+        position: absolute;
+        top: 16px; right: 16px;
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all var(--transition);
+    }
+    .auth-close:hover {
+        background: var(--bg-surface-hover);
+        color: var(--text-primary);
+    }
+    .auth-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 24px;
+    }
+    .auth-tab {
+        flex: 1;
+        padding: 12px;
+        background: none;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        position: relative;
+        transition: color var(--transition);
+    }
+    .auth-tab.active {
+        color: var(--accent);
+    }
+    .auth-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0; right: 0;
+        height: 2px;
+        background: var(--accent);
+        border-radius: 2px 2px 0 0;
+    }
+    .auth-form {
+        display: none;
+    }
+    .auth-form.active {
+        display: block;
+    }
+
+    /* Account type pills */
+    .acct-type-pills {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .acct-type-pill {
+        flex: 1;
+        min-width: 100px;
+        padding: 10px 12px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        text-align: center;
+        transition: all var(--transition);
+        user-select: none;
+    }
+    .acct-type-pill.active {
+        background: var(--accent-subtle);
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+    .acct-type-pill:hover:not(.active) {
+        border-color: var(--text-muted);
+    }
+    .auth-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 16px 0;
+        color: var(--text-muted);
+        font-size: 12px;
+    }
+    .auth-divider::before,
+    .auth-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border-color);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #dashboard — Profile Cards
+       ═══════════════════════════════════════════════════════════════════════ */
+    .dash-section {
+        padding: 40px 0;
+    }
+    .dash-actions {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    .profile-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+    }
+    .profile-card {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 24px;
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        transition: all var(--transition);
+        position: relative;
+    }
+    .profile-card:hover {
+        background: var(--bg-surface-hover);
+        border-color: rgba(255,255,255,0.12);
+    }
+    .profile-card-self {
+        border-color: rgba(230,126,34,0.2);
+    }
+    .profile-card-self::before {
+        content: 'YOU';
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: var(--accent);
+        background: var(--accent-subtle);
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+    .profile-name {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        letter-spacing: -0.3px;
+    }
+    .profile-details {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+    }
+    .profile-detail-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .profile-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .belt-badge {
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .profile-card-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #profile — Add/Edit Profile Form
+       ═══════════════════════════════════════════════════════════════════════ */
+    .profile-form-wrap {
+        padding: 40px 0;
+        max-width: 640px;
+        margin: 0 auto;
+    }
+    .profile-form-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .profile-form-back {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all var(--transition);
+        flex-shrink: 0;
+    }
+    .profile-form-back:hover {
+        background: var(--bg-surface-hover);
+        color: var(--text-primary);
+    }
+    .academy-autocomplete {
+        position: relative;
+    }
+    .academy-dropdown {
+        position: absolute;
+        left: 0; right: 0;
+        top: 100%;
+        margin-top: 4px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-lg);
+        z-index: 50;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    .academy-dropdown:empty {
+        display: none;
+    }
+    .academy-dropdown-item {
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 14px;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+        transition: background var(--transition);
+    }
+    .academy-dropdown-item:last-child {
+        border-bottom: none;
+    }
+    .academy-dropdown-item:hover {
+        background: var(--bg-surface-hover);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #events — Event Selection
+       ═══════════════════════════════════════════════════════════════════════ */
+    .events-section {
+        padding: 40px 0;
+    }
+    .events-for-label {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 20px;
+    }
+    .events-for-name {
+        color: var(--accent);
+        font-weight: 600;
+    }
+    .event-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 14px;
+        margin-bottom: 24px;
+    }
+    .event-card {
+        background: var(--glass);
+        border: 2px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 20px;
+        cursor: pointer;
+        transition: all var(--transition);
+        position: relative;
+        user-select: none;
+    }
+    .event-card:hover {
+        background: var(--bg-surface-hover);
+        border-color: rgba(255,255,255,0.15);
+    }
+    .event-card.selected {
+        border-color: var(--accent);
+        background: var(--accent-subtle);
+    }
+    .event-card.selected::after {
+        content: '';
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M13.485 3.929a1 1 0 010 1.414l-6.364 6.364a1 1 0 01-1.414 0L3.05 9.05a1 1 0 111.414-1.414l2.121 2.121 5.657-5.657a1 1 0 011.414 0z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 14px;
+    }
+    .event-card-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+    .badge-primary {
+        background: var(--accent-subtle);
+        color: var(--accent);
+    }
+    .badge-addon {
+        background: rgba(99,102,241,0.1);
+        color: #818cf8;
+    }
+    .event-card-name {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        letter-spacing: -0.2px;
+        padding-right: 28px;
+    }
+    .event-card-meta {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+    .event-card-price {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .event-card-price .orig-price {
+        text-decoration: line-through;
+        color: var(--text-muted);
+        font-size: 14px;
+        font-weight: 400;
+        margin-left: 6px;
+    }
+    .events-footer {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        position: sticky;
+        bottom: 16px;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+    .events-subtotal {
+        font-size: 14px;
+        color: var(--text-secondary);
+    }
+    .events-subtotal-amount {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-left: 8px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #cart — Cart Review
+       ═══════════════════════════════════════════════════════════════════════ */
+    .cart-section {
+        padding: 40px 0;
+    }
+    .cart-competitor {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 16px;
+    }
+    .cart-competitor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+    .cart-competitor-name {
+        font-size: 16px;
+        font-weight: 600;
+    }
+    .cart-event-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 14px;
+    }
+    .cart-event-row:last-child {
+        border-bottom: none;
+    }
+    .cart-event-name {
+        flex: 1;
+        color: var(--text-secondary);
+    }
+    .cart-event-price {
+        font-weight: 600;
+        margin: 0 16px;
+        white-space: nowrap;
+    }
+    .cart-event-remove {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 4px;
+        font-size: 16px;
+        transition: color var(--transition);
+        line-height: 1;
+    }
+    .cart-event-remove:hover {
+        color: var(--danger);
+    }
+    .cart-competitor-subtotal {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    .cart-summary {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-top: 16px;
+    }
+    .cart-discount-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+    .cart-discount-row input {
+        flex: 1;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+    .cart-discount-row input::placeholder {
+        color: var(--text-muted);
+    }
+    .cart-discount-row input:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+    .cart-discount-msg {
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+    .cart-total-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 14px;
+        color: var(--text-secondary);
+    }
+    .cart-total-row.grand {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+        border-top: 1px solid var(--border-color);
+        padding-top: 16px;
+        margin-top: 8px;
+    }
+    .cart-total-row .discount-amount {
+        color: var(--success);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #success — Confirmation
+       ═══════════════════════════════════════════════════════════════════════ */
+    .success-section {
+        padding: 80px 0;
+        text-align: center;
+    }
+    .success-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: var(--success-bg);
+        color: var(--success);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 24px;
+        border: 2px solid rgba(34,197,94,0.3);
+    }
+    .success-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        letter-spacing: -0.8px;
+    }
+    .success-text {
+        color: var(--text-secondary);
+        font-size: 15px;
+        max-width: 480px;
+        margin: 0 auto 32px;
+        line-height: 1.6;
+    }
+    .success-summary {
+        text-align: left;
+        max-width: 560px;
+        margin: 0 auto 32px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       #registrations — Past Registrations
+       ═══════════════════════════════════════════════════════════════════════ */
+    .regs-section {
+        padding: 40px 0;
+    }
+    .reg-group {
+        margin-bottom: 32px;
+    }
+    .reg-group-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .reg-item {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-sm);
+        padding: 16px 20px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .reg-item-left {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .reg-item-name {
+        font-size: 15px;
+        font-weight: 500;
+    }
+    .reg-item-event {
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+    .reg-item-status {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .status-confirmed {
+        background: var(--success-bg);
+        color: var(--success);
+    }
+    .status-pending {
+        background: rgba(234,179,8,0.1);
+        color: #facc15;
+    }
+    .status-cancelled {
+        background: var(--danger-bg);
+        color: var(--danger);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       Step Progress Indicator
+       ═══════════════════════════════════════════════════════════════════════ */
+    .step-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        padding: 20px 0;
+        margin-bottom: 8px;
+    }
+    .step-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--border-color);
+        transition: all var(--transition);
+    }
+    .step-dot.active {
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent-glow);
+    }
+    .step-dot.completed {
+        background: var(--success);
+    }
+    .step-line {
+        width: 40px;
+        height: 2px;
+        background: var(--border-color);
+        transition: background var(--transition);
+    }
+    .step-line.completed {
+        background: var(--success);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       Responsive
+       ═══════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+        .auth-modal {
+            align-items: flex-end;
+            padding: 0;
+        }
+        .auth-card {
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            max-height: 90vh;
+            padding: 28px 20px;
+        }
+        .info-hero {
+            padding: 48px 16px 40px;
+        }
+        .info-stats {
+            gap: 20px;
+        }
+        .profile-grid {
+            grid-template-columns: 1fr;
+        }
+        .event-grid {
+            grid-template-columns: 1fr;
+        }
+        .events-footer {
+            flex-direction: column;
+            align-items: stretch;
+            text-align: center;
+            bottom: 0;
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+        .glass-card {
+            padding: 24px 20px;
+        }
+        .cart-event-row {
+            font-size: 13px;
+        }
+        .reg-section-title {
+            font-size: 24px;
+        }
+        .acct-type-pills {
+            flex-direction: column;
+        }
+        .acct-type-pill {
+            flex: unset;
+        }
+    }
+
+    @media (max-width: 380px) {
+        .reg-topbar-inner {
+            height: 48px;
+        }
+        .btn-accent {
+            padding: 12px 20px;
+            font-size: 14px;
+        }
+    }
+
+    /* ── Utilities ──────────────────────────────────────────────────────── */
+    .gap-8  { gap: 8px; }
+    .gap-12 { gap: 12px; }
+    .gap-16 { gap: 16px; }
+    .gap-24 { gap: 24px; }
+    .mt-8   { margin-top: 8px; }
+    .mt-12  { margin-top: 12px; }
+    .mt-16  { margin-top: 16px; }
+    .mt-24  { margin-top: 24px; }
+    .mt-32  { margin-top: 32px; }
+    .mb-0   { margin-bottom: 0; }
+    .mb-8   { margin-bottom: 8px; }
+    .mb-16  { margin-bottom: 16px; }
+    .mb-24  { margin-bottom: 24px; }
+    .flex   { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .text-center { text-align: center; }
+    .text-sm { font-size: 13px; }
+    .text-muted { color: var(--text-muted); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-accent { color: var(--accent); }
+    .font-bold { font-weight: 700; }
+    .w-full { width: 100%; }
+    .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TOP BAR
+     ════════════════════════════════════════════════════════════════════════ -->
+<header class="reg-topbar">
+    <div class="reg-topbar-inner">
+        <a href="#info" class="reg-topbar-brand" id="topbar-brand">Tournament Registration</a>
+        <div class="reg-topbar-actions">
+            <div id="topbar-user" class="reg-topbar-user" style="display:none;">
+                <div class="reg-topbar-avatar" id="topbar-avatar"></div>
+                <span id="topbar-username"></span>
+                <button class="btn-topbar btn-topbar-outline" onclick="handleLogout()">Logout</button>
+            </div>
+            <div id="topbar-auth" style="display:none;">
+                <button class="btn-topbar btn-topbar-outline" onclick="openAuthModal()">Login / Sign Up</button>
+            </div>
+            <a href="#registrations" class="btn-topbar btn-topbar-outline" id="topbar-my-regs" style="display:none;">My Registrations</a>
+        </div>
+    </div>
+</header>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     MAIN CONTENT — Panel Router
+     ════════════════════════════════════════════════════════════════════════ -->
+<main class="reg-container">
+
+    <!-- ─── #info ── Tournament Info ───────────────────────────────────── -->
+    <section id="panel-info" class="reg-panel">
+        <div class="info-hero">
+            <h1 class="info-hero-title" id="info-title">Loading...</h1>
+            <div class="info-meta" id="info-meta"></div>
+            <div class="info-stats" id="info-stats"></div>
+            <button class="btn-accent" onclick="onRegisterNowClick()" id="info-cta-btn">
+                Register Now
+            </button>
+        </div>
+    </section>
+
+    <!-- ─── #dashboard ── Profiles ─────────────────────────────────────── -->
+    <section id="panel-dashboard" class="reg-panel">
+        <div class="dash-section">
+            <!-- Step indicator -->
+            <div class="step-indicator" id="step-indicator-dash">
+                <div class="step-dot active"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+            </div>
+
+            <h2 class="reg-section-title">Who's Competing?</h2>
+            <p class="reg-section-sub">Select or add the competitors you want to register for this tournament.</p>
+
+            <div class="dash-actions" id="dash-actions"></div>
+            <div id="profiles-container">
+                <div class="loading-state">
+                    <div class="spinner spinner-lg"></div>
+                    <span>Loading profiles...</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── #profile ── Add/Edit Profile ──────────────────────────────── -->
+    <section id="panel-profile" class="reg-panel">
+        <div class="profile-form-wrap">
+            <div class="profile-form-header">
+                <button class="profile-form-back" onclick="navigate('dashboard')" aria-label="Back">&larr;</button>
+                <h2 class="reg-section-title mb-0" id="profile-form-title">Add Competitor</h2>
+            </div>
+
+            <div id="profile-form-error" class="msg-error msg-hidden"></div>
+
+            <form id="profile-form" class="reg-form" onsubmit="handleProfileSave(event)">
+                <div class="glass-card">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="pf-firstName">First Name *</label>
+                            <input type="text" id="pf-firstName" required placeholder="First name">
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-lastName">Last Name *</label>
+                            <input type="text" id="pf-lastName" required placeholder="Last name">
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-dob">Date of Birth *</label>
+                            <input type="date" id="pf-dob" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-gender">Gender *</label>
+                            <select id="pf-gender" required>
+                                <option value="">Select gender</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-belt">Belt Rank *</label>
+                            <select id="pf-belt" required>
+                                <option value="">Select belt rank</option>
+                                <option value="White">White</option>
+                                <option value="Yellow">Yellow</option>
+                                <option value="Orange">Orange</option>
+                                <option value="Green">Green</option>
+                                <option value="Blue">Blue</option>
+                                <option value="Purple">Purple</option>
+                                <option value="Brown">Brown</option>
+                                <option value="Black">Black</option>
+                                <option value="1st Dan">1st Dan</option>
+                                <option value="2nd Dan">2nd Dan</option>
+                                <option value="3rd Dan">3rd Dan</option>
+                                <option value="4th Dan">4th Dan</option>
+                                <option value="5th Dan">5th Dan</option>
+                                <option value="6th Dan">6th Dan</option>
+                                <option value="7th Dan">7th Dan</option>
+                                <option value="8th Dan">8th Dan</option>
+                                <option value="9th Dan">9th Dan</option>
+                                <option value="10th Dan">10th Dan</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-experience">Experience Level *</label>
+                            <select id="pf-experience" required>
+                                <option value="">Select level</option>
+                                <option value="beginner">Beginner</option>
+                                <option value="novice">Novice</option>
+                                <option value="intermediate">Intermediate</option>
+                                <option value="advanced">Advanced</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-weight">Weight (lbs)</label>
+                            <input type="number" id="pf-weight" step="0.1" min="0" placeholder="Optional">
+                        </div>
+                        <div class="form-group academy-autocomplete">
+                            <label for="pf-academy">Academy / Dojo</label>
+                            <input type="text" id="pf-academy" placeholder="Start typing..." autocomplete="off">
+                            <div class="academy-dropdown" id="pf-academy-dropdown"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-12 mt-24" style="justify-content:flex-end;flex-wrap:wrap;">
+                    <button type="button" class="btn-ghost" onclick="navigate('dashboard')">Cancel</button>
+                    <button type="submit" class="btn-accent" id="profile-save-btn">Save Profile</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- ─── #events ── Event Selection ─────────────────────────────────── -->
+    <section id="panel-events" class="reg-panel">
+        <div class="events-section">
+            <!-- Step indicator -->
+            <div class="step-indicator">
+                <div class="step-dot completed"></div>
+                <div class="step-line completed"></div>
+                <div class="step-dot active"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+            </div>
+
+            <div class="flex items-center justify-between mb-16" style="flex-wrap:wrap;gap:12px;">
+                <div>
+                    <h2 class="reg-section-title mb-0">Select Events</h2>
+                    <p class="events-for-label mt-8">Showing eligible events for <span class="events-for-name" id="events-for-name"></span></p>
+                </div>
+                <button class="btn-ghost btn-sm" onclick="navigate('dashboard')">&larr; Back</button>
+            </div>
+
+            <div id="events-container">
+                <div class="loading-state">
+                    <div class="spinner spinner-lg"></div>
+                    <span>Loading eligible events...</span>
+                </div>
+            </div>
+
+            <div class="events-footer" id="events-footer" style="display:none;">
+                <div class="events-subtotal">
+                    Subtotal: <span class="events-subtotal-amount" id="events-subtotal">$0.00</span>
+                </div>
+                <button class="btn-accent" onclick="addEventsToCart()" id="events-add-btn">Add to Cart</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── #cart ── Cart Review ───────────────────────────────────────── -->
+    <section id="panel-cart" class="reg-panel">
+        <div class="cart-section">
+            <!-- Step indicator -->
+            <div class="step-indicator">
+                <div class="step-dot completed"></div>
+                <div class="step-line completed"></div>
+                <div class="step-dot completed"></div>
+                <div class="step-line completed"></div>
+                <div class="step-dot active"></div>
+                <div class="step-line"></div>
+                <div class="step-dot"></div>
+            </div>
+
+            <h2 class="reg-section-title">Review &amp; Pay</h2>
+            <p class="reg-section-sub">Review your selections before proceeding to payment.</p>
+
+            <div id="cart-container"></div>
+
+            <div class="cart-summary" id="cart-summary" style="display:none;">
+                <div class="cart-discount-row">
+                    <input type="text" id="cart-discount-input" placeholder="Discount code">
+                    <button class="btn-ghost btn-sm" onclick="applyDiscount()" id="cart-discount-btn">Apply</button>
+                </div>
+                <div id="cart-discount-msg" class="cart-discount-msg msg-hidden"></div>
+                <div id="cart-totals"></div>
+                <div class="mt-24">
+                    <button class="btn-accent btn-block" onclick="handleCheckout()" id="cart-pay-btn">
+                        Pay Now
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-12 mt-16" style="flex-wrap:wrap;">
+                <button class="btn-ghost" onclick="navigate('dashboard')">&larr; Add More Competitors</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── #success ── Confirmation ───────────────────────────────────── -->
+    <section id="panel-success" class="reg-panel">
+        <div class="success-section">
+            <div class="success-icon">&#10003;</div>
+            <h2 class="success-title">Registration Complete!</h2>
+            <p class="success-text" id="success-text">Your registration has been confirmed. You will receive a confirmation email shortly.</p>
+
+            <div class="success-summary" id="success-summary"></div>
+
+            <div class="flex gap-12" style="justify-content:center;flex-wrap:wrap;">
+                <button class="btn-accent" onclick="navigate('registrations')">View My Registrations</button>
+                <button class="btn-ghost" onclick="navigate('info')">Back to Tournament</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── #registrations ── Past Registrations ───────────────────────── -->
+    <section id="panel-registrations" class="reg-panel">
+        <div class="regs-section">
+            <div class="flex items-center justify-between mb-24" style="flex-wrap:wrap;gap:12px;">
+                <h2 class="reg-section-title mb-0">My Registrations</h2>
+                <button class="btn-ghost btn-sm" onclick="navigate('info')">&larr; Back to Tournament</button>
+            </div>
+            <div id="registrations-container">
+                <div class="loading-state">
+                    <div class="spinner spinner-lg"></div>
+                    <span>Loading registrations...</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     AUTH MODAL
+     ════════════════════════════════════════════════════════════════════════ -->
+<div class="auth-modal" id="auth-modal">
+    <div class="auth-overlay" onclick="closeAuthModal()"></div>
+    <div class="auth-card">
+        <button class="auth-close" onclick="closeAuthModal()">&times;</button>
+
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Login</button>
+            <button class="auth-tab" data-tab="signup" onclick="switchAuthTab('signup')">Sign Up</button>
+        </div>
+
+        <!-- ── LOGIN FORM ──────────────────────────────────────────────── -->
+        <form id="auth-login-form" class="auth-form active reg-form" onsubmit="handleLogin(event)">
+            <div id="login-error" class="msg-error msg-hidden"></div>
+
+            <div class="form-group mb-16">
+                <label for="login-email">Email</label>
+                <input type="email" id="login-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group mb-24">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" required placeholder="Your password">
+            </div>
+            <button type="submit" class="btn-accent btn-block" id="login-submit-btn">Sign In</button>
+        </form>
+
+        <!-- ── SIGNUP FORM ─────────────────────────────────────────────── -->
+        <form id="auth-signup-form" class="auth-form reg-form" onsubmit="handleSignup(event)">
+            <div id="signup-error" class="msg-error msg-hidden"></div>
+            <div id="signup-success" class="msg-success msg-hidden"></div>
+
+            <!-- Account Type Pills -->
+            <div class="form-group mb-16">
+                <label>I am...</label>
+                <div class="acct-type-pills" id="acct-type-pills">
+                    <div class="acct-type-pill active" data-type="competitor" onclick="selectAccountType('competitor')">I'm a Competitor</div>
+                    <div class="acct-type-pill" data-type="guardian" onclick="selectAccountType('guardian')">I'm a Parent/Guardian</div>
+                    <div class="acct-type-pill" data-type="both" onclick="selectAccountType('both')">Both</div>
+                </div>
+            </div>
+
+            <div class="form-grid mb-16">
+                <div class="form-group">
+                    <label for="signup-first">First Name *</label>
+                    <input type="text" id="signup-first" required placeholder="First name">
+                </div>
+                <div class="form-group">
+                    <label for="signup-last">Last Name *</label>
+                    <input type="text" id="signup-last" required placeholder="Last name">
+                </div>
+            </div>
+
+            <div class="form-group mb-16">
+                <label for="signup-email">Email *</label>
+                <input type="email" id="signup-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group mb-16">
+                <label for="signup-password">Password *</label>
+                <input type="password" id="signup-password" required placeholder="Min 8 chars, upper + lower + digit" minlength="8">
+            </div>
+            <div class="form-group mb-16">
+                <label for="signup-dob">Date of Birth *</label>
+                <input type="date" id="signup-dob" required>
+            </div>
+            <div class="form-group mb-24" id="signup-gender-group">
+                <label for="signup-gender">Gender *</label>
+                <select id="signup-gender" required>
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
+        </form>
+    </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SCRIPTS
+     ════════════════════════════════════════════════════════════════════════ -->
+<script src="auth.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    /* ══════════════════════════════════════════════════════════════════════
+       STATE
+       ══════════════════════════════════════════════════════════════════════ */
+    const state = {
+        tournamentId: null,
+        tournament: null,
+        profiles: [],
+        editingProfileId: null,
+        // Event selection: keyed by profileId
+        currentProfileId: null,
+        selectedEvents: {},  // { profileId: [{ event, profile }] }
+        // Cart
+        cart: {
+            items: [],       // [{ profileId, profileName, events: [{ id, name, type, division, price }] }]
+            discountCode: null,
+            discountAmount: 0,
+            discountPercent: 0,
+        },
+        // Account type for signup
+        signupAccountType: 'competitor',
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       API HELPERS
+       ══════════════════════════════════════════════════════════════════════ */
+    async function api(url, options = {}) {
+        const res = await fetch(url, {
+            ...options,
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+            },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const err = new Error(data.message || data.error || `Request failed (${res.status})`);
+            err.status = res.status;
+            err.data = data;
+            throw err;
+        }
+        return data;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       HASH ROUTER
+       ══════════════════════════════════════════════════════════════════════ */
+    const PANELS = ['info', 'dashboard', 'profile', 'events', 'cart', 'success', 'registrations'];
+
+    function navigate(panel, replace = false) {
+        if (!PANELS.includes(panel)) panel = 'info';
+        if (replace) {
+            history.replaceState(null, '', '#' + panel);
+        } else {
+            location.hash = '#' + panel;
+        }
+    }
+
+    function getCurrentPanel() {
+        const hash = location.hash.replace('#', '') || 'info';
+        return PANELS.includes(hash) ? hash : 'info';
+    }
+
+    function renderPanel() {
+        const panel = getCurrentPanel();
+        document.querySelectorAll('.reg-panel').forEach(el => el.classList.remove('active'));
+        const target = document.getElementById('panel-' + panel);
+        if (target) target.classList.add('active');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        // Panel-specific init
+        switch (panel) {
+            case 'info':
+                loadTournamentInfo();
+                break;
+            case 'dashboard':
+                if (!Auth.isLoggedIn()) { openAuthModal(); navigate('info', true); return; }
+                loadProfiles();
+                break;
+            case 'profile':
+                if (!Auth.isLoggedIn()) { navigate('info', true); return; }
+                initProfileForm();
+                break;
+            case 'events':
+                if (!Auth.isLoggedIn() || !state.currentProfileId) { navigate('dashboard', true); return; }
+                loadEligibleEvents();
+                break;
+            case 'cart':
+                if (!Auth.isLoggedIn()) { navigate('info', true); return; }
+                renderCart();
+                break;
+            case 'success':
+                break;
+            case 'registrations':
+                if (!Auth.isLoggedIn()) { openAuthModal(); navigate('info', true); return; }
+                loadMyRegistrations();
+                break;
+        }
+    }
+
+    window.addEventListener('hashchange', renderPanel);
+
+    /* ══════════════════════════════════════════════════════════════════════
+       AUTH MODAL
+       ══════════════════════════════════════════════════════════════════════ */
+    window.openAuthModal = function() {
+        document.getElementById('auth-modal').classList.add('open');
+        switchAuthTab('login');
+    };
+
+    window.closeAuthModal = function() {
+        document.getElementById('auth-modal').classList.remove('open');
+    };
+
+    window.switchAuthTab = function(tab) {
+        document.querySelectorAll('.auth-tab').forEach(el => {
+            el.classList.toggle('active', el.dataset.tab === tab);
+        });
+        document.querySelectorAll('.auth-form').forEach(el => el.classList.remove('active'));
+        const formId = tab === 'login' ? 'auth-login-form' : 'auth-signup-form';
+        document.getElementById(formId).classList.add('active');
+        // Clear errors
+        hideEl('login-error');
+        hideEl('signup-error');
+        hideEl('signup-success');
+    };
+
+    window.selectAccountType = function(type) {
+        state.signupAccountType = type;
+        document.querySelectorAll('#acct-type-pills .acct-type-pill').forEach(el => {
+            el.classList.toggle('active', el.dataset.type === type);
+        });
+        // Show/hide gender based on type
+        const genderGroup = document.getElementById('signup-gender-group');
+        if (type === 'guardian') {
+            genderGroup.style.display = 'none';
+            document.getElementById('signup-gender').removeAttribute('required');
+        } else {
+            genderGroup.style.display = '';
+            document.getElementById('signup-gender').setAttribute('required', '');
+        }
+    };
+
+    window.handleLogin = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('login-submit-btn');
+        const email = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        hideEl('login-error');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Signing in...';
+
+        try {
+            await Auth.login(email, password);
+            closeAuthModal();
+            updateTopbar();
+            navigate('dashboard');
+        } catch (err) {
+            showError('login-error', err.message || 'Login failed. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sign In';
+        }
+    };
+
+    window.handleSignup = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('signup-submit-btn');
+        const firstName = document.getElementById('signup-first').value.trim();
+        const lastName = document.getElementById('signup-last').value.trim();
+        const email = document.getElementById('signup-email').value.trim();
+        const password = document.getElementById('signup-password').value;
+        const dob = document.getElementById('signup-dob').value;
+        const gender = document.getElementById('signup-gender').value;
+        const accountType = state.signupAccountType;
+
+        hideEl('signup-error');
+        hideEl('signup-success');
+
+        // Age validation: competitors must be 18+
+        if (accountType === 'competitor' || accountType === 'both') {
+            const age = calcAge(dob);
+            if (age < 18) {
+                showError('signup-error', 'Competitors must be at least 18 years old to create an account. If you are under 18, a parent or guardian must register on your behalf.');
+                return;
+            }
+        }
+
+        // Build roles array
+        const roles = [];
+        if (accountType === 'competitor' || accountType === 'both') roles.push('competitor');
+        if (accountType === 'guardian' || accountType === 'both') roles.push('guardian');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Creating account...';
+
+        try {
+            await Auth.signup({ email, password, firstName, lastName, dateOfBirth: dob, roles });
+            // Login immediately after signup
+            await Auth.login(email, password);
+            closeAuthModal();
+            updateTopbar();
+            navigate('dashboard');
+        } catch (err) {
+            showError('signup-error', err.message || 'Signup failed. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Account';
+        }
+    };
+
+    window.handleLogout = async function() {
+        await Auth.logout();
+        state.profiles = [];
+        state.cart = { items: [], discountCode: null, discountAmount: 0, discountPercent: 0 };
+        updateTopbar();
+        navigate('info');
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       TOPBAR
+       ══════════════════════════════════════════════════════════════════════ */
+    function updateTopbar() {
+        const user = Auth.currentUser;
+        const isLoggedIn = Auth.isLoggedIn();
+        document.getElementById('topbar-user').style.display = isLoggedIn ? 'flex' : 'none';
+        document.getElementById('topbar-auth').style.display = isLoggedIn ? 'none' : '';
+        document.getElementById('topbar-my-regs').style.display = isLoggedIn ? '' : 'none';
+
+        if (isLoggedIn && user) {
+            const initials = ((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '');
+            document.getElementById('topbar-avatar').textContent = initials.toUpperCase();
+            document.getElementById('topbar-username').textContent = user.firstName || user.email;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #info — TOURNAMENT INFO
+       ══════════════════════════════════════════════════════════════════════ */
+    let infoLoaded = false;
+
+    async function loadTournamentInfo() {
+        if (infoLoaded && state.tournament) return;
+
+        // Get tournament ID from URL query param or load first available
+        const params = new URLSearchParams(location.search);
+        let tid = params.get('tournament') || params.get('t');
+
+        try {
+            if (tid) {
+                state.tournamentId = tid;
+                state.tournament = await api('/api/tournaments/' + tid);
+            } else {
+                // Load first available tournament
+                const list = await api('/api/tournaments');
+                const tournaments = list.tournaments || list.data || list;
+                if (Array.isArray(tournaments) && tournaments.length > 0) {
+                    state.tournament = tournaments[0];
+                    state.tournamentId = state.tournament._id || state.tournament.id;
+                } else {
+                    document.getElementById('info-title').textContent = 'No Tournaments Available';
+                    document.getElementById('info-cta-btn').style.display = 'none';
+                    infoLoaded = true;
+                    return;
+                }
+            }
+
+            const t = state.tournament.tournament || state.tournament;
+            state.tournamentId = t._id || t.id || state.tournamentId;
+
+            document.getElementById('info-title').textContent = t.name || 'Karate Tournament';
+            document.title = (t.name || 'Tournament') + ' — Registration';
+            document.getElementById('topbar-brand').textContent = t.name || 'Tournament Registration';
+
+            // Meta info
+            const metaEl = document.getElementById('info-meta');
+            let metaHTML = '';
+            if (t.date || t.startDate) {
+                const d = new Date(t.date || t.startDate);
+                metaHTML += `<span class="info-meta-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>`;
+            }
+            if (t.location || t.venue) {
+                metaHTML += `<span class="info-meta-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> ${t.location || t.venue}</span>`;
+            }
+            metaEl.innerHTML = metaHTML;
+
+            // Stats
+            const statsEl = document.getElementById('info-stats');
+            const events = t.events || [];
+            let statsHTML = '';
+            if (events.length > 0) {
+                statsHTML += `<div class="info-stat"><div class="info-stat-value">${events.length}</div><div class="info-stat-label">Events</div></div>`;
+            }
+            const kataCount = events.filter(e => (e.type || '').toLowerCase() === 'kata').length;
+            const kumiteCount = events.filter(e => (e.type || '').toLowerCase() === 'kumite').length;
+            if (kataCount > 0) {
+                statsHTML += `<div class="info-stat"><div class="info-stat-value">${kataCount}</div><div class="info-stat-label">Kata</div></div>`;
+            }
+            if (kumiteCount > 0) {
+                statsHTML += `<div class="info-stat"><div class="info-stat-value">${kumiteCount}</div><div class="info-stat-label">Kumite</div></div>`;
+            }
+            if (t.registrationDeadline) {
+                const dl = new Date(t.registrationDeadline);
+                const daysLeft = Math.max(0, Math.ceil((dl - new Date()) / (1000 * 60 * 60 * 24)));
+                statsHTML += `<div class="info-stat"><div class="info-stat-value">${daysLeft}</div><div class="info-stat-label">Days Left</div></div>`;
+            }
+            statsEl.innerHTML = statsHTML;
+
+            infoLoaded = true;
+        } catch (err) {
+            document.getElementById('info-title').textContent = 'Tournament';
+            console.error('Failed to load tournament info:', err);
+        }
+    }
+
+    window.onRegisterNowClick = function() {
+        if (Auth.isLoggedIn()) {
+            navigate('dashboard');
+        } else {
+            openAuthModal();
+        }
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #dashboard — PROFILES
+       ══════════════════════════════════════════════════════════════════════ */
+    async function loadProfiles() {
+        const container = document.getElementById('profiles-container');
+        container.innerHTML = '<div class="loading-state"><div class="spinner spinner-lg"></div><span>Loading profiles...</span></div>';
+
+        try {
+            const data = await api('/api/profiles');
+            state.profiles = data.profiles || data.data || data || [];
+            if (!Array.isArray(state.profiles)) state.profiles = [];
+            renderDashboard();
+        } catch (err) {
+            container.innerHTML = `<div class="msg-error">Failed to load profiles: ${esc(err.message)}</div>`;
+        }
+    }
+
+    function renderDashboard() {
+        const user = Auth.currentUser;
+        const actionsEl = document.getElementById('dash-actions');
+        const container = document.getElementById('profiles-container');
+
+        // Actions
+        let actionsHTML = '';
+        const roles = user?.roles || [];
+        const isCompetitor = roles.includes('competitor');
+        const hasSelfProfile = state.profiles.some(p => p.isSelf || p.userId === (user?._id || user?.id));
+
+        if ((isCompetitor) && !hasSelfProfile) {
+            actionsHTML += `<button class="btn-accent btn-sm" onclick="addSelfProfile()">Register Myself</button>`;
+        }
+        actionsHTML += `<button class="btn-ghost btn-sm" onclick="addChildProfile()">+ Add a Competitor</button>`;
+        if (state.cart.items.length > 0) {
+            const totalEvents = state.cart.items.reduce((sum, item) => sum + item.events.length, 0);
+            actionsHTML += `<button class="btn-accent btn-sm" onclick="navigate('cart')" style="margin-left:auto;">Cart (${totalEvents})</button>`;
+        }
+        actionsEl.innerHTML = actionsHTML;
+
+        // Profile cards
+        if (state.profiles.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#x1F94B;</div>
+                    <div class="empty-state-title">No Competitors Yet</div>
+                    <div class="empty-state-text">Add yourself or a competitor to get started with event registration.</div>
+                </div>`;
+            return;
+        }
+
+        let html = '<div class="profile-grid">';
+        for (const p of state.profiles) {
+            const isSelf = p.isSelf || p.userId === (user?._id || user?.id);
+            const age = p.dateOfBirth ? calcAge(p.dateOfBirth) : '';
+            const beltColor = getBeltColor(p.beltRank || p.rank);
+
+            html += `
+            <div class="profile-card ${isSelf ? 'profile-card-self' : ''}">
+                <div class="profile-name">${esc(p.firstName)} ${esc(p.lastName)}</div>
+                <div class="profile-details">
+                    ${age ? `<span class="profile-detail-item">Age ${age}</span>` : ''}
+                    ${p.gender ? `<span class="profile-detail-item">${esc(capitalize(p.gender))}</span>` : ''}
+                    ${(p.beltRank || p.rank) ? `<span class="profile-badge belt-badge" style="background:${beltColor.bg};color:${beltColor.text};">${esc(p.beltRank || p.rank)}</span>` : ''}
+                    ${p.weight ? `<span class="profile-detail-item">${p.weight} lbs</span>` : ''}
+                </div>
+                <div class="profile-card-actions">
+                    <button class="btn-accent btn-sm" onclick="selectEventsForProfile('${p._id || p.id}')">Select Events</button>
+                    <button class="btn-ghost btn-sm" onclick="editProfile('${p._id || p.id}')">Edit</button>
+                    ${!isSelf ? `<button class="btn-ghost btn-sm btn-danger-ghost" onclick="deleteProfile('${p._id || p.id}')">Remove</button>` : ''}
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    window.addSelfProfile = function() {
+        state.editingProfileId = null;
+        const user = Auth.currentUser;
+        // Pre-fill with user data
+        navigate('profile');
+        setTimeout(() => {
+            document.getElementById('profile-form-title').textContent = 'Register Myself';
+            if (user) {
+                document.getElementById('pf-firstName').value = user.firstName || '';
+                document.getElementById('pf-lastName').value = user.lastName || '';
+                if (user.dateOfBirth) {
+                    document.getElementById('pf-dob').value = user.dateOfBirth.substring(0, 10);
+                }
+            }
+        }, 50);
+    };
+
+    window.addChildProfile = function() {
+        state.editingProfileId = null;
+        navigate('profile');
+        setTimeout(() => {
+            document.getElementById('profile-form-title').textContent = 'Add Competitor';
+        }, 50);
+    };
+
+    window.editProfile = function(profileId) {
+        state.editingProfileId = profileId;
+        navigate('profile');
+    };
+
+    window.deleteProfile = async function(profileId) {
+        if (!confirm('Remove this competitor profile?')) return;
+        try {
+            await api('/api/profiles/' + profileId, { method: 'DELETE' });
+            // Remove from cart too
+            state.cart.items = state.cart.items.filter(i => i.profileId !== profileId);
+            await loadProfiles();
+        } catch (err) {
+            alert('Failed to remove profile: ' + err.message);
+        }
+    };
+
+    window.selectEventsForProfile = function(profileId) {
+        state.currentProfileId = profileId;
+        navigate('events');
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #profile — ADD/EDIT PROFILE FORM
+       ══════════════════════════════════════════════════════════════════════ */
+    function initProfileForm() {
+        const form = document.getElementById('profile-form');
+        form.reset();
+        hideEl('profile-form-error');
+
+        if (state.editingProfileId) {
+            document.getElementById('profile-form-title').textContent = 'Edit Competitor';
+            const p = state.profiles.find(x => (x._id || x.id) === state.editingProfileId);
+            if (p) {
+                document.getElementById('pf-firstName').value = p.firstName || '';
+                document.getElementById('pf-lastName').value = p.lastName || '';
+                document.getElementById('pf-dob').value = (p.dateOfBirth || '').substring(0, 10);
+                document.getElementById('pf-gender').value = p.gender || '';
+                document.getElementById('pf-belt').value = p.beltRank || p.rank || '';
+                document.getElementById('pf-experience').value = p.experienceLevel || p.experience || '';
+                document.getElementById('pf-weight').value = p.weight || '';
+                document.getElementById('pf-academy').value = p.academyName || '';
+            }
+        } else {
+            document.getElementById('profile-form-title').textContent = 'Add Competitor';
+        }
+    }
+
+    window.handleProfileSave = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('profile-save-btn');
+        hideEl('profile-form-error');
+
+        const payload = {
+            firstName: document.getElementById('pf-firstName').value.trim(),
+            lastName: document.getElementById('pf-lastName').value.trim(),
+            dateOfBirth: document.getElementById('pf-dob').value,
+            gender: document.getElementById('pf-gender').value,
+            beltRank: document.getElementById('pf-belt').value,
+            experienceLevel: document.getElementById('pf-experience').value,
+            weight: document.getElementById('pf-weight').value ? parseFloat(document.getElementById('pf-weight').value) : undefined,
+            academyName: document.getElementById('pf-academy').value.trim() || undefined,
+        };
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+        try {
+            if (state.editingProfileId) {
+                await api('/api/profiles/' + state.editingProfileId, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload),
+                });
+            } else {
+                await api('/api/profiles', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+            }
+            state.editingProfileId = null;
+            navigate('dashboard');
+        } catch (err) {
+            showError('profile-form-error', err.message || 'Failed to save profile.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save Profile';
+        }
+    };
+
+    // Academy autocomplete
+    let academyTimer = null;
+    document.getElementById('pf-academy').addEventListener('input', function() {
+        clearTimeout(academyTimer);
+        const q = this.value.trim();
+        const dropdown = document.getElementById('pf-academy-dropdown');
+        if (q.length < 2) { dropdown.innerHTML = ''; return; }
+        academyTimer = setTimeout(async () => {
+            try {
+                const data = await api('/api/academies/search?q=' + encodeURIComponent(q));
+                const items = data.academies || data.data || data || [];
+                if (!Array.isArray(items) || items.length === 0) {
+                    dropdown.innerHTML = '';
+                    return;
+                }
+                dropdown.innerHTML = items.map(a =>
+                    `<div class="academy-dropdown-item" onclick="pickAcademy('${esc(a.name || a)}')">${esc(a.name || a)}</div>`
+                ).join('');
+            } catch (err) {
+                dropdown.innerHTML = '';
+            }
+        }, 300);
+    });
+
+    document.getElementById('pf-academy').addEventListener('blur', function() {
+        setTimeout(() => {
+            document.getElementById('pf-academy-dropdown').innerHTML = '';
+        }, 200);
+    });
+
+    window.pickAcademy = function(name) {
+        document.getElementById('pf-academy').value = name;
+        document.getElementById('pf-academy-dropdown').innerHTML = '';
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #events — EVENT SELECTION
+       ══════════════════════════════════════════════════════════════════════ */
+    let eligibleEvents = [];
+    let selectedEventIds = new Set();
+
+    async function loadEligibleEvents() {
+        const container = document.getElementById('events-container');
+        const footer = document.getElementById('events-footer');
+        footer.style.display = 'none';
+        container.innerHTML = '<div class="loading-state"><div class="spinner spinner-lg"></div><span>Loading eligible events...</span></div>';
+
+        const profile = state.profiles.find(p => (p._id || p.id) === state.currentProfileId);
+        if (profile) {
+            document.getElementById('events-for-name').textContent = `${profile.firstName} ${profile.lastName}`;
+        }
+
+        // Pre-select events already in cart for this profile
+        const cartItem = state.cart.items.find(i => i.profileId === state.currentProfileId);
+        selectedEventIds = new Set((cartItem?.events || []).map(e => e.id || e._id));
+
+        try {
+            const data = await api(`/api/tournaments/${state.tournamentId}/events/eligible/${state.currentProfileId}`);
+            eligibleEvents = data.events || data.data || data || [];
+            if (!Array.isArray(eligibleEvents)) eligibleEvents = [];
+
+            if (eligibleEvents.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#x1F50D;</div>
+                        <div class="empty-state-title">No Eligible Events</div>
+                        <div class="empty-state-text">This competitor doesn't match any event divisions. Try updating their profile details.</div>
+                        <button class="btn-ghost btn-sm mt-16" onclick="editProfile('${state.currentProfileId}')">Edit Profile</button>
+                    </div>`;
+                return;
+            }
+
+            renderEventCards();
+            footer.style.display = '';
+            updateEventsSubtotal();
+        } catch (err) {
+            container.innerHTML = `<div class="msg-error">Failed to load events: ${esc(err.message)}</div>`;
+        }
+    }
+
+    function renderEventCards() {
+        const container = document.getElementById('events-container');
+        let html = '<div class="event-grid">';
+        for (const ev of eligibleEvents) {
+            const evId = ev._id || ev.id;
+            const isSelected = selectedEventIds.has(evId);
+            const isPrimary = (ev.category || ev.eventType || '').toLowerCase() === 'primary' || ev.isPrimary;
+            const badgeClass = isPrimary ? 'badge-primary' : 'badge-addon';
+            const badgeText = isPrimary ? 'PRIMARY' : 'ADD-ON';
+            const price = typeof ev.price === 'number' ? ev.price : (ev.fee || 0);
+
+            html += `
+            <div class="event-card ${isSelected ? 'selected' : ''}" data-event-id="${evId}" onclick="toggleEvent('${evId}')">
+                <div class="event-card-badge ${badgeClass}">${badgeText}</div>
+                <div class="event-card-name">${esc(ev.name || ev.eventName)}</div>
+                <div class="event-card-meta">${esc(ev.type || ev.eventType || '')}${ev.division ? ' &middot; ' + esc(ev.division) : ''}</div>
+                <div class="event-card-price">$${price.toFixed(2)}</div>
+            </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    window.toggleEvent = function(eventId) {
+        if (selectedEventIds.has(eventId)) {
+            selectedEventIds.delete(eventId);
+        } else {
+            selectedEventIds.add(eventId);
+        }
+        // Update card visual
+        document.querySelectorAll('.event-card').forEach(card => {
+            card.classList.toggle('selected', selectedEventIds.has(card.dataset.eventId));
+        });
+        updateEventsSubtotal();
+    };
+
+    function updateEventsSubtotal() {
+        let subtotal = 0;
+        for (const evId of selectedEventIds) {
+            const ev = eligibleEvents.find(e => (e._id || e.id) === evId);
+            if (ev) subtotal += (typeof ev.price === 'number' ? ev.price : (ev.fee || 0));
+        }
+        document.getElementById('events-subtotal').textContent = '$' + subtotal.toFixed(2);
+        const addBtn = document.getElementById('events-add-btn');
+        addBtn.disabled = selectedEventIds.size === 0;
+        addBtn.textContent = selectedEventIds.size === 0 ? 'Select Events' : `Add ${selectedEventIds.size} Event${selectedEventIds.size > 1 ? 's' : ''} to Cart`;
+    }
+
+    window.addEventsToCart = function() {
+        if (selectedEventIds.size === 0) return;
+
+        const profile = state.profiles.find(p => (p._id || p.id) === state.currentProfileId);
+        const events = [];
+        for (const evId of selectedEventIds) {
+            const ev = eligibleEvents.find(e => (e._id || e.id) === evId);
+            if (ev) {
+                events.push({
+                    id: ev._id || ev.id,
+                    name: ev.name || ev.eventName,
+                    type: ev.type || ev.eventType || '',
+                    division: ev.division || '',
+                    price: typeof ev.price === 'number' ? ev.price : (ev.fee || 0),
+                });
+            }
+        }
+
+        // Update or add to cart
+        const existingIdx = state.cart.items.findIndex(i => i.profileId === state.currentProfileId);
+        const cartItem = {
+            profileId: state.currentProfileId,
+            profileName: profile ? `${profile.firstName} ${profile.lastName}` : 'Competitor',
+            events,
+        };
+
+        if (existingIdx >= 0) {
+            state.cart.items[existingIdx] = cartItem;
+        } else {
+            state.cart.items.push(cartItem);
+        }
+
+        navigate('cart');
+    };
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #cart — CART REVIEW
+       ══════════════════════════════════════════════════════════════════════ */
+    function renderCart() {
+        const container = document.getElementById('cart-container');
+        const summary = document.getElementById('cart-summary');
+
+        if (state.cart.items.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">&#x1F6D2;</div>
+                    <div class="empty-state-title">Your Cart is Empty</div>
+                    <div class="empty-state-text">Select events for your competitors to add them to the cart.</div>
+                    <button class="btn-accent btn-sm mt-16" onclick="navigate('dashboard')">Choose Events</button>
+                </div>`;
+            summary.style.display = 'none';
+            return;
+        }
+
+        let html = '';
+        for (const item of state.cart.items) {
+            let competitorSubtotal = 0;
+            html += `<div class="cart-competitor">`;
+            html += `<div class="cart-competitor-header">
+                <span class="cart-competitor-name">${esc(item.profileName)}</span>
+                <button class="btn-ghost btn-sm btn-danger-ghost" onclick="removeCompetitorFromCart('${item.profileId}')">Remove All</button>
+            </div>`;
+
+            for (const ev of item.events) {
+                competitorSubtotal += ev.price;
+                html += `<div class="cart-event-row">
+                    <span class="cart-event-name">${esc(ev.name)}${ev.division ? ' <span class="text-muted text-sm">' + esc(ev.division) + '</span>' : ''}</span>
+                    <span class="cart-event-price">$${ev.price.toFixed(2)}</span>
+                    <button class="cart-event-remove" onclick="removeEventFromCart('${item.profileId}','${ev.id}')" title="Remove">&times;</button>
+                </div>`;
+            }
+
+            html += `<div class="cart-competitor-subtotal">Subtotal: $${competitorSubtotal.toFixed(2)}</div>`;
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
+        summary.style.display = '';
+        updateCartTotals();
+    }
+
+    function updateCartTotals() {
+        let subtotal = 0;
+        for (const item of state.cart.items) {
+            for (const ev of item.events) {
+                subtotal += ev.price;
+            }
+        }
+
+        const discount = state.cart.discountPercent > 0
+            ? subtotal * (state.cart.discountPercent / 100)
+            : state.cart.discountAmount;
+        const total = Math.max(0, subtotal - discount);
+
+        let html = `<div class="cart-total-row"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>`;
+        if (discount > 0) {
+            html += `<div class="cart-total-row"><span>Discount${state.cart.discountCode ? ' (' + esc(state.cart.discountCode) + ')' : ''}</span><span class="discount-amount">-$${discount.toFixed(2)}</span></div>`;
+        }
+        html += `<div class="cart-total-row grand"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
+
+        document.getElementById('cart-totals').innerHTML = html;
+    }
+
+    window.removeCompetitorFromCart = function(profileId) {
+        state.cart.items = state.cart.items.filter(i => i.profileId !== profileId);
+        renderCart();
+    };
+
+    window.removeEventFromCart = function(profileId, eventId) {
+        const item = state.cart.items.find(i => i.profileId === profileId);
+        if (item) {
+            item.events = item.events.filter(e => e.id !== eventId);
+            if (item.events.length === 0) {
+                state.cart.items = state.cart.items.filter(i => i.profileId !== profileId);
+            }
+        }
+        renderCart();
+    };
+
+    window.applyDiscount = async function() {
+        const input = document.getElementById('cart-discount-input');
+        const btn = document.getElementById('cart-discount-btn');
+        const msgEl = document.getElementById('cart-discount-msg');
+        const code = input.value.trim();
+
+        if (!code) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        msgEl.className = 'cart-discount-msg msg-hidden';
+
+        try {
+            const data = await api('/api/registrations/validate-discount', {
+                method: 'POST',
+                body: JSON.stringify({ code, tournamentId: state.tournamentId }),
+            });
+
+            state.cart.discountCode = code;
+            state.cart.discountAmount = data.discountAmount || 0;
+            state.cart.discountPercent = data.discountPercent || 0;
+
+            msgEl.textContent = data.message || `Discount applied: ${data.discountPercent ? data.discountPercent + '%' : '$' + data.discountAmount} off`;
+            msgEl.className = 'cart-discount-msg msg-success';
+            updateCartTotals();
+        } catch (err) {
+            state.cart.discountCode = null;
+            state.cart.discountAmount = 0;
+            state.cart.discountPercent = 0;
+            msgEl.textContent = err.message || 'Invalid discount code.';
+            msgEl.className = 'cart-discount-msg msg-error';
+            updateCartTotals();
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Apply';
+        }
+    };
+
+    window.handleCheckout = async function() {
+        const btn = document.getElementById('cart-pay-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Processing...';
+
+        // Build payload
+        const registrations = state.cart.items.map(item => ({
+            profileId: item.profileId,
+            eventIds: item.events.map(e => e.id),
+        }));
+
+        try {
+            const data = await api('/api/registrations/checkout', {
+                method: 'POST',
+                body: JSON.stringify({
+                    tournamentId: state.tournamentId,
+                    registrations,
+                    discountCode: state.cart.discountCode || undefined,
+                }),
+            });
+
+            if (data.url || data.sessionUrl || data.checkoutUrl) {
+                // Redirect to Stripe
+                window.location.href = data.url || data.sessionUrl || data.checkoutUrl;
+            } else if (data.success || data.confirmed) {
+                // Free registration or already confirmed
+                onPaymentSuccess(data);
+            } else {
+                // Try to confirm directly
+                try {
+                    const confirmData = await api('/api/registrations/confirm', {
+                        method: 'POST',
+                        body: JSON.stringify({ sessionId: data.sessionId }),
+                    });
+                    onPaymentSuccess(confirmData);
+                } catch (err2) {
+                    showError('cart-pay-btn', 'Payment confirmation failed: ' + err2.message);
+                }
+            }
+        } catch (err) {
+            alert('Checkout failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Pay Now';
+        }
+    };
+
+    function onPaymentSuccess(data) {
+        // Build success summary
+        let summaryHTML = '';
+        for (const item of state.cart.items) {
+            summaryHTML += `<div class="glass-card glass-card-sm mb-8">
+                <div class="font-bold mb-8">${esc(item.profileName)}</div>`;
+            for (const ev of item.events) {
+                summaryHTML += `<div class="text-sm text-secondary">${esc(ev.name)} — $${ev.price.toFixed(2)}</div>`;
+            }
+            summaryHTML += '</div>';
+        }
+        document.getElementById('success-summary').innerHTML = summaryHTML;
+
+        // Clear cart
+        state.cart = { items: [], discountCode: null, discountAmount: 0, discountPercent: 0 };
+
+        navigate('success');
+    }
+
+    // Handle Stripe redirect back
+    function checkForPaymentReturn() {
+        const params = new URLSearchParams(location.search);
+        const sessionId = params.get('session_id');
+        if (sessionId) {
+            // Confirm payment
+            (async () => {
+                try {
+                    const data = await api('/api/registrations/confirm', {
+                        method: 'POST',
+                        body: JSON.stringify({ sessionId }),
+                    });
+                    document.getElementById('success-text').textContent = 'Your payment was successful and your registration is confirmed.';
+                    document.getElementById('success-summary').innerHTML = '';
+                    // Clear query params
+                    history.replaceState(null, '', location.pathname + '#success');
+                    navigate('success');
+                } catch (err) {
+                    alert('Payment confirmation failed: ' + err.message);
+                    navigate('info');
+                }
+            })();
+            return true;
+        }
+        return false;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       #registrations — MY REGISTRATIONS
+       ══════════════════════════════════════════════════════════════════════ */
+    async function loadMyRegistrations() {
+        const container = document.getElementById('registrations-container');
+        container.innerHTML = '<div class="loading-state"><div class="spinner spinner-lg"></div><span>Loading registrations...</span></div>';
+
+        try {
+            const data = await api('/api/registrations/my');
+            const registrations = data.registrations || data.data || data || [];
+
+            if (!Array.isArray(registrations) || registrations.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">&#x1F4CB;</div>
+                        <div class="empty-state-title">No Registrations Yet</div>
+                        <div class="empty-state-text">You haven't registered for any tournaments yet.</div>
+                        <button class="btn-accent btn-sm mt-16" onclick="navigate('info')">Browse Tournaments</button>
+                    </div>`;
+                return;
+            }
+
+            // Group by tournament
+            const grouped = {};
+            for (const reg of registrations) {
+                const tName = reg.tournamentName || reg.tournament?.name || 'Tournament';
+                if (!grouped[tName]) grouped[tName] = [];
+                grouped[tName].push(reg);
+            }
+
+            let html = '';
+            for (const [tournamentName, regs] of Object.entries(grouped)) {
+                html += `<div class="reg-group">
+                    <div class="reg-group-title">${esc(tournamentName)}</div>`;
+                for (const reg of regs) {
+                    const status = (reg.status || 'confirmed').toLowerCase();
+                    const statusClass = status === 'confirmed' ? 'status-confirmed'
+                        : status === 'pending' ? 'status-pending'
+                        : 'status-cancelled';
+
+                    html += `<div class="reg-item">
+                        <div class="reg-item-left">
+                            <span class="reg-item-name">${esc(reg.competitorName || reg.profileName || (reg.profile?.firstName + ' ' + reg.profile?.lastName) || '')}</span>
+                            <span class="reg-item-event">${esc(reg.eventName || reg.event?.name || '')}</span>
+                        </div>
+                        <span class="reg-item-status ${statusClass}">${esc(status)}</span>
+                    </div>`;
+                }
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = `<div class="msg-error">Failed to load registrations: ${esc(err.message)}</div>`;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       UTILITY FUNCTIONS
+       ══════════════════════════════════════════════════════════════════════ */
+    function calcAge(dob) {
+        const birth = new Date(dob);
+        const today = new Date();
+        let age = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+        return age;
+    }
+
+    function esc(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+
+    function capitalize(s) {
+        return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+    }
+
+    function showError(id, msg) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = msg;
+            el.classList.remove('msg-hidden');
+        }
+    }
+
+    function hideEl(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('msg-hidden');
+    }
+
+    function getBeltColor(belt) {
+        if (!belt) return { bg: 'rgba(255,255,255,0.08)', text: 'var(--text-secondary)' };
+        const b = belt.toLowerCase();
+        const colors = {
+            white:  { bg: 'rgba(255,255,255,0.15)', text: '#fff' },
+            yellow: { bg: 'rgba(234,179,8,0.15)', text: '#facc15' },
+            orange: { bg: 'rgba(249,115,22,0.15)', text: '#fb923c' },
+            green:  { bg: 'rgba(34,197,94,0.15)', text: '#4ade80' },
+            blue:   { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa' },
+            purple: { bg: 'rgba(168,85,247,0.15)', text: '#c084fc' },
+            brown:  { bg: 'rgba(161,98,7,0.15)', text: '#d97706' },
+            black:  { bg: 'rgba(255,255,255,0.08)', text: '#e5e5e5' },
+        };
+        // Check for dan ranks
+        if (b.includes('dan')) return { bg: 'rgba(239,68,68,0.12)', text: '#f87171' };
+        return colors[b] || { bg: 'rgba(255,255,255,0.08)', text: 'var(--text-secondary)' };
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       INIT
+       ══════════════════════════════════════════════════════════════════════ */
+    Auth.onAuthChange = function(user) {
+        updateTopbar();
+    };
+
+    (async function init() {
+        await Auth.init();
+        updateTopbar();
+
+        // Check if returning from Stripe payment
+        if (checkForPaymentReturn()) return;
+
+        // Initial panel render
+        renderPanel();
+    })();
+
+})();
+</script>
+</body>
+</html>
