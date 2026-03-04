@@ -910,7 +910,7 @@
                 <div class="action-card">
                     <h3>Host a Tournament</h3>
                     <p>Create and publish your event for competitors to register</p>
-                    <a href="#create" class="btn btn-primary btn-create-tournament">+ Create Tournament</a>
+                    <a href="/director/tournaments/new" class="btn btn-primary btn-create-tournament">+ Create Tournament</a>
                 </div>
             </div>
 
@@ -922,7 +922,7 @@
                 <div class="empty-state-icon">&#127941;</div>
                 <h3>No tournaments yet</h3>
                 <p>Create your first tournament to get started.</p>
-                <a href="#create" class="btn btn-primary">+ Create Tournament</a>
+                <a href="/director/tournaments/new" class="btn btn-primary">+ Create Tournament</a>
             </div>
             <div class="tournament-grid" id="tournaments-grid"></div>
         </div>
@@ -1337,8 +1337,9 @@
                     ${t.location ? `<span>&#128205; ${escapeHtml(t.location)}</span>` : ''}
                 </div>
                 <div class="tournament-card-actions">
-                    <a href="/index.html?tournamentId=${t.id}" class="btn btn-primary btn-sm">Manage</a>
-                    <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View Public Page</a>
+                    <a href="/director/tournaments/${t.id}/wizard" class="btn btn-primary btn-sm">Edit</a>
+                    <a href="/index.html?tournamentId=${t.id}" class="btn btn-secondary btn-sm">Manage</a>
+                    <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
                     </button>

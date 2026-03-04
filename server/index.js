@@ -64,6 +64,14 @@ app.get('/director', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'director.html'));
 });
 
+// Tournament Builder Wizard
+app.get('/director/tournaments/new', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'wizard.html'));
+});
+app.get('/director/tournaments/:id/wizard', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'wizard.html'));
+});
+
 // /tournaments/:slug — Serve public tournament page
 app.get('/tournaments/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'tournament.html'));
