@@ -21,7 +21,7 @@ if (process.env.RESEND_API_KEY) {
 console.log(`  Email from: ${process.env.RESEND_FROM_EMAIL || 'Taikai <noreply@taikaiapp.com>'}`);
 console.log(`  APP_URL:    ${process.env.APP_URL || '(not set — defaulting to http://localhost:3000)'}`);
 
-const EMAIL_FROM = process.env.RESEND_FROM_EMAIL || 'Taikai <noreply@taikaiapp.com>';
+const EMAIL_FROM = 'Taikai <noreply@taikaiapp.com>';
 const APP_URL = () => process.env.APP_URL || 'http://localhost:3000';
 
 // ── Templates ────────────────────────────────────────────────────────────────
