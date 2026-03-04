@@ -67,6 +67,26 @@
                     <button type="submit" class="btn btn-primary">Log In & Confirm</button>
                 </form>
                 <p class="hint" style="margin-top: 12px; text-align: center;">
+                    <a href="#" onclick="event.preventDefault();showGcForgotPassword()">Forgot password?</a>
+                </p>
+                <!-- Forgot Password -->
+                <div id="gc-forgot-section" class="hidden" style="margin-top:16px;">
+                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin-bottom:16px;">
+                    <div id="gc-forgot-error" class="status error hidden"></div>
+                    <div id="gc-forgot-success" class="status success hidden"></div>
+                    <form onsubmit="gcForgotPassword(event)">
+                        <p class="hint" style="margin-bottom:12px;">Enter your email and we'll send a reset link.</p>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="gc-forgot-email" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="gc-forgot-btn">Send Reset Link</button>
+                    </form>
+                    <p class="hint" style="margin-top:12px;text-align:center;">
+                        <a href="#" onclick="event.preventDefault();hideGcForgotPassword()">&larr; Back to login</a>
+                    </p>
+                </div>
+                <p class="hint" style="margin-top: 12px; text-align: center;">
                     Don't have an account? <a href="#" onclick="showGuardianSignup()">Sign Up</a>
                 </p>
             </div>
@@ -178,6 +198,44 @@
         function showGuardianLogin() {
             document.getElementById('gc-signup-form').classList.add('hidden');
             document.getElementById('gc-login-form').classList.remove('hidden');
+        }
+
+        function showGcForgotPassword() {
+            document.getElementById('gc-forgot-section').classList.remove('hidden');
+        }
+        function hideGcForgotPassword() {
+            document.getElementById('gc-forgot-section').classList.add('hidden');
+            document.getElementById('gc-forgot-error').classList.add('hidden');
+            document.getElementById('gc-forgot-success').classList.add('hidden');
+        }
+        async function gcForgotPassword(e) {
+            e.preventDefault();
+            var btn = document.getElementById('gc-forgot-btn');
+            var errEl = document.getElementById('gc-forgot-error');
+            var successEl = document.getElementById('gc-forgot-success');
+            errEl.classList.add('hidden');
+            successEl.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            try {
+                var res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: document.getElementById('gc-forgot-email').value }),
+                });
+                if (!res.ok) {
+                    var data = await res.json();
+                    throw new Error(data.error || 'Something went wrong');
+                }
+                successEl.textContent = 'If an account with that email exists, a reset link has been sent.';
+                successEl.classList.remove('hidden');
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Reset Link';
+            }
         }
 
         async function guardianLogin(e) {

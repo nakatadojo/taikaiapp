@@ -689,6 +689,13 @@
             text-decoration: underline;
         }
 
+        .modal-success {
+            color: var(--green, #2ecc71);
+            font-size: 13px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
         /* ─── Utility ─── */
         .hidden {
             display: none !important;
@@ -776,6 +783,26 @@
                 </div>
                 <button type="submit" class="modal-submit" id="login-submit">Sign In</button>
             </form>
+            <div style="text-align:center;margin-top:12px;">
+                <button type="button" onclick="showForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;text-decoration:underline;">Forgot password?</button>
+            </div>
+            <!-- Forgot Password Form (hidden by default) -->
+            <div id="forgot-section" class="hidden">
+                <hr style="border:none;border-top:1px solid var(--glass-border, rgba(255,255,255,0.1));margin:16px 0;">
+                <div class="modal-error" id="forgot-error"></div>
+                <div class="modal-success" id="forgot-success"></div>
+                <form id="forgot-form" onsubmit="handleForgotPassword(event)">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Enter your email and we'll send a reset link.</p>
+                    <div class="modal-field">
+                        <label for="forgot-email">Email</label>
+                        <input type="email" id="forgot-email" required placeholder="you@example.com">
+                    </div>
+                    <button type="submit" class="modal-submit" id="forgot-submit">Send Reset Link</button>
+                </form>
+                <div style="text-align:center;margin-top:12px;">
+                    <button type="button" onclick="hideForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
+                </div>
+            </div>
             <div class="modal-footer">
                 Don't have an account? <a href="/director.html#signup">Sign up</a>
             </div>
@@ -1082,6 +1109,44 @@
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Sign In';
+            }
+        };
+
+        window.showForgotPassword = function() {
+            document.getElementById('forgot-section').classList.remove('hidden');
+        };
+        window.hideForgotPassword = function() {
+            document.getElementById('forgot-section').classList.add('hidden');
+            document.getElementById('forgot-error').style.display = 'none';
+            document.getElementById('forgot-success').style.display = 'none';
+        };
+        window.handleForgotPassword = async function(e) {
+            e.preventDefault();
+            var btn = document.getElementById('forgot-submit');
+            var errEl = document.getElementById('forgot-error');
+            var successEl = document.getElementById('forgot-success');
+            errEl.style.display = 'none';
+            successEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            try {
+                var res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: document.getElementById('forgot-email').value }),
+                });
+                if (!res.ok) {
+                    var data = await res.json();
+                    throw new Error(data.error || 'Something went wrong');
+                }
+                successEl.textContent = 'If an account with that email exists, a reset link has been sent.';
+                successEl.style.display = 'block';
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Reset Link';
             }
         };
 
