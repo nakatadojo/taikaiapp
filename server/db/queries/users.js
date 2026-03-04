@@ -12,7 +12,7 @@ async function findById(id) {
   const result = await pool.query(
     `SELECT id, email, first_name, last_name, phone, date_of_birth,
             profile_photo_url, email_verified, account_type,
-            organization_name, credit_balance, created_at, updated_at
+            organization_name, credit_balance, settings, created_at, updated_at
      FROM users WHERE id = $1`,
     [id]
   );
@@ -171,6 +171,25 @@ async function setupAccount(token, passwordHash) {
   return result.rows[0] || null;
 }
 
+async function getSettings(userId) {
+  const result = await pool.query(
+    'SELECT settings FROM users WHERE id = $1',
+    [userId]
+  );
+  return result.rows[0]?.settings || {};
+}
+
+async function updateSettings(userId, settings) {
+  const result = await pool.query(
+    `UPDATE users
+     SET settings = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, settings`,
+    [JSON.stringify(settings), userId]
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   findByEmail,
   findById,
@@ -182,4 +201,6 @@ module.exports = {
   resetPassword,
   setupAccount,
   updateProfile,
+  getSettings,
+  updateSettings,
 };

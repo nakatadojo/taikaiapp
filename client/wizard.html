@@ -1358,6 +1358,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             wizardData.organization = $('#t-org').value;
             wizardData.contactEmail = $('#t-contact-email').value;
         }
+
+        // Pre-select default event types from user settings
+        try {
+            const settingsRes = await fetch('/api/auth/settings', { credentials: 'include' });
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                const defaults = settingsData.settings?.defaultEventTypes || [];
+                if (defaults.length > 0) {
+                    defaults.forEach(et => {
+                        const card = document.querySelector(`.event-type-card[data-event="${et}"]`);
+                        if (card) card.classList.add('selected');
+                    });
+                    wizardData.eventTypes = [...defaults];
+                }
+            }
+        } catch (e) {
+            console.warn('Could not load default event types:', e);
+        }
     }
 
     // Cover image preview

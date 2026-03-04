@@ -306,6 +306,7 @@ async function getMe(req, res, next) {
         accountType: user.account_type,
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
+        settings: user.settings || {},
       },
     });
   } catch (err) {
@@ -400,6 +401,52 @@ async function setupAccount(req, res, next) {
   }
 }
 
+/**
+ * GET /api/auth/settings
+ * Returns the current user's settings.
+ */
+async function getSettings(req, res, next) {
+  try {
+    const settings = await userQueries.getSettings(req.user.id);
+    res.json({ settings });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PUT /api/auth/settings
+ * Updates the current user's settings (partial merge).
+ */
+async function updateSettings(req, res, next) {
+  try {
+    const { defaultEventTypes } = req.body;
+
+    const validTypes = ['kata', 'kumite', 'weapons', 'team-kata'];
+    if (defaultEventTypes !== undefined) {
+      if (!Array.isArray(defaultEventTypes)) {
+        return res.status(400).json({ error: 'defaultEventTypes must be an array' });
+      }
+      const invalid = defaultEventTypes.filter(t => !validTypes.includes(t));
+      if (invalid.length > 0) {
+        return res.status(400).json({ error: `Invalid event types: ${invalid.join(', ')}` });
+      }
+    }
+
+    // Fetch current settings, merge, save
+    const current = await userQueries.getSettings(req.user.id);
+    const merged = {
+      ...current,
+      ...(defaultEventTypes !== undefined && { defaultEventTypes }),
+    };
+
+    const result = await userQueries.updateSettings(req.user.id, merged);
+    res.json({ settings: result.settings });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   signup,
   verifyEmail,
@@ -410,4 +457,6 @@ module.exports = {
   updateMe,
   logout,
   setupAccount,
+  getSettings,
+  updateSettings,
 };

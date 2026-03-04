@@ -108,6 +108,25 @@ router.put('/me',
   authController.updateMe
 );
 
+// GET /api/auth/settings (requires authentication)
+router.get('/settings',
+  requireAuth,
+  authController.getSettings
+);
+
+// PUT /api/auth/settings (requires authentication)
+router.put('/settings',
+  requireAuth,
+  [
+    body('defaultEventTypes')
+      .optional()
+      .isArray()
+      .withMessage('defaultEventTypes must be an array'),
+  ],
+  validate,
+  authController.updateSettings
+);
+
 // POST /api/auth/setup-account (for coach-created passwordless accounts)
 router.post('/setup-account',
   authLimiter,

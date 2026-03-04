@@ -80,7 +80,7 @@ async function checkout(req, res, next) {
         quantity: 1,
       }],
       success_url: `${appUrl}/director.html#credits-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/director.html#credits`,
+      cancel_url: `${appUrl}/director.html#settings`,
       metadata: {
         userId: req.user.id,
         packageId: pkg.id,
