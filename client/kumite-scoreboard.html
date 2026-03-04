@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kumite Scoreboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #root { width: 100vw; height: 100vh; }
+    @keyframes timerFlash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+
+    // ── Auto-fit text: scales font down until text fits its parent ─────────────
+    function AutoFit({ text, maxPx, minPx = 12, style = {}, className = '' }) {
+      const ref = React.useRef(null);
+      React.useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el || !el.parentElement) return;
+        const parent = el.parentElement;
+        el.style.fontSize = maxPx + 'px';
+        if (el.scrollWidth <= parent.clientWidth) return;
+        let lo = minPx, hi = maxPx;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          el.style.fontSize = mid + 'px';
+          if (el.scrollWidth <= parent.clientWidth) lo = mid;
+          else hi = mid;
+        }
+        el.style.fontSize = lo + 'px';
+      }, [text, maxPx, minPx]);
+      return (
+        <div ref={ref} className={className}
+          style={{ whiteSpace: 'nowrap', display: 'block', ...style }}>
+          {text}
+        </div>
+      );
+    }
+
+    // ── Luminance-based text color (white on dark bg, black on light bg) ───────
+    function getCornerTextColor(bgColor) {
+      if (!bgColor) return '#ffffff';
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.6 ? '#000000' : '#ffffff';
+    }
+
+    // ── Font helpers (identical to kata-scoreboard) ────────────────────────────
+    const OSW = (weight = 700) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+    const ROB = (weight = 400) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+
+    // ── Demo defaults ──────────────────────────────────────────────────────────
+    const DEFAULTS = {
+      tatami:      'TATAMI 1',
+      divisionName:'KUMITE | SENIOR | MALE | -75KG',
+      matchInfo:   'ROUND 1 — MATCH 1',
+      timer:       '2:00',
+      red: {
+        name: 'ALEX MARTIN', school: 'GOLDEN TIGER ACADEMY',
+        photo: null, logo: null, score: 4, penalties: 0,
+        color: '#e8403a', label: 'RED',
+      },
+      blue: {
+        name: 'JAMES CHEN', school: 'RISING SUN DOJO',
+        photo: null, logo: null, score: 2, penalties: 1,
+        color: '#ffffff', label: 'WHITE',
+      },
+      next: { name: '', school: '' },
+      winner: null,
+    };
+
+    // ── Competitor side panel ──────────────────────────────────────────────────
+    function CompetitorPanel({ side, c, scoringType, senshu, penaltyDetail, scoreBreakdown }) {
+      const isBlue = side === 'blue';
+      const textColor = getCornerTextColor(c.color);
+      const isAAU = scoringType === 'aau';
+
+      return (
+        <div style={{
+          flex: 1,
+          background: c.color,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'space-evenly',
+          padding: '20px 32px',
+          overflow: 'hidden',
+          borderLeft:  isBlue ? `1px solid ${textColor}11` : 'none',
+          borderRight: isBlue ? 'none' : `1px solid ${textColor}11`,
+        }}>
+
+          {/* Corner label */}
+          <div style={{
+            ...ROB(700),
+            fontSize: 'clamp(0.7rem, 1vw, 1rem)',
+            color: textColor,
+            opacity: 0.85,
+            textTransform: 'uppercase',
+            letterSpacing: '0.15em',
+            alignSelf: 'stretch',
+            textAlign: isBlue ? 'right' : 'left',
+          }}>
+            {c.label}
+          </div>
+
+          {/* Identity: photo + name + school */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
+            width: '100%',
+          }}>
+
+            {/* Photo with club logo badge */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{
+                width: 'clamp(100px, 12vh, 150px)',
+                height: 'clamp(100px, 12vh, 150px)',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: `4px solid ${textColor}44`,
+                boxShadow: `0 0 0 2px ${textColor}14, 0 0 32px ${textColor}22`,
+              }}>
+                {c.photo
+                  ? <img src={c.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{
+                      width: '100%', height: '100%',
+                      background: 'rgba(255,255,255,0.07)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <svg viewBox="0 0 24 24" style={{ width: '55%', height: '55%' }}>
+                        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
+                          fill="rgba(255,255,255,0.3)" />
+                      </svg>
+                    </div>
+                }
+              </div>
+
+              {/* Club logo badge — overlaps photo bottom-right */}
+              <div style={{
+                position: 'absolute',
+                bottom: '0px',
+                right: '-10px',
+                width: 'clamp(30px, 3.8vh, 46px)',
+                height: 'clamp(30px, 3.8vh, 46px)',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '3px solid rgba(255,255,255,0.9)',
+                background: '#12104a',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                zIndex: 1,
+              }}>
+                {c.logo
+                  ? <img src={c.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 'clamp(11px, 1.5vh, 16px)', lineHeight: 1 }}>⚔️</span>
+                }
+              </div>
+            </div>
+
+            {/* Competitor name */}
+            <div style={{ width: '100%', overflow: 'hidden' }}>
+              <AutoFit
+                text={c.name}
+                maxPx={68} minPx={14}
+                style={{
+                  ...OSW(700),
+                  color: textColor,
+                  textTransform: 'uppercase',
+                  textAlign: 'center',
+                  lineHeight: 1,
+                }}
+              />
+            </div>
+
+            {/* School */}
+            <div style={{ width: '100%', overflow: 'hidden' }}>
+              <AutoFit
+                text={c.school}
+                maxPx={26} minPx={10}
+                style={{
+                  ...OSW(700),
+                  color: textColor,
+                  opacity: 0.7,
+                  textTransform: 'uppercase',
+                  textAlign: 'center',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Senshu badge (WKF) */}
+          {senshu === side && (
+            <div style={{
+              background: '#30d158', color: '#fff',
+              padding: '3px 12px', borderRadius: '4px',
+              fontSize: 'clamp(0.6rem, 1vw, 0.9rem)',
+              fontWeight: 700, letterSpacing: '0.1em',
+              marginBottom: '4px',
+              ...ROB(700),
+            }}>
+              SENSHU
+            </div>
+          )}
+
+          {/* Score — the hero element */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '6px',
+          }}>
+            <div style={{
+              ...OSW(700),
+              fontSize: 'clamp(7rem, 13vw, 15rem)',
+              color: textColor,
+              lineHeight: 0.9,
+              textShadow: `0 0 80px ${textColor}22`,
+            }}>
+              {isAAU ? (typeof c.score === 'number' ? c.score.toFixed(1) : c.score) : c.score}
+            </div>
+
+            {/* Score breakdown */}
+            {scoreBreakdown && (scoreBreakdown.ippon > 0 || scoreBreakdown.wazaari > 0 || scoreBreakdown.yuko > 0) && (
+              <div style={{
+                ...ROB(600),
+                fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)',
+                color: textColor,
+                opacity: 0.5,
+                letterSpacing: '0.05em',
+              }}>
+                {[
+                  scoreBreakdown.ippon > 0 ? `${scoreBreakdown.ippon}I` : null,
+                  scoreBreakdown.wazaari > 0 ? `${scoreBreakdown.wazaari}W` : null,
+                  !isAAU && scoreBreakdown.yuko > 0 ? `${scoreBreakdown.yuko}Y` : null,
+                ].filter(Boolean).join(' ')}
+              </div>
+            )}
+
+            {/* Penalties — org-aware display */}
+            {penaltyDetail && typeof penaltyDetail === 'object' && Object.keys(penaltyDetail).length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {scoringType === 'wkf' ? (
+                  <>
+                    <span style={{
+                      ...ROB(600),
+                      fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)',
+                      color: (penaltyDetail.c1 || 0) > 0 ? '#ff9500' : `${textColor}44`,
+                    }}>
+                      C1:{penaltyDetail.c1 || 0}
+                    </span>
+                    <span style={{
+                      ...ROB(600),
+                      fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)',
+                      color: (penaltyDetail.c2 || 0) > 0 ? '#ff9500' : `${textColor}44`,
+                    }}>
+                      C2:{penaltyDetail.c2 || 0}
+                    </span>
+                  </>
+                ) : scoringType === 'aau' ? (
+                  <>
+                    {(penaltyDetail.hansoku || 0) > 0 && <span style={{...ROB(600), fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)', color: '#ff453a'}}>H:{penaltyDetail.hansoku}</span>}
+                    {(penaltyDetail.mubobi || 0) > 0 && <span style={{...ROB(600), fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)', color: '#ff9500'}}>M:{penaltyDetail.mubobi}</span>}
+                    {(penaltyDetail.jogai || 0) > 0 && <span style={{...ROB(600), fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)', color: '#ffd60a'}}>J:{penaltyDetail.jogai}</span>}
+                    {(penaltyDetail.hansoku || 0) === 0 && (penaltyDetail.mubobi || 0) === 0 && (penaltyDetail.jogai || 0) === 0 && (
+                      <span style={{...ROB(600), fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)', color: `${textColor}44`}}>No penalties</span>
+                    )}
+                  </>
+                ) : (
+                  <span style={{...ROB(600), fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)', color: `${textColor}44`}}>
+                    PENALTIES {c.penalties}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  ...ROB(700),
+                  fontSize: 'clamp(0.6rem, 0.85vw, 0.85rem)',
+                  color: textColor,
+                  opacity: 0.5,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                }}>
+                  PENALTIES
+                </span>
+                <span style={{
+                  ...OSW(700),
+                  fontSize: 'clamp(1rem, 1.6vw, 1.6rem)',
+                  color: c.penalties > 0 ? '#ff9500' : `${textColor}44`,
+                }}>
+                  {c.penalties}
+                </span>
+              </div>
+            )}
+          </div>
+
+        </div>
+      );
+    }
+
+    // ── Main scoreboard ────────────────────────────────────────────────────────
+    function KumiteScoreboard(props) {
+      const p = {
+        ...DEFAULTS,
+        ...props,
+        red:  { ...DEFAULTS.red,  ...(props?.red  || {}) },
+        blue: { ...DEFAULTS.blue, ...(props?.blue || {}) },
+        next: { ...DEFAULTS.next, ...(props?.next || {}) },
+      };
+
+      const scoringType = props?.scoringType || 'wkf';
+      const isAAU = scoringType === 'aau';
+      const matchFormat = props?.matchFormat || null;
+      const senshu = props?.senshu || null;
+      const redPenaltyDetail = props?.redPenaltyDetail || null;
+      const bluePenaltyDetail = props?.bluePenaltyDetail || null;
+      const atoshiBaraku = props?.atoshiBaraku || false;
+      const isOvertime = props?.isOvertime || false;
+      const redScoreBreakdown = props?.redScoreBreakdown || null;
+      const blueScoreBreakdown = props?.blueScoreBreakdown || null;
+
+      return (
+        <div style={{
+          width: '100vw', height: '100vh', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          background: '#0f0f14',
+        }}>
+
+          {/* ── 1. HEADER — identical to kata-scoreboard ──────────────────── */}
+          <div style={{
+            height: '12vh', flexShrink: 0,
+            display: 'flex', alignItems: 'center',
+            padding: '0 36px',
+          }}>
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(2.5rem, 7vw, 6rem)',
+              color: '#fff',
+              textTransform: 'uppercase',
+              letterSpacing: '0.02em',
+              fontStyle: 'italic',
+              flexShrink: 0,
+            }}>
+              {p.tatami}
+            </span>
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <AutoFit
+                text={p.divisionName}
+                maxPx={52} minPx={10}
+                style={{
+                  ...OSW(600),
+                  color: 'rgba(255,255,255,0.65)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  textAlign: 'right',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ── 2. MAIN: Red | Timer | Blue ───────────────────────────────── */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+
+            <CompetitorPanel
+              side="red" c={p.red}
+              scoringType={scoringType}
+              senshu={senshu}
+              penaltyDetail={redPenaltyDetail}
+              scoreBreakdown={redScoreBreakdown}
+            />
+
+            {/* Center: VS + timer + match info */}
+            <div style={{
+              width: 'clamp(160px, 18vw, 260px)',
+              flexShrink: 0,
+              background: '#12121e',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              padding: '0 12px',
+            }}>
+
+              {/* Overtime indicator badge */}
+              {isOvertime && (
+                <div style={{
+                  background: '#ff453a',
+                  color: '#fff',
+                  padding: '4px 14px',
+                  borderRadius: '4px',
+                  fontSize: 'clamp(0.55rem, 0.8vw, 0.75rem)',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  ...ROB(700),
+                }}>
+                  {isAAU && matchFormat === 'shobu-ippon' ? 'SAI SHIAI'
+                    : isAAU && matchFormat === 'shobu-sanbon' ? 'ENCHO-SEN'
+                    : 'ENCHO-SEN'}
+                </div>
+              )}
+
+              {/* Match format label (AAU) */}
+              {isAAU && matchFormat && !isOvertime && (
+                <div style={{
+                  background: '#bf5af2',
+                  color: '#fff',
+                  padding: '3px 10px',
+                  borderRadius: '4px',
+                  fontSize: 'clamp(0.5rem, 0.7vw, 0.65rem)',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  ...ROB(700),
+                }}>
+                  {matchFormat === 'shobu-ippon' ? 'SHOBU IPPON' : 'SHOBU SANBON'}
+                </div>
+              )}
+
+              <div style={{
+                ...ROB(700),
+                fontSize: 'clamp(0.65rem, 0.9vw, 0.9rem)',
+                color: 'rgba(255,255,255,0.22)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.2em',
+              }}>
+                VS
+              </div>
+
+              {/* Timer — with Atoshi Baraku flash */}
+              <div style={{
+                ...OSW(700),
+                fontSize: 'clamp(2.8rem, 5.5vw, 7rem)',
+                color: atoshiBaraku ? '#ff453a' : '#fff',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+                textAlign: 'center',
+                ...(atoshiBaraku ? { animation: 'timerFlash 1s ease-in-out infinite' } : {}),
+              }}>
+                {p.timer}
+              </div>
+
+              <div style={{
+                ...ROB(500),
+                fontSize: 'clamp(0.6rem, 0.8vw, 0.85rem)',
+                color: 'rgba(255,255,255,0.28)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                textAlign: 'center',
+                lineHeight: 1.5,
+              }}>
+                {p.matchInfo}
+              </div>
+            </div>
+
+            <CompetitorPanel
+              side="blue" c={p.blue}
+              scoringType={scoringType}
+              senshu={senshu}
+              penaltyDetail={bluePenaltyDetail}
+              scoreBreakdown={blueScoreBreakdown}
+            />
+
+          </div>
+
+          {/* ── 3. NEXT BAR — identical to kata-scoreboard ────────────────── */}
+          <div style={{
+            height: '20vh', flexShrink: 0,
+            background: '#141420',
+            borderTop: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center',
+            padding: '0 40px', gap: '18px',
+            overflow: 'hidden',
+          }}>
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(1.2rem, 1.8vw, 1.8rem)',
+              color: 'rgba(255,255,255,0.4)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              flexShrink: 0,
+            }}>
+              NEXT UP :
+            </span>
+            <div style={{ flexShrink: 0, maxWidth: '50%', overflow: 'hidden' }}>
+              <AutoFit
+                text={p.next.name}
+                maxPx={62} minPx={16}
+                style={{ ...OSW(700), color: '#fff', textTransform: 'uppercase' }}
+              />
+            </div>
+            {p.next.name && p.next.school && (
+              <span style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0, fontSize: '2rem' }}>|</span>
+            )}
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <AutoFit
+                text={p.next.school}
+                maxPx={46} minPx={12}
+                style={{ ...ROB(500), color: '#8888aa', textTransform: 'uppercase' }}
+              />
+            </div>
+          </div>
+
+          {/* ── WINNER CELEBRATION OVERLAY ────────────────────────────────── */}
+          {p.winner && (() => {
+            const w = typeof p.winner === 'string' ? { name: p.winner } : p.winner;
+            const winnerColor = w.corner === 'red' ? p.red.color : w.corner === 'blue' ? p.blue.color
+              : (w.name === p.red.name ? p.red.color : p.blue.color);
+            const winnerCornerLabel = w.corner === 'red' ? p.red.label : w.corner === 'blue' ? p.blue.label : '';
+            const confettiColors = ['#ff453a','#0a84ff','#ffd60a','#30d158','#bf5af2','#ff9f0a','#64d2ff','#ff375f'];
+            return (
+              <div style={{
+                position: 'fixed', inset: 0,
+                background: 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.88) 100%)',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                zIndex: 9999, overflow: 'hidden',
+              }}>
+                <style>{`
+                  @keyframes winFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                  @keyframes winSlideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                  @keyframes winPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+                  @keyframes winConfetti { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+                  .win-confetti { position: absolute; border-radius: 2px; }
+                `}</style>
+
+                {/* Confetti */}
+                {Array.from({length: 60}, (_, i) => {
+                  const color = confettiColors[i % confettiColors.length];
+                  const size = 6 + Math.random() * 10;
+                  return (
+                    <div key={i} className="win-confetti" style={{
+                      left: (Math.random() * 100) + '%',
+                      width: size + 'px', height: size * (0.4 + Math.random() * 0.6) + 'px',
+                      background: color,
+                      animation: `winConfetti ${2.5 + Math.random() * 3}s linear ${Math.random() * 3}s infinite`,
+                    }} />
+                  );
+                })}
+
+                <div style={{ textAlign: 'center', animation: 'winSlideUp 0.8s ease-out', zIndex: 1 }}>
+                  {/* Trophy */}
+                  <div style={{ fontSize: 'clamp(60px, 12vh, 140px)', marginBottom: '16px', animation: 'winPulse 2s ease-in-out infinite' }}>
+                    🏆
+                  </div>
+
+                  {/* WINNER text */}
+                  <div style={{
+                    ...ROB(700),
+                    fontSize: 'clamp(1.5rem, 4vw, 3.5rem)',
+                    color: '#22c55e',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.2em',
+                    marginBottom: '20px',
+                    textShadow: '0 0 30px rgba(34,197,94,0.5)',
+                  }}>
+                    WINNER
+                  </div>
+
+                  {/* Winner photo */}
+                  {w.photo && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <img src={w.photo} alt="" style={{
+                        width: 'clamp(120px, 18vh, 220px)', height: 'clamp(120px, 18vh, 220px)',
+                        borderRadius: '50%', objectFit: 'cover',
+                        border: `6px solid ${winnerColor}`,
+                        boxShadow: `0 10px 40px rgba(0,0,0,0.5), 0 0 30px ${winnerColor}44`,
+                      }} />
+                    </div>
+                  )}
+
+                  {/* Winner name */}
+                  <div style={{
+                    ...OSW(700),
+                    fontSize: 'clamp(3rem, 8vw, 10rem)',
+                    color: winnerColor,
+                    textTransform: 'uppercase',
+                    lineHeight: 0.95,
+                    textAlign: 'center',
+                    padding: '0 40px',
+                    textShadow: `0 4px 20px rgba(0,0,0,0.5)`,
+                  }}>
+                    {w.name}
+                  </div>
+
+                  {/* Corner label */}
+                  {winnerCornerLabel && (
+                    <div style={{
+                      ...ROB(600),
+                      fontSize: 'clamp(1rem, 2.5vw, 2rem)',
+                      color: 'rgba(255,255,255,0.45)',
+                      textTransform: 'uppercase',
+                      marginTop: '16px',
+                      letterSpacing: '0.1em',
+                    }}>
+                      {winnerCornerLabel} Corner
+                    </div>
+                  )}
+
+                  {/* Club info */}
+                  {w.club && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '20px' }}>
+                      {w.clubLogo && <img src={w.clubLogo} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px' }} />}
+                      <span style={{ ...ROB(500), fontSize: 'clamp(1rem, 2vw, 1.8rem)', color: 'rgba(255,255,255,0.5)' }}>{w.club}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+        </div>
+      );
+    }
+
+    // ── Wire to localStorage ───────────────────────────────────────────────────
+
+    // Read corner color overrides directly from scoreboardSettings.
+    // This lets settings changes take effect immediately without needing
+    // the operator to push a new scoreboard-state update.
+    function readCornerSettings() {
+      try {
+        const s = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+        return {
+          corner1Color: s.corner1Custom  || null,
+          corner2Color: s.corner2Custom  || null,
+          corner1Name:  s.corner1Name    || null,
+          corner2Name:  s.corner2Name    || null,
+        };
+      } catch { return {}; }
+    }
+
+    function App() {
+      const [state, setState]               = React.useState(() => {
+        try { return JSON.parse(localStorage.getItem('scoreboard-state') || 'null'); } catch { return null; }
+      });
+      const [cornerSettings, setCornerSettings] = React.useState(readCornerSettings);
+
+      React.useEffect(() => {
+        const handler = (e) => {
+          if (e.key === 'scoreboard-state' && e.newValue) {
+            try {
+              const newState = JSON.parse(e.newValue);
+              // Auto-redirect if scoreboard type changed
+              if (newState.scoreboardType && newState.scoreboardType !== 'kumite') {
+                const redirect = { 'kata': 'kata-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html' };
+                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType]; return; }
+              }
+              setState(newState);
+            } catch {}
+          }
+          // Live-update corner colors when scoreboardSettings changes
+          if (e.key === 'scoreboardSettings') {
+            setCornerSettings(readCornerSettings());
+          }
+        };
+        window.addEventListener('storage', handler);
+        return () => window.removeEventListener('storage', handler);
+      }, []);
+
+      if (state && state.scoreboardType === 'kumite') {
+        // redInfo format: "22 yrs | 74kg | Brown Belt | Golden Tiger Academy"
+        // — club is always the last pipe-separated segment
+        const parseClub = (info) => {
+          if (!info) return '';
+          const parts = info.split('|');
+          return parts[parts.length - 1]?.trim() || '';
+        };
+
+        // scoreboardSettings overrides scoreboard-state for corner colors/names.
+        // This ensures settings changes show immediately without needing an
+        // operator update push.
+        const c1Color = cornerSettings.corner1Color || state.corner1Color || '#e8403a';
+        const c2Color = cornerSettings.corner2Color || state.corner2Color || '#ffffff';
+        const c1Name  = cornerSettings.corner1Name  || state.corner1Name  || 'RED';
+        const c2Name  = cornerSettings.corner2Name  || state.corner2Name  || 'WHITE';
+
+        return (
+          <KumiteScoreboard
+            tatami={state.matName || 'TATAMI 1'}
+            divisionName={state.divisionName || ''}
+            matchInfo={state.matchInfo || ''}
+            timer={state.timer || '2:00'}
+            red={{
+              name:      state.redName      || '',
+              school:    parseClub(state.redInfo),
+              photo:     state.redPhoto     || null,
+              logo:      state.redClubLogo  || null,
+              score:     state.redScore     ?? 0,
+              penalties: state.redPenalties ?? 0,
+              color:     c1Color,
+              label:     c1Name,
+            }}
+            blue={{
+              name:      state.blueName      || '',
+              school:    parseClub(state.blueInfo),
+              photo:     state.bluePhoto     || null,
+              logo:      state.blueClubLogo  || null,
+              score:     state.blueScore     ?? 0,
+              penalties: state.bluePenalties ?? 0,
+              color:     c2Color,
+              label:     c2Name,
+            }}
+            next={{
+              name:   state.nextDivision?.division  || '',
+              school: state.nextDivision?.eventName || '',
+            }}
+            winner={state.winner || null}
+            scoringType={state.scoringType || 'wkf'}
+            matchFormat={state.matchFormat || null}
+            senshu={state.senshu || null}
+            redPenaltyDetail={state.redPenaltyDetail || null}
+            bluePenaltyDetail={state.bluePenaltyDetail || null}
+            atoshiBaraku={state.atoshiBaraku || false}
+            isOvertime={state.isOvertime || false}
+            redScoreBreakdown={
+              (state.redIpponCount != null || state.redWazaariCount != null || state.redYukoCount != null)
+                ? { ippon: state.redIpponCount || 0, wazaari: state.redWazaariCount || 0, yuko: state.redYukoCount || 0 }
+                : null
+            }
+            blueScoreBreakdown={
+              (state.blueIpponCount != null || state.blueWazaariCount != null || state.blueYukoCount != null)
+                ? { ippon: state.blueIpponCount || 0, wazaari: state.blueWazaariCount || 0, yuko: state.blueYukoCount || 0 }
+                : null
+            }
+          />
+        );
+      }
+
+      // Show demo while waiting for a real kumite state
+      return <KumiteScoreboard />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

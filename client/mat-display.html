@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mat Scoreboard - TV Display</title>
+    <link rel="stylesheet" href="tv-display-styles.css">
+</head>
+<body>
+    <div class="tv-scoreboard" id="kumite-display">
+        <div class="tournament-header">
+            <h1>KARATE TOURNAMENT</h1>
+            <div class="mat-label" id="mat-label">MAT 1</div>
+        </div>
+
+        <div class="scoreboard-display">
+            <!-- Red Corner -->
+            <div class="competitor-display red">
+                <img id="tv-red-photo" class="competitor-photo hidden" alt="Red Corner">
+                <div class="competitor-name" id="tv-red-name">RED CORNER</div>
+                <div class="competitor-details" id="tv-red-info"></div>
+                <div class="score-display" id="tv-red-score">0</div>
+                <div class="penalties-display">Penalties: <span id="tv-red-penalties">0</span></div>
+            </div>
+
+            <!-- Timer -->
+            <div class="timer-display">
+                <div class="timer-label">TIME</div>
+                <div class="timer-main" id="tv-timer">2:00</div>
+            </div>
+
+            <!-- Blue Corner -->
+            <div class="competitor-display blue">
+                <img id="tv-blue-photo" class="competitor-photo hidden" alt="Blue Corner">
+                <div class="competitor-name" id="tv-blue-name">BLUE CORNER</div>
+                <div class="competitor-details" id="tv-blue-info"></div>
+                <div class="score-display" id="tv-blue-score">0</div>
+                <div class="penalties-display">Penalties: <span id="tv-blue-penalties">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kata Broadcast Display -->
+    <div class="kata-broadcast hidden" id="kata-display">
+
+        <!-- Header Bar (slim, single centered line) -->
+        <div class="kata-header-bar">
+            <span class="kata-header-text" id="kata-hdr-text">Tatami 1 — Division</span>
+            <span class="kata-header-count" id="kata-hdr-count">1 / 4</span>
+        </div>
+
+        <!-- Competitor Section -->
+        <div class="kata-competitor-section" id="kata-competitor-section">
+            <!-- Mode A: With Photo (split-screen) -->
+            <!-- Mode B: No Photo (centered) -->
+            <!-- Populated dynamically -->
+        </div>
+
+        <!-- Judge Score Cards -->
+        <div class="kata-judges-row" id="kata-judges-row">
+            <!-- Dynamically populated -->
+        </div>
+
+        <!-- Total Score Bar -->
+        <div class="kata-total-bar" id="kata-total-bar">
+            <div class="kata-total-left">
+                <span class="kata-total-label">TOTAL SCORE</span>
+                <span class="kata-total-value" id="kata-total-val">—</span>
+            </div>
+            <div class="kata-total-right">
+                <span class="kata-avg-label">AVG</span>
+                <span class="kata-avg-value" id="kata-avg-val">—</span>
+            </div>
+        </div>
+
+        <!-- Next Competitor Bar -->
+        <div class="kata-next-bar" id="kata-next-bar">
+            <span class="kata-next-label">NEXT:</span>
+            <span class="kata-next-name" id="kata-next-name">—</span>
+            <span class="kata-next-pipe hidden" id="kata-next-pipe">|</span>
+            <span class="kata-next-club" id="kata-next-club"></span>
+        </div>
+    </div>
+
+    <!-- Division Complete Overlay -->
+    <div class="kata-complete-screen hidden" id="kata-complete-screen">
+        <div class="kata-complete-inner">
+            <div class="kata-complete-badge">FINAL RESULTS</div>
+            <div class="kata-complete-title">Division Complete</div>
+            <div class="kata-complete-divname" id="kata-complete-divname"></div>
+            <div class="kata-complete-rankings" id="kata-complete-rankings">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+    </div>
+
+    <div class="winner-overlay" id="winner-overlay">
+        <div class="winner-content">
+            <h2>WINNER</h2>
+            <div class="winner-name" id="winner-name"></div>
+        </div>
+    </div>
+
+    <script>
+        // Local age calculation helper
+        function getDisplayAge(comp) {
+            if (!comp) return '-';
+            if (comp.dateOfBirth) {
+                const dob = new Date(comp.dateOfBirth);
+                if (isNaN(dob.getTime())) return '-'; // Invalid date
+                const now = new Date();
+                let age = now.getFullYear() - dob.getFullYear();
+                const monthDiff = now.getMonth() - dob.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+                    age--;
+                }
+                if (age <= 0 || age > 120) return '-'; // Guard against nonsensical ages
+                return age;
+            }
+            return comp.age != null && comp.age > 0 ? comp.age : '-';
+        }
+
+        // Get mat ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const matId = parseInt(urlParams.get('mat')) || 1;
+
+        document.getElementById('mat-label').textContent = `MAT ${matId}`;
+
+        let currentDisplayMode = 'kumite';
+        let lastKataState = null;
+        let lastStatus = null;
+        let previousCompetitorName = null;
+        let scoresWereRevealed = false;
+
+        // Listen for updates
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'matScoreboards' || e.key === 'mat-update-trigger' || e.key === 'scoreboard-state') {
+                updateDisplay();
+            }
+        });
+
+        // Initial load
+        updateDisplay();
+
+        function updateDisplay() {
+            const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+
+            if (state.scoreboardType === 'kata' && state.matName) {
+                const stateMatNum = state.matName.replace(/\D/g, '');
+                if (parseInt(stateMatNum) === matId || state.matName === `Mat ${matId}`) {
+                    switchToKata();
+                    updateKataDisplay(state);
+                    return;
+                }
+            }
+
+            if (state.scoreboardType === 'kumite' && state.matName) {
+                const stateMatNum = state.matName.replace(/\D/g, '');
+                if (parseInt(stateMatNum) === matId || state.matName === `Mat ${matId}`) {
+                    switchToKumite();
+                }
+            }
+
+            updateKumiteDisplay();
+        }
+
+        function switchToKata() {
+            if (currentDisplayMode === 'kata') return;
+            currentDisplayMode = 'kata';
+            document.getElementById('kumite-display').classList.add('hidden');
+            document.getElementById('kata-display').classList.remove('hidden');
+        }
+
+        function switchToKumite() {
+            if (currentDisplayMode === 'kumite') return;
+            currentDisplayMode = 'kumite';
+            document.getElementById('kata-display').classList.add('hidden');
+            document.getElementById('kata-complete-screen').classList.add('hidden');
+            document.getElementById('kumite-display').classList.remove('hidden');
+        }
+
+        // Returns white for dark backgrounds, black for light backgrounds
+        function getCornerTextColor(bgColor) {
+            if (!bgColor) return '#ffffff';
+            const hex = bgColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance > 0.6 ? '#000000' : '#ffffff';
+        }
+
+        function applyCornerColors() {
+            // Read corner colors from scoreboard state or config
+            const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+            const c1Color = state.corner1Color || '#ff453a';
+            const c2Color = state.corner2Color || '#0a84ff';
+            const c1Text = getCornerTextColor(c1Color);
+            const c2Text = getCornerTextColor(c2Color);
+
+            const redPanel = document.querySelector('.competitor-display.red');
+            const bluePanel = document.querySelector('.competitor-display.blue');
+            if (redPanel) {
+                redPanel.style.background = c1Color;
+                redPanel.style.borderColor = c1Color;
+                redPanel.style.color = c1Text;
+            }
+            if (bluePanel) {
+                bluePanel.style.background = c2Color;
+                bluePanel.style.borderColor = c2Color;
+                bluePanel.style.color = c2Text;
+            }
+        }
+
+        function updateKumiteDisplay() {
+            const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+            const matData = matScoreboards[matId];
+            if (!matData) return;
+
+            // Apply dynamic corner colors
+            applyCornerColors();
+
+            const competitors = JSON.parse(localStorage.getItem('competitors') || '[]');
+            const redComp = matData.redId ? competitors.find(c => c.id === matData.redId) : null;
+            const blueComp = matData.blueId ? competitors.find(c => c.id === matData.blueId) : null;
+
+            document.getElementById('tv-red-name').textContent = redComp ?
+                `${redComp.firstName} ${redComp.lastName}`.toUpperCase() : 'RED CORNER';
+            document.getElementById('tv-red-info').textContent = redComp ?
+                `${getDisplayAge(redComp)} yrs | ${redComp.weight}kg | ${redComp.rank} | ${redComp.club}` : '';
+            document.getElementById('tv-red-score').textContent = matData.redScore || 0;
+            document.getElementById('tv-red-penalties').textContent = matData.redPenalties || 0;
+
+            const redPhoto = document.getElementById('tv-red-photo');
+            if (redComp?.photo) {
+                redPhoto.src = redComp.photo;
+                redPhoto.classList.remove('hidden');
+            } else {
+                redPhoto.classList.add('hidden');
+            }
+
+            document.getElementById('tv-blue-name').textContent = blueComp ?
+                `${blueComp.firstName} ${blueComp.lastName}`.toUpperCase() : 'BLUE CORNER';
+            document.getElementById('tv-blue-info').textContent = blueComp ?
+                `${getDisplayAge(blueComp)} yrs | ${blueComp.weight}kg | ${blueComp.rank} | ${blueComp.club}` : '';
+            document.getElementById('tv-blue-score').textContent = matData.blueScore || 0;
+            document.getElementById('tv-blue-penalties').textContent = matData.bluePenalties || 0;
+
+            const bluePhoto = document.getElementById('tv-blue-photo');
+            if (blueComp?.photo) {
+                bluePhoto.src = blueComp.photo;
+                bluePhoto.classList.remove('hidden');
+            } else {
+                bluePhoto.classList.add('hidden');
+            }
+
+            const minutes = Math.floor((matData.timeRemaining || 120) / 60);
+            const seconds = (matData.timeRemaining || 120) % 60;
+            document.getElementById('tv-timer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            const winnerOverlay = document.getElementById('winner-overlay');
+            if (matData.winner) {
+                document.getElementById('winner-name').textContent = matData.winner;
+                winnerOverlay.classList.add('show');
+                setTimeout(() => {
+                    winnerOverlay.classList.remove('show');
+                    matData.winner = null;
+                    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+                }, 5000);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // KATA BROADCAST DISPLAY
+        // ═══════════════════════════════════════════════════════════
+
+        function updateKataDisplay(state) {
+            const completeScreen = document.getElementById('kata-complete-screen');
+
+            // Division complete → show rankings
+            if (state.status === 'complete') {
+                showDivisionComplete(state);
+                return;
+            }
+
+            completeScreen.classList.add('hidden');
+
+            // Detect competitor change for transition animation
+            const competitorChanged = previousCompetitorName && previousCompetitorName !== state.competitorName;
+            previousCompetitorName = state.competitorName;
+
+            // Detect score reveal (transition from scoring → submitted)
+            const isReveal = lastStatus === 'scoring' && state.status === 'submitted';
+            lastStatus = state.status;
+
+            // --- HEADER BAR ---
+            const matLabel = state.matName || `Tatami ${matId}`;
+            const divLabel = state.divisionName || 'Division';
+            const eventLabel = state.eventName ? ` · ${state.eventName}` : '';
+            document.getElementById('kata-hdr-text').textContent = `${matLabel} — ${divLabel}${eventLabel}`;
+            document.getElementById('kata-hdr-count').textContent =
+                `${state.competitorNumber || 1} / ${state.totalCompetitors || '?'}`;
+
+            // --- COMPETITOR SECTION ---
+            const section = document.getElementById('kata-competitor-section');
+            const hasPhoto = !!(state.competitorPhoto);
+            const hasClubLogo = !!(state.competitorClubLogo);
+
+            // Club line with optional logo
+            let clubHTML = '';
+            if (state.competitorClub) {
+                const logoImg = hasClubLogo
+                    ? `<img src="${state.competitorClubLogo}" class="kata-club-logo" alt="">`
+                    : '';
+                clubHTML = `<div class="kata-comp-club-line">${logoImg}<span>${state.competitorClub}</span></div>`;
+            }
+
+            const transitionClass = competitorChanged ? ' kata-fade-in' : '';
+
+            if (hasPhoto) {
+                // MODE A — Horizontal row: circular photo + name/club side by side
+                section.className = 'kata-competitor-section kata-mode-a' + transitionClass;
+                section.innerHTML = `
+                    <img src="${state.competitorPhoto}" class="kata-comp-photo" alt="">
+                    <div class="kata-comp-info-side">
+                        <div class="kata-comp-name kata-comp-name-a">${state.competitorName || 'AWAITING'}</div>
+                        ${clubHTML}
+                    </div>
+                `;
+            } else {
+                // MODE B — Centered, no photo
+                section.className = 'kata-competitor-section kata-mode-b' + transitionClass;
+                section.innerHTML = `
+                    <div class="kata-comp-name kata-comp-name-b">${state.competitorName || 'AWAITING'}</div>
+                    ${clubHTML}
+                `;
+            }
+
+            // Remove animation class after it plays
+            if (competitorChanged) {
+                setTimeout(() => section.classList.remove('kata-fade-in'), 700);
+            }
+
+            // --- JUDGE SCORE CARDS ---
+            const judgesRow = document.getElementById('kata-judges-row');
+            const numJudges = state.numJudges || 5;
+            const scores = state.judgeScores || [];
+
+            // Determine if scores should be shown (only on submitted/revealed)
+            const showScores = state.status === 'submitted';
+
+            // Check if ALL judges have scores entered
+            const allJudgesScored = scores.filter(s => s !== null && s !== undefined).length === numJudges;
+
+            // Min/max for highlight (only among entered scores when revealed)
+            const enteredScores = scores.filter(s => s !== null && s !== undefined);
+            let minScore = null, maxScore = null;
+            if (showScores && enteredScores.length >= 3) {
+                minScore = Math.min(...enteredScores);
+                maxScore = Math.max(...enteredScores);
+            }
+
+            let judgesHTML = '';
+            for (let i = 0; i < numJudges; i++) {
+                const score = scores[i];
+                const hasScore = score !== null && score !== undefined;
+                let cardClass = 'kata-judge-card';
+
+                if (showScores && hasScore) {
+                    cardClass += ' kata-judge-revealed';
+                    if (score === maxScore && maxScore !== minScore) cardClass += ' kata-judge-high';
+                    else if (score === minScore && maxScore !== minScore) cardClass += ' kata-judge-low';
+                    // Sequential animation delay
+                    const delay = isReveal ? (i * 0.15) : 0;
+                    judgesHTML += `
+                        <div class="${cardClass}" style="animation-delay: ${delay}s;">
+                            <div class="kata-judge-label">J${i + 1}</div>
+                            <div class="kata-judge-score">${score.toFixed(1)}</div>
+                        </div>
+                    `;
+                } else {
+                    // Waiting state — show dash
+                    if (!showScores && hasScore && allJudgesScored) {
+                        cardClass += ' kata-judge-ready';
+                    }
+                    judgesHTML += `
+                        <div class="${cardClass}">
+                            <div class="kata-judge-label">J${i + 1}</div>
+                            <div class="kata-judge-score kata-judge-pending">—</div>
+                        </div>
+                    `;
+                }
+            }
+            judgesRow.innerHTML = judgesHTML;
+
+            // --- TOTAL SCORE BAR ---
+            const totalBar = document.getElementById('kata-total-bar');
+            const totalVal = document.getElementById('kata-total-val');
+            const avgVal = document.getElementById('kata-avg-val');
+
+            if (showScores && enteredScores.length > 0) {
+                totalVal.textContent = (state.totalScore || 0).toFixed(1);
+                avgVal.textContent = (state.avgScore || 0).toFixed(2);
+                totalBar.classList.add('kata-total-revealed');
+            } else {
+                totalVal.textContent = '—';
+                avgVal.textContent = '—';
+                totalBar.classList.remove('kata-total-revealed');
+            }
+
+            // --- NEXT COMPETITOR BAR ---
+            const nextName = document.getElementById('kata-next-name');
+            const nextPipe = document.getElementById('kata-next-pipe');
+            const nextClub = document.getElementById('kata-next-club');
+            if (state.isLastCompetitor) {
+                nextName.textContent = 'FINAL COMPETITOR';
+                nextName.classList.add('kata-next-final');
+                nextPipe.classList.add('hidden');
+                nextClub.textContent = '';
+            } else if (state.nextCompetitorName) {
+                nextName.textContent = state.nextCompetitorName;
+                nextName.classList.remove('kata-next-final');
+                if (state.nextCompetitorInfo) {
+                    nextPipe.classList.remove('hidden');
+                    nextClub.textContent = state.nextCompetitorInfo;
+                } else {
+                    nextPipe.classList.add('hidden');
+                    nextClub.textContent = '';
+                }
+            } else {
+                nextName.textContent = '—';
+                nextName.classList.remove('kata-next-final');
+                nextPipe.classList.add('hidden');
+                nextClub.textContent = '';
+            }
+
+            lastKataState = state;
+        }
+
+        function showDivisionComplete(state) {
+            const screen = document.getElementById('kata-complete-screen');
+            document.getElementById('kata-complete-divname').textContent = state.divisionName || '';
+
+            const rankings = state.rankings || [];
+            let html = '';
+
+            rankings.forEach((entry, idx) => {
+                const medalClass = idx === 0 ? 'kata-rank-gold' : idx === 1 ? 'kata-rank-silver' : idx === 2 ? 'kata-rank-bronze' : '';
+                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+                const delay = idx * 0.08;
+
+                html += `
+                    <div class="kata-rank-row ${medalClass}" style="animation-delay: ${delay}s;">
+                        <div class="kata-rank-pos">${medal ? medal : '#' + entry.rank}</div>
+                        <div class="kata-rank-name">${entry.name}</div>
+                        <div class="kata-rank-club">${entry.club || ''}</div>
+                        <div class="kata-rank-score">${entry.score.toFixed(2)}</div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('kata-complete-rankings').innerHTML = html;
+            screen.classList.remove('hidden');
+        }
+
+        // Poll for updates
+        setInterval(updateDisplay, 100);
+    </script>
+</body>
+</html>

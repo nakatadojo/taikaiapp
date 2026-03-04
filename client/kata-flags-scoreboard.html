@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata Flags Scoreboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #root { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+
+    // ── Auto-fit text: scales font down until text fits its parent ─────────────
+    function AutoFit({ text, maxPx, minPx = 12, style = {}, className = '' }) {
+      const ref = React.useRef(null);
+      React.useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el || !el.parentElement) return;
+        const parent = el.parentElement;
+        el.style.fontSize = maxPx + 'px';
+        if (el.scrollWidth <= parent.clientWidth) return;
+        let lo = minPx, hi = maxPx;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          el.style.fontSize = mid + 'px';
+          if (el.scrollWidth <= parent.clientWidth) lo = mid;
+          else hi = mid;
+        }
+        el.style.fontSize = lo + 'px';
+      }, [text, maxPx, minPx]);
+      return (
+        <div ref={ref} className={className}
+          style={{ whiteSpace: 'nowrap', display: 'block', ...style }}>
+          {text}
+        </div>
+      );
+    }
+
+    // ── Luminance-based text color (white on dark bg, black on light bg) ───────
+    function getCornerTextColor(bgColor) {
+      if (!bgColor) return '#ffffff';
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.6 ? '#000000' : '#ffffff';
+    }
+
+    // ── Font helpers (identical to kata/kumite scoreboards) ───────────────────
+    const OSW = (weight = 700) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+    const ROB = (weight = 400) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+
+    // ── Demo defaults ────────────────────────────────────────────────────────
+    const DEFAULTS = {
+      tatami:       'TATAMI 1',
+      divisionName: 'KATA FLAGS | SENIOR | MALE',
+      matchInfo:    'ROUND 1 — MATCH 1',
+      red: {
+        name: 'ALEX MARTIN', school: 'GOLDEN TIGER ACADEMY',
+        photo: null, logo: null, flags: 3,
+        color: '#e8403a', label: 'RED',
+      },
+      blue: {
+        name: 'JAMES CHEN', school: 'RISING SUN DOJO',
+        photo: null, logo: null, flags: 2,
+        color: '#0a84ff', label: 'BLUE',
+      },
+      judges: 5,
+      judgeVotes: ['corner1', 'corner1', 'corner2', 'corner1', 'corner2'],
+      winner: null,
+    };
+
+    // ── Competitor side panel ────────────────────────────────────────────────
+    function CompetitorPanel({ side, c }) {
+      const isBlue = side === 'blue';
+      const textColor = getCornerTextColor(c.color);
+
+      return (
+        <div style={{
+          flex: 1,
+          background: c.color,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'space-evenly',
+          padding: '20px 32px',
+          overflow: 'hidden',
+          borderLeft:  isBlue ? `1px solid ${textColor}11` : 'none',
+          borderRight: isBlue ? 'none' : `1px solid ${textColor}11`,
+        }}>
+
+          {/* Corner label */}
+          <div style={{
+            ...ROB(700),
+            fontSize: 'clamp(0.7rem, 1vw, 1rem)',
+            color: textColor,
+            opacity: 0.85,
+            textTransform: 'uppercase',
+            letterSpacing: '0.15em',
+            alignSelf: 'stretch',
+            textAlign: isBlue ? 'right' : 'left',
+          }}>
+            {c.label}
+          </div>
+
+          {/* Identity: photo + name + school */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
+            width: '100%',
+          }}>
+
+            {/* Photo with club logo badge */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{
+                width: 'clamp(100px, 12vh, 150px)',
+                height: 'clamp(100px, 12vh, 150px)',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: `4px solid ${textColor}44`,
+                boxShadow: `0 0 0 2px ${textColor}14, 0 0 32px ${textColor}22`,
+              }}>
+                {c.photo
+                  ? <img src={c.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <div style={{
+                      width: '100%', height: '100%',
+                      background: 'rgba(255,255,255,0.07)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <svg viewBox="0 0 24 24" style={{ width: '55%', height: '55%' }}>
+                        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
+                          fill="rgba(255,255,255,0.3)" />
+                      </svg>
+                    </div>
+                }
+              </div>
+
+              {/* Club logo badge */}
+              <div style={{
+                position: 'absolute',
+                bottom: '0px',
+                right: '-10px',
+                width: 'clamp(30px, 3.8vh, 46px)',
+                height: 'clamp(30px, 3.8vh, 46px)',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '3px solid rgba(255,255,255,0.9)',
+                background: '#12104a',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                zIndex: 1,
+              }}>
+                {c.logo
+                  ? <img src={c.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 'clamp(11px, 1.5vh, 16px)', lineHeight: 1 }}>⚔️</span>
+                }
+              </div>
+            </div>
+
+            {/* Competitor name */}
+            <div style={{ width: '100%', overflow: 'hidden' }}>
+              <AutoFit
+                text={c.name}
+                maxPx={68} minPx={14}
+                style={{
+                  ...OSW(700),
+                  color: textColor,
+                  textTransform: 'uppercase',
+                  textAlign: 'center',
+                  lineHeight: 1,
+                }}
+              />
+            </div>
+
+            {/* School */}
+            <div style={{ width: '100%', overflow: 'hidden' }}>
+              <AutoFit
+                text={c.school}
+                maxPx={26} minPx={10}
+                style={{
+                  ...OSW(700),
+                  color: textColor,
+                  opacity: 0.7,
+                  textTransform: 'uppercase',
+                  textAlign: 'center',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Flag count — the hero element */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '6px',
+          }}>
+            <div style={{
+              ...OSW(700),
+              fontSize: 'clamp(7rem, 13vw, 15rem)',
+              color: textColor,
+              lineHeight: 0.9,
+              textShadow: `0 0 80px ${textColor}22`,
+            }}>
+              {c.flags}
+            </div>
+
+            {/* FLAGS label */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                ...ROB(700),
+                fontSize: 'clamp(0.7rem, 1vw, 1rem)',
+                color: textColor,
+                opacity: 0.5,
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+              }}>
+                FLAGS
+              </span>
+            </div>
+          </div>
+
+        </div>
+      );
+    }
+
+    // ── Main scoreboard ─────────────────────────────────────────────────────
+    function KataFlagsScoreboard(props) {
+      const p = {
+        ...DEFAULTS,
+        ...props,
+        red:  { ...DEFAULTS.red,  ...(props?.red  || {}) },
+        blue: { ...DEFAULTS.blue, ...(props?.blue || {}) },
+      };
+
+      const judgeVotes = p.judgeVotes || [];
+      const numJudges = p.judges || 5;
+
+      return (
+        <div style={{
+          width: '100vw', height: '100vh', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          background: '#0f0f14',
+        }}>
+
+          {/* ── 1. HEADER ──────────────────────────────────────────────── */}
+          <div style={{
+            height: '12vh', flexShrink: 0,
+            display: 'flex', alignItems: 'center',
+            padding: '0 36px',
+          }}>
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(2.5rem, 7vw, 6rem)',
+              color: '#fff',
+              textTransform: 'uppercase',
+              letterSpacing: '0.02em',
+              fontStyle: 'italic',
+              flexShrink: 0,
+            }}>
+              {p.tatami}
+            </span>
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <AutoFit
+                text={p.divisionName}
+                maxPx={52} minPx={10}
+                style={{
+                  ...OSW(600),
+                  color: 'rgba(255,255,255,0.65)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  textAlign: 'right',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ── 2. MAIN: Red | Center | Blue ───────────────────────────── */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+
+            <CompetitorPanel side="red" c={p.red} />
+
+            {/* Center: VS + match info */}
+            <div style={{
+              width: 'clamp(160px, 18vw, 260px)',
+              flexShrink: 0,
+              background: '#12121e',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              padding: '0 12px',
+            }}>
+              <div style={{
+                ...ROB(700),
+                fontSize: 'clamp(0.65rem, 0.9vw, 0.9rem)',
+                color: 'rgba(255,255,255,0.22)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.2em',
+              }}>
+                VS
+              </div>
+              <div style={{
+                ...ROB(700),
+                fontSize: 'clamp(0.8rem, 1.1vw, 1.2rem)',
+                color: 'rgba(255,255,255,0.5)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.15em',
+                textAlign: 'center',
+                lineHeight: 1.4,
+              }}>
+                FLAG<br/>DECISION
+              </div>
+              <div style={{
+                ...ROB(500),
+                fontSize: 'clamp(0.6rem, 0.8vw, 0.85rem)',
+                color: 'rgba(255,255,255,0.28)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                textAlign: 'center',
+                lineHeight: 1.5,
+              }}>
+                {p.matchInfo}
+              </div>
+            </div>
+
+            <CompetitorPanel side="blue" c={p.blue} />
+
+          </div>
+
+          {/* ── 3. JUDGE VOTES BAR ─────────────────────────────────────── */}
+          <div style={{
+            height: '15vh', flexShrink: 0,
+            background: '#141420',
+            borderTop: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center',
+            padding: '0 36px', gap: '12px',
+            overflow: 'hidden',
+          }}>
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(0.9rem, 1.4vw, 1.4rem)',
+              color: 'rgba(255,255,255,0.4)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              flexShrink: 0,
+            }}>
+              JUDGES :
+            </span>
+            <div style={{
+              flex: 1, display: 'flex', gap: '12px',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              {Array.from({ length: numJudges }, (_, i) => {
+                const vote = judgeVotes[i];
+                const hasVote = vote === 'corner1' || vote === 'corner2';
+                const voteColor = vote === 'corner1' ? p.red.color
+                                : vote === 'corner2' ? p.blue.color
+                                : 'rgba(255,255,255,0.12)';
+                const voteName = vote === 'corner1' ? p.red.label
+                               : vote === 'corner2' ? p.blue.label
+                               : '';
+                return (
+                  <div key={i} style={{
+                    flex: 1, maxWidth: '180px',
+                    background: hasVote
+                      ? `color-mix(in srgb, ${voteColor} 15%, #1e1e2e)`
+                      : '#1e1e2e',
+                    border: hasVote
+                      ? `2px solid ${voteColor}55`
+                      : '1px solid #35354a',
+                    borderRadius: '12px',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    padding: '8px 6px',
+                    gap: '6px',
+                  }}>
+                    <div style={{
+                      ...ROB(700),
+                      fontSize: 'clamp(0.6rem, 0.9vw, 0.9rem)',
+                      color: '#9999bb',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.1em',
+                    }}>
+                      J{i + 1}
+                    </div>
+                    <div style={{
+                      width: 'clamp(14px, 1.8vh, 22px)',
+                      height: 'clamp(14px, 1.8vh, 22px)',
+                      borderRadius: '50%',
+                      background: voteColor,
+                      boxShadow: hasVote ? `0 0 12px ${voteColor}66` : 'none',
+                    }} />
+                    {hasVote && (
+                      <div style={{
+                        ...ROB(600),
+                        fontSize: 'clamp(0.5rem, 0.7vw, 0.7rem)',
+                        color: voteColor,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}>
+                        {voteName}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── WINNER CELEBRATION OVERLAY ────────────────────────────────── */}
+          {p.winner && (() => {
+            const w = typeof p.winner === 'string' ? { name: p.winner } : p.winner;
+            const winnerColor = w.corner === 'red' ? p.red.color : w.corner === 'blue' ? p.blue.color
+              : (w.name === p.red.name ? p.red.color : p.blue.color);
+            const winnerCornerLabel = w.corner === 'red' ? p.red.label : w.corner === 'blue' ? p.blue.label : '';
+            const confettiColors = ['#ff453a','#0a84ff','#ffd60a','#30d158','#bf5af2','#ff9f0a','#64d2ff','#ff375f'];
+            return (
+              <div style={{
+                position: 'fixed', inset: 0,
+                background: 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.88) 100%)',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                zIndex: 9999, overflow: 'hidden',
+              }}>
+                <style>{`
+                  @keyframes winFadeIn { from { opacity: 0; } to { opacity: 1; } }
+                  @keyframes winSlideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                  @keyframes winPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+                  @keyframes winConfetti { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+                  .win-confetti { position: absolute; border-radius: 2px; }
+                `}</style>
+
+                {/* Confetti */}
+                {Array.from({length: 60}, (_, i) => {
+                  const color = confettiColors[i % confettiColors.length];
+                  const size = 6 + Math.random() * 10;
+                  return (
+                    <div key={i} className="win-confetti" style={{
+                      left: (Math.random() * 100) + '%',
+                      width: size + 'px', height: size * (0.4 + Math.random() * 0.6) + 'px',
+                      background: color,
+                      animation: `winConfetti ${2.5 + Math.random() * 3}s linear ${Math.random() * 3}s infinite`,
+                    }} />
+                  );
+                })}
+
+                <div style={{ textAlign: 'center', animation: 'winSlideUp 0.8s ease-out', zIndex: 1 }}>
+                  {/* Trophy */}
+                  <div style={{ fontSize: 'clamp(60px, 12vh, 140px)', marginBottom: '16px', animation: 'winPulse 2s ease-in-out infinite' }}>
+                    🏆
+                  </div>
+
+                  {/* WINNER text */}
+                  <div style={{
+                    ...ROB(700),
+                    fontSize: 'clamp(1.5rem, 4vw, 3.5rem)',
+                    color: '#22c55e',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.2em',
+                    marginBottom: '20px',
+                    textShadow: '0 0 30px rgba(34,197,94,0.5)',
+                  }}>
+                    WINNER
+                  </div>
+
+                  {/* Winner photo */}
+                  {w.photo && (
+                    <div style={{ marginBottom: '24px' }}>
+                      <img src={w.photo} alt="" style={{
+                        width: 'clamp(120px, 18vh, 220px)', height: 'clamp(120px, 18vh, 220px)',
+                        borderRadius: '50%', objectFit: 'cover',
+                        border: `6px solid ${winnerColor}`,
+                        boxShadow: `0 10px 40px rgba(0,0,0,0.5), 0 0 30px ${winnerColor}44`,
+                      }} />
+                    </div>
+                  )}
+
+                  {/* Winner name */}
+                  <div style={{
+                    ...OSW(700),
+                    fontSize: 'clamp(3rem, 8vw, 10rem)',
+                    color: winnerColor,
+                    textTransform: 'uppercase',
+                    lineHeight: 0.95,
+                    textAlign: 'center',
+                    padding: '0 40px',
+                    textShadow: `0 4px 20px rgba(0,0,0,0.5)`,
+                  }}>
+                    {w.name}
+                  </div>
+
+                  {/* Corner label */}
+                  {winnerCornerLabel && (
+                    <div style={{
+                      ...ROB(600),
+                      fontSize: 'clamp(1rem, 2.5vw, 2rem)',
+                      color: 'rgba(255,255,255,0.45)',
+                      textTransform: 'uppercase',
+                      marginTop: '16px',
+                      letterSpacing: '0.1em',
+                    }}>
+                      {winnerCornerLabel} Corner
+                    </div>
+                  )}
+
+                  {/* Club info */}
+                  {w.club && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '20px' }}>
+                      {w.clubLogo && <img src={w.clubLogo} alt="" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '6px' }} />}
+                      <span style={{ ...ROB(500), fontSize: 'clamp(1rem, 2vw, 1.8rem)', color: 'rgba(255,255,255,0.5)' }}>{w.club}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+        </div>
+      );
+    }
+
+    // ── Wire to localStorage ────────────────────────────────────────────────
+    function App() {
+      const [state, setState] = React.useState(() => {
+        try { return JSON.parse(localStorage.getItem('scoreboard-state') || 'null'); } catch { return null; }
+      });
+
+      React.useEffect(() => {
+        const handler = (e) => {
+          if (e.key === 'scoreboard-state' && e.newValue) {
+            try {
+              const newState = JSON.parse(e.newValue);
+              // Auto-redirect if scoreboard type changed
+              if (newState.scoreboardType && newState.scoreboardType !== 'kata-flags') {
+                const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata': 'kata-scoreboard.html' };
+                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType]; return; }
+              }
+              setState(newState);
+            } catch {}
+          }
+        };
+        window.addEventListener('storage', handler);
+        return () => window.removeEventListener('storage', handler);
+      }, []);
+
+      if (state && state.scoreboardType === 'kata-flags') {
+        // redInfo format: "22 yrs | Brown Belt\nClub Name" — club is the last newline segment
+        const parseClub = (info) => {
+          if (!info) return '';
+          const lines = info.split('\n');
+          return lines[lines.length - 1]?.trim() || '';
+        };
+
+        return (
+          <KataFlagsScoreboard
+            tatami={state.matName || 'TATAMI 1'}
+            divisionName={state.divisionName || ''}
+            matchInfo={state.matchInfo || ''}
+            red={{
+              name:  state.redName  || '',
+              school: parseClub(state.redInfo),
+              photo: state.redPhoto || null,
+              logo:  state.redClubLogo || null,
+              flags: state.redFlags ?? 0,
+              color: state.corner1Color || '#e8403a',
+              label: state.corner1Name  || 'RED',
+            }}
+            blue={{
+              name:  state.blueName  || '',
+              school: parseClub(state.blueInfo),
+              photo: state.bluePhoto || null,
+              logo:  state.blueClubLogo || null,
+              flags: state.blueFlags ?? 0,
+              color: state.corner2Color || '#0a84ff',
+              label: state.corner2Name  || 'BLUE',
+            }}
+            judges={state.judges || 5}
+            judgeVotes={state.judgeVotes || []}
+            winner={state.winner || null}
+          />
+        );
+      }
+
+      // Show demo while waiting for a real kata-flags state
+      return <KataFlagsScoreboard />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

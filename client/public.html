@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="tournament-title">Karate Tournament</title>
+    <link rel="stylesheet" href="public-styles.css">
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero" id="hero-section">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <img id="tournament-logo" class="tournament-logo hidden" alt="Tournament Logo">
+            <h1 id="hero-title">International Karate Championship</h1>
+            <p id="hero-subtitle" class="hero-subtitle">March 15, 2024 • Los Angeles, CA</p>
+            <div class="hero-actions">
+                <a href="#register" class="btn btn-primary">Register Now</a>
+                <a href="#schedule" class="btn btn-secondary">View Schedule</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#about" class="nav-link">About</a>
+            <a href="#register" class="nav-link">Register</a>
+            <a href="#schedule" class="nav-link">Schedule</a>
+            <a href="#results" class="nav-link">Results</a>
+            <a href="#" class="nav-link nav-auth-link" id="nav-auth-link" onclick="togglePublicAuth(event)">Login / Sign Up</a>
+        </div>
+    </nav>
+
+    <!-- About Section -->
+    <section id="about" class="section">
+        <div class="container">
+            <h2>About the Tournament</h2>
+            <div id="about-content" class="about-content">
+                <p>Join us for an exciting karate tournament featuring competitors from around the world. Experience world-class kumite and kata competitions across multiple divisions.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Registration Section -->
+    <section id="register" class="section section-alt">
+        <div class="container">
+            <h2>Registration</h2>
+            <p class="section-subtitle">Choose your registration type</p>
+
+            <div class="registration-grid">
+                <!-- Competitor Registration -->
+                <div class="registration-card">
+                    <div class="card-icon">🥋</div>
+                    <h3>Competitor</h3>
+                    <p>Register to compete in kumite or kata divisions</p>
+                    <button class="btn btn-primary" onclick="showRegistrationForm('competitor')">Register as Competitor</button>
+                </div>
+
+                <!-- Instructor Registration -->
+                <div class="registration-card">
+                    <div class="card-icon">👨‍🏫</div>
+                    <h3>Instructor</h3>
+                    <p>Register as a coach or instructor</p>
+                    <button class="btn btn-primary" onclick="showRegistrationForm('instructor')">Register as Instructor</button>
+                </div>
+
+                <!-- Club Registration -->
+                <div class="registration-card">
+                    <div class="card-icon">🏛️</div>
+                    <h3>Club</h3>
+                    <p>Register your martial arts club or dojo</p>
+                    <button class="btn btn-primary" onclick="showRegistrationForm('club')">Register Club</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Registration Forms Modal -->
+    <div id="registration-modal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeRegistrationForm()"></div>
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeRegistrationForm()">×</button>
+
+            <!-- Competitor Form -->
+            <div id="competitor-registration" class="registration-form hidden">
+                <h2>Competitor Registration</h2>
+                <form id="public-competitor-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="pub-firstName">First Name *</label>
+                            <input type="text" id="pub-firstName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-lastName">Last Name *</label>
+                            <input type="text" id="pub-lastName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-dateOfBirth">Date of Birth *</label>
+                            <input type="date" id="pub-dateOfBirth" required onchange="checkPublicMinorStatus()">
+                        </div>
+                        <div class="form-group" id="pub-guardian-email-group" style="display:none">
+                            <label for="pub-guardianEmail">Guardian Email <span class="required">*</span></label>
+                            <input type="email" id="pub-guardianEmail" placeholder="Parent or legal guardian email">
+                            <small class="hint" style="margin-top:4px;">Required for competitors under 18. Guardian will receive a confirmation email.</small>
+                        </div>
+                        <div class="form-group" style="position:relative;">
+                            <label for="pub-academySearch">Academy/Club (optional)</label>
+                            <input type="text" id="pub-academySearch" placeholder="Start typing academy name..." autocomplete="off">
+                            <div id="pub-academy-autocomplete" class="autocomplete-dropdown"></div>
+                            <input type="hidden" id="pub-academyId">
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-weight">Weight (kg) *</label>
+                            <input type="number" id="pub-weight" step="0.1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-rank">Rank/Belt *</label>
+                            <select id="pub-rank" required>
+                                <option value="">Select Rank</option>
+                                <option value="White">White</option>
+                                <option value="Yellow">Yellow</option>
+                                <option value="Orange">Orange</option>
+                                <option value="Green">Green</option>
+                                <option value="Blue">Blue</option>
+                                <option value="Purple">Purple</option>
+                                <option value="Brown">Brown</option>
+                                <option value="1st Dan">1st Dan (Black)</option>
+                                <option value="2nd Dan">2nd Dan (Black)</option>
+                                <option value="3rd Dan">3rd Dan (Black)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-experience">Experience (years) *</label>
+                            <input type="number" id="pub-experience" min="0" step="0.5" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-gender">Gender *</label>
+                            <select id="pub-gender" required>
+                                <option value="">Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-club">Club *</label>
+                            <input type="text" id="pub-club" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-email">Email *</label>
+                            <input type="email" id="pub-email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-phone">Phone *</label>
+                            <input type="tel" id="pub-phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-photo">Photo (optional)</label>
+                            <input type="file" id="pub-photo" accept="image/*">
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-club-logo">Club Logo (optional)</label>
+                            <input type="file" id="pub-club-logo" accept="image/*">
+                        </div>
+                    </div>
+
+                    <!-- Event Selection -->
+                    <div class="form-group" style="margin-top: 24px;">
+                        <label>Events to Register For *</label>
+                        <div id="pub-event-checkboxes" style="display:flex;flex-direction:column;gap:12px;padding:16px;background:rgba(255,255,255,0.03);border-radius:12px;border:1px solid rgba(255,255,255,0.1);">
+                            <p style="color:var(--text-secondary, #999);font-size:14px;">Loading events...</p>
+                        </div>
+                    </div>
+
+                    <!-- Price Summary -->
+                    <div id="pub-price-summary" style="margin-top:16px;padding:16px;background:rgba(255,255,255,0.03);border-radius:12px;border:1px solid rgba(255,255,255,0.1);">
+                        <div id="pub-price-breakdown" style="font-size:14px;"></div>
+                        <div id="pub-price-total" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);font-size:18px;font-weight:700;"></div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Submit Registration</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeRegistrationForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Instructor Form -->
+            <div id="instructor-registration" class="registration-form hidden">
+                <h2>Instructor Registration</h2>
+                <form id="public-instructor-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="pub-inst-firstName">First Name *</label>
+                            <input type="text" id="pub-inst-firstName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-inst-lastName">Last Name *</label>
+                            <input type="text" id="pub-inst-lastName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-inst-rank">Rank *</label>
+                            <input type="text" id="pub-inst-rank" placeholder="e.g., 5th Dan" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-inst-club">Club *</label>
+                            <input type="text" id="pub-inst-club" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-inst-email">Email *</label>
+                            <input type="email" id="pub-inst-email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-inst-phone">Phone *</label>
+                            <input type="tel" id="pub-inst-phone" required>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Submit Registration</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeRegistrationForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Club Form -->
+            <div id="club-registration" class="registration-form hidden">
+                <h2>Club Registration</h2>
+                <form id="public-club-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="pub-club-name">Club Name *</label>
+                            <input type="text" id="pub-club-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-club-country">Country *</label>
+                            <input type="text" id="pub-club-country" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-club-city">City *</label>
+                            <input type="text" id="pub-club-city" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pub-club-email">Email</label>
+                            <input type="email" id="pub-club-email">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Submit Registration</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeRegistrationForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Section -->
+    <section id="schedule" class="section">
+        <div class="container">
+            <h2>Tournament Schedule</h2>
+            <div id="schedule-availability" class="schedule-notice hidden">
+                <p>Schedule will be published closer to the event date.</p>
+            </div>
+            <div id="public-schedule-container" class="hidden"></div>
+        </div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results" class="section section-alt">
+        <div class="container">
+            <h2>Results</h2>
+            <div id="results-availability" class="schedule-notice hidden">
+                <p>Results will be published after the tournament concludes.</p>
+            </div>
+            <div id="public-results-container" class="hidden"></div>
+        </div>
+    </section>
+
+    <!-- Auth Modal -->
+    <div id="public-auth-modal" class="modal hidden">
+        <div class="modal-overlay" onclick="closePublicAuth()"></div>
+        <div class="modal-content pub-auth-modal-content">
+            <button class="modal-close" onclick="closePublicAuth()">×</button>
+
+            <div class="pub-auth-tabs">
+                <button class="pub-auth-tab active" data-tab="login" onclick="pubAuthSwitchTab('login')">Login</button>
+                <button class="pub-auth-tab" data-tab="signup" onclick="pubAuthSwitchTab('signup')">Sign Up</button>
+            </div>
+
+            <!-- Login -->
+            <form id="pub-auth-login-form" class="pub-auth-form" onsubmit="handlePublicLogin(event)">
+                <div id="pub-auth-login-error" class="pub-auth-error hidden"></div>
+                <div class="form-group">
+                    <label for="pub-auth-email">Email</label>
+                    <input type="email" id="pub-auth-email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="pub-auth-password">Password</label>
+                    <input type="password" id="pub-auth-password" required placeholder="••••••••">
+                </div>
+                <div class="form-actions" style="flex-direction:column;gap:12px;">
+                    <button type="submit" class="btn btn-primary" id="pub-login-btn" style="width:100%;">Sign In</button>
+                    <button type="button" class="pub-auth-link" onclick="pubAuthSwitchTab('forgot')">Forgot password?</button>
+                </div>
+            </form>
+
+            <!-- Sign Up -->
+            <form id="pub-auth-signup-form" class="pub-auth-form hidden" onsubmit="handlePublicSignup(event)">
+                <div id="pub-auth-signup-error" class="pub-auth-error hidden"></div>
+                <div id="pub-auth-signup-success" class="pub-auth-success hidden"></div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="pub-auth-first">First Name</label>
+                        <input type="text" id="pub-auth-first" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pub-auth-last">Last Name</label>
+                        <input type="text" id="pub-auth-last" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pub-auth-signup-email">Email</label>
+                    <input type="email" id="pub-auth-signup-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="pub-auth-signup-pw">Password</label>
+                    <input type="password" id="pub-auth-signup-pw" required placeholder="Min 8 chars, upper + lower + digit">
+                </div>
+                <div class="form-group">
+                    <label for="pub-auth-signup-confirm">Confirm Password</label>
+                    <input type="password" id="pub-auth-signup-confirm" required>
+                </div>
+                <div class="form-group">
+                    <label>Roles</label>
+                    <div class="pub-role-pills">
+                        <label class="pub-role-pill selected"><input type="checkbox" value="competitor" checked> Competitor</label>
+                        <label class="pub-role-pill"><input type="checkbox" value="coach"> Coach</label>
+                        <label class="pub-role-pill"><input type="checkbox" value="judge"> Judge</label>
+                    </div>
+                </div>
+                <div class="form-actions" style="flex-direction:column;gap:12px;">
+                    <button type="submit" class="btn btn-primary" id="pub-signup-btn" style="width:100%;">Create Account</button>
+                </div>
+            </form>
+
+            <!-- Forgot Password -->
+            <form id="pub-auth-forgot-form" class="pub-auth-form hidden" onsubmit="handlePublicForgot(event)">
+                <div id="pub-auth-forgot-error" class="pub-auth-error hidden"></div>
+                <div id="pub-auth-forgot-success" class="pub-auth-success hidden"></div>
+                <p style="color:var(--text-secondary);font-size:14px;margin-bottom:12px;">Enter your email and we'll send a reset link.</p>
+                <div class="form-group">
+                    <label for="pub-auth-forgot-email">Email</label>
+                    <input type="email" id="pub-auth-forgot-email" required>
+                </div>
+                <div class="form-actions" style="flex-direction:column;gap:12px;">
+                    <button type="submit" class="btn btn-primary" id="pub-forgot-btn" style="width:100%;">Send Reset Link</button>
+                    <button type="button" class="pub-auth-link" onclick="pubAuthSwitchTab('login')">← Back to login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p id="footer-text">© 2024 Karate Tournament. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="auth.js"></script>
+    <script src="public.js"></script>
+</body>
+</html>

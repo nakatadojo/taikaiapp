@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata Scoreboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #root { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+
+    // ── Auto-fit text: scales font down until text fits its parent ────────────
+    function AutoFit({ text, maxPx, minPx = 12, style = {}, className = '' }) {
+      const ref = React.useRef(null);
+
+      React.useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el || !el.parentElement) return;
+        const parent = el.parentElement;
+
+        el.style.fontSize = maxPx + 'px';
+        if (el.scrollWidth <= parent.clientWidth) return;
+
+        let lo = minPx, hi = maxPx;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          el.style.fontSize = mid + 'px';
+          if (el.scrollWidth <= parent.clientWidth) lo = mid;
+          else hi = mid;
+        }
+        el.style.fontSize = lo + 'px';
+      }, [text, maxPx, minPx]);
+
+      return (
+        <div ref={ref} className={className}
+          style={{ whiteSpace: 'nowrap', display: 'block', ...style }}>
+          {text}
+        </div>
+      );
+    }
+
+    // ── Font shorthand objects ────────────────────────────────────────────────
+    const OSW = (weight = 700) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+    const ROB = (weight = 400) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: weight });
+
+    // ── Default demo props ────────────────────────────────────────────────────
+    const DEFAULTS = {
+      tatami: 'TATAMI 1',
+      competitor: {
+        name:    'RIVER REED',
+        school:  'GOLDEN TIGER ACADEMY',
+        country: '🇺🇸',
+        photo:   null,
+        logo:    null,
+      },
+      totalScore:  23.7,
+      judgeScores: [null, null, null, null, null],
+      category: { type: 'KATA', age: 'U5', gender: 'MALE', level: 'INTERMEDIATE' },
+      next: { name: 'NAOMI REED', school: 'Midwest Martial Arts Academy' },
+    };
+
+    // ── Scoreboard component ─────────────────────────────────────────────────
+    function KataScoreboard(props) {
+      const p = {
+        ...DEFAULTS,
+        ...props,
+        competitor: { ...DEFAULTS.competitor, ...(props?.competitor || {}) },
+        category:   { ...DEFAULTS.category,   ...(props?.category   || {}) },
+        next:       { ...DEFAULTS.next,        ...(props?.next       || {}) },
+      };
+
+      const categoryText = [p.category.type, p.category.age, p.category.gender, p.category.level]
+        .filter(Boolean).join(' | ');
+
+      const hasScore = p.totalScore != null;
+
+      return (
+        <div style={{
+          width: '100vw', height: '100vh', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          background: '#0f0f14',
+        }}>
+          <style>{`
+            /* system fonts — no import needed */
+          `}</style>
+
+          {/* ── 1. TATAMI HEADER ───────────────────────────────────────────── */}
+          <div style={{
+            height: '12vh', flexShrink: 0,
+            display: 'flex', alignItems: 'center',
+            padding: '0 36px',
+          }}>
+            {/* Left: Tatami name — fixed size, doesn't shrink */}
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(2.5rem, 7vw, 6rem)',
+              color: '#fff',
+              textTransform: 'uppercase',
+              letterSpacing: '0.02em',
+              fontStyle: 'italic',
+              flexShrink: 0,
+            }}>
+              {p.tatami}
+            </span>
+
+            {/* Right: Category — auto-fits whatever space remains */}
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <AutoFit
+                text={categoryText}
+                maxPx={52} minPx={10}
+                style={{
+                  ...OSW(600),
+                  color: 'rgba(255,255,255,0.65)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  textAlign: 'right',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ── 2. COMPETITOR INFO PANEL ───────────────────────────────────── */}
+          <div style={{
+            height: '31vh', flexShrink: 0,
+            background: '#1a1858',
+            display: 'flex', alignItems: 'stretch',
+            padding: '0 36px', gap: '0',
+          }}>
+
+            {/* Left side: photo (with overlapping club logo) + name + school */}
+            <div style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', alignItems: 'center', gap: '32px',
+              paddingRight: '32px',
+            }}>
+
+              {/* Photo container — relative so logo can overlap */}
+              <div style={{ flexShrink: 0, position: 'relative' }}>
+                {/* Competitor photo */}
+                <div style={{
+                  width: 'clamp(165px, 20vh, 225px)',
+                  height: 'clamp(165px, 20vh, 225px)',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '4px solid rgba(255,255,255,0.55)',
+                  boxShadow: '0 0 0 2px rgba(100,100,220,0.4)',
+                }}>
+                  {p.competitor.photo
+                    ? <img src={p.competitor.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <div style={{
+                        width: '100%', height: '100%',
+                        background: 'rgba(255,255,255,0.1)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <svg viewBox="0 0 24 24" style={{ width: '55%', height: '55%' }}>
+                          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
+                            fill="rgba(255,255,255,0.3)" />
+                        </svg>
+                      </div>
+                  }
+                </div>
+
+                {/* Club logo badge — overlaps bottom-right of photo */}
+                <div style={{
+                  position: 'absolute',
+                  bottom: '0px',
+                  right: '-12px',
+                  width: 'clamp(44px, 5.5vh, 64px)',
+                  height: 'clamp(44px, 5.5vh, 64px)',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '3px solid rgba(255,255,255,0.9)',
+                  background: '#12104a',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 1,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                }}>
+                  {p.competitor.logo
+                    ? <img src={p.competitor.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 'clamp(16px, 2.2vh, 24px)', lineHeight: 1 }}>⚔️</span>
+                  }
+                </div>
+              </div>
+
+              {/* Name + School — left aligned */}
+              <div style={{
+                flex: 1, minWidth: 0,
+                display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                overflow: 'hidden',
+              }}>
+                {/* Competitor name */}
+                <div style={{ overflow: 'hidden' }}>
+                  <AutoFit
+                    text={p.competitor.name}
+                    maxPx={115} minPx={20}
+                    style={{ ...OSW(700), color: '#fff', textTransform: 'uppercase', lineHeight: 1, textAlign: 'left' }}
+                  />
+                </div>
+
+                {/* Club name + flag — left aligned, no logo badge here */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <AutoFit
+                      text={p.competitor.school}
+                      maxPx={36} minPx={12}
+                      style={{ ...OSW(700), color: '#f5c542', textTransform: 'uppercase', textAlign: 'left' }}
+                    />
+                  </div>
+                  {p.competitor.country && (
+                    <span style={{ flexShrink: 0, fontSize: 'clamp(1.4rem, 2.5vh, 2.2rem)', lineHeight: 1 }}>
+                      {p.competitor.country}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Vertical divider */}
+            <div style={{
+              width: '1px',
+              background: 'rgba(255,255,255,0.2)',
+              alignSelf: 'stretch',
+              margin: '16px 0',
+              flexShrink: 0,
+            }} />
+
+            {/* Right side: Total Score — text directly on panel */}
+            <div style={{
+              flexShrink: 0,
+              width: 'clamp(180px, 22vw, 280px)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              paddingLeft: '32px',
+              gap: '4px',
+            }}>
+              <div style={{
+                ...ROB(700),
+                fontSize: 'clamp(0.8rem, 1.1vw, 1.1rem)',
+                color: 'rgba(255,255,255,0.6)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+              }}>
+                TOTAL SCORE
+              </div>
+              <div style={{
+                ...OSW(700),
+                fontSize: 'clamp(3rem, 7vw, 6.5rem)',
+                color: '#fff',
+                lineHeight: 1,
+              }}>
+                {hasScore ? Number(p.totalScore).toFixed(1) : '—'}
+              </div>
+            </div>
+          </div>
+
+          {/* gap */}
+          <div style={{ height: '1.5vh', flexShrink: 0 }} />
+
+          {/* ── 3. JUDGE SCORE BOXES ───────────────────────────────────────── */}
+          <div style={{
+            flex: 1, minHeight: 0,
+            display: 'flex', gap: '12px',
+            padding: '0 36px',
+            alignItems: 'stretch',
+          }}>
+            {p.judgeScores.map((score, i) => (
+              <div key={i} style={{
+                flex: 1,
+                background: '#1e1e2e',
+                border: '1px solid #35354a',
+                borderRadius: '14px',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center',
+                paddingTop: '22px',
+              }}>
+                <div style={{
+                  ...ROB(700),
+                  fontSize: 'clamp(0.75rem, 1.1vw, 1.1rem)',
+                  color: '#9999bb',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                }}>
+                  JUDGE {i + 1}
+                </div>
+                {score != null && (
+                  <div style={{
+                    ...OSW(700),
+                    fontSize: 'clamp(2rem, 4vw, 3.5rem)',
+                    color: '#fff',
+                    lineHeight: 1,
+                    marginTop: '16px',
+                  }}>
+                    {Number(score).toFixed(1)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* ── 5. NEXT COMPETITOR BAR ─────────────────────────────────────── */}
+          <div style={{
+            height: '20vh', flexShrink: 0,
+            background: '#141420',
+            borderTop: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center',
+            padding: '0 40px', gap: '18px',
+            overflow: 'hidden',
+          }}>
+            {/* NEXT UP label */}
+            <span style={{
+              ...OSW(700),
+              fontSize: 'clamp(1.2rem, 1.8vw, 1.8rem)',
+              color: 'rgba(255,255,255,0.4)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              flexShrink: 0,
+            }}>
+              NEXT UP :
+            </span>
+
+            {/* Next name — auto-fits */}
+            <div style={{ flexShrink: 0, maxWidth: '40%', overflow: 'hidden' }}>
+              <AutoFit
+                text={p.next.name}
+                maxPx={62} minPx={16}
+                style={{ ...OSW(700), color: '#fff', textTransform: 'uppercase' }}
+              />
+            </div>
+
+            <span style={{ color: 'rgba(255,255,255,0.2)', flexShrink: 0, fontSize: '2rem' }}>|</span>
+
+            {/* Next school — auto-fits */}
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <AutoFit
+                text={p.next.school}
+                maxPx={46} minPx={12}
+                style={{ ...ROB(500), color: '#8888aa', textTransform: 'uppercase' }}
+              />
+            </div>
+          </div>
+
+        </div>
+      );
+    }
+
+    // ── Wire to localStorage ──────────────────────────────────────────────────
+    function App() {
+      const [state, setState] = React.useState(() => {
+        try { return JSON.parse(localStorage.getItem('scoreboard-state') || 'null'); } catch { return null; }
+      });
+
+      React.useEffect(() => {
+        const handler = (e) => {
+          if (e.key === 'scoreboard-state' && e.newValue) {
+            try {
+              const newState = JSON.parse(e.newValue);
+              // Auto-redirect if scoreboard type changed
+              if (newState.scoreboardType && newState.scoreboardType !== 'kata') {
+                const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html' };
+                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType]; return; }
+              }
+              setState(newState);
+            } catch {}
+          }
+        };
+        window.addEventListener('storage', handler);
+        return () => window.removeEventListener('storage', handler);
+      }, []);
+
+      if (state && state.scoreboardType === 'kata') {
+        return (
+          <KataScoreboard
+            tatami={state.matName || 'TATAMI 1'}
+            competitor={{
+              name:    state.competitorName     || '',
+              school:  state.competitorClub     || '',
+              country: state.competitorCountry  || '',
+              photo:   state.competitorPhoto    || null,
+              logo:    state.competitorClubLogo || null,
+            }}
+            totalScore={state.totalScore ?? null}
+            judgeScores={state.judgeScores || [null, null, null, null, null]}
+            category={{
+              type:   state.divisionName || 'KATA',
+              age:    '',
+              gender: '',
+              level:  '',
+            }}
+            next={{
+              name:   state.nextCompetitorName || '',
+              school: state.nextCompetitorInfo || '',
+            }}
+          />
+        );
+      }
+
+      // Show demo while waiting for a real kata state
+      return <KataScoreboard />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

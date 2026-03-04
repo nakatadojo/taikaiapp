@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guardian Confirmation — Tournament Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e5e5e5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: rgba(30,30,40,0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 40px; max-width: 480px; width: 100%; }
+        h2 { font-size: 22px; margin-bottom: 8px; color: #fff; }
+        .hint { color: #888; font-size: 14px; line-height: 1.6; }
+        .minor-info { background: rgba(230,126,34,0.1); border: 1px solid rgba(230,126,34,0.2); border-radius: 12px; padding: 16px; margin: 20px 0; }
+        .minor-info strong { color: #e67e22; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #999; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-group input { width: 100%; padding: 12px 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; background: rgba(255,255,255,0.05); color: #e5e5e5; font-size: 15px; outline: none; }
+        .form-group input:focus { border-color: #e67e22; }
+        .btn { display: inline-block; padding: 14px 32px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; }
+        .btn-primary { background: #e67e22; color: white; }
+        .btn-primary:hover { background: #d35400; }
+        .btn-ghost { background: transparent; color: #888; border: 1px solid rgba(255,255,255,0.1); }
+        .status { padding: 12px 16px; border-radius: 10px; margin: 16px 0; font-size: 14px; }
+        .status.success { background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.2); color: #2ecc71; }
+        .status.error { background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.2); color: #e74c3c; }
+        .status.info { background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.2); color: #3498db; }
+        .hidden { display: none !important; }
+        a { color: #e67e22; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <!-- Loading State -->
+        <div id="gc-loading">
+            <h2>Verifying...</h2>
+            <p class="hint">Please wait while we verify your confirmation link.</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="gc-error" class="hidden">
+            <h2>Confirmation Failed</h2>
+            <div id="gc-error-msg" class="status error"></div>
+            <a href="public.html" class="btn btn-ghost" style="display:block;text-align:center;margin-top:16px;">Go to Tournament Site</a>
+        </div>
+
+        <!-- Needs Auth State -->
+        <div id="gc-needs-auth" class="hidden">
+            <h2>Confirm Guardianship</h2>
+            <div class="minor-info">
+                <p>You are confirming guardianship for <strong id="gc-minor-name">—</strong>.</p>
+            </div>
+            <p class="hint" style="margin-bottom: 20px;">Please log in or create an account to confirm. Your email must match: <strong id="gc-guardian-email-display">—</strong></p>
+
+            <!-- Login Form -->
+            <div id="gc-login-form">
+                <form onsubmit="guardianLogin(event)">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="gc-login-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="gc-login-password" required>
+                    </div>
+                    <div id="gc-login-error" class="status error hidden"></div>
+                    <button type="submit" class="btn btn-primary">Log In & Confirm</button>
+                </form>
+                <p class="hint" style="margin-top: 12px; text-align: center;">
+                    Don't have an account? <a href="#" onclick="showGuardianSignup()">Sign Up</a>
+                </p>
+            </div>
+
+            <!-- Signup Form -->
+            <div id="gc-signup-form" class="hidden">
+                <form onsubmit="guardianSignup(event)">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="gc-signup-first" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="gc-signup-last" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="gc-signup-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="gc-signup-password" required minlength="8">
+                    </div>
+                    <div id="gc-signup-error" class="status error hidden"></div>
+                    <button type="submit" class="btn btn-primary">Sign Up & Confirm</button>
+                </form>
+                <p class="hint" style="margin-top: 12px; text-align: center;">
+                    Already have an account? <a href="#" onclick="showGuardianLogin()">Log In</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Success State -->
+        <div id="gc-success" class="hidden">
+            <h2>Guardianship Confirmed!</h2>
+            <div class="status success">You have been confirmed as guardian. The minor's registration is now active.</div>
+            <div class="minor-info" id="gc-confirmed-info"></div>
+            <a href="public.html" class="btn btn-primary" style="display:block;text-align:center;margin-top:16px;">Go to Tournament Site</a>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        let confirmationData = null;
+
+        async function initGuardianConfirm() {
+            if (!token) {
+                showError('No confirmation token provided.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/guardians/confirm?token=${encodeURIComponent(token)}`, {
+                    credentials: 'include',
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showError(data.error || 'Invalid or expired confirmation link.');
+                    return;
+                }
+
+                if (data.confirmed) {
+                    showSuccess(data.minor);
+                    return;
+                }
+
+                if (data.needsAuth) {
+                    confirmationData = data;
+                    showNeedsAuth(data);
+                }
+            } catch (err) {
+                showError('Failed to verify confirmation. Please try again.');
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('gc-loading').classList.add('hidden');
+            document.getElementById('gc-error').classList.remove('hidden');
+            document.getElementById('gc-error-msg').textContent = msg;
+        }
+
+        function showNeedsAuth(data) {
+            document.getElementById('gc-loading').classList.add('hidden');
+            document.getElementById('gc-needs-auth').classList.remove('hidden');
+            document.getElementById('gc-minor-name').textContent = `${data.minor.firstName} ${data.minor.lastName}`;
+            document.getElementById('gc-guardian-email-display').textContent = data.guardianEmail;
+            // Pre-fill email fields
+            document.getElementById('gc-login-email').value = data.guardianEmail;
+            document.getElementById('gc-signup-email').value = data.guardianEmail;
+        }
+
+        function showSuccess(minor) {
+            document.getElementById('gc-loading').classList.add('hidden');
+            document.getElementById('gc-needs-auth').classList.add('hidden');
+            document.getElementById('gc-success').classList.remove('hidden');
+            if (minor) {
+                document.getElementById('gc-confirmed-info').innerHTML = `<p>Minor: <strong>${minor.firstName} ${minor.lastName}</strong></p>`;
+            }
+        }
+
+        function showGuardianSignup() {
+            document.getElementById('gc-login-form').classList.add('hidden');
+            document.getElementById('gc-signup-form').classList.remove('hidden');
+        }
+
+        function showGuardianLogin() {
+            document.getElementById('gc-signup-form').classList.add('hidden');
+            document.getElementById('gc-login-form').classList.remove('hidden');
+        }
+
+        async function guardianLogin(e) {
+            e.preventDefault();
+            const errorEl = document.getElementById('gc-login-error');
+            errorEl.classList.add('hidden');
+
+            try {
+                await Auth.login(
+                    document.getElementById('gc-login-email').value,
+                    document.getElementById('gc-login-password').value
+                );
+
+                // Now confirm guardianship
+                const res = await fetch('/api/guardians/confirm', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    errorEl.textContent = data.error || 'Confirmation failed';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+
+                showSuccess(data.minor);
+            } catch (err) {
+                errorEl.textContent = err.message || 'Login failed';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        async function guardianSignup(e) {
+            e.preventDefault();
+            const errorEl = document.getElementById('gc-signup-error');
+            errorEl.classList.add('hidden');
+
+            try {
+                await Auth.signup({
+                    email: document.getElementById('gc-signup-email').value,
+                    password: document.getElementById('gc-signup-password').value,
+                    firstName: document.getElementById('gc-signup-first').value,
+                    lastName: document.getElementById('gc-signup-last').value,
+                    roles: ['competitor'],
+                });
+
+                errorEl.textContent = 'Account created! Please check your email to verify, then return to this page and log in.';
+                errorEl.style.background = 'rgba(46,204,113,0.1)';
+                errorEl.style.borderColor = 'rgba(46,204,113,0.2)';
+                errorEl.style.color = '#2ecc71';
+                errorEl.classList.remove('hidden');
+            } catch (err) {
+                errorEl.textContent = err.message || 'Signup failed';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        initGuardianConfirm();
+    </script>
+</body>
+</html>

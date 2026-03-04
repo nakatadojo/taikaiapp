@@ -1,0 +1,877 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f7;
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --accent-blue: #e67e22;
+    --accent-blue-hover: #d35400;
+    --border-color: #d2d2d7;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hero Section */
+.hero {
+    position: relative;
+    height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+    background-size: cover;
+    background-position: center;
+    color: white;
+    text-align: center;
+    overflow: hidden;
+}
+
+.hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(2px);
+}
+
+.hero-content {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    padding: 40px;
+}
+
+.tournament-logo {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto 30px;
+    border-radius: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.tournament-logo.hidden {
+    display: none;
+}
+
+.hero h1 {
+    font-size: 4em;
+    font-weight: 700;
+    margin-bottom: 20px;
+    letter-spacing: -2px;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+}
+
+.hero-subtitle {
+    font-size: 1.5em;
+    font-weight: 400;
+    margin-bottom: 40px;
+    opacity: 0.95;
+    letter-spacing: -0.3px;
+}
+
+.hero-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* Navigation */
+.navbar {
+    position: sticky;
+    top: 0;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 0;
+    z-index: 100;
+    box-shadow: var(--shadow);
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    padding: 0 20px;
+}
+
+.nav-link {
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    transition: color 0.2s ease;
+    letter-spacing: -0.2px;
+}
+
+.nav-link:hover {
+    color: var(--accent-blue);
+}
+
+/* Sections */
+.section {
+    padding: 100px 20px;
+}
+
+.section-alt {
+    background: var(--bg-secondary);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+h2 {
+    font-size: 3em;
+    font-weight: 700;
+    margin-bottom: 20px;
+    text-align: center;
+    letter-spacing: -1.5px;
+    color: var(--text-primary);
+}
+
+.section-subtitle {
+    text-align: center;
+    font-size: 1.2em;
+    color: var(--text-secondary);
+    margin-bottom: 60px;
+    letter-spacing: -0.3px;
+}
+
+/* About Section */
+.about-content {
+    max-width: 800px;
+    margin: 0 auto;
+    font-size: 1.2em;
+    color: var(--text-secondary);
+    line-height: 1.8;
+    letter-spacing: -0.2px;
+}
+
+.about-content p {
+    margin-bottom: 20px;
+}
+
+/* Registration Grid */
+.registration-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+    margin-top: 60px;
+}
+
+.registration-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow);
+}
+
+.registration-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.card-icon {
+    font-size: 4em;
+    margin-bottom: 20px;
+}
+
+.registration-card h3 {
+    font-size: 1.8em;
+    font-weight: 600;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+}
+
+.registration-card p {
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    font-size: 1.05em;
+    letter-spacing: -0.2px;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: -0.3px;
+}
+
+.btn-primary {
+    background: var(--accent-blue);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-blue-hover);
+    transform: scale(1.02);
+    box-shadow: 0 4px 16px rgba(230, 126, 34, 0.3);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: white;
+    border: 2px solid white;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.02);
+}
+
+.section .btn-secondary {
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    background: var(--bg-primary);
+}
+
+.section .btn-secondary:hover {
+    background: var(--bg-secondary);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+}
+
+.modal-content {
+    position: relative;
+    background: var(--bg-primary);
+    border-radius: 20px;
+    padding: 48px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: var(--bg-secondary);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+}
+
+.modal-close:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+    transform: scale(1.1);
+}
+
+.registration-form h2 {
+    text-align: left;
+    margin-bottom: 32px;
+}
+
+.registration-form.hidden {
+    display: none;
+}
+
+/* Forms */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: 14px;
+    letter-spacing: -0.2px;
+}
+
+.form-group input,
+.form-group select {
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    border-radius: 10px;
+    font-size: 16px;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    letter-spacing: -0.3px;
+}
+
+.form-group input::placeholder {
+    color: var(--text-secondary);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 4px rgba(230, 126, 34, 0.1);
+}
+
+.form-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: flex-end;
+    margin-top: 32px;
+}
+
+/* Schedule */
+.schedule-notice {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 1.1em;
+}
+
+.schedule-notice.hidden,
+#public-schedule-container.hidden,
+#public-results-container.hidden {
+    display: none;
+}
+
+.schedule-row {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: auto 1fr 1fr auto;
+    gap: 20px;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.schedule-row:hover {
+    box-shadow: var(--shadow);
+    transform: translateX(4px);
+}
+
+.schedule-time {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--accent-blue);
+    min-width: 80px;
+}
+
+.schedule-mat {
+    display: inline-block;
+    padding: 6px 14px;
+    background: var(--accent-blue);
+    color: white;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.schedule-competitors {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.schedule-division {
+    color: var(--text-secondary);
+    font-size: 0.95em;
+}
+
+/* Footer */
+.footer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+    .hero {
+        height: 100vh;
+        height: 100svh; /* Safe viewport height for mobile */
+    }
+
+    .hero h1 {
+        font-size: 2.8em;
+        line-height: 1.1;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1em;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .hero-actions .btn {
+        width: 100%;
+        padding: 16px 32px;
+    }
+
+    h2 {
+        font-size: 2.5em;
+    }
+
+    .section {
+        padding: 60px 20px;
+    }
+
+    .registration-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .registration-card {
+        padding: 32px 24px;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .schedule-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .nav-container {
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: 14px;
+    }
+
+    .nav-link {
+        font-size: 14px;
+    }
+
+    .modal {
+        padding: 0;
+        align-items: flex-end; /* Bottom sheet on mobile */
+    }
+
+    .modal-content {
+        padding: 32px 20px;
+        border-radius: 20px 20px 0 0;
+        max-height: 85vh;
+        width: 100%;
+        margin: 0;
+    }
+
+    .modal-close {
+        top: 12px;
+        right: 12px;
+    }
+
+    .btn {
+        padding: 14px 28px;
+        font-size: 15px;
+        -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+    }
+
+    .form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+    }
+}
+
+/* Touch Improvements */
+@media (hover: none) and (pointer: coarse) {
+    /* Mobile touch devices */
+    .btn {
+        min-height: 44px; /* Apple HIG minimum touch target */
+    }
+
+    .nav-link {
+        padding: 8px 12px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    .registration-card {
+        cursor: default;
+    }
+
+    /* Remove hover states on touch */
+    .registration-card:hover {
+        transform: none;
+    }
+
+    .btn-primary:hover,
+    .btn-secondary:hover {
+        transform: none;
+    }
+
+    /* Active states for touch feedback */
+    .btn:active {
+        transform: scale(0.97);
+        opacity: 0.8;
+    }
+
+    .registration-card:active {
+        transform: scale(0.98);
+    }
+}
+
+/* Smooth Scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Success Message */
+.success-message {
+    background: #d1f4e0;
+    border: 1px solid #34c759;
+    color: #1d7a3f;
+    padding: 16px 24px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    font-weight: 500;
+    text-align: center;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Fade-in animations for scroll */
+.fade-in {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Safe area insets for notched devices */
+@supports (padding: max(0px)) {
+    body {
+        padding-left: max(0px, env(safe-area-inset-left));
+        padding-right: max(0px, env(safe-area-inset-right));
+    }
+
+    .modal-content {
+        padding-bottom: max(32px, env(safe-area-inset-bottom));
+    }
+
+    .navbar {
+        padding-left: max(0px, env(safe-area-inset-left));
+        padding-right: max(0px, env(safe-area-inset-right));
+    }
+}
+
+/* Pull-to-refresh prevention */
+body {
+    overscroll-behavior-y: contain;
+}
+
+/* Better focus states for accessibility */
+*:focus-visible {
+    outline: 3px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PUBLIC AUTH — Nav link + modal styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nav-auth-link {
+    margin-left: auto;
+    font-weight: 600;
+    color: var(--accent-blue) !important;
+}
+
+.nav-auth-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-auth-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.pub-auth-modal-content {
+    max-width: 480px;
+}
+
+.pub-auth-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border-color);
+    margin-bottom: 24px;
+}
+
+.pub-auth-tab {
+    flex: 1;
+    padding: 12px;
+    background: none;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    position: relative;
+    transition: color 0.2s;
+}
+
+.pub-auth-tab.active {
+    color: var(--accent-blue);
+}
+
+.pub-auth-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent-blue);
+}
+
+.pub-auth-form.hidden {
+    display: none;
+}
+
+.pub-auth-error {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.pub-auth-error.hidden {
+    display: none;
+}
+
+.pub-auth-success {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #16a34a;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.pub-auth-success.hidden {
+    display: none;
+}
+
+.pub-auth-link {
+    background: none;
+    border: none;
+    color: var(--accent-blue);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: center;
+}
+
+.pub-auth-link:hover {
+    text-decoration: underline;
+}
+
+.pub-role-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pub-role-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.pub-role-pill input[type="checkbox"] {
+    display: none;
+}
+
+.pub-role-pill.selected {
+    background: rgba(230, 126, 34, 0.1);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+.pub-role-pill:hover {
+    border-color: var(--accent-blue);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUTOCOMPLETE DROPDOWN — Academy search in registration form
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.autocomplete-dropdown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.autocomplete-dropdown:empty {
+    display: none;
+}
+
+.autocomplete-dropdown .autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-primary);
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.autocomplete-dropdown .autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-dropdown .autocomplete-item:hover {
+    background: var(--bg-secondary);
+}
+
+.autocomplete-dropdown .autocomplete-item.selected {
+    background: rgba(230, 126, 34, 0.08);
+    color: var(--accent-blue);
+    font-weight: 500;
+}
+
+/* Guardian email field (shown for under-18 competitors) */
+#pub-guardian-email-group small {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Academy autocomplete wrapper needs relative positioning */
+.form-group:has(#pub-academy-autocomplete) {
+    position: relative;
+}
+
+/* Fallback for browsers that don't support :has() */
+#pub-academy-autocomplete {
+    position: absolute;
+    left: 0;
+    right: 0;
+}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Tournament Data</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #000;
+            color: #0f0;
+        }
+        pre {
+            background: #111;
+            padding: 15px;
+            border: 1px solid #0f0;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            background: #0a84ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #0066cc;
+        }
+        .section {
+            margin: 20px 0;
+            border: 1px solid #333;
+            padding: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tournament Data Debugger</h1>
+
+    <div class="section">
+        <h2>Quick Actions</h2>
+        <button onclick="showAll()">Show All Data</button>
+        <button onclick="showDivisions()">Show Divisions</button>
+        <button onclick="showCompetitors()">Show Competitors</button>
+        <button onclick="showEventTypes()">Show Event Types</button>
+        <button onclick="testGeneration()">Test Division Generation</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script>
+        function showAll() {
+            const output = document.getElementById('output');
+            let html = '<div class="section">';
+
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                html += `<h3>${key}</h3><pre>${value}</pre>`;
+            }
+
+            html += '</div>';
+            output.innerHTML = html;
+        }
+
+        function showDivisions() {
+            const divisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+            const output = document.getElementById('output');
+            output.innerHTML = `
+                <div class="section">
+                    <h2>Divisions Structure</h2>
+                    <pre>${JSON.stringify(divisions, null, 2)}</pre>
+
+                    <h3>Analysis:</h3>
+                    <ul>
+                        <li>Number of events with divisions: ${Object.keys(divisions).length}</li>
+                        ${Object.keys(divisions).map(eventId => {
+                            const eventData = divisions[eventId];
+                            const hasCriteria = eventData && eventData.criteria;
+                            const hasGenerated = eventData && eventData.generated;
+                            const generatedCount = hasGenerated ? Object.keys(eventData.generated).length : 0;
+
+                            return `
+                                <li>Event ${eventId}:
+                                    <ul>
+                                        <li>Has criteria: ${hasCriteria}</li>
+                                        <li>Has generated: ${hasGenerated}</li>
+                                        <li>Generated divisions count: ${generatedCount}</li>
+                                        ${hasGenerated ? `<li>Division names: ${Object.keys(eventData.generated).join(', ')}</li>` : ''}
+                                    </ul>
+                                </li>
+                            `;
+                        }).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        function showCompetitors() {
+            const competitors = JSON.parse(localStorage.getItem('competitors') || '[]');
+            const output = document.getElementById('output');
+            output.innerHTML = `
+                <div class="section">
+                    <h2>Competitors</h2>
+                    <p><strong>Total:</strong> ${competitors.length}</p>
+                    <pre>${JSON.stringify(competitors.slice(0, 5), null, 2)}</pre>
+                    <p>... (showing first 5 of ${competitors.length})</p>
+                </div>
+            `;
+        }
+
+        function showEventTypes() {
+            const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+            const output = document.getElementById('output');
+            output.innerHTML = `
+                <div class="section">
+                    <h2>Event Types</h2>
+                    <pre>${JSON.stringify(eventTypes, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        function testGeneration() {
+            const competitors = JSON.parse(localStorage.getItem('competitors') || '[]');
+            const divisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+            const output = document.getElementById('output');
+
+            const testCriteria = [
+                {
+                    type: 'age',
+                    ranges: [
+                        { min: 5, max: 7, label: '5-7' },
+                        { min: 8, max: 10, label: '8-10' },
+                        { min: 11, max: 13, label: '11-13' }
+                    ]
+                },
+                {
+                    type: 'gender',
+                    ranges: [
+                        { value: 'Male', label: 'Male' },
+                        { value: 'Female', label: 'Female' }
+                    ]
+                }
+            ];
+
+            // Test build divisions function
+            function buildDivisions(competitors, criteria, prefix = '', index = 0) {
+                if (index >= criteria.length) {
+                    return { [prefix.trim()]: competitors };
+                }
+
+                const currentCriteria = criteria[index];
+                const divisions = {};
+
+                currentCriteria.ranges.forEach(range => {
+                    let filtered;
+
+                    switch(currentCriteria.type) {
+                        case 'age':
+                            filtered = competitors.filter(c => c.age >= range.min && c.age <= range.max);
+                            break;
+                        case 'gender':
+                            filtered = competitors.filter(c => c.gender === range.value);
+                            break;
+                        case 'weight':
+                            filtered = competitors.filter(c => c.weight >= range.min && c.weight <= range.max);
+                            break;
+                        case 'rank':
+                            filtered = competitors.filter(c => c.rank === range.value);
+                            break;
+                    }
+
+                    if (filtered.length > 0) {
+                        const newPrefix = prefix ? `${prefix} | ${range.label}` : range.label;
+                        const subDivisions = buildDivisions(filtered, criteria, newPrefix, index + 1);
+                        Object.assign(divisions, subDivisions);
+                    }
+                });
+
+                return divisions;
+            }
+
+            const result = buildDivisions(competitors, testCriteria);
+
+            output.innerHTML = `
+                <div class="section">
+                    <h2>Test Division Generation</h2>
+                    <p><strong>Test Criteria:</strong></p>
+                    <pre>${JSON.stringify(testCriteria, null, 2)}</pre>
+
+                    <p><strong>Result:</strong></p>
+                    <p>Generated ${Object.keys(result).length} divisions</p>
+
+                    <h3>Division Summary:</h3>
+                    <ul>
+                        ${Object.keys(result).map(divName => `
+                            <li>${divName}: ${result[divName].length} competitors</li>
+                        `).join('')}
+                    </ul>
+
+                    <h3>Full Result:</h3>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Auto-show all on load
+        showDivisions();
+    </script>
+</body>
+</html>

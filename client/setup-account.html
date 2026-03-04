@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Up Your Account — Tournament Manager</title>
+    <link rel="stylesheet" href="public-styles.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg-secondary);
+        }
+        .setup-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 48px;
+            max-width: 440px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+        }
+        .setup-card h2 {
+            text-align: left;
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+        .setup-card p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+        .setup-info {
+            background: rgba(230, 126, 34, 0.08);
+            border: 1px solid rgba(230, 126, 34, 0.2);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 24px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .setup-info strong {
+            color: var(--accent-blue);
+        }
+        .setup-error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .setup-error.hidden { display: none; }
+        .setup-success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #16a34a;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .setup-success.hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h2>Set Up Your Account</h2>
+        <p>Your coach has created an account for you. Choose a password to get started.</p>
+
+        <div class="setup-info">
+            You'll use this password to log in and manage your tournament registrations.
+        </div>
+
+        <div id="setup-error" class="setup-error hidden"></div>
+        <div id="setup-success" class="setup-success hidden"></div>
+
+        <form id="setup-form" onsubmit="handleSetup(event)">
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label for="setup-password">New Password</label>
+                <input type="password" id="setup-password" required placeholder="Min 8 chars, upper + lower + digit" autocomplete="new-password">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label for="setup-confirm">Confirm Password</label>
+                <input type="password" id="setup-confirm" required placeholder="Re-enter your password" autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary" id="setup-btn" style="width: 100%;">Set Password</button>
+        </form>
+
+        <div id="setup-done" class="hidden" style="text-align:center;padding:20px 0;">
+            <p style="font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Account set up successfully!</p>
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;">You can now log in with your email and new password.</p>
+            <a href="public.html" class="btn btn-primary">Go to Login</a>
+        </div>
+
+        <div id="setup-invalid" class="hidden" style="text-align:center;padding:20px 0;">
+            <p style="font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Invalid Setup Link</p>
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;">This link is invalid or has expired. Please contact your coach for a new invitation.</p>
+            <a href="public.html" class="btn btn-primary">Go to Tournament Site</a>
+        </div>
+    </div>
+
+    <script>
+        // Check for token on load
+        (function() {
+            const token = new URLSearchParams(window.location.search).get('token');
+            if (!token) {
+                document.getElementById('setup-form').classList.add('hidden');
+                document.getElementById('setup-invalid').classList.remove('hidden');
+                document.querySelector('.setup-info').classList.add('hidden');
+            }
+        })();
+
+        async function handleSetup(e) {
+            e.preventDefault();
+            const errorEl = document.getElementById('setup-error');
+            errorEl.classList.add('hidden');
+
+            const token = new URLSearchParams(window.location.search).get('token');
+            if (!token) {
+                errorEl.textContent = 'Invalid setup link. No token found.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const password = document.getElementById('setup-password').value;
+            const confirm = document.getElementById('setup-confirm').value;
+
+            if (password !== confirm) {
+                errorEl.textContent = 'Passwords do not match.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (password.length < 8) {
+                errorEl.textContent = 'Password must be at least 8 characters.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const btn = document.getElementById('setup-btn');
+            btn.disabled = true;
+            btn.textContent = 'Setting up...';
+
+            try {
+                const res = await fetch('/api/auth/setup-account', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, password }),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    const msg = data.errors
+                        ? data.errors.map(e => e.msg).join('. ')
+                        : (data.error || 'Setup failed. Please try again.');
+                    errorEl.textContent = msg;
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+
+                document.getElementById('setup-form').classList.add('hidden');
+                document.querySelector('.setup-info').classList.add('hidden');
+                document.getElementById('setup-done').classList.remove('hidden');
+            } catch (err) {
+                errorEl.textContent = 'Network error. Please try again.';
+                errorEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Set Password';
+            }
+        }
+    </script>
+</body>
+</html>

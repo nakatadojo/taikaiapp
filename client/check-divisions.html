@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Divisions Data</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #000;
+            color: #0f0;
+        }
+        pre {
+            background: #111;
+            padding: 15px;
+            border: 1px solid #0f0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            background: #0a84ff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #0066cc;
+        }
+        .danger {
+            background: #ff453a;
+        }
+        .danger:hover {
+            background: #cc3630;
+        }
+    </style>
+</head>
+<body>
+    <h1>Divisions Data Inspector</h1>
+
+    <button onclick="showData()">Show Current Data</button>
+    <button onclick="fixData()">Attempt Auto-Fix</button>
+    <button onclick="clearAndRebuild()" class="danger">Clear & Start Fresh</button>
+
+    <div id="output"></div>
+
+    <script>
+        function showData() {
+            const divisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+            const output = document.getElementById('output');
+
+            let html = '<h2>Current Divisions Data:</h2>';
+            html += '<pre>' + JSON.stringify(divisions, null, 2) + '</pre>';
+
+            html += '<h2>Analysis:</h2><ul>';
+
+            Object.keys(divisions).forEach(eventId => {
+                const eventData = divisions[eventId];
+                html += `<li><strong>Event ID ${eventId}:</strong><ul>`;
+                html += `<li>Has criteria: ${!!eventData.criteria} ${eventData.criteria ? `(${eventData.criteria.length} criteria)` : ''}</li>`;
+                html += `<li>Has generated: ${!!eventData.generated} ${eventData.generated ? `(${Object.keys(eventData.generated).length} divisions)` : ''}</li>`;
+
+                if (eventData.criteria && eventData.criteria.length > 0) {
+                    html += '<li>Criteria details:<ul>';
+                    eventData.criteria.forEach((c, i) => {
+                        html += `<li>Criteria ${i + 1}: ${c.type} - ${c.ranges ? c.ranges.length : 0} ranges</li>`;
+                    });
+                    html += '</ul></li>';
+                }
+
+                html += '</ul></li>';
+            });
+
+            html += '</ul>';
+            output.innerHTML = html;
+        }
+
+        function fixData() {
+            const divisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+            let fixed = false;
+
+            Object.keys(divisions).forEach(eventId => {
+                const eventData = divisions[eventId];
+
+                // Fix missing generated object
+                if (!eventData.generated) {
+                    eventData.generated = {};
+                    fixed = true;
+                }
+
+                // Fix missing criteria
+                if (!eventData.criteria) {
+                    eventData.criteria = [];
+                    fixed = true;
+                }
+
+                divisions[eventId] = eventData;
+            });
+
+            if (fixed) {
+                localStorage.setItem('divisions', JSON.stringify(divisions));
+                alert('Data fixed! Check the output below.');
+                showData();
+            } else {
+                alert('No issues found - data looks okay!');
+            }
+        }
+
+        function clearAndRebuild() {
+            if (!confirm('This will DELETE all divisions data and start fresh. Continue?')) {
+                return;
+            }
+
+            if (!confirm('Are you ABSOLUTELY sure? This cannot be undone!')) {
+                return;
+            }
+
+            // Clear divisions
+            localStorage.setItem('divisions', JSON.stringify({}));
+
+            alert('Divisions cleared! Go back to the main app and rebuild your division criteria.');
+            showData();
+        }
+
+        // Auto-show on load
+        showData();
+    </script>
+</body>
+</html>
