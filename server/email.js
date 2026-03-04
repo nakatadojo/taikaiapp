@@ -18,7 +18,10 @@ if (process.env.RESEND_API_KEY) {
   console.log('ℹ RESEND_API_KEY not set — emails will be logged to console');
 }
 
-const EMAIL_FROM = 'Taikai <noreply@taikaiapp.com>';
+console.log(`  Email from: ${process.env.RESEND_FROM_EMAIL || 'Taikai <noreply@taikaiapp.com>'}`);
+console.log(`  APP_URL:    ${process.env.APP_URL || '(not set — defaulting to http://localhost:3000)'}`);
+
+const EMAIL_FROM = process.env.RESEND_FROM_EMAIL || 'Taikai <noreply@taikaiapp.com>';
 const APP_URL = () => process.env.APP_URL || 'http://localhost:3000';
 
 // ── Templates ────────────────────────────────────────────────────────────────
@@ -50,14 +53,25 @@ async function sendEmail(to, subject, html) {
     return;
   }
 
-  const result = await resend.emails.send({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    html,
-  });
+  try {
+    const result = await resend.emails.send({
+      from: EMAIL_FROM,
+      to,
+      subject,
+      html,
+    });
 
-  return result;
+    if (result.error) {
+      console.error('✗ Resend API error:', result.error);
+      throw new Error(result.error.message || 'Email send failed');
+    }
+
+    console.log(`✓ Email sent to ${to}: "${subject}"`);
+    return result;
+  } catch (err) {
+    console.error(`✗ Failed to send email to ${to}:`, err.message || err);
+    throw err;
+  }
 }
 
 // ── Convenience wrappers ─────────────────────────────────────────────────────
