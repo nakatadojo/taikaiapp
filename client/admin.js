@@ -81,11 +81,11 @@ async function handleAdminLogin(e) {
   errEl.classList.add('hidden');
   btn.disabled = true;
   btn.textContent = 'Signing in...';
+  const loginEmail = document.getElementById('auth-login-email').value;
 
   try {
-    const email = document.getElementById('auth-login-email').value;
     const password = document.getElementById('auth-login-password').value;
-    await Auth.login(email, password);
+    await Auth.login(loginEmail, password);
 
     // Check for super_admin role
     if (!Auth.hasRole('super_admin') && !Auth.hasRole('admin')) {
@@ -98,11 +98,32 @@ async function handleAdminLogin(e) {
     hideEl('auth-gate');
     initDashboard();
   } catch (err) {
-    errEl.textContent = err.error || 'Login failed';
+    if (err.code === 'EMAIL_NOT_VERIFIED') {
+      errEl.innerHTML = (err.error || 'Please verify your email address before logging in') +
+        '<br><button type="button" onclick="handleResendVerificationAdmin()" style="margin-top:8px;background:none;border:1px solid var(--accent,#dc2626);color:var(--accent,#dc2626);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px;">Resend Verification Email</button>';
+      errEl.dataset.email = loginEmail;
+    } else {
+      errEl.textContent = err.error || 'Login failed';
+    }
     errEl.classList.remove('hidden');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Sign In';
+  }
+}
+
+async function handleResendVerificationAdmin() {
+  const errEl = document.getElementById('auth-login-error');
+  const email = errEl.dataset.email;
+  if (!email) return;
+  try {
+    await Auth.resendVerification(email);
+    errEl.innerHTML = '';
+    errEl.textContent = 'A new verification link has been sent to your email. Please check your inbox.';
+    errEl.className = 'auth-success';
+    errEl.classList.remove('hidden');
+  } catch (err) {
+    errEl.textContent = err.error || 'Failed to resend verification email.';
   }
 }
 

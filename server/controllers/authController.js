@@ -468,12 +468,53 @@ async function updateSettings(req, res, next) {
   }
 }
 
+/**
+ * POST /api/auth/resend-verification
+ * Generates a new verification token and sends the email again.
+ */
+async function resendVerification(req, res, next) {
+  try {
+    const { email } = req.body;
+
+    // Always return success (no email enumeration)
+    const successMsg = { message: 'If an unverified account with that email exists, a new verification link has been sent.' };
+
+    const user = await userQueries.findByEmail(email);
+    if (!user || user.email_verified) {
+      return res.json(successMsg);
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE users SET verification_token = $1, verification_token_expires = $2, updated_at = NOW() WHERE id = $3`,
+      [verificationToken, verificationTokenExpires, user.id]
+    );
+
+    try {
+      await sendVerificationEmail(email, verificationToken, {
+        accountType: user.account_type,
+        organizationName: user.organization_name,
+      });
+    } catch (emailErr) {
+      console.error('Resend verification email failed:', emailErr.message);
+    }
+
+    res.json(successMsg);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   signup,
   verifyEmail,
   login,
   forgotPassword,
   resetPassword,
+  resendVerification,
   getMe,
   updateMe,
   logout,

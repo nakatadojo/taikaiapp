@@ -110,6 +110,16 @@ const Auth = (() => {
     },
 
     /**
+     * Resend email verification link.
+     */
+    async resendVerification(email) {
+      return _fetch(`${API}/resend-verification`, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+    },
+
+    /**
      * Update current user profile.
      */
     async updateProfile({ firstName, lastName, phone, dateOfBirth }) {

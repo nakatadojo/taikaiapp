@@ -138,6 +138,16 @@ router.post('/setup-account',
   authController.setupAccount
 );
 
+// POST /api/auth/resend-verification
+router.post('/resend-verification',
+  strictLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  ],
+  validate,
+  authController.resendVerification
+);
+
 // POST /api/auth/logout
 router.post('/logout',
   authController.logout

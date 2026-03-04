@@ -655,17 +655,42 @@ function showPubAuthSuccess(formId, msg) {
 async function handlePublicLogin(e) {
     e.preventDefault();
     const btn = document.getElementById('pub-login-btn');
+    const loginEmail = document.getElementById('pub-auth-email').value;
     btn.disabled = true; btn.textContent = 'Signing in...';
     try {
-        await Auth.login(
-            document.getElementById('pub-auth-email').value,
-            document.getElementById('pub-auth-password').value
-        );
+        await Auth.login(loginEmail, document.getElementById('pub-auth-password').value);
         closePublicAuth();
     } catch (err) {
-        showPubAuthError('login', err.error || 'Login failed.');
+        if (err.code === 'EMAIL_NOT_VERIFIED') {
+            const errEl = document.getElementById('pub-auth-login-error');
+            if (errEl) {
+                errEl.innerHTML = (err.error || 'Please verify your email address before logging in') +
+                    '<br><button type="button" onclick="handlePublicResendVerification()" style="margin-top:8px;background:none;border:1px solid var(--accent,#dc2626);color:var(--accent,#dc2626);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px;">Resend Verification Email</button>';
+                errEl.dataset.email = loginEmail;
+                errEl.classList.remove('hidden');
+            }
+        } else {
+            showPubAuthError('login', err.error || 'Login failed.');
+        }
     } finally {
         btn.disabled = false; btn.textContent = 'Sign In';
+    }
+}
+
+async function handlePublicResendVerification() {
+    const errEl = document.getElementById('pub-auth-login-error');
+    const email = errEl?.dataset?.email;
+    if (!email) return;
+    try {
+        await Auth.resendVerification(email);
+        const succEl = document.getElementById('pub-auth-login-error');
+        if (succEl) {
+            succEl.className = 'pub-auth-success';
+            succEl.textContent = 'A new verification link has been sent to your email. Please check your inbox.';
+            succEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        showPubAuthError('login', err.error || 'Failed to resend verification email.');
     }
 }
 

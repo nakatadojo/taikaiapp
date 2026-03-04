@@ -1656,22 +1656,43 @@
             e.preventDefault();
             const btn = $('#login-submit-btn');
             const msgEl = $('#login-message');
+            const loginEmail = $('#login-email').value.trim();
             btn.disabled = true;
             btn.textContent = 'Signing In...';
             msgEl.className = 'auth-message';
 
             try {
-                await Auth.login($('#login-email').value.trim(), $('#login-password').value);
+                await Auth.login(loginEmail, $('#login-password').value);
                 await fetchCreditBalance();
                 userProfile = Auth.currentUser;
                 navigateTo('dashboard');
                 showToast('Welcome back!', 'success');
             } catch (err) {
                 msgEl.className = 'auth-message error';
-                msgEl.textContent = err.message || 'Login failed. Check your credentials.';
+                if (err.code === 'EMAIL_NOT_VERIFIED') {
+                    msgEl.innerHTML = (err.error || 'Please verify your email address before logging in') +
+                        '<br><button type="button" onclick="handleResendVerification()" style="margin-top:8px;background:none;border:1px solid var(--accent);color:var(--accent);padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px;">Resend Verification Email</button>';
+                    msgEl.dataset.email = loginEmail;
+                } else {
+                    msgEl.textContent = err.error || err.message || 'Login failed. Check your credentials.';
+                }
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Sign In';
+            }
+        };
+
+        window.handleResendVerification = async function() {
+            const msgEl = $('#login-message');
+            const email = msgEl.dataset.email;
+            if (!email) return;
+            try {
+                await Auth.resendVerification(email);
+                msgEl.className = 'auth-message success';
+                msgEl.textContent = 'A new verification link has been sent to your email. Please check your inbox.';
+            } catch (err) {
+                msgEl.className = 'auth-message error';
+                msgEl.textContent = err.error || 'Failed to resend verification email.';
             }
         };
 
