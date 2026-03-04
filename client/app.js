@@ -256,7 +256,7 @@ function handleLogoError(img) {
     const h1 = document.createElement('h1');
     h1.style.margin = '20px 0';
     h1.style.fontSize = '2em';
-    h1.innerHTML = 'REI <span style="font-weight: 300;">LABS</span>';
+    h1.innerHTML = 'TAIKAI';
     img.parentNode.replaceChild(h1, img);
 }
 

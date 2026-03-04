@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1200">
-    <title>Karate Tournament Manager</title>
+    <title>Taikai — Tournament Manager</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/taikai-logo.js"></script>
 </head>
 <body>
     <!-- ===== AUTH GATE (login/signup overlay) ===== -->
     <div id="auth-gate" class="auth-gate">
         <div class="auth-gate-card">
             <div class="auth-gate-header">
-                <img src="logo.png" alt="Logo" style="height: 48px;" onerror="this.style.display='none'">
-                <h1>Tournament Manager</h1>
+                <img data-taikai-logo alt="Taikai" style="height:48px;width:auto;">
+                <h1>Taikai</h1>
                 <p class="auth-gate-subtitle">Sign in to access the admin dashboard</p>
             </div>
 
@@ -98,8 +99,8 @@
         <!-- ===== LEFT SIDEBAR ===== -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <img id="app-logo" src="logo.png" alt="REI LABS" style="height: 36px;" onerror="handleLogoError(this)">
-                <span class="sidebar-brand">REI LABS</span>
+                <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
+                <span class="sidebar-brand">TAIKAI</span>
             </div>
 
             <div class="sidebar-tournament">
