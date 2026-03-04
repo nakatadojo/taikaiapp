@@ -864,11 +864,11 @@ function updateMedalCountDisplay() {
 
 function openMedalCountModal() {
     updateMedalCountDisplay();
-    document.getElementById('medal-count-modal').style.display = 'flex';
+    document.getElementById('medal-count-modal').classList.remove('hidden');
 }
 
 function closeMedalCountModal() {
-    document.getElementById('medal-count-modal').style.display = 'none';
+    document.getElementById('medal-count-modal').classList.add('hidden');
 }
 
 // Navigation
@@ -8183,7 +8183,7 @@ function viewBracket(bracketId) {
     }
 
     // Show modal
-    document.getElementById('bracket-viewer-modal').style.display = 'flex';
+    document.getElementById('bracket-viewer-modal').classList.remove('hidden');
 }
 
 function closeBracketViewer() {
@@ -8192,7 +8192,7 @@ function closeBracketViewer() {
             return;
         }
     }
-    document.getElementById('bracket-viewer-modal').style.display = 'none';
+    document.getElementById('bracket-viewer-modal').classList.add('hidden');
     currentViewingBracket = null;
     bracketEditMode = false;
     originalBracketState = null;
@@ -8992,11 +8992,11 @@ function showDivisionTransfer() {
     renderDivisionTransferModal(competitor, currentDivision, allDivisionsData, currentEventId);
 
     // Show transfer modal
-    document.getElementById('division-transfer-modal').style.display = 'flex';
+    document.getElementById('division-transfer-modal').classList.remove('hidden');
 }
 
 function closeDivisionTransfer() {
-    document.getElementById('division-transfer-modal').style.display = 'none';
+    document.getElementById('division-transfer-modal').classList.add('hidden');
 }
 
 function getCompatibilityInfo(competitor, divisionName) {
