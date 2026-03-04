@@ -132,10 +132,14 @@ async function signup(req, res, next) {
     }
 
     // Send verification email (director-specific template for event directors)
-    await sendVerificationEmail(email, verificationToken, {
-      accountType: acctType,
-      organizationName,
-    });
+    try {
+      await sendVerificationEmail(email, verificationToken, {
+        accountType: acctType,
+        organizationName,
+      });
+    } catch (emailErr) {
+      console.error('Verification email failed:', emailErr.message);
+    }
 
     res.status(201).json({
       message: 'Account created. Please check your email to verify your address.',
@@ -253,7 +257,13 @@ async function forgotPassword(req, res, next) {
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await userQueries.setResetToken(email, resetToken, expires);
-    await sendPasswordResetEmail(email, resetToken);
+
+    // Send email but don't fail the request if email service is down
+    try {
+      await sendPasswordResetEmail(email, resetToken);
+    } catch (emailErr) {
+      console.error('Password reset email failed:', emailErr.message);
+    }
 
     res.json(successMsg);
   } catch (err) {
