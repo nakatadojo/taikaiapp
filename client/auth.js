@@ -55,10 +55,10 @@ const Auth = (() => {
     /**
      * Sign up a new user.
      */
-    async signup({ email, password, firstName, lastName, phone, dateOfBirth, roles }) {
+    async signup({ email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName }) {
       const data = await _fetch(`${API}/signup`, {
         method: 'POST',
-        body: JSON.stringify({ email, password, firstName, lastName, phone, dateOfBirth, roles }),
+        body: JSON.stringify({ email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName }),
       });
       return data;
     },

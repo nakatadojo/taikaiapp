@@ -5,6 +5,7 @@ const userQueries = require('../db/queries/users');
 const tournamentQueries = require('../db/queries/tournaments');
 const profileQueries = require('../db/queries/profiles');
 const discountQueries = require('../db/queries/discounts');
+const creditQueries = require('../db/queries/credits');
 const pool = require('../db/pool');
 const { sendGuardianConfirmationEmail, sendRegistrationConfirmationEmail } = require('../config/email');
 
@@ -290,6 +291,17 @@ async function checkout(req, res, next) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
+    // Credit check: ensure Event Director has enough credits
+    if (tournament.created_by) {
+      const directorBalance = await creditQueries.getBalance(tournament.created_by);
+      if (directorBalance < competitors.length) {
+        return res.status(402).json({
+          error: 'Registration is currently unavailable. Please contact the event organizer.',
+          code: 'INSUFFICIENT_CREDITS',
+        });
+      }
+    }
+
     const basePrice = parseFloat(tournament.base_event_price) || 75;
     const addonPrice = parseFloat(tournament.addon_event_price) || 25;
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
@@ -461,10 +473,19 @@ async function checkout(req, res, next) {
 
     // If free (0 total), create registrations immediately
     if (finalTotal === 0) {
-      await createRegistrationsFromCart(
+      const freeRegIds = await createRegistrationsFromCart(
         req.user.id, tournamentId, validatedCompetitors,
         txResult.rows[0].id, stripeSessionId, discountData
       );
+
+      // Deduct credits from Event Director
+      if (tournament.created_by) {
+        await creditQueries.deductForRegistration(
+          tournament.created_by, validatedCompetitors.length, tournamentId,
+          freeRegIds || [],
+          `Registration: ${validatedCompetitors.map(c => c.name).join(', ')} for ${tournament.name}`
+        );
+      }
 
       // Send confirmation email
       try {
@@ -544,10 +565,23 @@ async function confirmPayment(req, res, next) {
       }
 
       // Create all registrations
-      await createRegistrationsFromCart(
+      const registrationIds = await createRegistrationsFromCart(
         userId, tournamentId, cartData.competitors,
         existing.rows[0].id, sessionId, discountData
       );
+
+      // Deduct credits from Event Director (1 per competitor)
+      if (tournament.created_by) {
+        const competitorCount = cartData.competitors.length;
+        const deductResult = await creditQueries.deductForRegistration(
+          tournament.created_by, competitorCount, tournamentId,
+          registrationIds || [],
+          `Registration: ${cartData.competitors.map(c => c.name).join(', ')} for ${tournament.name}`
+        );
+        if (!deductResult.success) {
+          console.warn('Credit deduction failed (registrations already created):', deductResult.error);
+        }
+      }
 
       // Mark payment as completed
       await pool.query(
@@ -672,6 +706,7 @@ async function createRegistrationsFromCart(
   userId, tournamentId, competitors, paymentTransactionId, stripeSessionId, discountData
 ) {
   const client = await pool.connect();
+  const registrationIds = [];
   try {
     await client.query('BEGIN');
 
@@ -689,6 +724,7 @@ async function createRegistrationsFromCart(
         ]
       );
       const registration = regResult.rows[0];
+      registrationIds.push(registration.id);
 
       // Create registration events
       for (let i = 0; i < comp.events.length; i++) {
@@ -712,6 +748,7 @@ async function createRegistrationsFromCart(
     }
 
     await client.query('COMMIT');
+    return registrationIds;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

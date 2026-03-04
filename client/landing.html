@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taikai - The Modern Tournament Platform</title>
+    <style>
+        /* ─── Reset & Variables ─── */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0f0f14;
+            --accent: #e67e22;
+            --accent-hover: #cf6d17;
+            --text: #ffffff;
+            --text-muted: rgba(255,255,255,0.6);
+            --text-dim: rgba(255,255,255,0.35);
+            --glass: rgba(255,255,255,0.06);
+            --glass-border: rgba(255,255,255,0.08);
+            --glass-hover: rgba(255,255,255,0.1);
+            --radius: 14px;
+            --radius-sm: 10px;
+            --green: #22c55e;
+            --red: #ef4444;
+            --blue: #3b82f6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        /* ─── Navbar ─── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            height: 64px;
+            background: rgba(15, 15, 20, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .navbar-brand {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: var(--accent);
+        }
+
+        .navbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-btn {
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+        }
+
+        .nav-btn-ghost:hover {
+            color: var(--text);
+            background: var(--glass);
+        }
+
+        .nav-btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .nav-btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .nav-link {
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            padding: 8px 14px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--text);
+            background: var(--glass);
+        }
+
+        /* ─── Hero Section ─── */
+        .hero {
+            position: relative;
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(15,15,20,0.9)),
+                url('/assets/hero.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 0;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 700px;
+            padding: 0 24px;
+        }
+
+        .hero-brand {
+            font-size: 72px;
+            font-weight: 900;
+            letter-spacing: 12px;
+            color: var(--accent);
+            margin-bottom: 16px;
+            line-height: 1;
+        }
+
+        .hero-tagline {
+            font-size: 22px;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin-bottom: 48px;
+            line-height: 1.5;
+        }
+
+        .hero-ctas {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn-hero {
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: var(--radius-sm);
+            border: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-hero-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-hero-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(230, 126, 34, 0.3);
+        }
+
+        .btn-hero-outline {
+            background: rgba(230, 126, 34, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(230, 126, 34, 0.3);
+        }
+
+        .btn-hero-outline:hover {
+            background: rgba(230, 126, 34, 0.25);
+            transform: translateY(-2px);
+        }
+
+        /* ─── Directory Section ─── */
+        .directory-section {
+            padding: 80px 32px 120px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .directory-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .directory-header h2 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .directory-header p {
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        /* ─── Filters Bar ─── */
+        .filters-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 32px;
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            pointer-events: none;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 42px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .search-input:focus {
+            border-color: var(--accent);
+        }
+
+        .sort-pills {
+            display: flex;
+            gap: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+        }
+
+        .sort-pill {
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            background: var(--glass);
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sort-pill:not(:last-child) {
+            border-right: 1px solid var(--glass-border);
+        }
+
+        .sort-pill.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .sort-pill:hover:not(.active) {
+            background: var(--glass-hover);
+            color: var(--text);
+        }
+
+        .toggle-past {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-muted);
+            user-select: none;
+        }
+
+        .toggle-past input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        /* ─── Card Grid ─── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr);
+            gap: 20px;
+        }
+
+        @media (min-width: 640px) {
+            .card-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 960px) {
+            .card-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        /* ─── Tournament Card ─── */
+        .tournament-card {
+            display: flex;
+            flex-direction: column;
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .tournament-card:hover {
+            border-color: rgba(230, 126, 34, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+        }
+
+        .card-cover {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .card-cover-placeholder {
+            width: 100%;
+            height: 180px;
+            background: linear-gradient(135deg, rgba(230,126,34,0.2), rgba(52,152,219,0.15));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-cover-placeholder svg {
+            opacity: 0.25;
+        }
+
+        .card-body {
+            padding: 18px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .card-top-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .card-name {
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.3;
+            flex: 1;
+        }
+
+        .card-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+
+        .badge-open {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--green);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+        }
+
+        .badge-closed {
+            background: rgba(255,255,255,0.08);
+            color: var(--text-muted);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        .badge-completed {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--blue);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        .card-meta {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .card-meta svg {
+            vertical-align: -2px;
+            margin-right: 4px;
+            opacity: 0.5;
+        }
+
+        .card-org {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .card-competitors {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: auto;
+            padding-top: 10px;
+        }
+
+        .card-competitors strong {
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        /* ─── Loading / Empty States ─── */
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px 20px;
+            gap: 16px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--glass-border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+        }
+
+        .empty-state svg {
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* ─── Footer ─── */
+        .footer {
+            text-align: center;
+            padding: 32px 20px;
+            border-top: 1px solid var(--glass-border);
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .footer span {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 640px) {
+            .navbar {
+                padding: 0 16px;
+            }
+
+            .hero-brand {
+                font-size: 48px;
+                letter-spacing: 8px;
+            }
+
+            .hero-tagline {
+                font-size: 17px;
+                margin-bottom: 32px;
+            }
+
+            .btn-hero {
+                padding: 12px 24px;
+                font-size: 14px;
+            }
+
+            .directory-section {
+                padding: 48px 16px 80px;
+            }
+
+            .directory-header h2 {
+                font-size: 24px;
+            }
+
+            .filters-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .search-wrapper {
+                min-width: unset;
+            }
+
+            .sort-pills {
+                align-self: flex-start;
+            }
+        }
+
+        /* ─── Login Modal ─── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1a24;
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 32px;
+            width: 100%;
+            max-width: 400px;
+            margin: 16px;
+        }
+
+        .modal h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .modal-field {
+            margin-bottom: 16px;
+        }
+
+        .modal-field label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .modal-field input {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .modal-field input:focus {
+            border-color: var(--accent);
+        }
+
+        .modal-error {
+            color: var(--red);
+            font-size: 13px;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .modal-submit {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .modal-submit:hover {
+            background: var(--accent-hover);
+        }
+
+        .modal-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-footer {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .modal-footer a {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .modal-footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* ─── Utility ─── */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== NAVBAR ===== -->
+    <nav class="navbar">
+        <a href="/landing.html" class="navbar-brand">TAIKAI</a>
+        <div class="navbar-actions" id="navbar-actions">
+            <!-- Populated by JS based on auth state -->
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content">
+            <h1 class="hero-brand">TAIKAI</h1>
+            <p class="hero-tagline">The Modern Tournament Platform</p>
+            <div class="hero-ctas">
+                <a href="#directory" class="btn-hero btn-hero-primary">Find a Tournament</a>
+                <a href="/director.html#signup" class="btn-hero btn-hero-outline">Host a Tournament</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TOURNAMENT DIRECTORY ===== -->
+    <section class="directory-section" id="directory">
+        <div class="directory-header">
+            <h2>Tournament Directory</h2>
+            <p>Browse upcoming tournaments and register to compete</p>
+        </div>
+
+        <div class="filters-bar">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" class="search-input" id="search-input" placeholder="Search by name or city..." autocomplete="off">
+            </div>
+
+            <div class="sort-pills">
+                <button class="sort-pill active" data-sort="upcoming">Upcoming</button>
+                <button class="sort-pill" data-sort="name">By Name</button>
+            </div>
+
+            <label class="toggle-past">
+                <input type="checkbox" id="toggle-past">
+                Show Past Tournaments
+            </label>
+        </div>
+
+        <div id="tournament-list">
+            <div class="loading-state" id="loading-state">
+                <div class="spinner"></div>
+                <div class="loading-text">Loading tournaments...</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        Powered by <span>Taikai</span> / <span>Kimesoft</span>
+    </footer>
+
+    <!-- ===== LOGIN MODAL ===== -->
+    <div class="modal-overlay" id="login-modal">
+        <div class="modal" style="position: relative;">
+            <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+            <h2>Log In</h2>
+            <div class="modal-error" id="login-error"></div>
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="modal-field">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="modal-field">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Your password" autocomplete="current-password">
+                </div>
+                <button type="submit" class="modal-submit" id="login-submit">Sign In</button>
+            </form>
+            <div class="modal-footer">
+                Don't have an account? <a href="/director.html#signup">Sign up</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ── State ──
+        let currentUser = null;
+        let currentSort = 'upcoming';
+        let currentSearch = '';
+        let includePast = false;
+        let debounceTimer = null;
+
+        // ── Date Formatter ──
+        const dateFmt = new Intl.DateTimeFormat('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        // ── Init ──
+        document.addEventListener('DOMContentLoaded', async () => {
+            checkAuth();
+            fetchTournaments();
+            bindEvents();
+        });
+
+        // ── Auth Check ──
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/me', { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentUser = data.user;
+                }
+            } catch (e) {
+                // Not logged in
+            }
+            renderNav();
+        }
+
+        // ── Render Nav ──
+        function renderNav() {
+            const nav = document.getElementById('navbar-actions');
+            if (currentUser) {
+                const roles = currentUser.roles || [];
+                const isDirector = roles.includes('event_director');
+                const isAdmin = roles.includes('admin');
+                const dashboardUrl = isAdmin ? '/index.html' : '/director.html';
+                const dashboardLabel = isAdmin ? 'Admin Dashboard' : 'Dashboard';
+
+                nav.innerHTML = `
+                    <a href="${dashboardUrl}" class="nav-link">${dashboardLabel}</a>
+                    <button class="nav-btn nav-btn-ghost" onclick="handleLogout()">Log Out</button>
+                `;
+            } else {
+                nav.innerHTML = `
+                    <button class="nav-btn nav-btn-ghost" onclick="openLoginModal()">Log In</button>
+                    <a href="/director.html#signup" class="nav-btn nav-btn-primary">Host a Tournament</a>
+                `;
+            }
+        }
+
+        // ── Fetch Tournaments ──
+        async function fetchTournaments() {
+            const listEl = document.getElementById('tournament-list');
+            listEl.innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Loading tournaments...</div>
+                </div>
+            `;
+
+            try {
+                const params = new URLSearchParams();
+                if (currentSearch) params.set('search', currentSearch);
+                if (currentSort === 'name') params.set('sort', 'name');
+                if (includePast) params.set('includePast', 'true');
+
+                const qs = params.toString();
+                const url = '/api/tournaments/directory' + (qs ? '?' + qs : '');
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Failed to load tournaments');
+
+                const data = await res.json();
+                renderTournaments(data.tournaments || []);
+            } catch (err) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <h3>Unable to load tournaments</h3>
+                        <p>${escapeHtml(err.message)}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // ── Render Tournament Cards ──
+        function renderTournaments(tournaments) {
+            const listEl = document.getElementById('tournament-list');
+
+            if (!tournaments.length) {
+                listEl.innerHTML = `
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <h3>No tournaments found</h3>
+                        <p>Try adjusting your search or check back later for upcoming events.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'card-grid';
+
+            tournaments.forEach(t => {
+                const card = document.createElement('article');
+                card.className = 'tournament-card';
+                card.onclick = () => {
+                    window.location.href = '/tournaments/' + encodeURIComponent(t.slug || t.id);
+                };
+
+                const status = getStatus(t);
+                const dateStr = t.date ? dateFmt.format(new Date(t.date)) : 'Date TBD';
+                const location = buildLocation(t);
+                const org = t.organization_name || buildDirectorName(t);
+                const count = t.competitor_count || 0;
+
+                let coverHtml;
+                if (t.cover_image_url) {
+                    coverHtml = `<img class="card-cover" src="${escapeHtml(t.cover_image_url)}" alt="${escapeHtml(t.name)}" loading="lazy" onerror="this.outerHTML=defaultCoverHtml()">`;
+                } else {
+                    coverHtml = `
+                        <div class="card-cover-placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M6 3h12l4 6-10 13L2 9z"></path>
+                            </svg>
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    ${coverHtml}
+                    <div class="card-body">
+                        <div class="card-top-row">
+                            <h3 class="card-name">${escapeHtml(t.name)}</h3>
+                            <span class="card-badge ${status.cls}">${status.label}</span>
+                        </div>
+                        <div class="card-meta">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            ${escapeHtml(dateStr)}
+                        </div>
+                        ${location ? `
+                        <div class="card-meta">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                            ${escapeHtml(location)}
+                        </div>
+                        ` : ''}
+                        ${org ? `<div class="card-org">${escapeHtml(org)}</div>` : ''}
+                        <div class="card-competitors"><strong>${count}</strong> competitor${count !== 1 ? 's' : ''} registered</div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+
+            listEl.innerHTML = '';
+            listEl.appendChild(grid);
+        }
+
+        // ── Status Logic ──
+        function getStatus(t) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tournDate = t.date ? new Date(t.date) : null;
+
+            if (tournDate && tournDate < today) {
+                return { label: 'Completed', cls: 'badge-completed' };
+            }
+            if (t.registration_open && (tournDate === null || tournDate >= today)) {
+                return { label: 'Registration Open', cls: 'badge-open' };
+            }
+            return { label: 'Registration Closed', cls: 'badge-closed' };
+        }
+
+        // ── Helpers ──
+        function buildLocation(t) {
+            const parts = [];
+            if (t.city) parts.push(t.city);
+            if (t.state) parts.push(t.state);
+            return parts.join(', ');
+        }
+
+        function buildDirectorName(t) {
+            const parts = [];
+            if (t.director_first_name) parts.push(t.director_first_name);
+            if (t.director_last_name) parts.push(t.director_last_name);
+            return parts.join(' ');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function defaultCoverHtml() {
+            return `<div class="card-cover-placeholder"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path></svg></div>`;
+        }
+
+        // ── Event Bindings ──
+        function bindEvents() {
+            // Search with debounce
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    currentSearch = e.target.value.trim();
+                    fetchTournaments();
+                }, 300);
+            });
+
+            // Sort pills
+            document.querySelectorAll('.sort-pill').forEach(pill => {
+                pill.addEventListener('click', () => {
+                    document.querySelectorAll('.sort-pill').forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    currentSort = pill.dataset.sort;
+                    fetchTournaments();
+                });
+            });
+
+            // Past tournaments toggle
+            document.getElementById('toggle-past').addEventListener('change', (e) => {
+                includePast = e.target.checked;
+                fetchTournaments();
+            });
+
+            // Close modal on overlay click
+            document.getElementById('login-modal').addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) closeLoginModal();
+            });
+
+            // Close modal on Escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeLoginModal();
+            });
+        }
+
+        // ── Login Modal ──
+        window.openLoginModal = function() {
+            document.getElementById('login-modal').classList.add('active');
+            document.getElementById('login-email').focus();
+        };
+
+        window.closeLoginModal = function() {
+            document.getElementById('login-modal').classList.remove('active');
+            document.getElementById('login-error').style.display = 'none';
+            document.getElementById('login-form').reset();
+        };
+
+        window.handleLogin = async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('login-submit');
+            const errEl = document.getElementById('login-error');
+            errEl.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        email: document.getElementById('login-email').value,
+                        password: document.getElementById('login-password').value,
+                    }),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Login failed');
+                }
+
+                closeLoginModal();
+                await checkAuth();
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Sign In';
+            }
+        };
+
+        // ── Logout ──
+        window.handleLogout = async function() {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include',
+                });
+            } catch (e) {
+                // Ignore
+            }
+            currentUser = null;
+            renderNav();
+        };
+
+        // ── Smooth scroll for hero CTA ──
+        document.querySelector('a[href="#directory"]').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('directory').scrollIntoView({ behavior: 'smooth' });
+        });
+    })();
+    </script>
+</body>
+</html>

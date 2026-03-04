@@ -3,14 +3,30 @@ const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roles');
+const upload = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
 
 const router = express.Router();
 
 // ── Public Endpoints (no auth required) ──────────────────────────────────────
 
-// GET /api/tournaments — List all tournaments
+// GET /api/tournaments/directory — Published tournaments for public directory
+router.get('/directory', tournamentController.getDirectory);
+
+// GET /api/tournaments/slug/:slug — Get tournament by slug (public page)
+router.get('/slug/:slug', tournamentController.getTournamentBySlug);
+
+// GET /api/tournaments — List all tournaments (legacy)
 router.get('/', tournamentController.getTournaments);
+
+// ── Director Endpoints (MUST be before /:id param routes) ───────────────────
+
+// GET /api/tournaments/director/mine — My tournaments
+router.get('/director/mine',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  tournamentController.getMyTournaments
+);
 
 // GET /api/tournaments/:id — Get single tournament with events
 router.get('/:id', tournamentController.getTournament);
@@ -21,12 +37,10 @@ router.get('/:id/events/eligible/:profileId',
   tournamentController.getEligibleEvents
 );
 
-// ── Admin Endpoints ──────────────────────────────────────────────────────────
-
-// POST /api/tournaments (admin only) — Create tournament
+// POST /api/tournaments — Create tournament
 router.post('/',
   requireAuth,
-  requireRole('admin'),
+  requireRole('event_director', 'admin', 'super_admin'),
   [
     body('name').trim().notEmpty().withMessage('Tournament name is required'),
     body('date').optional().isISO8601(),
@@ -34,15 +48,25 @@ router.post('/',
     body('registrationOpen').optional().isBoolean(),
     body('baseEventPrice').optional().isFloat({ min: 0 }),
     body('addonEventPrice').optional().isFloat({ min: 0 }),
+    body('slug').optional().trim(),
+    body('description').optional().trim(),
+    body('city').optional().trim(),
+    body('state').optional().trim(),
+    body('venueName').optional().trim(),
+    body('venueAddress').optional().trim(),
+    body('published').optional().isBoolean(),
+    body('organizationName').optional().trim(),
+    body('contactEmail').optional().isEmail(),
+    body('registrationDeadline').optional().isISO8601(),
   ],
   validate,
   tournamentController.createTournament
 );
 
-// PUT /api/tournaments/:id (admin only) — Update tournament
+// PUT /api/tournaments/:id — Update tournament (must own or super_admin)
 router.put('/:id',
   requireAuth,
-  requireRole('admin'),
+  requireRole('event_director', 'admin', 'super_admin'),
   [
     body('name').optional().trim().notEmpty(),
     body('date').optional().isISO8601(),
@@ -50,15 +74,40 @@ router.put('/:id',
     body('registrationOpen').optional().isBoolean(),
     body('baseEventPrice').optional().isFloat({ min: 0 }),
     body('addonEventPrice').optional().isFloat({ min: 0 }),
+    body('slug').optional().trim(),
+    body('description').optional().trim(),
+    body('city').optional().trim(),
+    body('state').optional().trim(),
+    body('venueName').optional().trim(),
+    body('venueAddress').optional().trim(),
+    body('published').optional().isBoolean(),
+    body('organizationName').optional().trim(),
+    body('contactEmail').optional().isEmail(),
+    body('registrationDeadline').optional().isISO8601(),
   ],
   validate,
   tournamentController.updateTournament
 );
 
-// POST /api/tournaments/:id/events (admin only) — Create event
+// PUT /api/tournaments/:id/publish — Publish/unpublish tournament
+router.put('/:id/publish',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  tournamentController.publishTournament
+);
+
+// POST /api/tournaments/:id/cover-image — Upload cover image
+router.post('/:id/cover-image',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  upload.single('coverImage'),
+  tournamentController.uploadCoverImage
+);
+
+// POST /api/tournaments/:id/events — Create event
 router.post('/:id/events',
   requireAuth,
-  requireRole('admin'),
+  requireRole('event_director', 'admin', 'super_admin'),
   [
     body('name').trim().notEmpty().withMessage('Event name is required'),
     body('eventType').optional().trim(),
@@ -76,27 +125,25 @@ router.post('/:id/events',
   tournamentController.createEvent
 );
 
-// PUT /api/tournaments/:id/events/:eventId (admin only) — Update event
+// PUT /api/tournaments/:id/events/:eventId — Update event
 router.put('/:id/events/:eventId',
   requireAuth,
-  requireRole('admin'),
+  requireRole('event_director', 'admin', 'super_admin'),
   tournamentController.updateEvent
 );
 
-// DELETE /api/tournaments/:id/events/:eventId (admin only) — Delete event
+// DELETE /api/tournaments/:id/events/:eventId — Delete event
 router.delete('/:id/events/:eventId',
   requireAuth,
-  requireRole('admin'),
+  requireRole('event_director', 'admin', 'super_admin'),
   tournamentController.deleteEvent
 );
 
-// POST /api/tournaments/:id/sync (admin only) — Bulk sync events
+// POST /api/tournaments/:id/sync — Bulk sync events
 router.post('/:id/sync',
   requireAuth,
-  requireRole('admin'),
-  [
-    body('events').isArray().withMessage('Events must be an array'),
-  ],
+  requireRole('event_director', 'admin', 'super_admin'),
+  [body('events').isArray().withMessage('Events must be an array')],
   validate,
   tournamentController.syncEvents
 );

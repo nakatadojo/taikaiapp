@@ -38,10 +38,10 @@ function setAuthCookie(res, user, roles) {
  */
 async function signup(req, res, next) {
   try {
-    const { email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType } = req.body;
+    const { email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName } = req.body;
 
     // Validate account type if provided
-    const validAccountTypes = ['competitor', 'guardian', 'both'];
+    const validAccountTypes = ['competitor', 'guardian', 'both', 'event_director'];
     const acctType = accountType && validAccountTypes.includes(accountType) ? accountType : null;
 
     // If accountType includes competitor, validate 18+ age
@@ -83,17 +83,25 @@ async function signup(req, res, next) {
       verificationTokenExpires,
     });
 
-    // Set account_type on user record
-    if (acctType) {
+    // Set account_type and organization_name on user record
+    if (acctType || organizationName) {
+      const setClauses = [];
+      const setParams = [];
+      let pIdx = 1;
+      if (acctType) { setClauses.push(`account_type = $${pIdx++}`); setParams.push(acctType); }
+      if (organizationName) { setClauses.push(`organization_name = $${pIdx++}`); setParams.push(organizationName); }
+      setParams.push(user.id);
       await pool.query(
-        'UPDATE users SET account_type = $1 WHERE id = $2',
-        [acctType, user.id]
+        `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${pIdx}`,
+        setParams
       );
     }
 
     // Assign roles based on accountType
     let selectedRoles;
-    if (acctType === 'competitor') {
+    if (acctType === 'event_director') {
+      selectedRoles = ['event_director'];
+    } else if (acctType === 'competitor') {
       selectedRoles = ['competitor'];
     } else if (acctType === 'guardian') {
       selectedRoles = ['competitor']; // Guardians still get competitor role for system access
@@ -212,6 +220,8 @@ async function login(req, res, next) {
         roles,
         emailVerified: user.email_verified,
         accountType: user.account_type,
+        organizationName: user.organization_name,
+        creditBalance: user.credit_balance || 0,
       },
     });
   } catch (err) {
@@ -294,6 +304,8 @@ async function getMe(req, res, next) {
         roles,
         emailVerified: user.email_verified,
         accountType: user.account_type,
+        organizationName: user.organization_name,
+        creditBalance: user.credit_balance || 0,
       },
     });
   } catch (err) {

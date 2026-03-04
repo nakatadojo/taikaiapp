@@ -1,13 +1,98 @@
 const pool = require('../pool');
 
+// ── Slug Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Generate a URL-safe slug from a string.
+ */
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 100);
+}
+
+/**
+ * Generate a unique slug, appending -2, -3, etc. if needed.
+ */
+async function generateUniqueSlug(name, excludeId = null) {
+  let base = generateSlug(name);
+  if (!base) base = 'tournament';
+  let slug = base;
+  let counter = 1;
+
+  while (true) {
+    const params = excludeId ? [slug, excludeId] : [slug];
+    const where = excludeId
+      ? 'WHERE slug = $1 AND id != $2'
+      : 'WHERE slug = $1';
+    const result = await pool.query(
+      `SELECT id FROM tournaments ${where}`,
+      params
+    );
+    if (result.rows.length === 0) return slug;
+    counter++;
+    slug = `${base}-${counter}`;
+  }
+}
+
 // ── Tournaments ──────────────────────────────────────────────────────────────
 
 /**
- * Get all tournaments (public).
+ * Get all tournaments (public — for legacy compatibility).
  */
 async function getAll() {
   const result = await pool.query(
     `SELECT * FROM tournaments ORDER BY date DESC NULLS LAST, created_at DESC`
+  );
+  return result.rows;
+}
+
+/**
+ * Get published tournaments for public directory.
+ * Includes registered competitor count.
+ */
+async function getDirectory({ search, sort, includePast } = {}) {
+  let where = 'WHERE t.published = true';
+  const params = [];
+  let idx = 1;
+
+  if (!includePast) {
+    where += ` AND (t.date >= CURRENT_DATE OR t.date IS NULL)`;
+  }
+
+  if (search) {
+    where += ` AND (t.name ILIKE $${idx} OR t.city ILIKE $${idx} OR t.location ILIKE $${idx})`;
+    params.push(`%${search}%`);
+    idx++;
+  }
+
+  let orderBy = 'ORDER BY t.date ASC NULLS LAST, t.created_at DESC';
+  if (sort === 'name') {
+    orderBy = 'ORDER BY t.name ASC';
+  } else if (sort === 'date-desc') {
+    orderBy = 'ORDER BY t.date DESC NULLS LAST';
+  }
+
+  const result = await pool.query(
+    `SELECT t.*,
+            u.first_name AS director_first_name,
+            u.last_name AS director_last_name,
+            COALESCE(reg.competitor_count, 0)::int AS competitor_count
+     FROM tournaments t
+     LEFT JOIN users u ON u.id = t.created_by
+     LEFT JOIN (
+       SELECT tournament_id, COUNT(DISTINCT profile_id) AS competitor_count
+       FROM registrations
+       WHERE status != 'cancelled'
+       GROUP BY tournament_id
+     ) reg ON reg.tournament_id = t.id
+     ${where}
+     ${orderBy}`,
+    params
   );
   return result.rows;
 }
@@ -43,15 +128,97 @@ async function findById(tournamentId) {
 }
 
 /**
- * Create a tournament.
+ * Find tournament by slug (with events + director info, for public page).
  */
-async function create({ name, date, location, registrationOpen, baseEventPrice, addonEventPrice, createdBy }) {
+async function findBySlug(slug) {
+  const tResult = await pool.query(
+    `SELECT t.*,
+            u.first_name AS director_first_name,
+            u.last_name AS director_last_name,
+            u.organization_name AS director_organization
+     FROM tournaments t
+     LEFT JOIN users u ON u.id = t.created_by
+     WHERE t.slug = $1`,
+    [slug]
+  );
+  const tournament = tResult.rows[0];
+  if (!tournament) return null;
+
+  const eResult = await pool.query(
+    'SELECT * FROM tournament_events WHERE tournament_id = $1 ORDER BY name ASC',
+    [tournament.id]
+  );
+  tournament.events = eResult.rows;
+
+  // Get competitor count
+  const regResult = await pool.query(
+    `SELECT COUNT(DISTINCT profile_id)::int AS competitor_count
+     FROM registrations WHERE tournament_id = $1 AND status != 'cancelled'`,
+    [tournament.id]
+  );
+  tournament.competitor_count = regResult.rows[0]?.competitor_count || 0;
+
+  return tournament;
+}
+
+/**
+ * Get all tournaments owned by a specific user (Event Director dashboard).
+ */
+async function getByDirector(userId) {
   const result = await pool.query(
-    `INSERT INTO tournaments (name, date, location, registration_open, base_event_price, addon_event_price, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `SELECT t.*,
+            COALESCE(reg.competitor_count, 0)::int AS competitor_count
+     FROM tournaments t
+     LEFT JOIN (
+       SELECT tournament_id, COUNT(DISTINCT profile_id) AS competitor_count
+       FROM registrations
+       WHERE status != 'cancelled'
+       GROUP BY tournament_id
+     ) reg ON reg.tournament_id = t.id
+     WHERE t.created_by = $1
+     ORDER BY t.date DESC NULLS LAST, t.created_at DESC`,
+    [userId]
+  );
+  return result.rows;
+}
+
+/**
+ * Create a tournament with slug auto-generation.
+ */
+async function create({
+  name, date, location, registrationOpen, baseEventPrice, addonEventPrice, createdBy,
+  slug, description, city, state, venueName, venueAddress,
+  published, organizationName, contactEmail, registrationDeadline, coverImageUrl,
+}) {
+  const finalSlug = slug || await generateUniqueSlug(name);
+
+  const result = await pool.query(
+    `INSERT INTO tournaments
+      (name, date, location, registration_open, base_event_price, addon_event_price, created_by,
+       slug, description, city, state, venue_name, venue_address,
+       published, organization_name, contact_email, registration_deadline, cover_image_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING *`,
-    [name, date || null, location || null, registrationOpen || false,
-     baseEventPrice || 75, addonEventPrice || 25, createdBy || null]
+    [
+      name,
+      date || null,
+      location || null,
+      registrationOpen || false,
+      baseEventPrice || 75,
+      addonEventPrice || 25,
+      createdBy || null,
+      finalSlug,
+      description || null,
+      city || null,
+      state || null,
+      venueName || null,
+      venueAddress || null,
+      published || false,
+      organizationName || null,
+      contactEmail || null,
+      registrationDeadline || null,
+      coverImageUrl || null,
+    ]
   );
   return result.rows[0];
 }
@@ -63,6 +230,9 @@ async function update(tournamentId, updates) {
   const allowedFields = [
     'name', 'date', 'location', 'registration_open',
     'base_event_price', 'addon_event_price',
+    'slug', 'description', 'city', 'state', 'venue_name', 'venue_address',
+    'published', 'organization_name', 'contact_email', 'registration_deadline',
+    'cover_image_url',
   ];
   const fields = [];
   const values = [];
@@ -86,6 +256,17 @@ async function update(tournamentId, updates) {
     values
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Check tournament ownership (for multi-tenancy).
+ */
+async function isOwnedBy(tournamentId, userId) {
+  const result = await pool.query(
+    'SELECT id FROM tournaments WHERE id = $1 AND created_by = $2',
+    [tournamentId, userId]
+  );
+  return result.rows.length > 0;
 }
 
 // ── Tournament Events ────────────────────────────────────────────────────────
@@ -171,27 +352,22 @@ async function deleteEvent(eventId) {
 
 /**
  * Bulk sync events for a tournament (upsert).
- * Accepts array of events with optional `id` field.
- * Events with matching id are updated, new ones are inserted.
  */
 async function syncEvents(tournamentId, events) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Get existing event IDs for this tournament
     const existing = await client.query(
       'SELECT id FROM tournament_events WHERE tournament_id = $1',
       [tournamentId]
     );
     const existingIds = new Set(existing.rows.map(r => r.id));
     const incomingIds = new Set();
-
     const results = [];
 
     for (const evt of events) {
       if (evt.id && existingIds.has(evt.id)) {
-        // Update existing
         incomingIds.add(evt.id);
         const updated = await client.query(
           `UPDATE tournament_events SET
@@ -210,7 +386,6 @@ async function syncEvents(tournamentId, events) {
         );
         if (updated.rows[0]) results.push(updated.rows[0]);
       } else {
-        // Insert new
         const inserted = await client.query(
           `INSERT INTO tournament_events
             (tournament_id, name, event_type, division, gender,
@@ -228,13 +403,9 @@ async function syncEvents(tournamentId, events) {
       }
     }
 
-    // Delete events that exist in DB but weren't in the incoming set
     for (const existingId of existingIds) {
       if (!incomingIds.has(existingId)) {
-        await client.query(
-          'DELETE FROM tournament_events WHERE id = $1',
-          [existingId]
-        );
+        await client.query('DELETE FROM tournament_events WHERE id = $1', [existingId]);
       }
     }
 
@@ -250,16 +421,13 @@ async function syncEvents(tournamentId, events) {
 
 /**
  * Get eligible events for a profile, filtered by age/gender/rank/experience.
- * Returns events with pricing info.
  */
 async function getEligibleEvents(tournamentId, profile) {
-  // Get all events for the tournament
   const events = await getEventsForTournament(tournamentId);
   const tournament = await findById(tournamentId);
 
   if (!tournament || events.length === 0) return { events: [], tournament };
 
-  // Calculate age at tournament date
   const tournamentDate = tournament.date ? new Date(tournament.date) : new Date();
   const dob = new Date(profile.date_of_birth);
   let age = tournamentDate.getFullYear() - dob.getFullYear();
@@ -268,7 +436,6 @@ async function getEligibleEvents(tournamentId, profile) {
     age--;
   }
 
-  // Belt rank ordering for filtering
   const rankOrder = [
     'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
     'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
@@ -278,30 +445,19 @@ async function getEligibleEvents(tournamentId, profile) {
     ? rankOrder.indexOf(profile.belt_rank.toLowerCase())
     : -1;
 
-  // Filter events
   const eligible = events.filter(event => {
-    // Age filter
     if (event.age_min !== null && age < event.age_min) return false;
     if (event.age_max !== null && age > event.age_max) return false;
-
-    // Gender filter
     if (event.gender && event.gender !== 'mixed' && event.gender !== profile.gender) return false;
-
-    // Rank filter (if event has rank constraints and profile has a rank)
     if (event.rank_min || event.rank_max) {
-      if (profileRankIndex === -1) return false; // No rank set, skip rank-filtered events
+      if (profileRankIndex === -1) return false;
       const minIndex = event.rank_min ? rankOrder.indexOf(event.rank_min.toLowerCase()) : 0;
       const maxIndex = event.rank_max ? rankOrder.indexOf(event.rank_max.toLowerCase()) : rankOrder.length - 1;
       if (profileRankIndex < minIndex || profileRankIndex > maxIndex) return false;
     }
-
-    // Experience level filter — only if event specifies it via division or similar
-    // For now, experience level filtering is handled client-side based on event naming conventions
-
     return true;
   });
 
-  // Add pricing info
   const basePrice = parseFloat(tournament.base_event_price) || 75;
   const addonPrice = parseFloat(tournament.addon_event_price) || 25;
 
@@ -328,11 +484,17 @@ async function getEventRegistrationCount(eventId) {
 }
 
 module.exports = {
+  generateSlug,
+  generateUniqueSlug,
   getAll,
+  getDirectory,
   findById,
   findByIdWithEvents,
+  findBySlug,
+  getByDirector,
   create,
   update,
+  isOwnedBy,
   getEventsForTournament,
   createEvent,
   updateEvent,

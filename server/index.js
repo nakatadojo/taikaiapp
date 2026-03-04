@@ -37,11 +37,18 @@ app.use('/api/tournaments', require('./routes/tournaments'));
 app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/registrations', require('./routes/registrations'));
 app.use('/api/guardians', require('./routes/guardians'));
+app.use('/api/credits', require('./routes/credits'));
+app.use('/api/super-admin', require('./routes/superAdmin'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
 // Serve uploaded files (dev fallback — production uses R2 URLs)
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Landing page — root URL serves the tournament directory
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'landing.html'));
+});
 
 // Serve client files (HTML, JS, CSS, images)
 app.use(express.static(path.join(__dirname, '..', 'client')));
@@ -52,6 +59,14 @@ app.get('/admin', (req, res) => {
 });
 app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'register.html'));
+});
+app.get('/director', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'director.html'));
+});
+
+// /tournaments/:slug — Serve public tournament page
+app.get('/tournaments/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'tournament.html'));
 });
 
 // ── Error Handler ───────────────────────────────────────────────────────────
@@ -68,7 +83,9 @@ if (process.env.DATABASE_URL) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Tournament Manager running on http://localhost:${PORT}`);
-  console.log(`Admin:  http://localhost:${PORT}/index.html`);
-  console.log(`Public: http://localhost:${PORT}/public.html`);
+  console.log(`Taikai by Kimesoft running on http://localhost:${PORT}`);
+  console.log(`Landing:   http://localhost:${PORT}/`);
+  console.log(`Director:  http://localhost:${PORT}/director`);
+  console.log(`Register:  http://localhost:${PORT}/register`);
+  console.log(`Admin:     http://localhost:${PORT}/admin`);
 });

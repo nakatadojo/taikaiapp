@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tournament — Taikai</title>
+    <style>
+    /* ═══════════════════════════════════════════════════════════════════════
+       TOURNAMENT PUBLIC PAGE — Dark theme with glassmorphism
+       ═══════════════════════════════════════════════════════════════════════ */
+    *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    :root {
+        --bg-primary: #0f0f14;
+        --bg-secondary: #14141c;
+        --accent: #e67e22;
+        --accent-hover: #d35400;
+        --accent-glow: rgba(230,126,34,0.25);
+        --text-primary: #ffffff;
+        --text-muted: rgba(255,255,255,0.6);
+        --text-dim: rgba(255,255,255,0.4);
+        --glass: rgba(255,255,255,0.06);
+        --glass-border: rgba(255,255,255,0.08);
+        --glass-hover: rgba(255,255,255,0.10);
+        --radius: 14px;
+        --radius-sm: 10px;
+        --radius-lg: 20px;
+        --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+        --font-stack: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    }
+
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        font-family: var(--font-stack);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        overflow-x: hidden;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background:
+            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(230,126,34,0.06) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 40% at 80% 100%, rgba(100,60,180,0.04) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    a {
+        color: var(--accent);
+        text-decoration: none;
+        transition: color var(--transition);
+    }
+    a:hover {
+        color: var(--accent-hover);
+    }
+
+    /* ── Navbar ─────────────────────────────────────────────────────────── */
+    .navbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background: rgba(15,15,20,0.88);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border-bottom: 1px solid var(--glass-border);
+    }
+    .navbar-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 60px;
+        padding: 0 24px;
+    }
+    .navbar-brand {
+        font-weight: 800;
+        font-size: 18px;
+        color: var(--text-primary);
+        text-decoration: none;
+        letter-spacing: -0.5px;
+    }
+    .navbar-brand span {
+        color: var(--accent);
+    }
+    .navbar-links {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .navbar-link {
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-decoration: none;
+        border-radius: var(--radius-sm);
+        transition: all var(--transition);
+    }
+    .navbar-link:hover {
+        color: var(--text-primary);
+        background: var(--glass);
+    }
+
+    /* ── Loading State ─────────────────────────────────────────────────── */
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 70vh;
+        gap: 20px;
+        position: relative;
+        z-index: 1;
+    }
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--glass-border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    .loading-text {
+        font-size: 14px;
+        color: var(--text-muted);
+    }
+
+    /* ── Error State ───────────────────────────────────────────────────── */
+    .error-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 70vh;
+        gap: 16px;
+        text-align: center;
+        padding: 24px;
+        position: relative;
+        z-index: 1;
+    }
+    .error-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: rgba(239,68,68,0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        color: #ef4444;
+    }
+    .error-title {
+        font-size: 22px;
+        font-weight: 700;
+    }
+    .error-message {
+        font-size: 15px;
+        color: var(--text-muted);
+        max-width: 400px;
+    }
+    .error-back {
+        margin-top: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 24px;
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all var(--transition);
+    }
+    .error-back:hover {
+        background: var(--glass-hover);
+        color: var(--text-primary);
+    }
+
+    /* ── Hero Section ──────────────────────────────────────────────────── */
+    .hero {
+        position: relative;
+        width: 100%;
+        min-height: 380px;
+        margin-top: 60px;
+        overflow: hidden;
+        display: flex;
+        align-items: flex-end;
+        z-index: 1;
+    }
+    .hero-bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+    .hero-bg.placeholder {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #1a1a2e 100%);
+    }
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            to bottom,
+            rgba(15,15,20,0.3) 0%,
+            rgba(15,15,20,0.6) 50%,
+            rgba(15,15,20,0.95) 100%
+        );
+    }
+    .hero-content {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 60px 24px 36px;
+    }
+    .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+    }
+    .hero-badge.open {
+        background: rgba(34,197,94,0.15);
+        color: #4ade80;
+        border: 1px solid rgba(34,197,94,0.25);
+    }
+    .hero-badge.closed {
+        background: rgba(239,68,68,0.12);
+        color: #f87171;
+        border: 1px solid rgba(239,68,68,0.2);
+    }
+    .hero-badge.completed {
+        background: rgba(148,163,184,0.12);
+        color: #94a3b8;
+        border: 1px solid rgba(148,163,184,0.2);
+    }
+    .hero-badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .hero-badge.open .hero-badge-dot {
+        background: #4ade80;
+        box-shadow: 0 0 6px rgba(74,222,128,0.5);
+    }
+    .hero-badge.closed .hero-badge-dot {
+        background: #f87171;
+    }
+    .hero-badge.completed .hero-badge-dot {
+        background: #94a3b8;
+    }
+    .hero-title {
+        font-size: 42px;
+        font-weight: 800;
+        line-height: 1.15;
+        letter-spacing: -1px;
+        margin-bottom: 8px;
+    }
+    .hero-org {
+        font-size: 16px;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+
+    /* ── Info Bar ──────────────────────────────────────────────────────── */
+    .info-bar {
+        position: relative;
+        z-index: 1;
+        border-bottom: 1px solid var(--glass-border);
+        background: rgba(15,15,20,0.6);
+        backdrop-filter: blur(12px);
+    }
+    .info-bar-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px 40px;
+    }
+    .info-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .info-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .info-icon svg {
+        width: 18px;
+        height: 18px;
+        stroke: var(--accent);
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .info-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--text-dim);
+        font-weight: 600;
+        margin-bottom: 1px;
+    }
+    .info-value {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    /* ── Main Content ──────────────────────────────────────────────────── */
+    .main-content {
+        position: relative;
+        z-index: 1;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 32px;
+        align-items: start;
+    }
+
+    /* ── Section Card ──────────────────────────────────────────────────── */
+    .section-card {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 28px;
+        margin-bottom: 24px;
+    }
+    .section-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .section-title-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(230,126,34,0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .section-title-icon svg {
+        width: 16px;
+        height: 16px;
+        stroke: var(--accent);
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    /* ── Description ───────────────────────────────────────────────────── */
+    .description-text {
+        font-size: 15px;
+        line-height: 1.75;
+        color: var(--text-muted);
+        white-space: pre-wrap;
+    }
+
+    /* ── Events Grid ───────────────────────────────────────────────────── */
+    .events-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .event-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius-sm);
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        transition: all var(--transition);
+    }
+    .event-card:hover {
+        background: var(--glass-hover);
+        border-color: rgba(255,255,255,0.12);
+    }
+    .event-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .event-name {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    .event-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .event-tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        background: rgba(255,255,255,0.05);
+        color: var(--text-muted);
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+    .event-tag.type {
+        background: rgba(230,126,34,0.1);
+        color: var(--accent);
+        border-color: rgba(230,126,34,0.15);
+    }
+    .event-price {
+        text-align: right;
+        flex-shrink: 0;
+    }
+    .event-price-value {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .event-price-label {
+        font-size: 11px;
+        color: var(--text-dim);
+    }
+    .no-events {
+        text-align: center;
+        padding: 40px 20px;
+        color: var(--text-dim);
+        font-size: 14px;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────── */
+    .sidebar {
+        position: sticky;
+        top: 84px;
+    }
+    .cta-card {
+        background: var(--glass);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 28px;
+        text-align: center;
+    }
+    .cta-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .cta-subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 20px;
+    }
+    .cta-price-info {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-bottom: 20px;
+        padding: 16px 0;
+        border-top: 1px solid var(--glass-border);
+        border-bottom: 1px solid var(--glass-border);
+    }
+    .cta-price-block {
+        text-align: center;
+    }
+    .cta-price-amount {
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--text-primary);
+    }
+    .cta-price-label {
+        font-size: 11px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+    }
+    .btn-register {
+        display: block;
+        width: 100%;
+        padding: 14px 24px;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--accent);
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        text-decoration: none;
+        text-align: center;
+        transition: all var(--transition);
+        letter-spacing: -0.2px;
+    }
+    .btn-register:hover {
+        background: var(--accent-hover);
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 20px var(--accent-glow);
+    }
+    .btn-register:active {
+        transform: translateY(0);
+    }
+    .btn-register.disabled {
+        background: rgba(255,255,255,0.08);
+        color: var(--text-dim);
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+    .cta-note {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 12px;
+        line-height: 1.5;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────────── */
+    .footer {
+        position: relative;
+        z-index: 1;
+        border-top: 1px solid var(--glass-border);
+        padding: 28px 24px;
+        text-align: center;
+        font-size: 13px;
+        color: var(--text-dim);
+    }
+    .footer a {
+        color: var(--text-muted);
+    }
+    .footer a:hover {
+        color: var(--accent);
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+        .main-content {
+            grid-template-columns: 1fr;
+        }
+        .sidebar {
+            position: static;
+        }
+        .hero-title {
+            font-size: 30px;
+        }
+        .hero {
+            min-height: 300px;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .hero-title {
+            font-size: 24px;
+        }
+        .hero-content {
+            padding: 40px 16px 28px;
+        }
+        .info-bar-inner {
+            padding: 16px;
+            gap: 16px 24px;
+        }
+        .main-content {
+            padding: 24px 16px 60px;
+        }
+        .section-card {
+            padding: 20px;
+        }
+        .event-card {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .event-price {
+            text-align: left;
+        }
+    }
+    </style>
+</head>
+<body>
+
+    <!-- ═══ Navbar ═══ -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="navbar-brand">TAI<span>KAI</span></a>
+            <div class="navbar-links">
+                <a href="/" class="navbar-link">Back to Directory</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ═══ Loading State ═══ -->
+    <div id="loading-state" class="loading-container">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading tournament...</div>
+    </div>
+
+    <!-- ═══ Error State ═══ -->
+    <div id="error-state" style="display:none;">
+        <div class="error-container">
+            <div class="error-icon">!</div>
+            <div class="error-title" id="error-title">Tournament not found</div>
+            <div class="error-message" id="error-message">The tournament you are looking for does not exist or is no longer available.</div>
+            <a href="/" class="error-back">Back to Directory</a>
+        </div>
+    </div>
+
+    <!-- ═══ Tournament Content (hidden until loaded) ═══ -->
+    <div id="tournament-content" style="display:none;">
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-bg" id="hero-bg"></div>
+            <div class="hero-overlay"></div>
+            <div class="hero-content">
+                <div class="hero-badge" id="hero-badge">
+                    <span class="hero-badge-dot"></span>
+                    <span id="hero-badge-text">Registration Open</span>
+                </div>
+                <h1 class="hero-title" id="hero-title"></h1>
+                <div class="hero-org" id="hero-org"></div>
+            </div>
+        </section>
+
+        <!-- Info Bar -->
+        <div class="info-bar">
+            <div class="info-bar-inner" id="info-bar-inner">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="content-left">
+                <!-- Description -->
+                <div class="section-card" id="description-section" style="display:none;">
+                    <div class="section-title">
+                        <div class="section-title-icon">
+                            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        </div>
+                        About This Tournament
+                    </div>
+                    <div class="description-text" id="description-text"></div>
+                </div>
+
+                <!-- Events -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <div class="section-title-icon">
+                            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        </div>
+                        Events &amp; Divisions
+                        <span id="events-count" style="font-size:13px; font-weight:500; color:var(--text-dim); margin-left:auto;"></span>
+                    </div>
+                    <div id="events-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="cta-card" id="cta-card">
+                    <!-- Populated by JS -->
+                </div>
+            </aside>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            Powered by <a href="/">Taikai</a> / <a href="/">Kimesoft</a>
+        </footer>
+    </div>
+
+<script>
+(function() {
+    'use strict';
+
+    // ── Extract slug from URL ──────────────────────────────────────────
+    const pathParts = window.location.pathname.split('/tournaments/');
+    const slug = pathParts[1] ? decodeURIComponent(pathParts[1]).replace(/\/+$/, '') : null;
+
+    if (!slug) {
+        showError('Invalid URL', 'No tournament slug was found in the URL.');
+        return;
+    }
+
+    // ── Fetch tournament data ──────────────────────────────────────────
+    fetchTournament(slug);
+
+    async function fetchTournament(slug) {
+        try {
+            const response = await fetch(`/api/tournaments/slug/${encodeURIComponent(slug)}`);
+
+            if (response.status === 404) {
+                showError('Tournament Not Found', 'The tournament you are looking for does not exist or is no longer available.');
+                return;
+            }
+
+            if (!response.ok) {
+                showError('Something Went Wrong', 'Unable to load tournament details. Please try again later.');
+                return;
+            }
+
+            const data = await response.json();
+            if (!data.tournament) {
+                showError('Tournament Not Found', 'The tournament you are looking for does not exist or is no longer available.');
+                return;
+            }
+
+            renderTournament(data.tournament);
+        } catch (err) {
+            console.error('Failed to load tournament:', err);
+            showError('Connection Error', 'Unable to connect to the server. Please check your internet connection and try again.');
+        }
+    }
+
+    // ── Show Error State ───────────────────────────────────────────────
+    function showError(title, message) {
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('error-state').style.display = '';
+        document.getElementById('error-title').textContent = title;
+        document.getElementById('error-message').textContent = message;
+    }
+
+    // ── Date Formatting ────────────────────────────────────────────────
+    function formatDate(dateStr) {
+        if (!dateStr) return null;
+        try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return null;
+            return new Intl.DateTimeFormat('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            }).format(date);
+        } catch {
+            return null;
+        }
+    }
+
+    function formatShortDate(dateStr) {
+        if (!dateStr) return null;
+        try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return null;
+            return new Intl.DateTimeFormat('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            }).format(date);
+        } catch {
+            return null;
+        }
+    }
+
+    // ── Status Logic ───────────────────────────────────────────────────
+    function getStatus(tournament) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const tournamentDate = tournament.date ? new Date(tournament.date) : null;
+        const deadline = tournament.registration_deadline ? new Date(tournament.registration_deadline) : null;
+
+        // If tournament date is in the past, it's completed
+        if (tournamentDate && tournamentDate < today) {
+            return { key: 'completed', label: 'Completed', cssClass: 'completed' };
+        }
+
+        // Registration is open if: registration_open flag is true AND (date >= today OR no date) AND (no deadline OR deadline >= now)
+        const regOpen = tournament.registration_open;
+        const dateOk = !tournamentDate || tournamentDate >= today;
+        const deadlineOk = !deadline || deadline >= now;
+
+        if (regOpen && dateOk && deadlineOk) {
+            return { key: 'open', label: 'Registration Open', cssClass: 'open' };
+        }
+
+        // If tournament is in the future or undated but registration is not open
+        if (!tournamentDate || tournamentDate >= today) {
+            return { key: 'closed', label: 'Registration Closed', cssClass: 'closed' };
+        }
+
+        return { key: 'completed', label: 'Completed', cssClass: 'completed' };
+    }
+
+    // ── Price Formatting ───────────────────────────────────────────────
+    function formatPrice(amount) {
+        const num = parseFloat(amount);
+        if (isNaN(num) || num <= 0) return 'Free';
+        return '$' + num.toFixed(2).replace(/\.00$/, '');
+    }
+
+    // ── Build Location String ──────────────────────────────────────────
+    function buildLocation(t) {
+        const parts = [];
+        if (t.venue_name) parts.push(t.venue_name);
+        if (t.city && t.state) {
+            parts.push(t.city + ', ' + t.state);
+        } else if (t.city) {
+            parts.push(t.city);
+        } else if (t.state) {
+            parts.push(t.state);
+        } else if (t.location) {
+            parts.push(t.location);
+        }
+        return parts.join(' - ') || null;
+    }
+
+    // ── Capitalize ─────────────────────────────────────────────────────
+    function capitalize(str) {
+        if (!str) return '';
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    // ── Escape HTML ────────────────────────────────────────────────────
+    function esc(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ── Render Tournament ──────────────────────────────────────────────
+    function renderTournament(t) {
+        // Page title
+        document.title = t.name + ' — Taikai';
+
+        // Status
+        const status = getStatus(t);
+
+        // Hero background
+        const heroBg = document.getElementById('hero-bg');
+        if (t.cover_image_url) {
+            heroBg.style.backgroundImage = `url('${t.cover_image_url}')`;
+        } else {
+            heroBg.classList.add('placeholder');
+        }
+
+        // Hero badge
+        const badge = document.getElementById('hero-badge');
+        badge.className = 'hero-badge ' + status.cssClass;
+        document.getElementById('hero-badge-text').textContent = status.label;
+
+        // Hero title & org
+        document.getElementById('hero-title').textContent = t.name;
+        const orgName = t.organization_name || (t.director_first_name ? t.director_first_name + ' ' + t.director_last_name : '');
+        if (orgName) {
+            document.getElementById('hero-org').textContent = 'Hosted by ' + orgName;
+        }
+
+        // Info bar
+        renderInfoBar(t);
+
+        // Description
+        if (t.description && t.description.trim()) {
+            document.getElementById('description-section').style.display = '';
+            document.getElementById('description-text').textContent = t.description;
+        }
+
+        // Events
+        renderEvents(t);
+
+        // CTA sidebar
+        renderCTA(t, status);
+
+        // Show content
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('tournament-content').style.display = '';
+    }
+
+    // ── Render Info Bar ────────────────────────────────────────────────
+    function renderInfoBar(t) {
+        const container = document.getElementById('info-bar-inner');
+        const items = [];
+
+        // Date
+        const dateFormatted = formatDate(t.date);
+        if (dateFormatted) {
+            items.push({
+                icon: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+                label: 'Date',
+                value: dateFormatted,
+            });
+        }
+
+        // Location
+        const location = buildLocation(t);
+        if (location) {
+            items.push({
+                icon: '<svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+                label: 'Location',
+                value: location,
+            });
+        }
+
+        // Competitors
+        const count = t.competitor_count || 0;
+        items.push({
+            icon: '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+            label: 'Competitors',
+            value: count + ' competitor' + (count !== 1 ? 's' : '') + ' registered',
+        });
+
+        // Contact
+        if (t.contact_email) {
+            items.push({
+                icon: '<svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+                label: 'Contact',
+                value: t.contact_email,
+            });
+        }
+
+        // Deadline
+        if (t.registration_deadline) {
+            const deadlineFormatted = formatShortDate(t.registration_deadline);
+            if (deadlineFormatted) {
+                items.push({
+                    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+                    label: 'Registration Deadline',
+                    value: deadlineFormatted,
+                });
+            }
+        }
+
+        container.innerHTML = items.map(item => `
+            <div class="info-item">
+                <div class="info-icon">${item.icon}</div>
+                <div>
+                    <div class="info-label">${esc(item.label)}</div>
+                    <div class="info-value">${esc(item.value)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── Render Events ──────────────────────────────────────────────────
+    function renderEvents(t) {
+        const container = document.getElementById('events-container');
+        const events = t.events || [];
+        const countEl = document.getElementById('events-count');
+
+        if (events.length === 0) {
+            container.innerHTML = '<div class="no-events">No events have been listed for this tournament yet.</div>';
+            countEl.textContent = '';
+            return;
+        }
+
+        countEl.textContent = events.length + ' event' + (events.length !== 1 ? 's' : '');
+
+        const basePrice = parseFloat(t.base_event_price) || 0;
+        const addonPrice = parseFloat(t.addon_event_price) || 0;
+
+        container.innerHTML = '<div class="events-list">' + events.map(function(ev) {
+            // Build tags
+            const tags = [];
+
+            // Event type
+            if (ev.event_type) {
+                tags.push('<span class="event-tag type">' + esc(capitalize(ev.event_type)) + '</span>');
+            }
+
+            // Gender
+            if (ev.gender && ev.gender !== 'mixed') {
+                tags.push('<span class="event-tag">' + esc(capitalize(ev.gender)) + '</span>');
+            } else if (ev.gender === 'mixed') {
+                tags.push('<span class="event-tag">Mixed</span>');
+            }
+
+            // Age range
+            if (ev.age_min != null || ev.age_max != null) {
+                let ageStr = '';
+                if (ev.age_min != null && ev.age_max != null) {
+                    ageStr = 'Ages ' + ev.age_min + '-' + ev.age_max;
+                } else if (ev.age_min != null) {
+                    ageStr = 'Ages ' + ev.age_min + '+';
+                } else {
+                    ageStr = 'Ages up to ' + ev.age_max;
+                }
+                tags.push('<span class="event-tag">' + esc(ageStr) + '</span>');
+            }
+
+            // Rank range
+            if (ev.rank_min || ev.rank_max) {
+                let rankStr = '';
+                if (ev.rank_min && ev.rank_max) {
+                    rankStr = ev.rank_min + ' - ' + ev.rank_max;
+                } else if (ev.rank_min) {
+                    rankStr = ev.rank_min + '+';
+                } else {
+                    rankStr = 'Up to ' + ev.rank_max;
+                }
+                tags.push('<span class="event-tag">' + esc(rankStr) + '</span>');
+            }
+
+            // Division
+            if (ev.division) {
+                tags.push('<span class="event-tag">' + esc(ev.division) + '</span>');
+            }
+
+            // Price for this event
+            const eventBasePrice = ev.price_override != null ? parseFloat(ev.price_override) : basePrice;
+            const eventAddonPrice = ev.addon_price_override != null ? parseFloat(ev.addon_price_override) : addonPrice;
+
+            return `
+                <div class="event-card">
+                    <div class="event-info">
+                        <div class="event-name">${esc(ev.name)}</div>
+                        ${tags.length > 0 ? '<div class="event-tags">' + tags.join('') + '</div>' : ''}
+                    </div>
+                    <div class="event-price">
+                        <div class="event-price-value">${formatPrice(eventBasePrice)}</div>
+                        ${eventAddonPrice > 0 ? '<div class="event-price-label">+' + formatPrice(eventAddonPrice) + ' addon</div>' : ''}
+                    </div>
+                </div>
+            `;
+        }).join('') + '</div>';
+    }
+
+    // ── Render CTA Sidebar ─────────────────────────────────────────────
+    function renderCTA(t, status) {
+        const card = document.getElementById('cta-card');
+        const basePrice = parseFloat(t.base_event_price) || 0;
+        const addonPrice = parseFloat(t.addon_event_price) || 0;
+
+        let buttonHtml = '';
+        let noteHtml = '';
+
+        if (status.key === 'open') {
+            buttonHtml = `<a href="/register.html#info?tournamentId=${esc(t.id)}" class="btn-register">Register Now</a>`;
+            if (t.registration_deadline) {
+                const deadlineFormatted = formatShortDate(t.registration_deadline);
+                if (deadlineFormatted) {
+                    noteHtml = `<div class="cta-note">Registration closes ${esc(deadlineFormatted)}</div>`;
+                }
+            }
+        } else if (status.key === 'closed') {
+            buttonHtml = '<div class="btn-register disabled">Registration Closed</div>';
+            noteHtml = '<div class="cta-note">Registration is currently closed for this tournament.</div>';
+        } else {
+            buttonHtml = '<div class="btn-register disabled">Tournament Completed</div>';
+            noteHtml = '<div class="cta-note">This tournament has already taken place.</div>';
+        }
+
+        let priceHtml = '';
+        if (basePrice > 0) {
+            priceHtml = `
+                <div class="cta-price-info">
+                    <div class="cta-price-block">
+                        <div class="cta-price-amount">${formatPrice(basePrice)}</div>
+                        <div class="cta-price-label">First Event</div>
+                    </div>
+                    ${addonPrice > 0 ? `
+                    <div class="cta-price-block">
+                        <div class="cta-price-amount">${formatPrice(addonPrice)}</div>
+                        <div class="cta-price-label">Each Additional</div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        card.innerHTML = `
+            <div class="cta-title">${status.key === 'open' ? 'Join This Tournament' : (status.key === 'closed' ? 'Registration' : 'Tournament Over')}</div>
+            <div class="cta-subtitle">${status.key === 'open' ? 'Secure your spot today' : (status.key === 'closed' ? 'Not currently accepting registrations' : 'Thank you for participating')}</div>
+            ${priceHtml}
+            ${buttonHtml}
+            ${noteHtml}
+        `;
+    }
+
+})();
+</script>
+
+</body>
+</html>
