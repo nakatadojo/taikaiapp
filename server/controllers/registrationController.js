@@ -7,7 +7,8 @@ const profileQueries = require('../db/queries/profiles');
 const discountQueries = require('../db/queries/discounts');
 const creditQueries = require('../db/queries/credits');
 const pool = require('../db/pool');
-const { sendGuardianConfirmationEmail, sendRegistrationConfirmationEmail } = require('../config/email');
+const { sendGuardianConfirmationEmail } = require('../config/email');
+const { sendRegistrationConfirmationEmail } = require('../email');
 
 /**
  * POST /api/registrations/competitor

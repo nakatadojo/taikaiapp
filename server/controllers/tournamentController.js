@@ -1,5 +1,7 @@
 const tournamentQueries = require('../db/queries/tournaments');
+const userQueries = require('../db/queries/users');
 const storage = require('../config/storage');
+const { sendTournamentPublishedEmail } = require('../email');
 
 // ── Public Endpoints ─────────────────────────────────────────────────────────
 
@@ -252,6 +254,19 @@ async function publishTournament(req, res, next) {
     if (!tournament) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
+
+    // Send email to director when tournament is published
+    if (published) {
+      try {
+        const director = await userQueries.findById(req.user.id);
+        if (director) {
+          await sendTournamentPublishedEmail(director.email, tournament);
+        }
+      } catch (emailErr) {
+        console.warn('Failed to send tournament published email:', emailErr.message);
+      }
+    }
+
     res.json({ tournament, message: published ? 'Tournament published' : 'Tournament unpublished' });
   } catch (err) {
     next(err);

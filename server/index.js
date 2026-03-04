@@ -39,6 +39,7 @@ app.use('/api/registrations', require('./routes/registrations'));
 app.use('/api/guardians', require('./routes/guardians'));
 app.use('/api/credits', require('./routes/credits'));
 app.use('/api/super-admin', require('./routes/superAdmin'));
+app.use('/api/email', require('./routes/email'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 

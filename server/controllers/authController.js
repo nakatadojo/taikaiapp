@@ -5,7 +5,7 @@ const userQueries = require('../db/queries/users');
 const roleQueries = require('../db/queries/roles');
 const profileQueries = require('../db/queries/profiles');
 const pool = require('../db/pool');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/email');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../email');
 
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
@@ -131,8 +131,11 @@ async function signup(req, res, next) {
       }
     }
 
-    // Send verification email
-    await sendVerificationEmail(email, verificationToken);
+    // Send verification email (director-specific template for event directors)
+    await sendVerificationEmail(email, verificationToken, {
+      accountType: acctType,
+      organizationName,
+    });
 
     res.status(201).json({
       message: 'Account created. Please check your email to verify your address.',
