@@ -4,7 +4,7 @@
   "description": "Karate Tournament Management System",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js",
+    "start": "node-pg-migrate up && node server/index.js",
     "dev": "node --watch server/index.js",
     "migrate": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
