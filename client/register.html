@@ -1471,6 +1471,7 @@
                 <input type="password" id="login-password" required placeholder="Your password">
             </div>
             <button type="submit" class="btn-accent btn-block" id="login-submit-btn">Sign In</button>
+            <button type="button" onclick="switchAuthTab('forgot')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">Forgot password?</button>
         </form>
 
         <!-- ── SIGNUP FORM ─────────────────────────────────────────────── -->
@@ -1521,6 +1522,19 @@
             </div>
 
             <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
+        </form>
+
+        <!-- ── FORGOT PASSWORD FORM ──────────────────────────────────── -->
+        <form id="auth-forgot-form" class="auth-form reg-form" onsubmit="handleForgotPassword(event)">
+            <div id="forgot-error" class="msg-error msg-hidden"></div>
+            <div id="forgot-success" class="msg-success msg-hidden"></div>
+            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Enter your email and we'll send a reset link.</p>
+            <div class="form-group mb-16">
+                <label for="forgot-email">Email</label>
+                <input type="email" id="forgot-email" required placeholder="you@example.com">
+            </div>
+            <button type="submit" class="btn-accent btn-block" id="forgot-submit-btn">Send Reset Link</button>
+            <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
         </form>
     </div>
 </div>
@@ -1653,12 +1667,14 @@
             el.classList.toggle('active', el.dataset.tab === tab);
         });
         document.querySelectorAll('.auth-form').forEach(el => el.classList.remove('active'));
-        const formId = tab === 'login' ? 'auth-login-form' : 'auth-signup-form';
+        var formId = tab === 'forgot' ? 'auth-forgot-form' : (tab === 'login' ? 'auth-login-form' : 'auth-signup-form');
         document.getElementById(formId).classList.add('active');
         // Clear errors
         hideEl('login-error');
         hideEl('signup-error');
         hideEl('signup-success');
+        hideEl('forgot-error');
+        hideEl('forgot-success');
     };
 
     window.selectAccountType = function(type) {
@@ -1697,6 +1713,26 @@
         } finally {
             btn.disabled = false;
             btn.textContent = 'Sign In';
+        }
+    };
+
+    window.handleForgotPassword = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('forgot-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        hideEl('forgot-error');
+        hideEl('forgot-success');
+        try {
+            await Auth.forgotPassword(document.getElementById('forgot-email').value.trim());
+            var el = document.getElementById('forgot-success');
+            el.textContent = 'If an account with that email exists, a reset link has been sent.';
+            el.classList.remove('msg-hidden');
+        } catch (err) {
+            showError('forgot-error', err.message || 'Something went wrong. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send Reset Link';
         }
     };
 
