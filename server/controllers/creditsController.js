@@ -1,20 +1,26 @@
 const creditQueries = require('../db/queries/credits');
+const creditPackageQueries = require('../db/queries/creditPackages');
 const pool = require('../db/pool');
-
-// ── Credit Packages ─────────────────────────────────────────────────────────
-
-const CREDIT_PACKAGES = [
-  { id: 'starter',  credits: 50,  priceInCents: 4900,  label: 'Starter — 50 credits',  pricePerCredit: '$0.98' },
-  { id: 'standard', credits: 150, priceInCents: 12900, label: 'Standard — 150 credits', pricePerCredit: '$0.86' },
-  { id: 'pro',      credits: 500, priceInCents: 39900, label: 'Pro — 500 credits',      pricePerCredit: '$0.80' },
-];
 
 /**
  * GET /api/credits/packages
- * Returns available credit packages.
+ * Returns available credit packages (from database).
  */
-async function getPackages(req, res) {
-  res.json({ packages: CREDIT_PACKAGES });
+async function getPackages(req, res, next) {
+  try {
+    const packages = await creditPackageQueries.getActive();
+    // Map to the expected frontend format
+    const formatted = packages.map(p => ({
+      id: p.slug,
+      credits: p.credits,
+      priceInCents: p.price_in_cents,
+      label: p.label,
+      pricePerCredit: `$${(p.price_in_cents / 100 / p.credits).toFixed(2)}`,
+    }));
+    res.json({ packages: formatted });
+  } catch (err) {
+    next(err);
+  }
 }
 
 /**
@@ -53,8 +59,9 @@ async function checkout(req, res, next) {
   try {
     const { packageId } = req.body;
 
-    const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
-    if (!pkg) {
+    // Look up package from database by slug
+    const pkg = await creditPackageQueries.getBySlug(packageId);
+    if (!pkg || !pkg.active) {
       return res.status(400).json({ error: 'Invalid package ID' });
     }
 
@@ -75,7 +82,7 @@ async function checkout(req, res, next) {
             name: `Taikai Credits — ${pkg.label}`,
             description: `${pkg.credits} registration credits for your tournaments`,
           },
-          unit_amount: pkg.priceInCents,
+          unit_amount: pkg.price_in_cents,
         },
         quantity: 1,
       }],
@@ -83,7 +90,7 @@ async function checkout(req, res, next) {
       cancel_url: `${appUrl}/director.html#settings`,
       metadata: {
         userId: req.user.id,
-        packageId: pkg.id,
+        packageId: pkg.slug,
         credits: pkg.credits.toString(),
         type: 'credit_purchase',
       },
@@ -147,7 +154,7 @@ async function confirm(req, res, next) {
 
     // Add credits
     const credits = parseInt(session.metadata.credits);
-    const pkg = CREDIT_PACKAGES.find(p => p.id === session.metadata.packageId);
+    const pkg = await creditPackageQueries.getBySlug(session.metadata.packageId);
     const description = `${credits} credits purchased (${pkg?.label || session.metadata.packageId})`;
 
     const newBalance = await creditQueries.addCredits(
@@ -171,5 +178,4 @@ module.exports = {
   getTransactions,
   checkout,
   confirm,
-  CREDIT_PACKAGES,
 };

@@ -46,6 +46,36 @@
             z-index: 0;
         }
 
+        /* ===== IMPERSONATION BANNER ===== */
+        .impersonation-banner {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            background: #dc2626;
+            color: white;
+            padding: 8px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 99999;
+            box-shadow: 0 2px 8px rgba(220,38,38,0.4);
+        }
+        .impersonation-banner button {
+            background: white;
+            color: #dc2626;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .impersonation-banner button:hover {
+            background: #fef2f2;
+        }
+
         /* ===== NAVBAR ===== */
         .navbar {
             position: fixed;
@@ -1071,6 +1101,12 @@
     <script src="/taikai-logo.js"></script>
 </head>
 <body>
+
+    <!-- Impersonation Banner (hidden by default) -->
+    <div id="impersonation-banner" class="impersonation-banner" style="display:none;">
+        <span id="impersonation-text">You are viewing as a director</span>
+        <button onclick="stopImpersonation()">Return to Admin</button>
+    </div>
 
     <!-- ===== NAVBAR ===== -->
     <nav class="navbar">
@@ -2272,6 +2308,18 @@
 
             if (user) {
                 await fetchCreditBalance();
+
+                // Check for impersonation
+                if (user.impersonating) {
+                    const banner = document.getElementById('impersonation-banner');
+                    const text = document.getElementById('impersonation-text');
+                    if (banner) {
+                        banner.style.display = '';
+                        text.textContent = `Viewing as ${user.firstName || ''} ${user.lastName || ''} (${user.email})`;
+                        // Push body content down
+                        document.body.style.paddingTop = '40px';
+                    }
+                }
             }
 
             updateNavbar();
@@ -2280,6 +2328,21 @@
 
         Auth.init();
     })();
+
+    async function stopImpersonation() {
+        try {
+            const res = await fetch('/api/super-admin/stop-impersonate', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            window.location.href = data.redirectUrl || '/admin';
+        } catch (err) {
+            alert('Failed to stop impersonation');
+            window.location.href = '/admin';
+        }
+    }
     </script>
 </body>
 </html>

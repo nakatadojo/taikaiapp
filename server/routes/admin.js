@@ -8,8 +8,8 @@ const discountController = require('../controllers/discountController');
 
 const router = express.Router();
 
-// All admin routes require authentication + admin role
-router.use(requireAuth, requireRole('admin'));
+// All admin routes require authentication + admin or super_admin role
+router.use(requireAuth, requireRole('admin', 'super_admin'));
 
 // POST /api/admin/users/:id/roles — Add role to user
 router.post('/users/:id/roles',

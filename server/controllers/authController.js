@@ -305,7 +305,7 @@ async function getMe(req, res, next) {
 
     const roles = await roleQueries.getRolesForUser(user.id);
 
-    res.json({
+    const response = {
       user: {
         id: user.id,
         email: user.email,
@@ -321,7 +321,15 @@ async function getMe(req, res, next) {
         creditBalance: user.credit_balance || 0,
         settings: user.settings || {},
       },
-    });
+    };
+
+    // Pass through impersonation flags if present
+    if (req.user.impersonating) {
+      response.user.impersonating = true;
+      response.user.originalUserId = req.user.originalUserId;
+    }
+
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -472,4 +480,5 @@ module.exports = {
   setupAccount,
   getSettings,
   updateSettings,
+  setAuthCookie,
 };
