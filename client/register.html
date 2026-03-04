@@ -1174,6 +1174,7 @@
     .w-full { width: 100%; }
     .hidden { display: none !important; }
     </style>
+    <script src="/taikai-logo.js"></script>
 </head>
 <body>
 
@@ -1182,7 +1183,10 @@
      ════════════════════════════════════════════════════════════════════════ -->
 <header class="reg-topbar">
     <div class="reg-topbar-inner">
-        <a href="#info" class="reg-topbar-brand" id="topbar-brand">Tournament Registration</a>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <img data-taikai-logo alt="Taikai" style="height:40px;width:auto;">
+            <a href="#info" class="reg-topbar-brand" id="topbar-brand">Tournament Registration</a>
+        </div>
         <div class="reg-topbar-actions">
             <div id="topbar-user" class="reg-topbar-user" style="display:none;">
                 <div class="reg-topbar-avatar" id="topbar-avatar"></div>
