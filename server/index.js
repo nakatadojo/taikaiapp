@@ -87,18 +87,40 @@ app.use(errorHandler);
 
 // ── Start Server ────────────────────────────────────────────────────────────
 
-// Test database connection if DATABASE_URL is configured
-if (process.env.DATABASE_URL) {
-  const pool = require('./db/pool');
-  pool.query('SELECT NOW()')
-    .then(() => console.log('✓ Database connected'))
-    .catch(err => console.warn('✗ Database connection failed:', err.message));
+async function startServer() {
+  // Run database migrations before starting
+  if (process.env.DATABASE_URL) {
+    try {
+      const { execSync } = require('child_process');
+      console.log('Running database migrations...');
+      execSync('npx node-pg-migrate up', {
+        stdio: 'inherit',
+        env: { ...process.env },
+        cwd: path.join(__dirname, '..'),
+      });
+      console.log('✓ Migrations complete');
+    } catch (err) {
+      console.warn('✗ Migration warning:', err.message);
+      // Don't crash — server can still start if tables already exist
+    }
+
+    // Test database connection
+    const pool = require('./db/pool');
+    try {
+      await pool.query('SELECT NOW()');
+      console.log('✓ Database connected');
+    } catch (err) {
+      console.warn('✗ Database connection failed:', err.message);
+    }
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Taikai by Kimesoft running on http://localhost:${PORT}`);
+    console.log(`Landing:   http://localhost:${PORT}/`);
+    console.log(`Director:  http://localhost:${PORT}/director`);
+    console.log(`Register:  http://localhost:${PORT}/register`);
+    console.log(`Admin:     http://localhost:${PORT}/admin`);
+  });
 }
 
-app.listen(PORT, () => {
-  console.log(`Taikai by Kimesoft running on http://localhost:${PORT}`);
-  console.log(`Landing:   http://localhost:${PORT}/`);
-  console.log(`Director:  http://localhost:${PORT}/director`);
-  console.log(`Register:  http://localhost:${PORT}/register`);
-  console.log(`Admin:     http://localhost:${PORT}/admin`);
-});
+startServer();
