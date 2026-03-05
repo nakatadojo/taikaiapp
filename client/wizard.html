@@ -1513,6 +1513,7 @@ async function autoSave(step) {
                     eventType: et,
                     isEventType: true,
                     criteriaTemplates: templates,
+                    matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
                 };
             });
 
@@ -1549,6 +1550,7 @@ async function autoSave(step) {
                         eventType: et,
                         isEventType: true,
                         criteriaTemplates: templates,
+                        matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
                         priceOverride: override.base || undefined,
                         addonPriceOverride: override.addon || undefined,
                     };
@@ -1646,6 +1648,7 @@ async function saveDraft() {
                     eventType: et,
                     isEventType: true,
                     criteriaTemplates: templates,
+                    matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
                     priceOverride: override.base || undefined,
                     addonPriceOverride: override.addon || undefined,
                 };
@@ -1871,6 +1874,7 @@ async function publishTournament() {
                     eventType: et,
                     isEventType: true,
                     criteriaTemplates: templates,
+                    matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
                     priceOverride: override.base || undefined,
                     addonPriceOverride: override.addon || undefined,
                 };

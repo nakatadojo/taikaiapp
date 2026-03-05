@@ -372,6 +372,7 @@ async function syncEvents(tournamentId, events) {
     for (const evt of events) {
       const criteriaJson = evt.criteriaTemplates ? JSON.stringify(evt.criteriaTemplates) : null;
       const isEventType = evt.isEventType || false;
+      const matchDuration = evt.matchDurationSeconds || null;
 
       if (evt.id && existingIds.has(evt.id)) {
         incomingIds.add(evt.id);
@@ -380,15 +381,15 @@ async function syncEvents(tournamentId, events) {
             name = $1, event_type = $2, division = $3, gender = $4,
             age_min = $5, age_max = $6, rank_min = $7, rank_max = $8,
             price_override = $9, addon_price_override = $10, max_competitors = $11,
-            criteria_templates = $12, is_event_type = $13,
+            criteria_templates = $12, is_event_type = $13, match_duration_seconds = $14,
             updated_at = NOW()
-           WHERE id = $14 AND tournament_id = $15
+           WHERE id = $15 AND tournament_id = $16
            RETURNING *`,
           [
             evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
-            criteriaJson, isEventType,
+            criteriaJson, isEventType, matchDuration,
             evt.id, tournamentId,
           ]
         );
@@ -399,14 +400,14 @@ async function syncEvents(tournamentId, events) {
             (tournament_id, name, event_type, division, gender,
              age_min, age_max, rank_min, rank_max,
              price_override, addon_price_override, max_competitors,
-             criteria_templates, is_event_type)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+             criteria_templates, is_event_type, match_duration_seconds)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            RETURNING *`,
           [
             tournamentId, evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
-            criteriaJson, isEventType,
+            criteriaJson, isEventType, matchDuration,
           ]
         );
         if (inserted.rows[0]) results.push(inserted.rows[0]);

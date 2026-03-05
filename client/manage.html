@@ -1816,10 +1816,12 @@
                         id: ev.id,
                         name: ev.name,
                         description: ev.description || '',
+                        eventType: ev.event_type || null,
                         teamSize: ev.team_size || 1,
                         basePrice: ev.base_price != null ? parseFloat(ev.base_price) : null,
                         addOnPrice: ev.addon_price != null ? parseFloat(ev.addon_price) : null,
                         price: ev.base_price != null ? parseFloat(ev.base_price) : 0,
+                        matchDurationSeconds: ev.match_duration_seconds || null,
                         isDefault: false,
                         createdAt: ev.created_at || new Date().toISOString()
                     });

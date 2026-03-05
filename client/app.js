@@ -6432,12 +6432,44 @@ function updateBracketTypeOptions() {
 }
 
 function getTemplateDurationForEvent(eventId) {
+    // Check event-level match_duration_seconds first (from DB)
+    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const evt = eventTypes.find(e => String(e.id) === String(eventId));
+    if (evt?.matchDurationSeconds) {
+        return evt.matchDurationSeconds;
+    }
+
+    // Fall back to first template's matchDuration
     const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
     const eventData = allDivisions[eventId];
     if (eventData?.templates?.[0]?.matchDuration) {
-        return eventData.templates[0].matchDuration;  // Already in seconds
+        return eventData.templates[0].matchDuration;
     }
     return null;
+}
+
+/**
+ * Get match duration for a specific division based on its template.
+ * Matches the division name against template age groups to find the right duration.
+ */
+function getDivisionMatchDuration(divisionName, eventId) {
+    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData?.templates) return null;
+
+    // Check each template — if the division name contains the template's age label, use that duration
+    for (const tmpl of eventData.templates) {
+        if (tmpl.matchDuration && tmpl.criteria) {
+            const ageCriteria = tmpl.criteria.find(c => c.type === 'age');
+            if (ageCriteria) {
+                const matches = ageCriteria.ranges.some(r => divisionName.includes(r.label));
+                if (matches) return tmpl.matchDuration;
+            }
+        }
+    }
+
+    // Fall back to event-level duration
+    return getTemplateDurationForEvent(eventId);
 }
 
 function generateBracketsForAllDivisions() {
@@ -6560,9 +6592,11 @@ function generateBracketsForAllDivisions() {
             bracket.scoreboardConfig = scoreboardConfig;
 
             // Store match duration on bracket (seconds)
+            // Priority: form override > per-division template duration > event-level duration
             const formDuration = parseInt(document.getElementById('match-duration').value);
-            const templateDuration = getTemplateDurationForEvent(eventId);
-            bracket.matchDuration = (formDuration ? formDuration * 60 : null) || templateDuration || null;
+            const divisionDuration = getDivisionMatchDuration(divisionName, eventId);
+            const eventDuration = getTemplateDurationForEvent(eventId);
+            bracket.matchDuration = (formDuration ? formDuration * 60 : null) || divisionDuration || eventDuration || null;
 
             // Save bracket
             const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
