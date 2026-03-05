@@ -1598,14 +1598,14 @@
        ══════════════════════════════════════════════════════════════════════ */
     const PANELS = ['info', 'dashboard', 'profile', 'events', 'cart', 'success', 'registrations'];
 
-    function navigate(panel, replace = false) {
+    window.navigate = function navigate(panel, replace = false) {
         if (!PANELS.includes(panel)) panel = 'info';
         if (replace) {
             history.replaceState(null, '', '#' + panel);
         } else {
             location.hash = '#' + panel;
         }
-    }
+    };
 
     function getCurrentPanel() {
         const hash = location.hash.replace('#', '') || 'info';
