@@ -1765,5 +1765,76 @@
     <script src="/auth.js"></script>
     <script src="/app.js"></script>
     <script>lucide.createIcons();</script>
+    <script>
+    // Auto-load tournament from URL path (/director/tournaments/:id/manage)
+    (async function autoLoadTournament() {
+        const match = window.location.pathname.match(/\/director\/tournaments\/([^/]+)\/manage/);
+        if (!match) return;
+        const tournamentId = match[1];
+
+        try {
+            const res = await fetch(`/api/tournaments/${tournamentId}`, { credentials: 'include' });
+            if (!res.ok) return;
+            const data = await res.json();
+            const t = data.tournament;
+
+            // Inject tournament into localStorage so app.js can use it
+            const tournaments = JSON.parse(localStorage.getItem('tournaments') || '[]');
+            const existing = tournaments.find(x => String(x.id) === String(t.id));
+            if (!existing) {
+                tournaments.push({
+                    id: t.id,
+                    name: t.name,
+                    date: t.date,
+                    location: t.location || t.venue_name || '',
+                    sanctioningBody: t.sanctioning_body || 'custom',
+                    ageCalculationMethod: t.age_calculation_method || 'event-date',
+                    logo: t.cover_image_url || null,
+                    cornerDefaults: {
+                        corner1Name: 'AKA',
+                        corner2Name: 'AO',
+                        corner1Color: '#dc2626',
+                        corner2Color: '#2563eb'
+                    },
+                    pricing: {
+                        basePrice: parseFloat(t.base_event_price) || 75.00,
+                        addOnPrice: parseFloat(t.addon_event_price) || 25.00
+                    },
+                    createdAt: t.created_at || new Date().toISOString()
+                });
+                localStorage.setItem('tournaments', JSON.stringify(tournaments));
+            }
+
+            // Inject tournament events into localStorage eventTypes
+            if (t.events && t.events.length > 0) {
+                const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+                t.events.forEach(ev => {
+                    if (!eventTypes.find(x => String(x.id) === String(ev.id))) {
+                        eventTypes.push({
+                            id: ev.id,
+                            name: ev.name,
+                            description: ev.description || '',
+                            teamSize: ev.team_size || 1,
+                            basePrice: ev.base_price != null ? parseFloat(ev.base_price) : null,
+                            addOnPrice: ev.addon_price != null ? parseFloat(ev.addon_price) : null,
+                            price: ev.base_price != null ? parseFloat(ev.base_price) : 0,
+                            isDefault: false,
+                            createdAt: ev.created_at || new Date().toISOString()
+                        });
+                    }
+                });
+                localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
+            }
+
+            // Reload the tournament selector and auto-select
+            loadTournamentSelector();
+            const select = document.getElementById('active-tournament');
+            select.value = t.id;
+            switchTournament();
+        } catch (err) {
+            console.error('Failed to auto-load tournament:', err);
+        }
+    })();
+    </script>
 </body>
 </html>

@@ -250,7 +250,7 @@ let currentTournamentId = null;
 
 function getCurrentTournament() {
     const tournaments = db.load('tournaments');
-    return tournaments.find(t => t.id === currentTournamentId) || null;
+    return tournaments.find(t => String(t.id) === String(currentTournamentId)) || null;
 }
 
 /**
@@ -462,7 +462,7 @@ function hideTournamentForm() {
 
 function switchTournament() {
     const select = document.getElementById('active-tournament');
-    currentTournamentId = select.value ? parseInt(select.value) : null;
+    currentTournamentId = select.value || null;
     if (currentTournamentId) {
         document.getElementById('main-nav').classList.remove('hidden');
         // Reload all data for the selected tournament
@@ -3897,7 +3897,7 @@ function showScoreboardForm() {
     // Pre-populate corner names and colors from tournament sanctioning body defaults
     if (currentTournamentId) {
         const tournaments = db.load('tournaments');
-        const currentTournament = tournaments.find(t => t.id === parseInt(currentTournamentId));
+        const currentTournament = tournaments.find(t => String(t.id) === String(currentTournamentId));
 
         if (currentTournament && currentTournament.cornerDefaults) {
             const defaults = currentTournament.cornerDefaults;
