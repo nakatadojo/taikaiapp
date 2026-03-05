@@ -1790,7 +1790,8 @@
                     ${t.location ? `<span>&#128205; ${escapeHtml(t.location)}</span>` : ''}
                 </div>
                 <div class="tournament-card-actions">
-                    <a href="/director/tournaments/${t.id}/wizard" class="btn btn-primary btn-sm">Edit</a>
+                    <a href="/director/tournaments/${t.id}/manage" class="btn btn-primary btn-sm">Manage</a>
+                    <a href="/director/tournaments/${t.id}/wizard" class="btn btn-secondary btn-sm">Edit</a>
                     <a href="#registrants?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Registrants</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">

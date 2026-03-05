@@ -77,6 +77,11 @@ app.get('/director/tournaments/:id/wizard', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'wizard.html'));
 });
 
+// Tournament Management (divisions, brackets, scoring, scoreboards)
+app.get('/director/tournaments/:id/manage', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'manage.html'));
+});
+
 // /tournaments/:slug — Serve public tournament page
 app.get('/tournaments/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'tournament.html'));

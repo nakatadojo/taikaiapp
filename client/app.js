@@ -17355,7 +17355,7 @@ window.addEventListener('load', () => {
     Auth.onAuthChange = (user) => {
         const gate = document.getElementById('auth-gate');
         const academyNavGroup = document.getElementById('academy-nav-group');
-        if (user && (user.roles.includes('admin') || user.roles.includes('coach') || user.roles.includes('judge'))) {
+        if (user && (user.roles.includes('admin') || user.roles.includes('event_director') || user.roles.includes('coach') || user.roles.includes('judge'))) {
             gate.classList.add('hidden');
             updateUserMenu(user);
             startSyncPolling();

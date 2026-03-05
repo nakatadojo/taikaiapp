@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="viewport" content="width=1200">
+    <title>Tournament Manager - TAIKAI</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/taikai-logo.js"></script>
+</head>
+<body>
+    <!-- ===== AUTH GATE (login/signup overlay) ===== -->
+    <div id="auth-gate" class="auth-gate">
+        <div class="auth-gate-card">
+            <div class="auth-gate-header">
+                <img data-taikai-logo alt="Taikai" style="height:48px;width:auto;">
+                <h1>Taikai</h1>
+                <p class="auth-gate-subtitle">Sign in to manage your tournament</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="authSwitchTab('login')">Login</button>
+                <button class="auth-tab" data-tab="signup" onclick="authSwitchTab('signup')">Sign Up</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="auth-login-form" class="auth-form" onsubmit="handleAdminLogin(event)">
+                <div id="auth-login-error" class="auth-error hidden"></div>
+                <div class="auth-field">
+                    <label for="auth-login-email">Email</label>
+                    <input type="email" id="auth-login-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="auth-login-password">Password</label>
+                    <input type="password" id="auth-login-password" required placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-login-btn">Sign In</button>
+                <button type="button" class="auth-link" onclick="authSwitchTab('forgot')">Forgot password?</button>
+            </form>
+
+            <!-- Sign Up Form -->
+            <form id="auth-signup-form" class="auth-form hidden" onsubmit="handleAdminSignup(event)">
+                <div id="auth-signup-error" class="auth-error hidden"></div>
+                <div id="auth-signup-success" class="auth-success hidden"></div>
+                <div class="auth-field-row">
+                    <div class="auth-field">
+                        <label for="auth-signup-first">First Name</label>
+                        <input type="text" id="auth-signup-first" required placeholder="John">
+                    </div>
+                    <div class="auth-field">
+                        <label for="auth-signup-last">Last Name</label>
+                        <input type="text" id="auth-signup-last" required placeholder="Doe">
+                    </div>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signup-email">Email</label>
+                    <input type="email" id="auth-signup-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signup-password">Password</label>
+                    <input type="password" id="auth-signup-password" required placeholder="Min 8 chars, upper + lower + digit" autocomplete="new-password" oninput="updatePasswordStrength(this.value)">
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="password-strength-bar"></div>
+                    </div>
+                    <span class="password-strength-text" id="password-strength-text"></span>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-signup-confirm">Confirm Password</label>
+                    <input type="password" id="auth-signup-confirm" required placeholder="••••••••" autocomplete="new-password">
+                </div>
+                <div class="auth-field">
+                    <label>Roles</label>
+                    <div class="role-pills">
+                        <label class="role-pill selected"><input type="checkbox" value="competitor" checked> Competitor</label>
+                        <label class="role-pill"><input type="checkbox" value="coach"> Coach</label>
+                        <label class="role-pill"><input type="checkbox" value="judge"> Judge</label>
+                        <label class="role-pill"><input type="checkbox" value="assistant_coach"> Asst. Coach</label>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-signup-btn">Create Account</button>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="auth-forgot-form" class="auth-form hidden" onsubmit="handleForgotPassword(event)">
+                <div id="auth-forgot-error" class="auth-error hidden"></div>
+                <div id="auth-forgot-success" class="auth-success hidden"></div>
+                <p class="auth-forgot-text">Enter your email address and we'll send you a link to reset your password.</p>
+                <div class="auth-field">
+                    <label for="auth-forgot-email">Email</label>
+                    <input type="email" id="auth-forgot-email" required placeholder="you@example.com">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-forgot-btn">Send Reset Link</button>
+                <button type="button" class="auth-link" onclick="authSwitchTab('login')">← Back to login</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
+            </div>
+
+            <div class="sidebar-tournament">
+                <div class="tournament-selector" id="tournament-selector">
+                    <select id="active-tournament" onchange="switchTournament()">
+                        <option value="">Select Tournament</option>
+                    </select>
+                    <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
+                </div>
+            </div>
+
+            <nav id="main-nav" class="hidden">
+                <div class="nav-group">
+                    <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Setup</div>
+                    <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
+                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Clubs</button>
+                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
+                    <button class="nav-btn" data-view="events"><i data-lucide="award" class="nav-icon"></i> Event Types</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Tournament</div>
+                    <button class="nav-btn" data-view="scoreboard-configs"><i data-lucide="settings" class="nav-icon"></i> Scoreboard Setup</button>
+                    <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
+                    <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
+                    <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Live</div>
+                    <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
+                    <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
+                    <button class="nav-btn" data-view="public-site"><i data-lucide="globe" class="nav-icon"></i> Public Site</button>
+                </div>
+                <div class="nav-group" id="academy-nav-group" style="display:none">
+                    <div class="nav-group-label">Academy</div>
+                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Academy</button>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-group-label">Admin</div>
+                    <button class="nav-btn" data-view="settings"><i data-lucide="settings-2" class="nav-icon"></i> Settings</button>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div id="user-menu" class="user-menu hidden">
+                    <div class="user-menu-info">
+                        <div class="user-avatar" id="user-avatar">?</div>
+                        <div class="user-details">
+                            <span class="user-name" id="user-name">—</span>
+                            <div class="user-roles" id="user-roles"></div>
+                        </div>
+                    </div>
+                    <button class="user-logout-btn" onclick="handleLogout()" title="Log out">
+                        <i data-lucide="log-out" class="nav-icon"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT AREA ===== -->
+        <div class="main-area">
+            <main class="content">
+            <!-- Tournament Form Modal -->
+            <div id="tournament-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h2>Create New Tournament</h2>
+                    <form id="tournament-form">
+                        <div class="form-group">
+                            <label for="tournament-name">Tournament Name *</label>
+                            <input type="text" id="tournament-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="tournament-date">Date *</label>
+                            <input type="date" id="tournament-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="tournament-location">Location *</label>
+                            <input type="text" id="tournament-location" placeholder="City, Country" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sanctioning-body">Sanctioning Body / Rule Set *</label>
+                            <select id="sanctioning-body" required onchange="updateSanctioningBodyDefaults()">
+                                <option value="">Select Sanctioning Body</option>
+                                <option value="wkf">WKF (World Karate Federation)</option>
+                                <option value="aau">AAU (Amateur Athletic Union)</option>
+                                <option value="custom">Custom / Other</option>
+                            </select>
+                            <p class="hint">This determines default corner names (AKA/SHIRO vs RED/WHITE), colors, and age calculation rules.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="age-calculation-method">Age Calculation Method *</label>
+                            <select id="age-calculation-method" required>
+                                <option value="">Select method</option>
+                                <option value="wkf-standard">WKF Standard (Age as of Dec 31st of competition year)</option>
+                                <option value="aau-standard">AAU Standard (Age on day of competition)</option>
+                                <option value="registration-date">Age at Registration Date</option>
+                            </select>
+                            <p class="hint" id="age-calc-hint">Will be auto-selected based on sanctioning body. WKF uses Dec 31st, AAU uses event date.</p>
+                        </div>
+                        <h4 style="margin-top: 20px; margin-bottom: 12px;">Registration Pricing</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="tournament-base-price">Base Event Price ($) *</label>
+                                <input type="number" id="tournament-base-price" min="0" step="0.01" value="75.00" required>
+                                <p class="hint">Price for a competitor's primary (first) event.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="tournament-addon-price">Add-On Event Price ($) *</label>
+                                <input type="number" id="tournament-addon-price" min="0" step="0.01" value="25.00" required>
+                                <p class="hint">Reduced price for each additional event.</p>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tournament-logo">Tournament Logo (optional)</label>
+                            <input type="file" id="tournament-logo" accept="image/*">
+                            <div id="logo-preview" class="photo-preview hidden">
+                                <img id="logo-preview-img" alt="Logo Preview">
+                                <button type="button" class="btn btn-small btn-danger" onclick="clearLogo()">Remove</button>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Create Tournament</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideTournamentForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Operator Scoreboard Modal -->
+            <div id="operator-scoreboard-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: min(95vw, 1400px); height: calc(100vh - 40px); display: flex; flex-direction: column; overflow: hidden;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: clamp(6px, 1vh, 16px); flex-wrap: wrap; gap: 8px; flex-shrink: 0;">
+                        <h2 id="scoreboard-title" style="font-size: clamp(16px, 2vw, 22px); margin: 0;">Operator Scoreboard</h2>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" id="edit-results-btn" onclick="openEditResultsPanel(currentOperatorMat, currentOperatorDivision, currentOperatorEventId)" style="font-size: clamp(11px, 1.2vw, 13px); padding: 6px 10px; display: none;">✏️ Edit</button>
+                            <button class="btn btn-primary" onclick="openTVDisplayFromOperator()" style="font-size: clamp(11px, 1.2vw, 13px); padding: 6px 10px;">📺 TV</button>
+                            <button class="btn btn-secondary" onclick="closeOperatorScoreboard()" style="font-size: clamp(11px, 1.2vw, 13px); padding: 6px 10px;">✕ Close</button>
+                        </div>
+                    </div>
+
+                    <div id="operator-scoreboard-content" style="flex: 1; min-height: 0; overflow-y: auto;"></div>
+                </div>
+            </div>
+
+            <!-- Dashboard View -->
+            <section id="dashboard-view" class="view active">
+                <div class="dashboard-grid">
+                    <div class="glass-panel stat-card">
+                        <h3>Competitors</h3>
+                        <div class="stat-number" id="stat-competitors">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Event Types</h3>
+                        <div class="stat-number" id="stat-events">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Divisions</h3>
+                        <div class="stat-number" id="stat-divisions">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Matches Scheduled</h3>
+                        <div class="stat-number" id="stat-matches">0</div>
+                    </div>
+                    <div class="glass-panel stat-card">
+                        <h3>Revenue</h3>
+                        <div class="stat-number" id="stat-revenue">$0</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                            <span id="stat-paid-count">0</span> paid · <span id="stat-unpaid-count">0</span> unpaid
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <h2>Tournament Setup Workflow</h2>
+                    <div class="workflow-steps">
+                        <div class="workflow-step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h4>Register Instructors & Clubs</h4>
+                                <p>Add instructors with club logos first</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('instructors')">Go to Instructors</button>
+                            </div>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h4>Register Competitors</h4>
+                                <p>Add all competitors who will participate</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('competitors')">Go to Competitors</button>
+                            </div>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h4>Create Event Types</h4>
+                                <p>Define Kumite, Kata, or Kobudo events</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('events')">Go to Events</button>
+                            </div>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h4>Configure & Generate Divisions</h4>
+                                <p>Set criteria and generate divisions for each event</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('divisions')">Go to Divisions</button>
+                            </div>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="step-number">5</div>
+                            <div class="step-content">
+                                <h4>Schedule to Mats</h4>
+                                <p>Drag divisions to time slots on mats</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('schedule')">Go to Schedule</button>
+                            </div>
+                        </div>
+                        <div class="workflow-step">
+                            <div class="step-number">6</div>
+                            <div class="step-content">
+                                <h4>Start Tournament</h4>
+                                <p>Open scoreboards and staging displays</p>
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <button class="btn btn-success btn-small" onclick="openAllScoreboards()">📺 Open Scoreboards</button>
+                                    <button class="btn btn-success btn-small" onclick="openStagingDisplay()">📋 Staging Display</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <h2>Quick Actions</h2>
+                    <div class="quick-actions">
+                        <button class="btn btn-primary" onclick="navigateTo('competitors')">+ Add Competitor</button>
+                        <button class="btn btn-primary" onclick="navigateTo('events')">+ Create Event Type</button>
+                        <button class="btn btn-primary" onclick="navigateTo('schedule')">View Schedule</button>
+                        <button class="btn btn-primary" onclick="navigateTo('public-site')">⚙️ Public Site Settings</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Competitors View -->
+            <section id="competitors-view" class="view">
+                <h2>Competitors</h2>
+
+                <!-- Tournament Filter Banner -->
+                <div id="tournament-filter-banner" class="hidden" style="background: var(--accent); color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-weight: 600;">
+                    Showing competitors for: [Tournament Name]
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="showCompetitorForm()">+ Add Competitor</button>
+                    <button class="btn btn-secondary" onclick="syncRegistrationsFromServer()" id="sync-server-btn" title="Pull registrations from the server database">🔄 Refresh from Server</button>
+                    <button class="btn btn-secondary" onclick="generateTestCompetitors()">🧪 Generate Test Data (100 competitors)</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllCompetitors()">🗑️ Clear All Competitors</button>
+                </div>
+                <div id="sync-status" class="hidden" style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--green); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px;"></div>
+
+                <div id="competitor-form-container" class="glass-panel hidden">
+                    <h3>Competitor Registration</h3>
+                    <form id="competitor-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="firstName">First Name *</label>
+                                <input type="text" id="firstName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="lastName">Last Name *</label>
+                                <input type="text" id="lastName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="dateOfBirth">Date of Birth *</label>
+                                <input type="date" id="dateOfBirth" required>
+                                <p class="hint" id="age-display" style="margin-top: 4px; color: var(--text-secondary); font-size: 12px;"></p>
+                            </div>
+                            <div class="form-group">
+                                <label for="weight">Weight (kg) *</label>
+                                <input type="number" id="weight" step="0.1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="rank">Rank/Belt *</label>
+                                <select id="rank" required>
+                                    <option value="">Select Rank</option>
+                                    <option value="White">White</option>
+                                    <option value="Yellow">Yellow</option>
+                                    <option value="Orange">Orange</option>
+                                    <option value="Green">Green</option>
+                                    <option value="Blue">Blue</option>
+                                    <option value="Purple">Purple</option>
+                                    <option value="Brown">Brown</option>
+                                    <option value="1st Dan">1st Dan (Black)</option>
+                                    <option value="2nd Dan">2nd Dan (Black)</option>
+                                    <option value="3rd Dan">3rd Dan (Black)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="experience">Experience (years) *</label>
+                                <input type="number" id="experience" min="0" step="0.5" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="gender">Gender *</label>
+                                <select id="gender" required>
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="club">Club *</label>
+                                <select id="club" required onchange="handleClubSelection()">
+                                    <option value="">Select Club</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="new-club-name-group" style="display: none;">
+                                <label for="new-club-name">New Club Name *</label>
+                                <input type="text" id="new-club-name" placeholder="Enter club name">
+                            </div>
+                            <div class="form-group" id="new-club-logo-group" style="display: none;">
+                                <label for="new-club-logo">Club Logo (optional)</label>
+                                <input type="file" id="new-club-logo" accept="image/*">
+                                <div id="new-club-logo-preview" class="photo-preview hidden">
+                                    <img id="new-club-logo-preview-img" alt="Club Logo">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearNewClubLogo()">Remove</button>
+                                </div>
+                                <p class="hint">Upload your club's logo for identification</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="photo">Competitor Photo (optional)</label>
+                                <input type="file" id="photo" accept="image/*">
+                                <div id="photo-preview" class="photo-preview hidden">
+                                    <img id="photo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearPhoto()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label>Events to Register For *</label>
+                            <div id="event-checkboxes" style="display: flex; flex-direction: column; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--glass-border);">
+                                <p style="color: var(--text-secondary); font-size: 14px;">Loading events...</p>
+                            </div>
+                            <p class="hint">Select at least one event. Multiple events can be selected.</p>
+                        </div>
+
+                        <!-- Team Registration Section (shown when team event selected) -->
+                        <div id="team-registration-section" class="form-group hidden" style="grid-column: 1 / -1;">
+                            <div style="padding: 16px; background: var(--bg-secondary); border-radius: 10px; border: 2px solid var(--accent);">
+                                <h4 style="margin: 0 0 16px 0; color: var(--accent);">Team Event Registration</h4>
+
+                                <div style="margin-bottom: 16px;">
+                                    <label style="display: block; margin-bottom: 8px;">
+                                        <input type="radio" name="team-option" value="create" checked onchange="toggleTeamOptions()">
+                                        <strong>Create New Team</strong> (I'm the first member - I'll pay)
+                                    </label>
+                                    <label style="display: block;">
+                                        <input type="radio" name="team-option" value="join" onchange="toggleTeamOptions()">
+                                        <strong>Join Existing Team</strong> (I have a team code)
+                                    </label>
+                                </div>
+
+                                <div id="team-create-section">
+                                    <div class="form-group">
+                                        <label for="team-name">Team Name *</label>
+                                        <input type="text" id="team-name" placeholder="e.g., Tokyo Dragons">
+                                        <p class="hint">Choose a name for your team. Your teammates will see this when they join.</p>
+                                    </div>
+                                    <p class="hint" style="margin-top: 8px;">You'll receive a team code after registration to share with your teammates.</p>
+                                </div>
+
+                                <div id="team-join-section" class="hidden">
+                                    <div class="form-group">
+                                        <label for="team-code">Team Code *</label>
+                                        <input type="text" id="team-code" placeholder="e.g., TEAM-A1B2C3" style="text-transform: uppercase;">
+                                        <button type="button" class="btn btn-secondary" onclick="verifyTeamCode()" style="margin-top: 8px;">Verify Code</button>
+                                    </div>
+                                    <div id="team-info" class="hidden" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 8px;">
+                                        <!-- Team info will be displayed here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="payment-status-group" style="grid-column: 1 / -1;">
+                            <label for="payment-status">Payment Status</label>
+                            <select id="payment-status">
+                                <option value="unpaid">Unpaid</option>
+                                <option value="paid">Paid</option>
+                                <option value="partial">Partial</option>
+                                <option value="waived">Waived</option>
+                            </select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Competitor</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideCompetitorForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container">
+                    <input type="text" id="competitor-search" placeholder="Search competitors..." onkeyup="filterCompetitors()">
+                    <table id="competitors-table">
+                        <thead>
+                            <tr>
+                                <th>Photo</th>
+                                <th>Name</th>
+                                <th>Age</th>
+                                <th>Gender</th>
+                                <th>Weight</th>
+                                <th>Rank</th>
+                                <th>Club</th>
+                                <th>Events</th>
+                                <th>Total Due</th>
+                                <th>Payment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="competitors-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Clubs View -->
+            <section id="clubs-view" class="view">
+                <h2>Clubs</h2>
+                <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showClubForm()">+ Add Club</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllClubs()">🗑️ Clear All Clubs</button>
+                </div>
+
+                <div id="club-form-container" class="glass-panel hidden">
+                    <h3>Club Registration</h3>
+                    <form id="club-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="club-name">Club Name *</label>
+                                <input type="text" id="club-name" required placeholder="Enter club name">
+                            </div>
+                            <div class="form-group">
+                                <label for="club-country">Country</label>
+                                <input type="text" id="club-country" placeholder="e.g., USA, Japan">
+                            </div>
+                            <div class="form-group">
+                                <label for="club-logo">Club Logo (optional)</label>
+                                <input type="file" id="club-logo" accept="image/*">
+                                <div id="club-logo-preview" class="photo-preview hidden">
+                                    <img id="club-logo-preview-img" alt="Logo Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearClubLogo()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Club</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideClubForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container">
+                    <input type="text" id="club-search" placeholder="Search clubs..." onkeyup="filterClubs()">
+                    <table id="clubs-table">
+                        <thead>
+                            <tr>
+                                <th>Logo</th>
+                                <th>Club Name</th>
+                                <th>Country</th>
+                                <th>Members</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clubs-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Instructors View -->
+            <section id="instructors-view" class="view">
+                <h2>Instructors</h2>
+                <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                    <button class="btn btn-primary" onclick="showInstructorForm()">+ Add Instructor</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllInstructors()">🗑️ Clear All Instructors</button>
+                </div>
+
+                <div id="instructor-form-container" class="glass-panel hidden">
+                    <h3>Instructor Registration</h3>
+                    <form id="instructor-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="instructorFirstName">First Name *</label>
+                                <input type="text" id="instructorFirstName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="instructorLastName">Last Name *</label>
+                                <input type="text" id="instructorLastName" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="instructorRank">Rank/Dan *</label>
+                                <select id="instructorRank" required>
+                                    <option value="">Select Rank</option>
+                                    <option value="1st Dan">1st Dan</option>
+                                    <option value="2nd Dan">2nd Dan</option>
+                                    <option value="3rd Dan">3rd Dan</option>
+                                    <option value="4th Dan">4th Dan</option>
+                                    <option value="5th Dan">5th Dan</option>
+                                    <option value="6th Dan">6th Dan</option>
+                                    <option value="7th Dan">7th Dan</option>
+                                    <option value="8th Dan">8th Dan</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="instructorClub">Club Name *</label>
+                                <input type="text" id="instructorClub" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="instructorEmail">Email *</label>
+                                <input type="email" id="instructorEmail" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="instructorPhone">Phone</label>
+                                <input type="tel" id="instructorPhone">
+                            </div>
+                            <div class="form-group">
+                                <label for="instructor-club-logo">Club Logo (optional)</label>
+                                <input type="file" id="instructor-club-logo" accept="image/*">
+                                <div id="instructor-club-logo-preview" class="photo-preview hidden">
+                                    <img id="instructor-club-logo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearInstructorClubLogo()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Instructor</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideInstructorForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container">
+                    <input type="text" id="instructor-search" placeholder="Search instructors..." onkeyup="filterInstructors()">
+                    <table id="instructors-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Rank</th>
+                                <th>Club</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="instructors-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Event Types View -->
+            <section id="events-view" class="view">
+                <h2>Event Types</h2>
+                <button class="btn btn-primary" onclick="showEventForm()">+ Create Event Type</button>
+
+                <div id="event-form-container" class="glass-panel hidden">
+                    <h3>Event Type Configuration</h3>
+                    <form id="event-form">
+                        <div class="form-group">
+                            <label for="event-name">Event Name *</label>
+                            <input type="text" id="event-name" placeholder="e.g., Youth Kumite, Adult Kata" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="event-description">Description</label>
+                            <textarea id="event-description" rows="3" placeholder="Brief description of this event type"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="event-team-size">Team Size *</label>
+                            <select id="event-team-size" required>
+                                <option value="1">Individual (1 competitor)</option>
+                                <option value="2">Team of 2</option>
+                                <option value="3">Team of 3</option>
+                            </select>
+                            <p class="hint">Individual events register single competitors. Team events require selecting team members.</p>
+                        </div>
+
+                        <h4 style="margin-top: 16px; margin-bottom: 8px;">Price Overrides (Optional)</h4>
+                        <p class="hint" style="margin-bottom: 12px;">Leave blank to use tournament default prices.</p>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="event-base-price">Base Price Override ($)</label>
+                                <input type="number" id="event-base-price" min="0" step="0.01" placeholder="Use tournament default">
+                            </div>
+                            <div class="form-group">
+                                <label for="event-addon-price">Add-On Price Override ($)</label>
+                                <input type="number" id="event-addon-price" min="0" step="0.01" placeholder="Use tournament default">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="event-is-default" onchange="handleDefaultEventChange()">
+                                <span>Default Event (Base Registration Fee)</span>
+                            </label>
+                            <p class="hint">Default event is automatically included for all competitors. Only one event can be default.</p>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Event Type</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideEventForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="events-container" class="events-grid"></div>
+            </section>
+
+            <!-- Scoreboard Configs View -->
+            <section id="scoreboard-configs-view" class="view">
+
+                <!-- Header row -->
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+                    <div>
+                        <h2 style="margin-bottom:4px;">Scoreboard Setup</h2>
+                        <p class="hint" style="margin:0;">One configuration per tournament — auto-generated from your sanctioning body.</p>
+                    </div>
+                    <span id="scoreboard-config-status" class="sc-status-badge sc-status-none">Not Configured</span>
+                </div>
+
+                <!-- Org Selector -->
+                <div class="glass-panel" style="margin-bottom:20px;">
+                    <h3 style="margin-bottom:14px;">Sanctioning Body</h3>
+                    <div class="sc-org-pills">
+                        <button class="sc-org-pill" data-org="wkf" onclick="applyOrgDefaults('wkf')">
+                            <span class="sc-org-name">WKF</span>
+                            <span class="sc-org-sub">AKA / AO · 3 min · Senshu</span>
+                        </button>
+                        <button class="sc-org-pill" data-org="aau" onclick="applyOrgDefaults('aau')">
+                            <span class="sc-org-name">AAU</span>
+                            <span class="sc-org-sub">AKA / SHIRO · 2 min · Hantei</span>
+                        </button>
+                        <button class="sc-org-pill" data-org="custom" onclick="applyOrgDefaults('custom')">
+                            <span class="sc-org-name">Custom</span>
+                            <span class="sc-org-sub">Configure manually below</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Config Cards -->
+                <div class="sc-config-grid">
+
+                    <!-- ── KUMITE ─────────────────────────────────────────────── -->
+                    <div class="sc-config-card">
+                        <div class="sc-card-header">
+                            <span class="sc-card-icon">🥋</span>
+                            <div><h3>Kumite</h3><span class="sc-card-sub">Sparring</span></div>
+                        </div>
+                        <div class="sc-card-body">
+                            <div class="sc-corners">
+                                <div class="sc-corner-group">
+                                    <label class="sc-label">Corner 1</label>
+                                    <div class="sc-corner-row">
+                                        <input type="color" id="sc-kumite-c1-color" value="#e8403a" class="sc-color-swatch">
+                                        <input type="text"  id="sc-kumite-c1-name"  value="AKA" maxlength="8" class="sc-name-input">
+                                    </div>
+                                </div>
+                                <span class="sc-vs">vs</span>
+                                <div class="sc-corner-group">
+                                    <label class="sc-label">Corner 2</label>
+                                    <div class="sc-corner-row">
+                                        <input type="color" id="sc-kumite-c2-color" value="#0a84ff" class="sc-color-swatch">
+                                        <input type="text"  id="sc-kumite-c2-name"  value="AO" maxlength="8" class="sc-name-input">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Match Format (AAU only) -->
+                            <div class="sc-row" id="sc-kumite-format-row" style="display:none;">
+                                <label class="sc-label">Match Format</label>
+                                <select id="sc-kumite-match-format" class="sc-select">
+                                    <option value="shobu-sanbon" selected>Shobu Sanbon (first to 3 pts)</option>
+                                    <option value="shobu-ippon">Shobu Ippon (first score wins)</option>
+                                </select>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Match Duration</label>
+                                <select id="sc-kumite-duration" class="sc-select">
+                                    <option value="90">1:30 (WKF U14)</option>
+                                    <option value="120">2:00 (WKF Cadet/Junior · AAU)</option>
+                                    <option value="180" selected>3:00 (WKF Senior/U21)</option>
+                                </select>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Point Lead to Win</label>
+                                <input type="number" id="sc-kumite-ptw" value="8" min="1" max="20" class="sc-number">
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Senshu Rule <span class="sc-hint-tag" title="WKF: first scoring technique wins on tie">?</span></label>
+                                <label class="sc-toggle"><input type="checkbox" id="sc-kumite-senshu" checked><span class="sc-toggle-track"></span></label>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Penalties (C1 / C2 Tracks)</label>
+                                <label class="sc-toggle"><input type="checkbox" id="sc-kumite-penalties" checked><span class="sc-toggle-track"></span></label>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Overtime (Encho-Sen)</label>
+                                <label class="sc-toggle"><input type="checkbox" id="sc-kumite-overtime" checked><span class="sc-toggle-track"></span></label>
+                            </div>
+                            <div class="sc-row sc-scoring-row">
+                                <label class="sc-label">Scoring</label>
+                                <div class="sc-scoring-chips" id="sc-kumite-scoring-chips">
+                                    <span class="sc-chip">Ippon&nbsp;<b>3</b></span>
+                                    <span class="sc-chip">Waza-ari&nbsp;<b>2</b></span>
+                                    <span class="sc-chip">Yuko&nbsp;<b>1</b></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── KATA FLAGS ──────────────────────────────────────────── -->
+                    <div class="sc-config-card">
+                        <div class="sc-card-header">
+                            <span class="sc-card-icon">🚩</span>
+                            <div><h3>Kata Flags</h3><span class="sc-card-sub">Head-to-head</span></div>
+                        </div>
+                        <div class="sc-card-body">
+                            <div class="sc-corners">
+                                <div class="sc-corner-group">
+                                    <label class="sc-label">Corner 1</label>
+                                    <div class="sc-corner-row">
+                                        <input type="color" id="sc-kataflags-c1-color" value="#e8403a" class="sc-color-swatch">
+                                        <input type="text"  id="sc-kataflags-c1-name"  value="AKA" maxlength="8" class="sc-name-input">
+                                    </div>
+                                </div>
+                                <span class="sc-vs">vs</span>
+                                <div class="sc-corner-group">
+                                    <label class="sc-label">Corner 2</label>
+                                    <div class="sc-corner-row">
+                                        <input type="color" id="sc-kataflags-c2-color" value="#0a84ff" class="sc-color-swatch">
+                                        <input type="text"  id="sc-kataflags-c2-name"  value="AO" maxlength="8" class="sc-name-input">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Judges</label>
+                                <select id="sc-kataflags-judges" class="sc-select">
+                                    <option value="3">3 Judges</option>
+                                    <option value="5" selected>5 Judges (WKF/AAU)</option>
+                                    <option value="7">7 Judges</option>
+                                </select>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Tiebreaker</label>
+                                <select id="sc-kataflags-tiebreaker" class="sc-select">
+                                    <option value="sudden-death">Sudden Death</option>
+                                    <option value="judges-decision" selected>Judges Decision</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── KATA POINTS ─────────────────────────────────────────── -->
+                    <div class="sc-config-card">
+                        <div class="sc-card-header">
+                            <span class="sc-card-icon">🎯</span>
+                            <div><h3>Kata Points</h3><span class="sc-card-sub">Individual scoring</span></div>
+                        </div>
+                        <div class="sc-card-body">
+                            <div class="sc-row">
+                                <label class="sc-label">Judges</label>
+                                <select id="sc-katapoints-judges" class="sc-select">
+                                    <option value="3">3 Judges</option>
+                                    <option value="5" selected>5 Judges (WKF/AAU)</option>
+                                    <option value="7">7 Judges</option>
+                                </select>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Score Range</label>
+                                <div class="sc-range">
+                                    <input type="number" id="sc-katapoints-min" value="5.0" step="0.5" min="0" max="100" class="sc-number">
+                                    <span class="sc-range-dash">–</span>
+                                    <input type="number" id="sc-katapoints-max" value="10.0" step="0.5" min="0" max="100" class="sc-number">
+                                </div>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Increment</label>
+                                <input type="number" id="sc-katapoints-inc" value="0.1" step="0.01" min="0.01" class="sc-number">
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Drop High / Low</label>
+                                <label class="sc-toggle"><input type="checkbox" id="sc-katapoints-drop" checked><span class="sc-toggle-track"></span></label>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Method</label>
+                                <select id="sc-katapoints-method" class="sc-select">
+                                    <option value="average" selected>Average</option>
+                                    <option value="median">Median</option>
+                                    <option value="sum">Sum</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── KOBUDO ──────────────────────────────────────────────── -->
+                    <div class="sc-config-card">
+                        <div class="sc-card-header">
+                            <span class="sc-card-icon">⚔️</span>
+                            <div><h3>Kobudo</h3><span class="sc-card-sub">Weapons kata</span></div>
+                        </div>
+                        <div class="sc-card-body">
+                            <div class="sc-row">
+                                <label class="sc-label">Judges</label>
+                                <select id="sc-kobudo-judges" class="sc-select">
+                                    <option value="3">3 Judges</option>
+                                    <option value="5" selected>5 Judges</option>
+                                    <option value="7">7 Judges</option>
+                                </select>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Score Range</label>
+                                <div class="sc-range">
+                                    <input type="number" id="sc-kobudo-min" value="5.0" step="0.5" min="0" max="100" class="sc-number">
+                                    <span class="sc-range-dash">–</span>
+                                    <input type="number" id="sc-kobudo-max" value="10.0" step="0.5" min="0" max="100" class="sc-number">
+                                </div>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Increment</label>
+                                <input type="number" id="sc-kobudo-inc" value="0.1" step="0.01" min="0.01" class="sc-number">
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Drop High / Low</label>
+                                <label class="sc-toggle"><input type="checkbox" id="sc-kobudo-drop" checked><span class="sc-toggle-track"></span></label>
+                            </div>
+                            <div class="sc-row">
+                                <label class="sc-label">Method</label>
+                                <select id="sc-kobudo-method" class="sc-select">
+                                    <option value="average" selected>Average</option>
+                                    <option value="median">Median</option>
+                                    <option value="sum">Sum</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                </div><!-- end sc-config-grid -->
+
+                <!-- Save actions -->
+                <div class="sc-actions">
+                    <button class="btn btn-primary" onclick="saveUnifiedScoreboardConfig()">💾 Save Configuration</button>
+                    <button class="btn btn-secondary" onclick="resetScoreboardConfig()">↺ Reset to Org Defaults</button>
+                </div>
+
+            </section>
+
+            <!-- Divisions View -->
+            <section id="divisions-view" class="view">
+                <h2>Divisions</h2>
+                <p class="hint">Select an event type to configure its divisions</p>
+
+                <div class="glass-panel">
+                    <label for="division-event-selector">Event Type:</label>
+                    <select id="division-event-selector" onchange="loadDivisionTemplate()">
+                        <option value="">Select Event Type</option>
+                    </select>
+                </div>
+
+                <div id="division-template-container" class="hidden">
+                    <!-- Template List -->
+                    <div class="glass-panel">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3>Division Templates</h3>
+                            <button class="btn btn-primary" onclick="showDivisionBuilder()">+ New Template</button>
+                        </div>
+                        <div id="templates-list">
+                            <p class="hint">No templates created yet. Click "New Template" to get started.</p>
+                        </div>
+                    </div>
+
+                    <!-- Template Builder (hidden by default) -->
+                    <div id="division-builder" class="glass-panel hidden">
+                        <h3 id="builder-title">New Division Template</h3>
+
+                        <!-- Template Settings -->
+                        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 10px; margin-bottom: 16px;">
+                            <div class="form-group">
+                                <label for="template-name">Template Name *</label>
+                                <input type="text" id="template-name" placeholder="e.g., Kids Kata, Adult Kumite" required style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <p class="hint">Give this template a descriptive name</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="template-match-duration">Match Duration (minutes)</label>
+                                <input type="number" id="template-match-duration" min="0.5" max="10" step="0.5" placeholder="Use global default" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <p class="hint">Leave blank to use the global scoreboard duration setting</p>
+                            </div>
+
+                        </div>
+
+                        <!-- Criteria Builder -->
+                        <div class="criteria-builder">
+                            <h4>Division Criteria (in order)</h4>
+                            <p class="hint">Divisions will be created by splitting competitors in this order</p>
+
+                            <!-- Preset Selector -->
+                            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 10px; margin-bottom: 16px;">
+                                <div class="form-group">
+                                    <label for="preset-selector">Load from Preset (Optional)</label>
+                                    <select id="preset-selector" onchange="loadDivisionPreset()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="">-- Select WKF/AAU Preset --</option>
+                                        <optgroup label="WKF Kumite - Cadet (14-15)">
+                                            <option value="wkf-kumite-cadet-male">Cadet Male (14-15) - Weight Categories</option>
+                                            <option value="wkf-kumite-cadet-female">Cadet Female (14-15) - Weight Categories</option>
+                                        </optgroup>
+                                        <optgroup label="WKF Kumite - Junior (16-17)">
+                                            <option value="wkf-kumite-junior-male">Junior Male (16-17) - Weight Categories</option>
+                                            <option value="wkf-kumite-junior-female">Junior Female (16-17) - Weight Categories</option>
+                                        </optgroup>
+                                        <optgroup label="WKF Kumite - Senior (18+)">
+                                            <option value="wkf-kumite-senior-male">Senior Male (18+) - Weight Categories</option>
+                                            <option value="wkf-kumite-senior-female">Senior Female (18+) - Weight Categories</option>
+                                        </optgroup>
+                                        <optgroup label="AAU Kumite - Youth (12-13)">
+                                            <option value="aau-youth-male">Youth Male (12-13) - Light/Medium/Heavy</option>
+                                            <option value="aau-youth-female">Youth Female (12-13) - Light/Medium/Heavy</option>
+                                        </optgroup>
+                                    </select>
+                                    <p class="hint" style="color: var(--accent-blue); font-size: 12px; margin-top: 8px;">💡 Load official WKF or AAU division presets, then customize as needed</p>
+                                </div>
+                            </div>
+
+                            <div id="criteria-list"></div>
+                            <button class="btn btn-secondary" onclick="addCriteria()">+ Add Criteria</button>
+                        </div>
+
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="saveDivisionTemplate()">Save Template</button>
+                            <button class="btn btn-secondary" onclick="hideDivisionBuilder()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel">
+                        <button class="btn btn-primary" onclick="generateDivisions()">Generate Divisions</button>
+                        <button class="btn btn-secondary" onclick="showBracketGenerator()">📊 Generate Brackets</button>
+                        <button class="btn btn-danger" onclick="deleteDivisions()">🗑️ Delete Generated Divisions</button>
+                        <button class="btn btn-danger" onclick="deleteCriteria()">🗑️ Delete Criteria Template</button>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="hide-empty-divisions" checked onchange="renderDivisions()">
+                            Show only divisions with competitors
+                        </label>
+                    </div>
+
+                    <div id="divisions-container"></div>
+
+                    <!-- Bracket Generator Modal -->
+                    <div id="bracket-generator-modal" class="modal hidden">
+                        <div class="modal-content" style="max-width: 600px;">
+                            <h2>Generate Brackets</h2>
+                            <form id="bracket-generator-form" onsubmit="generateBrackets(event)">
+                                <div class="form-group">
+                                    <label for="bracket-division-select">Select Division</label>
+                                    <select id="bracket-division-select" required style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="">Select a division</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="bracket-scoreboard-type">Scoreboard Configuration *</label>
+                                    <select id="bracket-scoreboard-type" required onchange="updateBracketTypeOptions()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="">Select Scoreboard Configuration</option>
+                                    </select>
+                                    <p class="hint">Select which scoreboard configuration to use for this bracket.</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="bracket-type">Bracket Type *</label>
+                                    <select id="bracket-type" required style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="">Select Bracket Type</option>
+                                        <option value="single-elimination">Single Elimination</option>
+                                        <option value="double-elimination">Double Elimination</option>
+                                        <option value="repechage">Repechage</option>
+                                        <option value="round-robin">Round Robin</option>
+                                        <option value="pool-play">Pool Play</option>
+                                    </select>
+                                    <p class="hint">Available options depend on selected scoreboard configuration.</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="seeding-method">Seeding Method</label>
+                                    <select id="seeding-method" required style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="random">Random Seeding</option>
+                                        <option value="ordered">Ordered by Registration</option>
+                                        <option value="rank">Seeded by Rank (Higher ranks first)</option>
+                                        <option value="age">Seeded by Age (Younger first)</option>
+                                        <option value="country">Seeded by Country (Separate countries)</option>
+                                        <option value="club">Seeded by Club (Separate clubs)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="match-duration">Match Duration (minutes)</label>
+                                    <input type="number" id="match-duration" min="1" max="10" value="2" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="mat-assignment">Mat Assignment (Optional)</label>
+                                    <select id="mat-assignment" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                        <option value="">Assign Later</option>
+                                        <option value="1">Mat 1</option>
+                                        <option value="2">Mat 2</option>
+                                        <option value="3">Mat 3</option>
+                                        <option value="4">Mat 4</option>
+                                        <option value="5">Mat 5</option>
+                                        <option value="6">Mat 6</option>
+                                    </select>
+                                    <p class="hint">Assign this bracket to a specific competition mat/ring</p>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary">Generate Bracket</button>
+                                    <button type="button" class="btn btn-success" onclick="generateBracketsForAllDivisions()">Generate for All Divisions in Event</button>
+                                    <button type="button" class="btn btn-secondary" onclick="hideBracketGenerator()">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Brackets View -->
+            <section id="brackets-view" class="view">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                    <div>
+                        <h2>Competition Brackets</h2>
+                        <p class="hint">Generate and manage elimination brackets for each division</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="openMedalCountModal()" style="white-space: nowrap;">
+                        <i data-lucide="medal" style="width:16px;height:16px;vertical-align:middle;margin-right:6px;"></i>Medal Count
+                    </button>
+                </div>
+
+                <div class="glass-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <label for="bracket-event-filter">Filter by Event:</label>
+                            <select id="bracket-event-filter" onchange="loadBrackets()" style="margin-left: 12px; padding: 8px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <option value="">All Events</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <button class="btn btn-danger" onclick="deleteAllBrackets()">Delete All Brackets</button>
+                            <button class="btn btn-primary" onclick="showBracketGenerator()">+ Generate New Bracket</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="brackets-container"></div>
+            </section>
+
+            <!-- Medal Count Modal -->
+            <div id="medal-count-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 680px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Medal Count</h2>
+                        <button class="btn btn-secondary" onclick="closeMedalCountModal()" style="padding: 6px 14px;">Close</button>
+                    </div>
+                    <div class="medal-total-banner">
+                        <div class="medal-total-label">Total Medals Needed</div>
+                        <div class="medal-total-number" id="medal-total">0</div>
+                    </div>
+                    <div class="medal-summary-grid">
+                        <div class="medal-summary-item gold">
+                            <div class="medal-icon">&#x1F947;</div>
+                            <div class="medal-label">Gold</div>
+                            <div class="medal-number" id="medal-gold">0</div>
+                        </div>
+                        <div class="medal-summary-item silver">
+                            <div class="medal-icon">&#x1F948;</div>
+                            <div class="medal-label">Silver</div>
+                            <div class="medal-number" id="medal-silver">0</div>
+                        </div>
+                        <div class="medal-summary-item bronze">
+                            <div class="medal-icon">&#x1F949;</div>
+                            <div class="medal-label">Bronze</div>
+                            <div class="medal-number" id="medal-bronze">0</div>
+                        </div>
+                    </div>
+                    <div class="medal-event-breakdown" id="medal-event-breakdown"></div>
+                </div>
+            </div>
+
+            <!-- Division Transfer Modal -->
+            <div id="division-transfer-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 800px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Move Competitor to Different Division</h2>
+                        <button class="btn btn-secondary" onclick="closeDivisionTransfer()">Close</button>
+                    </div>
+
+                    <div id="division-transfer-content">
+                        <!-- Transfer interface will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bracket Viewer Modal -->
+            <div id="bracket-viewer-modal" class="modal hidden">
+                <div class="modal-content" style="max-width: 95vw; max-height: 95vh; overflow: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; position: sticky; top: 0; background: var(--bg-primary); z-index: 10; padding-bottom: 20px; border-bottom: 1px solid var(--glass-border);">
+                        <div>
+                            <h2 id="bracket-viewer-title" style="margin: 0;">Bracket</h2>
+                            <p id="bracket-viewer-subtitle" style="color: var(--text-secondary); margin: 4px 0 0 0;"></p>
+                        </div>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <button id="bracket-transfer-btn" class="btn btn-primary" onclick="showDivisionTransfer()" style="display: none;">🔄 Move to Different Division</button>
+                            <button id="bracket-edit-btn" class="btn btn-secondary" onclick="toggleBracketEdit()">✏️ Edit Bracket</button>
+                            <button id="bracket-save-btn" class="btn btn-primary" onclick="saveBracketChanges()" style="display: none;">💾 Save Changes</button>
+                            <button id="bracket-cancel-btn" class="btn btn-danger" onclick="cancelBracketEdit()" style="display: none;">❌ Cancel</button>
+                            <button class="btn btn-secondary" onclick="closeBracketViewer()">Close</button>
+                        </div>
+                    </div>
+                    <div id="bracket-viewer-content" style="min-height: 400px;">
+                        <!-- Bracket visualization will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schedule View -->
+            <section id="schedule-view" class="view">
+                <h2>🗓️ Competition Schedule & Live Management</h2>
+
+                <!-- Mat Configuration -->
+                <div class="glass-panel" style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin: 0;">Competition Mats</h3>
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <div class="form-group" style="margin: 0; display: flex; align-items: center; gap: 12px;">
+                                <label for="num-mats" style="margin: 0;">Number of Mats:</label>
+                                <input type="number" id="num-mats" min="1" max="8" value="2" style="width: 80px; padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <button class="btn btn-primary" onclick="updateMats()">Update Mats</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="mats-grid" class="mats-grid"></div>
+                </div>
+
+                <!-- Schedule Settings Panel -->
+                <div class="glass-panel" style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; cursor: pointer;" onclick="toggleScheduleSettings()">
+                        <h3 style="margin: 0;">Schedule Settings</h3>
+                        <span id="schedule-settings-toggle" style="font-size: 12px; color: var(--text-secondary);">Show Settings</span>
+                    </div>
+                    <div id="schedule-settings-panel" class="hidden">
+                        <!-- Timing Defaults -->
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 12px 0; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Timing Defaults</h4>
+                            <div class="form-grid" style="grid-template-columns: repeat(3, 1fr);">
+                                <div class="form-group">
+                                    <label for="schedule-kumite-duration">Kumite Match Duration (min)</label>
+                                    <input type="number" id="schedule-kumite-duration" min="1" max="10" step="0.5" value="3" style="padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                    <p class="hint">Per match including buffer</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="schedule-kata-duration">Kata Performance Duration (min)</label>
+                                    <input type="number" id="schedule-kata-duration" min="1" max="10" step="0.5" value="4" style="padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                    <p class="hint">Per competitor including scoring</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="schedule-buffer-between">Buffer Between Divisions (min)</label>
+                                    <input type="number" id="schedule-buffer-between" min="0" max="30" step="1" value="5" style="padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                    <p class="hint">Transition time between divisions</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mat Start Times -->
+                        <div style="margin-bottom: 20px;">
+                            <h4 style="margin: 0 0 12px 0; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Mat Start Times</h4>
+                            <div id="mat-start-times-grid" class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                                <!-- Dynamically populated -->
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button class="btn btn-primary btn-small" onclick="saveScheduleSettings()">Save Settings</button>
+                            <button class="btn btn-secondary btn-small" onclick="resetScheduleSettings()">Reset to Defaults</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schedule Management Tabs -->
+                <div class="glass-panel">
+                    <div style="display: flex; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--glass-border); padding-bottom: 12px;">
+                        <button class="btn btn-primary" id="schedule-tab-timeline" onclick="showScheduleTab('timeline')" style="flex: 1;">
+                            📅 Timeline View
+                        </button>
+                        <button class="btn btn-secondary" id="schedule-tab-live" onclick="showScheduleTab('live')" style="flex: 1;">
+                            🎯 Live Control (Active Matches)
+                        </button>
+                        <button class="btn btn-secondary" id="schedule-tab-queue" onclick="showScheduleTab('queue')" style="flex: 1;">
+                            ⏭️ Queue Management
+                        </button>
+                    </div>
+
+                    <!-- Timeline View Tab -->
+                    <div id="schedule-content-timeline" class="schedule-tab-content">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h3 style="margin: 0 0 8px 0;">Dynamic Timeline</h3>
+                                <p class="hint" style="margin: 0;">Drag divisions from the left to mat columns on the right. Times are calculated automatically.</p>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
+                                    ⚡ Auto-Schedule All
+                                </button>
+                                <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">
+                                    🗑️ Clear All Schedules
+                                </button>
+                            </div>
+                        </div>
+                        <div id="schedule-grid" class="schedule-grid"></div>
+                    </div>
+
+                    <!-- Live Control Tab -->
+                    <div id="schedule-content-live" class="schedule-tab-content hidden">
+                        <h3>Live Match Control</h3>
+                        <p class="hint" style="margin-bottom: 20px;">Control active matches across all mats. Pause, swap, or skip divisions when competitors aren't ready.</p>
+                        <div id="live-control-grid" class="live-control-grid"></div>
+                    </div>
+
+                    <!-- Queue Management Tab -->
+                    <div id="schedule-content-queue" class="schedule-tab-content hidden">
+                        <h3>Queue Management</h3>
+                        <p class="hint" style="margin-bottom: 20px;">View upcoming matches and reorder the queue. Competitors can see their position in line.</p>
+                        <div id="queue-management-grid" class="queue-management-grid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scoreboards View -->
+            <section id="scoreboards-view" class="view">
+                <h2>Scoreboards</h2>
+
+                <div class="glass-panel">
+                    <h3>Scoreboard Settings</h3>
+                    <form id="scoreboard-settings-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-competitor-photo" checked>
+                                    Show Competitor Photo (Large Circle)
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="show-club-logo" checked>
+                                    Show Club Logo (Small Circle)
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="double-line-names" checked>
+                                    Display Names in Double Lines
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="hide-descriptions" checked>
+                                    Hide Descriptions (Clean Display)
+                                </label>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 20px;">Corner Names</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="corner1-name">Corner 1 Name</label>
+                                <input type="text" id="corner1-name" placeholder="RED" value="RED" maxlength="20">
+                                <p class="hint">Default: RED. Customize for your needs (e.g., "AKA", "HOME", "FIGHTER 1")</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="corner2-name">Corner 2 Name</label>
+                                <input type="text" id="corner2-name" placeholder="BLUE" value="BLUE" maxlength="20">
+                                <p class="hint">Default: BLUE. Customize for your needs (e.g., "SHIRO", "AWAY", "FIGHTER 2")</p>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 20px;">Corner Colors</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="corner1-color">Corner 1 Color</label>
+                                <select id="corner1-color">
+                                    <option value="red" selected>Red</option>
+                                    <option value="blue">Blue</option>
+                                    <option value="white">White</option>
+                                    <option value="yellow">Yellow</option>
+                                    <option value="green">Green</option>
+                                </select>
+                                <input type="color" id="corner1-custom" value="#ff453a" style="margin-top: 8px;">
+                            </div>
+                            <div class="form-group">
+                                <label for="corner2-color">Corner 2 Color</label>
+                                <select id="corner2-color">
+                                    <option value="red">Red</option>
+                                    <option value="blue" selected>Blue</option>
+                                    <option value="white">White</option>
+                                    <option value="yellow">Yellow</option>
+                                    <option value="green">Green</option>
+                                </select>
+                                <input type="color" id="corner2-custom" value="#0a84ff" style="margin-top: 8px;">
+                            </div>
+                        </div>
+                        <p class="hint">WKF uses Red/Blue, AAU uses Red/White. Use color picker for custom colors.</p>
+
+                        <button type="button" class="btn btn-primary" onclick="saveScoreboardSettings()">Save Settings</button>
+                    </form>
+                </div>
+
+                <!-- Mat Scoreboards -->
+                <div id="mat-scoreboards-container"></div>
+            </section>
+
+            <!-- Results View -->
+            <section id="results-view" class="view">
+                <h2>Results & Certificates</h2>
+
+                <div class="glass-panel">
+                    <h3>Division Results</h3>
+                    <div id="results-container"></div>
+                    <button class="btn btn-primary" onclick="generateAllCertificates()" style="margin-top: 16px;">Generate All Certificates</button>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="settings-view" class="view">
+                <h2>Settings</h2>
+
+                <div class="glass-panel">
+                    <h3>Certificate Template</h3>
+                    <div class="form-group">
+                        <label for="settings-certificate-template">Upload Certificate Template (Image)</label>
+                        <input type="file" id="settings-certificate-template" accept="image/*" onchange="previewCertificateTemplate()">
+                        <p class="hint">Upload a certificate background image. Then configure merge tag positions below.</p>
+                    </div>
+                    <div id="certificate-template-preview" style="margin-top: 16px; display: none;">
+                        <img id="certificate-preview-img" style="max-width: 100%; border: 1px solid var(--glass-border); border-radius: 8px;">
+                        <div style="margin-top: 8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="clearCertificateTemplate()">Remove Template</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveCertificateTemplate()" style="margin-top: 12px;">Save Template</button>
+                </div>
+
+                <div class="glass-panel" id="merge-tag-config-panel" style="display: none;">
+                    <h3>Merge Tag Positioning</h3>
+                    <p class="hint">Configure which tags appear on the certificate and their position (X/Y as % of image), font size, color, and alignment.</p>
+                    <div id="merge-tag-list" style="margin-top: 16px;"></div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px;">
+                        <button class="btn btn-primary" onclick="saveCertificateConfig()">Save Configuration</button>
+                        <button class="btn btn-secondary" onclick="previewCertificateWithSampleData()">Preview with Sample Data</button>
+                    </div>
+                </div>
+
+                <div class="glass-panel" id="certificate-live-preview-panel" style="display: none;">
+                    <h3>Certificate Preview</h3>
+                    <canvas id="certificate-preview-canvas" style="max-width: 100%; border: 1px solid var(--glass-border); border-radius: 8px;"></canvas>
+                </div>
+            </section>
+
+            <!-- Public Site View -->
+            <section id="public-site-view" class="view">
+                <h2>Public Website Customization</h2>
+
+                <div class="glass-panel">
+                    <h3>Tournament Information</h3>
+                    <form id="public-site-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="public-tournament-name">Tournament Name *</label>
+                                <input type="text" id="public-tournament-name" placeholder="e.g., International Karate Championship">
+                            </div>
+                            <div class="form-group">
+                                <label for="public-tournament-date">Date *</label>
+                                <input type="date" id="public-tournament-date">
+                            </div>
+                            <div class="form-group">
+                                <label for="public-location">Location *</label>
+                                <input type="text" id="public-location" placeholder="e.g., Los Angeles, CA">
+                            </div>
+                            <div class="form-group">
+                                <label for="public-primary-color">Primary Color</label>
+                                <input type="color" id="public-primary-color" value="#0071e3">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="public-description">About/Description</label>
+                            <textarea id="public-description" rows="4" placeholder="Enter tournament description..." style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="public-cover-image">Cover/Hero Image</label>
+                                <input type="file" id="public-cover-image" accept="image/*">
+                                <div id="public-cover-preview" class="photo-preview hidden">
+                                    <img id="public-cover-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearPublicCover()">Remove</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="public-logo">Tournament Logo</label>
+                                <input type="file" id="public-logo" accept="image/*">
+                                <div id="public-logo-preview" class="photo-preview hidden">
+                                    <img id="public-logo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearPublicLogo()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="public-footer-text">Footer Text</label>
+                            <input type="text" id="public-footer-text" placeholder="© 2024 Tournament Name. All rights reserved.">
+                        </div>
+
+                        <h4 style="margin-top: 20px;">Visibility Settings</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="public-show-schedule">
+                                    Show Schedule to Public
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="public-show-results">
+                                    Show Results to Public
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Configuration</button>
+                            <button type="button" class="btn btn-secondary" onclick="openPublicSite()">📺 Preview Public Site</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="glass-panel">
+                    <h3>Share Public Site</h3>
+                    <p class="hint">Share this link with competitors and spectators:</p>
+                    <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px;">
+                        <input type="text" id="public-site-url" readonly value="public.html" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary);">
+                        <button class="btn btn-secondary" onclick="copyPublicSiteUrl()">Copy Link</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ Academy View ═══ -->
+            <section id="academy-view" class="view">
+                <!-- Setup Panel (shown when no academy exists) -->
+                <div id="academy-setup-panel" class="academy-setup hidden">
+                    <div class="glass-panel" style="max-width: 600px; margin: 80px auto;">
+                        <h2>Set Up Your Academy</h2>
+                        <p class="hint" style="margin-bottom: 24px;">Create your academy to manage your team, register competitors, and track tournament participation.</p>
+                        <form id="academy-setup-form" onsubmit="handleCreateAcademy(event)">
+                            <div class="form-grid" style="grid-template-columns: 1fr;">
+                                <div class="form-group">
+                                    <label>Academy Name <span class="required">*</span></label>
+                                    <input type="text" id="setup-academy-name" required placeholder="e.g. Tiger Martial Arts Academy">
+                                </div>
+                                <div class="form-group">
+                                    <label>Address</label>
+                                    <input type="text" id="setup-academy-address" placeholder="Street address">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                    <div class="form-group">
+                                        <label>City</label>
+                                        <input type="text" id="setup-academy-city" placeholder="City">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>State</label>
+                                        <input type="text" id="setup-academy-state" placeholder="State">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Website</label>
+                                    <input type="url" id="setup-academy-website" placeholder="https://...">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Create Academy</button>
+                        </form>
+                        <button class="btn btn-ghost" style="width: 100%; margin-top: 8px;" onclick="document.querySelector('[data-view=dashboard]').click()">Skip for Now</button>
+                    </div>
+                </div>
+
+                <!-- Dashboard (shown when academy exists) -->
+                <div id="academy-dashboard" class="hidden">
+                    <!-- Profile Card -->
+                    <div class="glass-panel academy-profile-card" id="academy-profile-card">
+                        <div class="academy-profile-header">
+                            <div class="academy-logo-wrapper" onclick="document.getElementById('logo-upload-input').click()">
+                                <img id="academy-logo-img" src="" alt="" class="academy-logo" style="display:none;">
+                                <div id="academy-logo-placeholder" class="academy-logo-placeholder">
+                                    <i data-lucide="image-plus" style="width: 24px; height: 24px;"></i>
+                                </div>
+                                <input type="file" id="logo-upload-input" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="handleLogoUpload(event)">
+                                <div class="academy-logo-overlay">Upload</div>
+                            </div>
+                            <div class="academy-profile-info">
+                                <h2 id="academy-name-display">—</h2>
+                                <p class="hint" id="academy-coach-display">Head Coach: —</p>
+                                <div class="academy-stats-row">
+                                    <span class="stat-badge" id="academy-member-count">0 Members</span>
+                                    <span class="stat-badge" id="academy-location-display"></span>
+                                </div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" onclick="showEditAcademyForm()" id="edit-academy-btn">
+                                <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i> Edit
+                            </button>
+                        </div>
+                        <!-- Edit form (hidden by default) -->
+                        <div id="academy-edit-form" class="hidden" style="margin-top: 16px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
+                            <div class="form-grid" style="grid-template-columns: 1fr;">
+                                <div class="form-group">
+                                    <label>Academy Name</label>
+                                    <input type="text" id="edit-academy-name">
+                                </div>
+                                <div class="form-group">
+                                    <label>Address</label>
+                                    <input type="text" id="edit-academy-address">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                    <div class="form-group">
+                                        <label>City</label>
+                                        <input type="text" id="edit-academy-city">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>State</label>
+                                        <input type="text" id="edit-academy-state">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Website</label>
+                                    <input type="url" id="edit-academy-website">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                                <button class="btn btn-primary btn-sm" onclick="handleEditAcademy()">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="hideEditAcademyForm()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Bar -->
+                    <div class="academy-tabs">
+                        <button class="academy-tab active" onclick="switchAcademyTab('roster')" data-academy-tab="roster">Roster</button>
+                        <button class="academy-tab" onclick="switchAcademyTab('add-member')" data-academy-tab="add-member">Add Member</button>
+                        <button class="academy-tab" onclick="switchAcademyTab('registrations')" data-academy-tab="registrations">Registrations</button>
+                        <button class="academy-tab" onclick="switchAcademyTab('requests')" data-academy-tab="requests">Requests <span id="requests-badge" class="tab-badge hidden">0</span></button>
+                    </div>
+
+                    <!-- Roster Tab -->
+                    <div class="academy-tab-panel active" id="academy-tab-roster">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h3>Team Roster</h3>
+                            </div>
+                            <div id="academy-roster-list">
+                                <p class="hint">No members yet. Go to "Add Member" to register competitors or coaches.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add Member Tab -->
+                    <div class="academy-tab-panel" id="academy-tab-add-member">
+                        <div class="add-member-forms">
+                            <!-- Register Competitor -->
+                            <div class="glass-panel">
+                                <h3>Register Competitor / Student</h3>
+                                <p class="hint" style="margin-bottom: 16px;">Creates an account for this student and adds them to your academy.</p>
+                                <form id="register-competitor-form" onsubmit="handleRegisterCompetitor(event)">
+                                    <div class="form-group">
+                                        <label>First Name <span class="required">*</span></label>
+                                        <input type="text" id="reg-comp-first" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Last Name <span class="required">*</span></label>
+                                        <input type="text" id="reg-comp-last" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email <span class="required">*</span></label>
+                                        <input type="email" id="reg-comp-email" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Date of Birth</label>
+                                        <input type="date" id="reg-comp-dob" onchange="checkCompetitorMinor()">
+                                    </div>
+                                    <div id="minor-guardian-notice" class="guardian-notice hidden">
+                                        <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                                        <span>This competitor is under 18. You will be automatically linked as their guardian (coach).</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Phone</label>
+                                        <input type="tel" id="reg-comp-phone">
+                                    </div>
+                                    <div id="reg-comp-status" class="form-status"></div>
+                                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Register Competitor</button>
+                                </form>
+                            </div>
+                            <!-- Register Assistant Coach -->
+                            <div class="glass-panel">
+                                <h3>Register Assistant Coach</h3>
+                                <p class="hint" style="margin-bottom: 16px;">Creates an account with assistant coach privileges.</p>
+                                <form id="register-assistant-form" onsubmit="handleRegisterAssistant(event)">
+                                    <div class="form-group">
+                                        <label>First Name <span class="required">*</span></label>
+                                        <input type="text" id="reg-asst-first" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Last Name <span class="required">*</span></label>
+                                        <input type="text" id="reg-asst-last" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email <span class="required">*</span></label>
+                                        <input type="email" id="reg-asst-email" required>
+                                    </div>
+                                    <div id="reg-asst-status" class="form-status"></div>
+                                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Register Assistant Coach</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Registrations Tab -->
+                    <div class="academy-tab-panel" id="academy-tab-registrations">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h3>Tournament Registrations</h3>
+                            </div>
+                            <div id="academy-registrations-list">
+                                <p class="hint">No registrations yet.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Requests Tab -->
+                    <div class="academy-tab-panel" id="academy-tab-requests">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h3>Membership Requests</h3>
+                            </div>
+                            <div id="academy-requests-list">
+                                <p class="hint">No pending requests.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            </main>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
