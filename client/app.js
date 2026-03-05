@@ -11979,7 +11979,7 @@ function openKataFlagsTVDisplay() {
     }
     const windowName = `TVDisplay_Mat${kataFlagsMatId}`;
     console.log('Opening TV display window:', windowName);
-    const newWindow = window.open('kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+    const newWindow = window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
     if (!newWindow) {
         alert('Failed to open TV display. Please allow popups for this site.');
     }
@@ -14972,16 +14972,16 @@ function openTVDisplayFromOperator() {
     if (!matId) return;
     const windowName = `TVDisplay_Mat${matId}`;
     if (activeScoreboardType === 'kata-points') {
-        window.open('kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
     } else if (activeScoreboardType === 'kumite') {
-        window.open('kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     } else if (activeScoreboardType === 'kata-flags') {
-        window.open('kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
         updateKataFlagsTVDisplay();
     } else {
         // Default fallback: kumite scoreboard (auto-redirects if type changes)
-        window.open('kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     }
 }
@@ -16412,21 +16412,21 @@ function openTVDisplay(matId) {
     const activeMatId = currentOperatorMat || (activeScoreboardType === 'kata-flags' ? kataFlagsMatId : null);
     if (matId && matId == activeMatId) {
         if (activeScoreboardType === 'kata-points') {
-            window.open('kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open('/kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
             return;
         } else if (activeScoreboardType === 'kumite') {
-            window.open('kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
             updateOperatorTVDisplay();
             return;
         } else if (activeScoreboardType === 'kata-flags') {
-            window.open('kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
             updateKataFlagsTVDisplay();
             return;
         }
     }
 
     // Default: kumite scoreboard (auto-redirects if scoreboard type changes)
-    window.open('kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+    window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
     updateTVDisplay();
 }
 
@@ -16759,7 +16759,7 @@ function loadPublicSiteConfig() {
 }
 
 function openPublicSite() {
-    window.open('public.html', 'PublicSite', 'width=1200,height=800');
+    window.open('/public.html', 'PublicSite', 'width=1200,height=800');
 }
 
 function copyPublicSiteUrl() {
@@ -17542,15 +17542,15 @@ window.addEventListener('load', () => {
 // Simple global function to open TV display - always accessible
 window.openTVDisplay = function() {
     if (activeScoreboardType === 'kata-points') {
-        window.open('kata-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kata-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     } else if (activeScoreboardType === 'kumite') {
-        window.open('kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     } else if (activeScoreboardType === 'kata-flags') {
-        window.open('kata-flags-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kata-flags-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
         updateKataFlagsTVDisplay();
     } else {
         // Default fallback: kumite scoreboard (auto-redirects if type changes)
-        window.open('kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     }
 };
