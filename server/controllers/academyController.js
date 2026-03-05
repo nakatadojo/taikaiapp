@@ -703,7 +703,7 @@ async function searchAcademies(req, res, next) {
  * Calculate age from date of birth (simple helper).
  */
 function calculateAgeFromDOB(dob) {
-  const birthDate = new Date(dob);
+  const birthDate = new Date(typeof dob === 'string' && dob.length === 10 ? dob + 'T12:00:00' : dob);
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();

@@ -852,12 +852,19 @@
             if (currentUser) {
                 const roles = currentUser.roles || [];
                 const isDirector = roles.includes('event_director');
-                const isAdmin = roles.includes('admin');
-                const dashboardUrl = isAdmin ? '/index.html' : '/director.html';
-                const dashboardLabel = isAdmin ? 'Admin Dashboard' : 'Dashboard';
+                const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+
+                let links = '';
+                if (isAdmin) {
+                    links += `<a href="/index.html" class="nav-link">Admin</a>`;
+                } else if (isDirector) {
+                    links += `<a href="/director.html" class="nav-link">Dashboard</a>`;
+                }
+                // My Events link for ALL logged-in users
+                links += `<a href="/my-events.html" class="nav-link">My Events</a>`;
 
                 nav.innerHTML = `
-                    <a href="${dashboardUrl}" class="nav-link">${dashboardLabel}</a>
+                    ${links}
                     <button class="nav-btn nav-btn-ghost" onclick="handleLogout()">Log Out</button>
                 `;
             } else {
@@ -934,7 +941,7 @@
                 };
 
                 const status = getStatus(t);
-                const dateStr = t.date ? dateFmt.format(new Date(t.date)) : 'Date TBD';
+                const dateStr = t.date ? dateFmt.format(new Date(t.date.length === 10 ? t.date + 'T12:00:00' : t.date)) : 'Date TBD';
                 const location = buildLocation(t);
                 const org = t.organization_name || buildDirectorName(t);
                 const count = t.competitor_count || 0;
@@ -985,7 +992,7 @@
         function getStatus(t) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const tournDate = t.date ? new Date(t.date) : null;
+            const tournDate = t.date ? new Date(t.date.length === 10 ? t.date + 'T12:00:00' : t.date) : null;
 
             if (tournDate && tournDate < today) {
                 return { label: 'Completed', cls: 'badge-completed' };

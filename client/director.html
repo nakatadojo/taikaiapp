@@ -132,6 +132,96 @@
             width: 14px; height: 14px;
         }
 
+        /* ── Notification Bell ── */
+        .notif-bell {
+            position: relative; cursor: pointer;
+            color: var(--text-muted); padding: 6px;
+            transition: color 0.2s; display: none;
+        }
+        .notif-bell:hover { color: var(--text-primary); }
+        .notif-bell-badge {
+            position: absolute; top: 0; right: -2px;
+            background: var(--accent); color: #fff;
+            font-size: 10px; font-weight: 700;
+            min-width: 16px; height: 16px; border-radius: 8px;
+            display: none; align-items: center; justify-content: center;
+            padding: 0 4px; line-height: 1;
+        }
+        .notif-dropdown {
+            position: absolute; top: calc(100% + 8px); right: -12px;
+            width: 370px; max-height: 420px; overflow-y: auto;
+            background: var(--bg-card); border: 1px solid var(--glass-border);
+            border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            z-index: 200; display: none;
+        }
+        .notif-dropdown.open { display: block; }
+        .notif-dropdown-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; border-bottom: 1px solid var(--glass-border);
+            font-weight: 600; font-size: 14px; color: var(--text-primary);
+        }
+        .notif-dropdown-header button {
+            background: none; border: none; color: var(--accent);
+            font-size: 12px; cursor: pointer; font-family: var(--font);
+        }
+        .notif-item {
+            padding: 12px 16px; border-bottom: 1px solid var(--glass-border);
+            font-size: 13px; color: var(--text-muted); line-height: 1.5;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .notif-item:hover { background: rgba(255,255,255,0.03); }
+        .notif-item.unread { background: rgba(220,38,38,0.04); }
+        .notif-item.unread:hover { background: rgba(220,38,38,0.07); }
+        .notif-time { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+        .notif-empty {
+            padding: 32px 16px; text-align: center;
+            color: var(--text-dim); font-size: 13px;
+        }
+
+        /* ── Approvals View ── */
+        .approvals-header { margin-bottom: 24px; }
+        .approvals-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .approvals-subtitle { font-size: 14px; color: var(--text-muted); }
+        .approvals-filters {
+            display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .approvals-filter-btn {
+            padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 500;
+            border: 1px solid var(--glass-border); background: transparent;
+            color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+            font-family: var(--font);
+        }
+        .approvals-filter-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text-primary); }
+        .approvals-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .approvals-table { width: 100%; border-collapse: collapse; }
+        .approvals-table th {
+            text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600;
+            color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .approvals-table td {
+            padding: 12px 14px; font-size: 14px; color: var(--text-muted);
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .approvals-table tr:hover td { background: rgba(255,255,255,0.02); }
+        .approvals-actions { display: flex; gap: 6px; }
+        .approvals-btn {
+            padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            border: none; cursor: pointer; transition: all 0.15s; font-family: var(--font);
+        }
+        .approvals-btn-approve { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .approvals-btn-approve:hover { background: rgba(34,197,94,0.25); }
+        .approvals-btn-decline { background: rgba(239,68,68,0.1); color: #f87171; }
+        .approvals-btn-decline:hover { background: rgba(239,68,68,0.2); }
+        .approvals-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .approvals-status {
+            display: inline-flex; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+        }
+        .approvals-status-pending { background: rgba(251,191,36,0.15); color: #fbbf24; }
+        .approvals-status-approved { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .approvals-status-declined { background: rgba(239,68,68,0.15); color: #f87171; }
+
         .btn-logout {
             background: transparent;
             border: 1px solid var(--glass-border);
@@ -1118,6 +1208,23 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                 <span id="navbar-credit-count">0</span> credits
             </span>
+            <div class="notif-bell" id="notif-bell" onclick="toggleNotifDropdown(event)">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <span class="notif-bell-badge" id="notif-badge">0</span>
+                <div class="notif-dropdown" id="notif-dropdown">
+                    <div class="notif-dropdown-header">
+                        <span>Notifications</span>
+                        <button onclick="markAllNotifsRead(event)">Mark all read</button>
+                    </div>
+                    <div id="notif-list"></div>
+                </div>
+            </div>
+            <a href="/my-events.html" class="btn-settings-nav" title="My Events" style="color:var(--text-muted);">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </a>
             <a href="#settings" class="btn-settings-nav" title="Settings">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </a>
@@ -1833,6 +1940,47 @@
             </div>
         </div>
 
+        <!-- ===== APPROVALS VIEW ===== -->
+        <div class="view" id="view-approvals">
+            <div class="approvals-header">
+                <h1 class="approvals-title" id="approvals-title">Role Approvals</h1>
+                <p class="approvals-subtitle" id="approvals-subtitle">Review applications from coaches, judges, and staff</p>
+                <div style="margin-top:14px;">
+                    <select class="form-input" id="approvals-tournament-select" onchange="onApprovalsTournamentChange(this.value)" style="max-width:400px;">
+                        <option value="">Select a tournament...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="approvals-filters" id="approvals-filters">
+                <button class="approvals-filter-btn active" data-filter="all" onclick="filterApprovals('all', this)">All</button>
+                <button class="approvals-filter-btn" data-filter="pending" onclick="filterApprovals('pending', this)">Pending</button>
+                <button class="approvals-filter-btn" data-filter="approved" onclick="filterApprovals('approved', this)">Approved</button>
+                <button class="approvals-filter-btn" data-filter="declined" onclick="filterApprovals('declined', this)">Declined</button>
+            </div>
+            <div id="approvals-loading" style="text-align:center;padding:40px;display:none;">
+                <div class="spinner"></div>
+            </div>
+            <div id="approvals-empty" class="empty-state" style="display:none;">
+                No role applications for this tournament yet.
+            </div>
+            <div id="approvals-table-wrap" style="display:none;overflow-x:auto;">
+                <table class="approvals-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Sub-role</th>
+                            <th>Applied</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="approvals-body"></tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <!-- ===== AUTH SCRIPT ===== -->
@@ -1848,6 +1996,7 @@
         // ============================================================
         let creditBalance = 0;
         let userProfile = null;
+        let directorTournaments = [];
 
         // ============================================================
         // UTILITIES
@@ -1888,7 +2037,7 @@
         // ============================================================
         // ROUTING
         // ============================================================
-        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'discount-codes', 'staff', 'credits-success'];
+        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'discount-codes', 'staff', 'credits-success', 'approvals'];
 
         function getHashRoute() {
             const hash = window.location.hash.replace('#', '').split('?')[0];
@@ -1919,6 +2068,7 @@
             else if (route === 'discount-codes') loadDiscountCodesView();
             else if (route === 'staff') loadStaffView();
             else if (route === 'credits-success') handleCreditsSuccess();
+            else if (route === 'approvals') loadApprovalsView();
         }
 
         function handleRoute() {
@@ -2114,6 +2264,7 @@
             try {
                 const data = await apiFetch('/api/tournaments/director/mine');
                 const tournaments = data.tournaments || data || [];
+                directorTournaments = Array.isArray(tournaments) ? tournaments : [];
 
                 loading.style.display = 'none';
 
@@ -2140,7 +2291,7 @@
 
             const status = t.completed ? 'completed' : (t.published ? 'published' : 'draft');
             const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
-            const dateStr = t.date ? new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
+            const dateStr = t.date ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
             const competitorCount = t.competitorCount || t.competitor_count || 0;
             const slug = t.slug || t.id;
 
@@ -2160,6 +2311,7 @@
                     <a href="#registrants?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Registrants</a>
                     <a href="#discount-codes?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#127991; Codes</a>
                     <a href="#staff?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Staff</a>
+                    <a href="#approvals?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#9989; Approvals</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
@@ -2623,9 +2775,9 @@
                     const typeLabel = c.type === 'percentage' ? `${parseFloat(c.value)}%` : `$${parseFloat(c.value).toFixed(2)}`;
                     const usesLabel = c.max_uses ? `${c.times_used || 0} / ${c.max_uses}` : `${c.times_used || 0} / ∞`;
                     const expiresLabel = c.expires_at
-                        ? new Date(c.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        ? new Date(typeof c.expires_at === 'string' && c.expires_at.length === 10 ? c.expires_at + 'T23:59:59' : c.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                         : '—';
-                    const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
+                    const isExpired = c.expires_at && new Date(typeof c.expires_at === 'string' && c.expires_at.length === 10 ? c.expires_at + 'T23:59:59' : c.expires_at) < new Date();
                     const isMaxed = c.max_uses && c.times_used >= c.max_uses;
                     const statusClass = !c.active ? 'unpaid' : (isExpired || isMaxed) ? 'unpaid' : 'paid';
                     const statusLabel = !c.active ? 'Inactive' : isExpired ? 'Expired' : isMaxed ? 'Maxed' : 'Active';
@@ -2977,7 +3129,7 @@
                     const t = tData.tournament || tData;
                     $('#registrants-title').textContent = t.name || 'Registrants';
                     $('#registrants-subtitle').textContent = t.date
-                        ? new Date(t.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                        ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                         : '';
                 } catch (e) { /* ignore */ }
 
@@ -3168,10 +3320,302 @@
             }
 
             updateNavbar();
+            if (user) fetchNotifications();
             handleRoute();
         };
 
         Auth.init();
+
+        // ============================================================
+        // NOTIFICATIONS
+        // ============================================================
+        let currentNotifications = [];
+
+        async function fetchNotifications() {
+            try {
+                const data = await apiFetch('/api/notifications');
+                currentNotifications = data.notifications || [];
+                renderNotifBell(currentNotifications, data.unreadCount || 0);
+            } catch (e) {
+                console.warn('Failed to fetch notifications:', e);
+            }
+        }
+
+        function renderNotifBell(notifications, unreadCount) {
+            const bell = document.getElementById('notif-bell');
+            const badge = document.getElementById('notif-badge');
+            const list = document.getElementById('notif-list');
+
+            bell.style.display = '';
+
+            if (unreadCount > 0) {
+                badge.style.display = 'flex';
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            } else {
+                badge.style.display = 'none';
+            }
+
+            if (notifications.length === 0) {
+                list.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+                return;
+            }
+
+            list.innerHTML = notifications.map(n => {
+                const p = n.payload || {};
+                const isUnread = !n.read;
+                let text = '';
+
+                if (n.type === 'role_request') {
+                    const roleLabel = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent' }[p.role] || p.role;
+                    text = `<strong>${escNotif(p.applicantName)}</strong> applied as <strong>${roleLabel}</strong>` +
+                           (n.tournament_name ? ` for ${escNotif(n.tournament_name)}` : '');
+                } else if (n.type === 'role_approved') {
+                    text = `Your application as <strong>${escNotif(p.role)}</strong> was approved!`;
+                } else if (n.type === 'role_declined') {
+                    text = `Your application as <strong>${escNotif(p.role)}</strong> was declined.`;
+                } else {
+                    text = n.type;
+                }
+
+                const timeAgo = formatTimeAgo(n.created_at);
+                const tid = n.tournament_id || '';
+                return `
+                    <div class="notif-item ${isUnread ? 'unread' : ''}"
+                         onclick="handleNotifClick('${n.id}', '${tid}')">
+                        <div>${text}</div>
+                        <div class="notif-time">${timeAgo}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.toggleNotifDropdown = function(e) {
+            e.stopPropagation();
+            document.getElementById('notif-dropdown').classList.toggle('open');
+        };
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#notif-bell')) {
+                const dd = document.getElementById('notif-dropdown');
+                if (dd) dd.classList.remove('open');
+            }
+        });
+
+        window.handleNotifClick = async function(notifId, tournamentId) {
+            // Mark as read
+            try { await apiFetch(`/api/notifications/${notifId}/read`, { method: 'PATCH' }); } catch (e) {}
+            document.getElementById('notif-dropdown').classList.remove('open');
+            // Navigate to approvals view
+            if (tournamentId) {
+                window.location.hash = `approvals?tournamentId=${tournamentId}`;
+            }
+            fetchNotifications();
+        };
+
+        window.markAllNotifsRead = async function(e) {
+            e.stopPropagation();
+            try {
+                await apiFetch('/api/notifications/read-all', { method: 'PATCH' });
+                fetchNotifications();
+            } catch (err) {
+                console.warn('Failed to mark all read:', err);
+            }
+        };
+
+        function formatTimeAgo(dateStr) {
+            if (!dateStr) return '';
+            const now = new Date();
+            const date = new Date(dateStr);
+            const diff = Math.floor((now - date) / 1000);
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return Math.floor(diff / 86400) + 'd ago';
+        }
+
+        function escNotif(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        // ============================================================
+        // APPROVALS VIEW
+        // ============================================================
+        let currentApprovalMembers = [];
+        let currentApprovalFilter = 'all';
+
+        async function loadApprovalsView() {
+            const params = getHashParams();
+            const tournamentId = params.tournamentId;
+
+            const loading = document.getElementById('approvals-loading');
+            const empty = document.getElementById('approvals-empty');
+            const tableWrap = document.getElementById('approvals-table-wrap');
+            const select = document.getElementById('approvals-tournament-select');
+            const filters = document.getElementById('approvals-filters');
+
+            loading.style.display = 'none';
+            empty.style.display = 'none';
+            tableWrap.style.display = 'none';
+            filters.style.display = 'none';
+
+            // Populate the tournament dropdown from cached dashboard data
+            await populateApprovalsDropdown(select, tournamentId);
+
+            if (!tournamentId) {
+                // No tournament selected — show dropdown as default state
+                document.getElementById('approvals-title').textContent = 'Role Approvals';
+                document.getElementById('approvals-subtitle').textContent = 'Select a tournament to review role applications.';
+                return;
+            }
+
+            // Pre-select the tournament in the dropdown
+            select.value = tournamentId;
+
+            // Load applications for the selected tournament
+            loading.style.display = '';
+
+            // Set title from dropdown option text (avoids extra API call)
+            const selectedOption = select.querySelector(`option[value="${tournamentId}"]`);
+            const tName = selectedOption ? selectedOption.textContent : '';
+            document.getElementById('approvals-title').textContent = tName ? `Role Approvals — ${tName}` : 'Role Approvals';
+            document.getElementById('approvals-subtitle').textContent = 'Review and manage role applications for this tournament.';
+
+            try {
+                const data = await apiFetch(`/api/tournament-members/${tournamentId}`);
+                currentApprovalMembers = data.members || [];
+                loading.style.display = 'none';
+
+                if (currentApprovalMembers.length === 0) {
+                    empty.style.display = '';
+                    empty.textContent = 'No role applications for this tournament yet.';
+                    return;
+                }
+
+                filters.style.display = 'flex';
+                tableWrap.style.display = '';
+                renderApprovalsTable();
+            } catch (err) {
+                loading.style.display = 'none';
+                empty.style.display = '';
+                empty.textContent = err.message || 'Failed to load applications.';
+            }
+        }
+
+        async function populateApprovalsDropdown(select, currentId) {
+            // If we already have tournaments cached from the dashboard, use them
+            if (directorTournaments.length === 0) {
+                try {
+                    const data = await apiFetch('/api/tournaments/director/mine');
+                    directorTournaments = Array.isArray(data.tournaments || data) ? (data.tournaments || data) : [];
+                } catch (e) {
+                    // Couldn't load — leave dropdown empty
+                }
+            }
+
+            // Build options — keep existing default option, replace the rest
+            const defaultOpt = '<option value="">Select a tournament...</option>';
+            const opts = directorTournaments.map(t => {
+                const name = t.name || 'Untitled';
+                const selected = t.id === currentId ? ' selected' : '';
+                return `<option value="${t.id}"${selected}>${escNotif(name)}</option>`;
+            }).join('');
+            select.innerHTML = defaultOpt + opts;
+        }
+
+        window.onApprovalsTournamentChange = function(tournamentId) {
+            if (tournamentId) {
+                window.location.hash = `approvals?tournamentId=${tournamentId}`;
+            } else {
+                window.location.hash = 'approvals';
+            }
+        };
+
+        function renderApprovalsTable() {
+            const body = document.getElementById('approvals-body');
+            const filtered = currentApprovalFilter === 'all'
+                ? currentApprovalMembers
+                : currentApprovalMembers.filter(m => m.status === currentApprovalFilter);
+
+            if (filtered.length === 0) {
+                body.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-dim);">No ${currentApprovalFilter} applications.</td></tr>`;
+                return;
+            }
+
+            const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent' };
+
+            body.innerHTML = filtered.map(m => {
+                const name = `${m.first_name || ''} ${m.last_name || ''}`.trim() || '—';
+                const email = m.email || '—';
+                const role = roleLabels[m.role] || m.role;
+                const staffRole = m.staff_role || '—';
+                const applied = m.applied_at ? new Date(m.applied_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+                const statusClass = `approvals-status-${m.status}`;
+                const statusLabel = m.status.charAt(0).toUpperCase() + m.status.slice(1);
+
+                let actions = '';
+                if (m.status === 'pending') {
+                    actions = `
+                        <div class="approvals-actions">
+                            <button class="approvals-btn approvals-btn-approve" onclick="approveApplication('${m.id}', this)">Approve</button>
+                            <button class="approvals-btn approvals-btn-decline" onclick="declineApplication('${m.id}', this)">Decline</button>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <tr>
+                        <td>${escNotif(name)}</td>
+                        <td>${escNotif(email)}</td>
+                        <td>${role}</td>
+                        <td>${escNotif(staffRole)}</td>
+                        <td>${applied}</td>
+                        <td><span class="approvals-status ${statusClass}">${statusLabel}</span></td>
+                        <td>${actions}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        window.filterApprovals = function(filter, btn) {
+            currentApprovalFilter = filter;
+            document.querySelectorAll('.approvals-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderApprovalsTable();
+        };
+
+        window.approveApplication = async function(memberId, btn) {
+            btn.disabled = true;
+            btn.textContent = 'Approving...';
+            try {
+                await apiFetch(`/api/tournament-members/${memberId}/approve`, { method: 'PATCH' });
+                showToast('Application approved!', 'success');
+                loadApprovalsView();
+                fetchNotifications();
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Approve';
+                showToast(err.message || 'Failed to approve', 'error');
+            }
+        };
+
+        window.declineApplication = async function(memberId, btn) {
+            btn.disabled = true;
+            btn.textContent = 'Declining...';
+            try {
+                await apiFetch(`/api/tournament-members/${memberId}/decline`, { method: 'PATCH' });
+                showToast('Application declined.', 'success');
+                loadApprovalsView();
+                fetchNotifications();
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Decline';
+                showToast(err.message || 'Failed to decline', 'error');
+            }
+        };
+
     })();
 
     async function stopImpersonation() {

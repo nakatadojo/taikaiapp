@@ -9,7 +9,7 @@
  */
 module.exports = function tournamentPublished({ tournament, publicUrl }) {
   const tournamentDate = tournament.date
-    ? new Date(tournament.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    ? new Date(typeof tournament.date === 'string' && tournament.date.length === 10 ? tournament.date + 'T12:00:00' : tournament.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'TBD';
 
   return `

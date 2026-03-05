@@ -26,12 +26,15 @@ async function apiFetch(url, opts = {}) {
 
 function formatDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Guard: "YYYY-MM-DD" strings → local noon to avoid timezone shift
+  const safe = (typeof d === 'string' && d.length === 10) ? d + 'T12:00:00' : d;
+  return new Date(safe).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const safe = (typeof d === 'string' && d.length === 10) ? d + 'T12:00:00' : d;
+  return new Date(safe).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function formatCents(cents) {

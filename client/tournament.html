@@ -563,6 +563,99 @@
         line-height: 1.5;
     }
 
+    /* ── Role Selection Overlay ───────────────────────────────────────── */
+    .role-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 1000;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+    .role-overlay.active { opacity: 1; pointer-events: auto; }
+    .role-panel {
+        position: relative;
+        background: var(--bg-secondary);
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        padding: 36px 32px 32px;
+        max-width: 720px; width: 92%;
+        max-height: 90vh; overflow-y: auto;
+    }
+    .role-panel-close {
+        position: absolute; top: 14px; right: 18px;
+        background: none; border: none; color: var(--text-dim);
+        font-size: 26px; cursor: pointer; line-height: 1;
+        transition: color 0.2s;
+    }
+    .role-panel-close:hover { color: var(--text-primary); }
+    .role-panel-title {
+        font-size: 22px; font-weight: 700; color: var(--text-primary);
+        text-align: center; margin-bottom: 6px;
+    }
+    .role-panel-subtitle {
+        font-size: 14px; color: var(--text-muted);
+        text-align: center; margin-bottom: 28px;
+    }
+    .role-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 14px;
+    }
+    .role-card {
+        background: var(--glass);
+        border: 2px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 28px 16px 20px;
+        cursor: pointer; text-align: center;
+        transition: all 0.2s; user-select: none;
+    }
+    .role-card:hover {
+        background: var(--glass-hover);
+        border-color: rgba(255,255,255,0.18);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .role-card-icon { font-size: 36px; margin-bottom: 12px; }
+    .role-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .role-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
+    /* Staff sub-role step */
+    .staff-role-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px; margin-bottom: 20px;
+    }
+    .staff-role-option {
+        background: var(--glass);
+        border: 2px solid var(--glass-border);
+        border-radius: var(--radius-sm);
+        padding: 14px 12px; cursor: pointer;
+        text-align: center; font-size: 13px; font-weight: 500;
+        color: var(--text-muted); transition: all 0.2s; user-select: none;
+    }
+    .staff-role-option:hover { border-color: rgba(255,255,255,0.15); color: var(--text-primary); }
+    .staff-role-option.selected {
+        border-color: var(--accent); color: var(--text-primary);
+        background: rgba(220,38,38,0.08);
+    }
+    .role-continue-btn {
+        display: block; width: 100%; max-width: 240px; margin: 0 auto;
+        padding: 12px 24px; font-size: 15px; font-weight: 600;
+        color: #fff; background: var(--accent);
+        border: none; border-radius: var(--radius-sm);
+        cursor: pointer; transition: all 0.2s;
+    }
+    .role-continue-btn:hover { background: var(--accent-hover); }
+    .role-continue-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Application confirmation */
+    .role-confirm { text-align: center; padding: 32px 16px; }
+    .role-confirm-icon { font-size: 56px; margin-bottom: 16px; color: #22c55e; }
+    .role-confirm-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
+    .role-confirm-text { font-size: 14px; color: var(--text-muted); line-height: 1.7; max-width: 380px; margin: 0 auto; }
+
     /* ── Footer ────────────────────────────────────────────────────────── */
     .footer {
         position: relative;
@@ -771,10 +864,16 @@
     }
 
     // ── Date Formatting ────────────────────────────────────────────────
+    /** Parse date-only strings safely (local noon to avoid timezone shift) */
+    function safeDate(d) {
+        if (!d) return null;
+        return new Date(typeof d === 'string' && d.length === 10 ? d + 'T12:00:00' : d);
+    }
+
     function formatDate(dateStr) {
         if (!dateStr) return null;
         try {
-            const date = new Date(dateStr);
+            const date = safeDate(dateStr);
             if (isNaN(date.getTime())) return null;
             return new Intl.DateTimeFormat('en-US', {
                 weekday: 'long',
@@ -790,7 +889,7 @@
     function formatShortDate(dateStr) {
         if (!dateStr) return null;
         try {
-            const date = new Date(dateStr);
+            const date = safeDate(dateStr);
             if (isNaN(date.getTime())) return null;
             return new Intl.DateTimeFormat('en-US', {
                 month: 'short',
@@ -806,8 +905,8 @@
     function getStatus(tournament) {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const tournamentDate = tournament.date ? new Date(tournament.date) : null;
-        const deadline = tournament.registration_deadline ? new Date(tournament.registration_deadline) : null;
+        const tournamentDate = safeDate(tournament.date);
+        const deadline = safeDate(tournament.registration_deadline);
 
         // If tournament date is in the past, it's completed
         if (tournamentDate && tournamentDate < today) {
@@ -870,6 +969,13 @@
 
     // ── Render Tournament ──────────────────────────────────────────────
     function renderTournament(t) {
+        // Store tournament ID for role overlay
+        const roleOverlay = document.getElementById('role-overlay');
+        if (roleOverlay) {
+            roleOverlay.dataset.tournamentId = t.id;
+            roleOverlay.dataset.tournamentName = t.name;
+        }
+
         // Page title
         document.title = t.name + ' — Taikai';
 
@@ -1074,7 +1180,7 @@
         let noteHtml = '';
 
         if (status.key === 'open') {
-            buttonHtml = `<a href="/register.html#info?tournamentId=${esc(t.id)}" class="btn-register">Register Now</a>`;
+            buttonHtml = `<button class="btn-register" onclick="openRoleOverlay()">Register Now</button>`;
             if (t.registration_deadline) {
                 const deadlineFormatted = formatShortDate(t.registration_deadline);
                 if (deadlineFormatted) {
@@ -1116,6 +1222,235 @@
         `;
     }
 
+})();
+</script>
+
+<!-- Role Selection Overlay -->
+<div class="role-overlay" id="role-overlay">
+    <div class="role-panel">
+        <button class="role-panel-close" onclick="closeRoleOverlay()">&times;</button>
+        <div id="role-panel-content"></div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// ROLE SELECTION OVERLAY — Runs outside the IIFE for global access
+// ═══════════════════════════════════════════════════════════════════════
+(function() {
+    'use strict';
+
+    // Tournament data is stored on the overlay element for access
+    const overlay = document.getElementById('role-overlay');
+    let selectedStaffRole = null;
+
+    function getTournamentId() {
+        return overlay.dataset.tournamentId || null;
+    }
+
+    function getTournamentName() {
+        return overlay.dataset.tournamentName || 'this tournament';
+    }
+
+    window.openRoleOverlay = function() {
+        showRoleCards();
+        overlay.classList.add('active');
+    };
+
+    window.closeRoleOverlay = function() {
+        overlay.classList.remove('active');
+        selectedStaffRole = null;
+    };
+
+    function showRoleCards() {
+        const content = document.getElementById('role-panel-content');
+        content.innerHTML = `
+            <div class="role-panel-title">How would you like to participate?</div>
+            <div class="role-panel-subtitle">Choose your role for this tournament</div>
+            <div class="role-grid">
+                <div class="role-card" onclick="selectRole('competitor')">
+                    <div class="role-card-icon">🥋</div>
+                    <div class="role-card-title">Competitor</div>
+                    <div class="role-card-desc">Compete in tournament events</div>
+                </div>
+                <div class="role-card" onclick="selectRole('parent')">
+                    <div class="role-card-icon">👨‍👩‍👧</div>
+                    <div class="role-card-title">Parent / Guardian</div>
+                    <div class="role-card-desc">Register your child to compete</div>
+                </div>
+                <div class="role-card" onclick="selectRole('coach')">
+                    <div class="role-card-icon">🏅</div>
+                    <div class="role-card-title">Coach</div>
+                    <div class="role-card-desc">Support your athletes at the event</div>
+                </div>
+                <div class="role-card" onclick="selectRole('judge')">
+                    <div class="role-card-icon">⚖️</div>
+                    <div class="role-card-title">Judge</div>
+                    <div class="role-card-desc">Officiate matches and events</div>
+                </div>
+                <div class="role-card" onclick="selectRole('staff')">
+                    <div class="role-card-icon">📋</div>
+                    <div class="role-card-title">Staff</div>
+                    <div class="role-card-desc">Volunteer or work the event</div>
+                </div>
+            </div>
+        `;
+    }
+
+    window.selectRole = function(role) {
+        const tournamentId = getTournamentId();
+
+        // Competitor / Parent → redirect to existing payment flow (handles its own auth)
+        if (role === 'competitor' || role === 'parent') {
+            closeRoleOverlay();
+            window.location.href = `/register.html#info?tournamentId=${tournamentId}`;
+            return;
+        }
+
+        // Staff → show sub-role selection step first
+        if (role === 'staff') {
+            showStaffSubRoles(tournamentId);
+            return;
+        }
+
+        // Coach / Judge → submit application (with auth check)
+        submitApplication(tournamentId, role, null);
+    };
+
+    function showStaffSubRoles(tournamentId) {
+        selectedStaffRole = null;
+        const content = document.getElementById('role-panel-content');
+        content.innerHTML = `
+            <div class="role-panel-title">What type of staff role?</div>
+            <div class="role-panel-subtitle">Select your preferred role for the event</div>
+            <div class="staff-role-grid" id="staff-role-grid">
+                <div class="staff-role-option" onclick="pickStaffRole(this, 'Scoreboard Operator')">Scoreboard Operator</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this, 'Check-in')">Check-in</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this, 'Awards')">Awards</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this, 'General Volunteer')">General Volunteer</div>
+            </div>
+            <button class="role-continue-btn" id="staff-continue-btn" disabled onclick="submitStaffApplication('${tournamentId}')">Continue</button>
+        `;
+    }
+
+    window.pickStaffRole = function(el, role) {
+        selectedStaffRole = role;
+        document.querySelectorAll('.staff-role-option').forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+        document.getElementById('staff-continue-btn').disabled = false;
+    };
+
+    window.submitStaffApplication = function(tournamentId) {
+        if (!selectedStaffRole) return;
+        submitApplication(tournamentId, 'staff', selectedStaffRole);
+    };
+
+    async function submitApplication(tournamentId, role, staffRole) {
+        // Check if user is logged in
+        let isLoggedIn = false;
+        try {
+            const authRes = await fetch('/api/auth/me', { credentials: 'include' });
+            isLoggedIn = authRes.ok;
+        } catch (e) {
+            // Not logged in
+        }
+
+        if (!isLoggedIn) {
+            // Store intent in sessionStorage, redirect to login/signup
+            sessionStorage.setItem('pendingRoleApplication', JSON.stringify({
+                tournamentId, role, staffRole,
+            }));
+            closeRoleOverlay();
+            // Redirect to register page which has login/signup capability
+            window.location.href = `/register.html#info?tournamentId=${tournamentId}&pendingRole=${role}`;
+            return;
+        }
+
+        // User is logged in — submit application
+        const content = document.getElementById('role-panel-content');
+        content.innerHTML = `
+            <div class="role-confirm">
+                <div style="font-size:32px;margin-bottom:12px;">⏳</div>
+                <div class="role-confirm-title">Submitting application...</div>
+            </div>
+        `;
+
+        try {
+            const res = await fetch('/api/tournament-members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ tournamentId, role, staffRole }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                content.innerHTML = `
+                    <div class="role-confirm">
+                        <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
+                        <div class="role-confirm-title">${data.error || 'Failed to submit application'}</div>
+                        <div class="role-confirm-text">Please try again or contact the tournament organizer.</div>
+                        <button class="role-continue-btn" style="margin-top:24px;" onclick="showRoleCards()">Try Again</button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Success!
+            const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent / Guardian' };
+            const roleLabel = roleLabels[role] || role;
+            const tName = getTournamentName();
+
+            content.innerHTML = `
+                <div class="role-confirm">
+                    <div class="role-confirm-icon">✓</div>
+                    <div class="role-confirm-title">Application Submitted</div>
+                    <div class="role-confirm-text">
+                        Your application to serve as <strong>${roleLabel}</strong>
+                        for <strong>${tName}</strong> has been submitted.<br><br>
+                        The tournament director will review your application and you'll be notified by email.
+                    </div>
+                    <button class="role-continue-btn" style="margin-top:28px;" onclick="closeRoleOverlay()">Done</button>
+                </div>
+            `;
+
+            // Clear any stored intent
+            sessionStorage.removeItem('pendingRoleApplication');
+
+        } catch (err) {
+            content.innerHTML = `
+                <div class="role-confirm">
+                    <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
+                    <div class="role-confirm-title">Network Error</div>
+                    <div class="role-confirm-text">Please check your connection and try again.</div>
+                    <button class="role-continue-btn" style="margin-top:24px;" onclick="showRoleCards()">Try Again</button>
+                </div>
+            `;
+        }
+    }
+
+    // On page load, check if there's a pending application from a login redirect
+    window.addEventListener('DOMContentLoaded', async () => {
+        const pending = sessionStorage.getItem('pendingRoleApplication');
+        if (pending) {
+            try {
+                const { tournamentId, role, staffRole } = JSON.parse(pending);
+                // Check if user is now logged in
+                const authRes = await fetch('/api/auth/me', { credentials: 'include' });
+                if (authRes.ok) {
+                    // Auto-submit the pending application
+                    sessionStorage.removeItem('pendingRoleApplication');
+                    // Small delay to let the page render
+                    setTimeout(() => {
+                        openRoleOverlay();
+                        submitApplication(tournamentId, role, staffRole);
+                    }, 500);
+                }
+            } catch (e) {
+                sessionStorage.removeItem('pendingRoleApplication');
+            }
+        }
+    });
 })();
 </script>
 

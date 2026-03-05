@@ -1863,7 +1863,8 @@
             const metaEl = document.getElementById('info-meta');
             let metaHTML = '';
             if (t.date || t.startDate) {
-                const d = new Date(t.date || t.startDate);
+                const rawDate = t.date || t.startDate;
+                const d = new Date(typeof rawDate === 'string' && rawDate.length === 10 ? rawDate + 'T12:00:00' : rawDate);
                 metaHTML += `<span class="info-meta-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>`;
             }
             if (t.location || t.venue) {
@@ -1886,8 +1887,9 @@
             if (kumiteCount > 0) {
                 statsHTML += `<div class="info-stat"><div class="info-stat-value">${kumiteCount}</div><div class="info-stat-label">Kumite</div></div>`;
             }
-            if (t.registrationDeadline) {
-                const dl = new Date(t.registrationDeadline);
+            if (t.registrationDeadline || t.registration_deadline) {
+                const rawDl = t.registrationDeadline || t.registration_deadline;
+                const dl = new Date(typeof rawDl === 'string' && rawDl.length === 10 ? rawDl + 'T23:59:59' : rawDl);
                 const daysLeft = Math.max(0, Math.ceil((dl - new Date()) / (1000 * 60 * 60 * 24)));
                 statsHTML += `<div class="info-stat"><div class="info-stat-value">${daysLeft}</div><div class="info-stat-label">Days Left</div></div>`;
             }
@@ -1917,14 +1919,33 @@
     /* ══════════════════════════════════════════════════════════════════════
        #dashboard — PROFILES
        ══════════════════════════════════════════════════════════════════════ */
+
+    /** Normalize snake_case DB profile rows to camelCase for client use */
+    function normalizeProfile(p) {
+        return {
+            ...p,
+            id: p.id || p._id,
+            firstName: p.first_name || p.firstName || '',
+            lastName: p.last_name || p.lastName || '',
+            dateOfBirth: p.date_of_birth || p.dateOfBirth || '',
+            gender: p.gender || '',
+            beltRank: p.belt_rank || p.beltRank || '',
+            experienceLevel: p.experience_level || p.experienceLevel || '',
+            weight: p.weight || '',
+            academyName: p.academy_name || p.academyName || '',
+            isSelf: p.is_self ?? p.isSelf ?? false,
+            userId: p.user_id || p.userId || '',
+        };
+    }
+
     async function loadProfiles() {
         const container = document.getElementById('profiles-container');
         container.innerHTML = '<div class="loading-state"><div class="spinner spinner-lg"></div><span>Loading profiles...</span></div>';
 
         try {
             const data = await api('/api/profiles');
-            state.profiles = data.profiles || data.data || data || [];
-            if (!Array.isArray(state.profiles)) state.profiles = [];
+            const raw = data.profiles || data.data || data || [];
+            state.profiles = (Array.isArray(raw) ? raw : []).map(normalizeProfile);
             renderDashboard();
         } catch (err) {
             container.innerHTML = `<div class="msg-error">Failed to load profiles: ${esc(err.message)}</div>`;
@@ -2394,10 +2415,10 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Processing...';
 
-        // Build payload
-        const registrations = state.cart.items.map(item => ({
+        // Build payload — server expects { competitors: [{ profileId, events: [{ eventId }] }] }
+        const competitors = state.cart.items.map(item => ({
             profileId: item.profileId,
-            eventIds: item.events.map(e => e.id),
+            events: item.events.map(e => ({ eventId: e.id })),
         }));
 
         try {
@@ -2405,7 +2426,7 @@
                 method: 'POST',
                 body: JSON.stringify({
                     tournamentId: state.tournamentId,
-                    registrations,
+                    competitors,
                     discountCode: state.cart.discountCode || undefined,
                 }),
             });
@@ -2413,7 +2434,7 @@
             if (data.url || data.sessionUrl || data.checkoutUrl) {
                 // Redirect to Stripe
                 window.location.href = data.url || data.sessionUrl || data.checkoutUrl;
-            } else if (data.success || data.confirmed) {
+            } else if (data.success || data.confirmed || data.status === 'completed') {
                 // Free registration or already confirmed
                 onPaymentSuccess(data);
             } else {
@@ -2507,7 +2528,7 @@
             // Group by tournament
             const grouped = {};
             for (const reg of registrations) {
-                const tName = reg.tournamentName || reg.tournament?.name || 'Tournament';
+                const tName = reg.tournament_name || reg.tournamentName || reg.tournament?.name || 'Tournament';
                 if (!grouped[tName]) grouped[tName] = [];
                 grouped[tName].push(reg);
             }
@@ -2522,10 +2543,13 @@
                         : status === 'pending' ? 'status-pending'
                         : 'status-cancelled';
 
+                    const eventsArr = Array.isArray(reg.events) ? reg.events : [];
+                    const eventsText = eventsArr.map(e => e.eventName || e.name || '').filter(Boolean).join(', ');
+
                     html += `<div class="reg-item">
                         <div class="reg-item-left">
-                            <span class="reg-item-name">${esc(reg.competitorName || reg.profileName || (reg.profile?.firstName + ' ' + reg.profile?.lastName) || '')}</span>
-                            <span class="reg-item-event">${esc(reg.eventName || reg.event?.name || '')}</span>
+                            <span class="reg-item-name">${esc(reg.competitorName || reg.profileName || ((reg.profile_first_name || '') + ' ' + (reg.profile_last_name || '')).trim() || '')}</span>
+                            <span class="reg-item-event">${esc(eventsText || 'Event')}</span>
                         </div>
                         <span class="reg-item-status ${statusClass}">${esc(status)}</span>
                     </div>`;

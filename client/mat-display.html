@@ -107,7 +107,8 @@
         function getDisplayAge(comp) {
             if (!comp) return '-';
             if (comp.dateOfBirth) {
-                const dob = new Date(comp.dateOfBirth);
+                const rawDob = comp.dateOfBirth;
+                const dob = new Date(typeof rawDob === 'string' && rawDob.length === 10 ? rawDob + 'T12:00:00' : rawDob);
                 if (isNaN(dob.getTime())) return '-'; // Invalid date
                 const now = new Date();
                 let age = now.getFullYear() - dob.getFullYear();

@@ -46,7 +46,7 @@ async function signup(req, res, next) {
 
     // If accountType includes competitor, validate 18+ age
     if (acctType && (acctType === 'competitor' || acctType === 'both') && dateOfBirth) {
-      const dob = new Date(dateOfBirth);
+      const dob = new Date(typeof dateOfBirth === 'string' && dateOfBirth.length === 10 ? dateOfBirth + 'T12:00:00' : dateOfBirth);
       const today = new Date();
       let age = today.getFullYear() - dob.getFullYear();
       const monthDiff = today.getMonth() - dob.getMonth();

@@ -13,7 +13,7 @@
  */
 module.exports = function registrationConfirmation({ tournament, competitors, totalPaid, discountAmount, transactionId, appUrl }) {
   const tournamentDate = tournament.date
-    ? new Date(tournament.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    ? new Date(typeof tournament.date === 'string' && tournament.date.length === 10 ? tournament.date + 'T12:00:00' : tournament.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     : 'TBD';
 
   const competitorRows = competitors.map(c => {

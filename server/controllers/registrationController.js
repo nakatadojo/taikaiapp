@@ -264,7 +264,7 @@ async function activateRegistration(req, res, next) {
  * Calculate age from date of birth (simple helper for registration flow).
  */
 function calculateAgeForRegistration(dob) {
-  const birthDate = new Date(dob);
+  const birthDate = new Date(typeof dob === 'string' && dob.length === 10 ? dob + 'T12:00:00' : dob);
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -294,7 +294,8 @@ async function checkout(req, res, next) {
 
     // Registration deadline enforcement
     if (tournament.registration_deadline) {
-      const deadline = new Date(tournament.registration_deadline);
+      const rawDl = tournament.registration_deadline;
+      const deadline = new Date(typeof rawDl === 'string' && rawDl.length === 10 ? rawDl + 'T23:59:59' : rawDl);
       if (new Date() > deadline) {
         return res.status(400).json({
           error: 'Registration for this tournament has closed.',
@@ -455,7 +456,7 @@ async function checkout(req, res, next) {
             quantity: 1,
           }]
           : lineItems,
-        success_url: `${appUrl}/register.html#success?session_id={CHECKOUT_SESSION_ID}`,
+        success_url: `${appUrl}/register.html?session_id={CHECKOUT_SESSION_ID}#success`,
         cancel_url: `${appUrl}/register.html#cart`,
         metadata: {
           userId: req.user.id,

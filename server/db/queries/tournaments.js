@@ -451,8 +451,10 @@ async function getEligibleEvents(tournamentId, profile) {
 
   if (!tournament || events.length === 0) return { events: [], tournament };
 
-  const tournamentDate = tournament.date ? new Date(tournament.date) : new Date();
-  const dob = new Date(profile.date_of_birth);
+  // Guard: DATE columns now return "YYYY-MM-DD" strings — parse at noon to avoid timezone shift
+  const safeParse = (d) => !d ? new Date() : new Date(typeof d === 'string' && d.length === 10 ? d + 'T12:00:00' : d);
+  const tournamentDate = safeParse(tournament.date);
+  const dob = safeParse(profile.date_of_birth);
   let age = tournamentDate.getFullYear() - dob.getFullYear();
   const monthDiff = tournamentDate.getMonth() - dob.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && tournamentDate.getDate() < dob.getDate())) {

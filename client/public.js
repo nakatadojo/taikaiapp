@@ -190,7 +190,8 @@ function loadTournamentConfig() {
 
     // Update subtitle (date + location)
     if (config.tournamentDate && config.location) {
-        const date = new Date(config.tournamentDate).toLocaleDateString('en-US', {
+        const safeTD = typeof config.tournamentDate === 'string' && config.tournamentDate.length === 10 ? config.tournamentDate + 'T12:00:00' : config.tournamentDate;
+        const date = new Date(safeTD).toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',
             day: 'numeric'

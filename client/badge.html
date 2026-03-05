@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Badge — Taikai</title>
+    <style>
+        /* ─── Screen Styles ─── */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f0f14;
+            --accent: #dc2626;
+            --text: #ffffff;
+            --text-muted: rgba(255,255,255,0.6);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+        }
+
+        .badge-wrapper {
+            text-align: center;
+        }
+
+        .badge-card {
+            width: 3.375in;
+            height: 2.125in;
+            background: #1a1a24;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            margin: 0 auto;
+        }
+
+        .badge-header {
+            background: var(--accent);
+            padding: 8px 16px;
+            text-align: center;
+        }
+        .badge-header-text {
+            font-size: 16px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: 4px;
+        }
+
+        .badge-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 16px;
+            gap: 4px;
+        }
+
+        .badge-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.2;
+        }
+        .badge-role {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 4px 0;
+        }
+        .badge-tournament {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            text-align: center;
+            line-height: 1.4;
+        }
+        .badge-date {
+            font-size: 10px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        /* Screen-only elements */
+        .screen-only {
+            margin-top: 32px;
+            text-align: center;
+        }
+        .print-btn {
+            padding: 12px 32px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .print-btn:hover { background: #b91c1c; }
+        .print-hint {
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .loading-msg, .error-msg {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .error-msg { color: #f87171; }
+
+        /* ─── Print Styles ─── */
+        @media print {
+            @page {
+                size: 3.375in 2.125in;
+                margin: 0;
+            }
+
+            body {
+                background: #fff;
+                padding: 0;
+                margin: 0;
+                display: block;
+                min-height: auto;
+            }
+
+            .screen-only { display: none !important; }
+
+            .badge-wrapper {
+                width: 100%;
+                height: 100%;
+            }
+
+            .badge-card {
+                width: 100%;
+                height: 100%;
+                border-radius: 0;
+                border: none;
+                box-shadow: none;
+                background: #fff;
+            }
+
+            .badge-header {
+                background: #dc2626 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .badge-header-text { color: #fff !important; }
+
+            .badge-body { background: #fff; }
+            .badge-name { color: #111; }
+            .badge-role { color: #dc2626; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .badge-tournament { color: #555; }
+            .badge-date { color: #888; }
+        }
+    </style>
+</head>
+<body>
+    <div class="badge-wrapper" id="badge-wrapper">
+        <div class="loading-msg" id="badge-loading">
+            Loading badge...
+        </div>
+    </div>
+
+    <div class="screen-only" id="screen-actions" style="display:none;">
+        <button class="print-btn" onclick="window.print()">Print Badge</button>
+        <p class="print-hint">Use Ctrl+P (or Cmd+P) to print. Set margins to "None" for best results.</p>
+    </div>
+
+    <script src="/auth.js"></script>
+    <script>
+    (async function() {
+        'use strict';
+
+        const wrapper = document.getElementById('badge-wrapper');
+        const loading = document.getElementById('badge-loading');
+        const actions = document.getElementById('screen-actions');
+
+        // Get member ID from URL
+        const params = new URLSearchParams(window.location.search);
+        const memberId = params.get('memberId');
+
+        if (!memberId) {
+            loading.innerHTML = '<div class="error-msg">No badge ID specified.</div>';
+            return;
+        }
+
+        // Init auth
+        await Auth.init();
+        if (!Auth.isLoggedIn()) {
+            loading.innerHTML = '<div class="error-msg">Please log in to view your badge.</div>';
+            return;
+        }
+
+        // Fetch member data
+        try {
+            const res = await fetch(`/api/my/membership/${memberId}`, { credentials: 'include' });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to load badge data');
+            }
+            const data = await res.json();
+            const m = data.member;
+
+            if (m.status !== 'approved') {
+                loading.innerHTML = '<div class="error-msg">Badge is only available for approved members.</div>';
+                return;
+            }
+
+            const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent / Guardian' };
+            const roleLabel = roleLabels[m.role] || m.role;
+
+            const dateStr = m.tournament_date
+                ? new Date(m.tournament_date.length === 10 ? m.tournament_date + 'T12:00:00' : m.tournament_date)
+                    .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                : '';
+
+            wrapper.innerHTML = `
+                <div class="badge-card">
+                    <div class="badge-header">
+                        <div class="badge-header-text">TAIKAI</div>
+                    </div>
+                    <div class="badge-body">
+                        <div class="badge-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
+                        <div class="badge-role">${roleLabel}</div>
+                        <div class="badge-tournament">${esc(m.tournament_name || '')}</div>
+                        ${dateStr ? `<div class="badge-date">${dateStr}</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            actions.style.display = '';
+
+        } catch (err) {
+            loading.innerHTML = `<div class="error-msg">${esc(err.message)}</div>`;
+        }
+
+        function esc(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+    })();
+    </script>
+</body>
+</html>

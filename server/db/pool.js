@@ -1,4 +1,10 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// OID 1082 = DATE column type. By default node-pg converts DATE to JS Date at
+// midnight UTC, which shifts the displayed date backwards in US timezones.
+// Return the raw ISO string instead (e.g. "2026-03-28") so the client can
+// display it without timezone conversion.
+types.setTypeParser(1082, (val) => val);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

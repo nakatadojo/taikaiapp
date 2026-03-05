@@ -558,7 +558,7 @@ function loadTournamentSelector() {
     tournaments.forEach(tournament => {
         const option = document.createElement('option');
         option.value = tournament.id;
-        option.textContent = `${tournament.name} - ${new Date(tournament.date).toLocaleDateString()}`;
+        option.textContent = `${tournament.name} - ${new Date(typeof tournament.date === 'string' && tournament.date.length === 10 ? tournament.date + 'T12:00:00' : tournament.date).toLocaleDateString()}`;
         select.appendChild(option);
     });
 }
@@ -1113,11 +1113,13 @@ function showCompetitorForm() {
  * @returns {number} calculated age
  */
 function calculateAge(dateOfBirth, method = 'aau-standard', eventDate = new Date()) {
-    const dob = new Date(dateOfBirth);
+    // Guard: date-only "YYYY-MM-DD" strings → local noon to avoid timezone shift
+    const safeParse = (d) => (typeof d === 'string' && d.length === 10) ? new Date(d + 'T12:00:00') : new Date(d);
+    const dob = safeParse(dateOfBirth);
 
     if (method === 'wkf-standard') {
         // WKF Rule: Age as of December 31st of the competition year
-        const competitionYear = new Date(eventDate).getFullYear();
+        const competitionYear = safeParse(eventDate).getFullYear();
         const dec31 = new Date(competitionYear, 11, 31); // Dec 31st of competition year
         let age = dec31.getFullYear() - dob.getFullYear();
         const monthDiff = dec31.getMonth() - dob.getMonth();
@@ -1129,7 +1131,7 @@ function calculateAge(dateOfBirth, method = 'aau-standard', eventDate = new Date
         return age;
     } else if (method === 'aau-standard') {
         // AAU Rule: Age on day of competition
-        const ref = new Date(eventDate);
+        const ref = safeParse(eventDate);
         let age = ref.getFullYear() - dob.getFullYear();
         const monthDiff = ref.getMonth() - dob.getMonth();
 
@@ -2833,12 +2835,13 @@ function generateTestCompetitors() {
 
     // Generate a DOB that produces the target age under the tournament's age method
     function generateDOB(targetAge) {
+        const safeEvt = (typeof eventDate === 'string' && eventDate.length === 10) ? new Date(eventDate + 'T12:00:00') : new Date(eventDate);
         let refDate;
         if (ageMethod === 'wkf-standard') {
-            const year = new Date(eventDate).getFullYear();
+            const year = safeEvt.getFullYear();
             refDate = new Date(year, 11, 31);
         } else if (ageMethod === 'aau-standard') {
-            refDate = new Date(eventDate);
+            refDate = safeEvt;
         } else {
             refDate = new Date();
         }
@@ -8076,10 +8079,10 @@ function renderBracketPreview(bracket) {
         const finalsCount = bracket.finals ? 1 : 0;
         const resetCount = bracket.reset ? 1 : 0;
         const totalMatches = winnersMatches.length + losersMatches.length + finalsCount + resetCount;
-        const completedMatches = winnersMatches.filter(m => m.status === 'completed' || m.status === 'complete').length
-            + losersMatches.filter(m => m.status === 'completed' || m.status === 'complete').length
-            + (bracket.finals && (bracket.finals.status === 'completed' || bracket.finals.status === 'complete') ? 1 : 0)
-            + (bracket.reset && (bracket.reset.status === 'completed' || bracket.reset.status === 'complete') ? 1 : 0);
+        const completedMatches = winnersMatches.filter(m => m.status === 'completed').length
+            + losersMatches.filter(m => m.status === 'completed').length
+            + (bracket.finals && (bracket.finals.status === 'completed') ? 1 : 0)
+            + (bracket.reset && (bracket.reset.status === 'completed') ? 1 : 0);
 
         return `
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; padding: 16px; background: rgba(255,255,255,0.02); border-radius: 8px;">
@@ -8110,9 +8113,9 @@ function renderBracketPreview(bracket) {
         const repAMatches = (bracket.repechageA || []).filter(m => m.status !== 'empty' && m.status !== 'bye');
         const repBMatches = (bracket.repechageB || []).filter(m => m.status !== 'empty' && m.status !== 'bye');
         const totalMatches = mainMatches.length + repAMatches.length + repBMatches.length;
-        const completedMatches = mainMatches.filter(m => m.status === 'completed' || m.status === 'complete').length
-            + repAMatches.filter(m => m.status === 'completed' || m.status === 'complete').length
-            + repBMatches.filter(m => m.status === 'completed' || m.status === 'complete').length;
+        const completedMatches = mainMatches.filter(m => m.status === 'completed').length
+            + repAMatches.filter(m => m.status === 'completed').length
+            + repBMatches.filter(m => m.status === 'completed').length;
         const repStatus = bracket.repechageGenerated ? `${repAMatches.length + repBMatches.length}` : 'Pending';
 
         return `
@@ -8701,7 +8704,7 @@ function renderMatchCard(match, matchIdx, roundNum) {
     const blueCompetitor = match.blueCorner;
     const isBye = match.status === 'bye';
     const isEmpty = match.status === 'empty';
-    const isCompleted = match.status === 'completed' || match.status === 'complete';
+    const isCompleted = match.status === 'completed';
 
     // Hide completely empty matches (no competitors in either corner, empty status)
     if (isEmpty && !redCompetitor && !blueCompetitor) {
@@ -8911,6 +8914,12 @@ window.scoreMatch = function(bracketId, matchId) {
     // Check if match has both competitors
     if (!match.redCorner || !match.blueCorner) {
         showMessage('Match cannot be scored yet - missing competitors', 'error');
+        return;
+    }
+
+    // Prevent re-scoring completed matches
+    if (match.status === 'completed') {
+        showMessage('This match has already been completed and cannot be re-scored.', 'warning');
         return;
     }
 
@@ -9649,20 +9658,20 @@ function getDivisionProgress(divisionName, eventId) {
         // Only count non-empty matches (those with actual competitors)
         const realMatches = matches.filter(m => m.status !== 'empty' && (m.redCorner || m.blueCorner));
         total = realMatches.length;
-        completed = realMatches.filter(m => m.status === 'complete' || m.status === 'completed' || m.status === 'bye').length;
+        completed = realMatches.filter(m => m.status === 'completed' || m.status === 'bye').length;
     } else if (bracket.type === 'double-elimination') {
         const winners = (bracket.winners || []).filter(m => m.status !== 'empty' && (m.redCorner || m.blueCorner));
         const losers = (bracket.losers || []).filter(m => m.status !== 'empty' && m.status !== 'bye-pending' && (m.redCorner || m.blueCorner));
         total = winners.length + losers.length + (bracket.finals && bracket.finals.redCorner ? 1 : 0) + (bracket.reset ? 1 : 0);
-        completed = winners.filter(m => m.status === 'complete' || m.status === 'completed' || m.status === 'bye').length +
-                    losers.filter(m => m.status === 'complete' || m.status === 'completed' || m.status === 'bye').length +
-                    (bracket.finals?.status === 'complete' || bracket.finals?.status === 'completed' ? 1 : 0) +
-                    (bracket.reset?.status === 'complete' || bracket.reset?.status === 'completed' ? 1 : 0);
+        completed = winners.filter(m => m.status === 'completed' || m.status === 'bye').length +
+                    losers.filter(m => m.status === 'completed' || m.status === 'bye').length +
+                    (bracket.finals?.status === 'completed' ? 1 : 0) +
+                    (bracket.reset?.status === 'completed' ? 1 : 0);
     } else if (bracket.type === 'pool-play') {
         bracket.pools?.forEach(pool => {
             const poolMatches = pool.matches || [];
             total += poolMatches.length;
-            completed += poolMatches.filter(m => m.status === 'complete' || m.status === 'completed').length;
+            completed += poolMatches.filter(m => m.status === 'completed').length;
         });
     } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
         // Kata bracket with rounds
@@ -9676,7 +9685,7 @@ function getDivisionProgress(divisionName, eventId) {
         // Generic fallback
         const matches = bracket.matches || [];
         total = matches.length;
-        completed = matches.filter(m => m.status === 'complete' || m.status === 'completed').length;
+        completed = matches.filter(m => m.status === 'completed').length;
     }
 
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -11336,6 +11345,13 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
             }
         }
 
+        // Guard: prevent replaying a completed match
+        if (currentMatch && currentMatch.status === 'completed') {
+            console.warn('[FORCE-LOAD] Match already completed, cannot replay:', window.forceLoadMatchId);
+            showMessage('This match has already been completed.', 'warning');
+            currentMatch = null; // Don't load it — fall through to normal match-finding
+        }
+
         // Update match status to in-progress when loading from bracket viewer
         if (currentMatch && currentMatch.status === 'pending') {
             currentMatch.status = 'in-progress';
@@ -11782,7 +11798,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             if (bracket?.finals) allMatches.push(bracket.finals);
             if (bracket?.reset) allMatches.push(bracket.reset);
 
-            const completedMatches = allMatches.filter(m => m.status === 'completed' || m.status === 'complete');
+            const completedMatches = allMatches.filter(m => m.status === 'completed');
             const pendingEmpty = allMatches.filter(m => m.status === 'pending' && (!m.redCorner || !m.blueCorner));
 
             let matchListHTML = '';
@@ -12206,7 +12222,7 @@ function kataFlagsDeclareWinner() {
     const match = allBracketMatches.find(m => m.id === window.currentMatchId);
 
     // Guard: if match is already completed, don't re-process (prevents double advancement)
-    if (match && (match.status === 'completed' || match.status === 'complete')) {
+    if (match && (match.status === 'completed')) {
         console.warn('[DECLARE] Match already completed, skipping:', match.id);
         window._kataFlagsDeclaring = false;
         return;
@@ -13175,10 +13191,16 @@ function operatorDeclareWinner(corner) {
             }
 
             if (match) {
+                // Guard: prevent double-completion (same as kata-flags path)
+                if (match.status === 'completed') {
+                    console.warn('[KUMITE] Match already completed, skipping:', match.id);
+                    return;
+                }
+
                 match.winner = winner;
                 match.score1 = corner === 'red' ? operatorRedScore : operatorBlueScore;
                 match.score2 = corner === 'red' ? operatorBlueScore : operatorRedScore;
-                match.status = 'complete';
+                match.status = 'completed';
 
                 // Advance winner to next round
                 if (bracket.type === 'single-elimination') {
@@ -14179,7 +14201,7 @@ function buildMatchProgressHTML(bracket) {
 
     // Count real matches (non-empty, non-bye, with at least one competitor)
     const realMatches = allMatches.filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
-    const completedCount = realMatches.filter(m => m.status === 'complete' || m.status === 'completed').length;
+    const completedCount = realMatches.filter(m => m.status === 'completed').length;
     const totalCount = realMatches.length;
     if (totalCount === 0) return '';
 
@@ -14211,35 +14233,35 @@ function checkBracketComplete(divisionName, eventId) {
                 // Check if all non-empty, non-bye matches are complete
                 // Include matches with only one corner (still waiting for feeder) to prevent premature completion
                 const realMatches = (bracket.matches || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
-                return realMatches.length > 0 && realMatches.every(m => m.status === 'complete' || m.status === 'completed');
+                return realMatches.length > 0 && realMatches.every(m => m.status === 'completed');
             } else if (bracket.type === 'round-robin') {
                 const realMatches = (bracket.matches || []).filter(m => m.redCorner && m.blueCorner);
-                return realMatches.length > 0 && realMatches.every(m => m.status === 'complete' || m.status === 'completed');
+                return realMatches.length > 0 && realMatches.every(m => m.status === 'completed');
             } else if (bracket.type === 'double-elimination') {
                 // Check winners, losers, finals, and reset
                 const realWinners = (bracket.winners || []).filter(m => m.redCorner && m.blueCorner);
                 const realLosers = (bracket.losers || []).filter(m => m.redCorner && m.blueCorner);
                 if (realWinners.length === 0 && realLosers.length === 0) return false;
-                const winnersComplete = realWinners.every(m => m.status === 'complete' || m.status === 'completed');
-                const losersComplete = realLosers.every(m => m.status === 'complete' || m.status === 'completed');
+                const winnersComplete = realWinners.every(m => m.status === 'completed');
+                const losersComplete = realLosers.every(m => m.status === 'completed');
                 const finalsComplete = !bracket.finals || !bracket.finals.redCorner || !bracket.finals.blueCorner ||
-                    bracket.finals.status === 'complete' || bracket.finals.status === 'completed';
+                    bracket.finals.status === 'completed';
                 // If finals winner is WB champion (redCorner), no reset needed
                 const finalsWBWon = bracket.finals?.winner && bracket.finals.redCorner &&
                     bracket.finals.winner.id === bracket.finals.redCorner.id;
-                const resetComplete = !bracket.reset || bracket.reset.status === 'complete' || bracket.reset.status === 'completed';
+                const resetComplete = !bracket.reset || bracket.reset.status === 'completed';
                 return winnersComplete && losersComplete && finalsComplete && (finalsWBWon || !bracket.finals?.winner || resetComplete);
             } else if (bracket.type === 'repechage') {
                 // Main bracket must be complete (include matches with only one corner to prevent premature completion)
                 const realMain = (bracket.matches || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
-                const mainComplete = realMain.length > 0 && realMain.every(m => m.status === 'complete' || m.status === 'completed');
+                const mainComplete = realMain.length > 0 && realMain.every(m => m.status === 'completed');
                 if (!mainComplete) return false;
                 // Repechage brackets must also be complete
                 if (bracket.repechageGenerated) {
                     const realRepA = (bracket.repechageA || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
                     const realRepB = (bracket.repechageB || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
-                    const repAComplete = realRepA.length === 0 || realRepA.every(m => m.status === 'complete' || m.status === 'completed');
-                    const repBComplete = realRepB.length === 0 || realRepB.every(m => m.status === 'complete' || m.status === 'completed');
+                    const repAComplete = realRepA.length === 0 || realRepA.every(m => m.status === 'completed');
+                    const repBComplete = realRepB.length === 0 || realRepB.every(m => m.status === 'completed');
                     return repAComplete && repBComplete;
                 }
                 return false; // Repechage not yet generated means not complete
@@ -14250,7 +14272,7 @@ function checkBracketComplete(divisionName, eventId) {
                 bracket.pools.forEach(pool => {
                     const poolMatches = (pool.matches || []).filter(m => m.redCorner && m.blueCorner);
                     if (poolMatches.length > 0) hasMatches = true;
-                    if (!poolMatches.every(m => m.status === 'complete' || m.status === 'completed')) allComplete = false;
+                    if (!poolMatches.every(m => m.status === 'completed')) allComplete = false;
                 });
                 return hasMatches && allComplete;
             } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
@@ -14471,7 +14493,7 @@ function getDivisionResults(divisionName, eventId) {
             } else if (bracket.type === 'single-elimination') {
                 const results = [];
                 const matches = bracket.matches || [];
-                const finalMatch = matches.filter(m => m.status === 'complete' || m.status === 'completed')
+                const finalMatch = matches.filter(m => m.status === 'completed')
                     .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
                 if (finalMatch && finalMatch.winner) {
                     const loser = finalMatch.redCorner?.id === finalMatch.winner.id ? finalMatch.blueCorner : finalMatch.redCorner;
@@ -14480,7 +14502,7 @@ function getDivisionResults(divisionName, eventId) {
 
                     // 3rd place: losers of semi-finals
                     if (finalMatch.round > 1) {
-                        const semiFinals = matches.filter(m => m.round === finalMatch.round - 1 && (m.status === 'complete' || m.status === 'completed'));
+                        const semiFinals = matches.filter(m => m.round === finalMatch.round - 1 && (m.status === 'completed'));
                         semiFinals.forEach(sf => {
                             if (sf.winner) {
                                 const sfLoser = sf.redCorner?.id === sf.winner.id ? sf.blueCorner : sf.redCorner;
@@ -14493,7 +14515,7 @@ function getDivisionResults(divisionName, eventId) {
             } else if (bracket.type === 'repechage') {
                 const results = [];
                 const matches = bracket.matches || [];
-                const finalMatch = matches.filter(m => m.status === 'complete' || m.status === 'completed')
+                const finalMatch = matches.filter(m => m.status === 'completed')
                     .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
 
                 if (finalMatch && finalMatch.winner) {
@@ -14638,13 +14660,13 @@ function updateEditResultsButtonVisibility(bracket) {
     if (bracket.type === 'ranking-list') {
         hasCompletedResults = (bracket.entries || []).some(e => e.status === 'scored');
     } else if (bracket.type === 'single-elimination' || bracket.type === 'round-robin' || bracket.type === 'repechage') {
-        hasCompletedResults = (bracket.matches || []).some(m => m.status === 'complete' || m.status === 'completed');
+        hasCompletedResults = (bracket.matches || []).some(m => m.status === 'completed');
     } else if (bracket.type === 'double-elimination') {
-        hasCompletedResults = (bracket.winners || []).some(m => m.status === 'complete' || m.status === 'completed') ||
-                              (bracket.losers || []).some(m => m.status === 'complete' || m.status === 'completed');
+        hasCompletedResults = (bracket.winners || []).some(m => m.status === 'completed') ||
+                              (bracket.losers || []).some(m => m.status === 'completed');
     } else if (bracket.type === 'pool-play') {
         bracket.pools?.forEach(pool => {
-            if ((pool.matches || []).some(m => m.status === 'complete' || m.status === 'completed')) hasCompletedResults = true;
+            if ((pool.matches || []).some(m => m.status === 'completed')) hasCompletedResults = true;
         });
     } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
         const rounds = bracket.rounds || [];
@@ -14898,22 +14920,22 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
     // Collect all completed matches
     let completedMatches = [];
     if (bracket.type === 'single-elimination' || bracket.type === 'round-robin' || bracket.type === 'repechage') {
-        completedMatches = (bracket.matches || []).filter(m => m.status === 'complete' || m.status === 'completed');
+        completedMatches = (bracket.matches || []).filter(m => m.status === 'completed');
         if (bracket.type === 'repechage') {
-            completedMatches.push(...(bracket.repechageA || []).filter(m => m.status === 'complete' || m.status === 'completed'));
-            completedMatches.push(...(bracket.repechageB || []).filter(m => m.status === 'complete' || m.status === 'completed'));
+            completedMatches.push(...(bracket.repechageA || []).filter(m => m.status === 'completed'));
+            completedMatches.push(...(bracket.repechageB || []).filter(m => m.status === 'completed'));
         }
     } else if (bracket.type === 'double-elimination') {
         completedMatches = [
-            ...(bracket.winners || []).filter(m => m.status === 'complete' || m.status === 'completed'),
-            ...(bracket.losers || []).filter(m => m.status === 'complete' || m.status === 'completed')
+            ...(bracket.winners || []).filter(m => m.status === 'completed'),
+            ...(bracket.losers || []).filter(m => m.status === 'completed')
         ];
-        if (bracket.finals?.status === 'complete' || bracket.finals?.status === 'completed') {
+        if (bracket.finals?.status === 'completed') {
             completedMatches.push(bracket.finals);
         }
     } else if (bracket.type === 'pool-play') {
         bracket.pools?.forEach(pool => {
-            const poolCompleted = (pool.matches || []).filter(m => m.status === 'complete' || m.status === 'completed');
+            const poolCompleted = (pool.matches || []).filter(m => m.status === 'completed');
             completedMatches.push(...poolCompleted);
         });
     }
@@ -15127,7 +15149,7 @@ function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
             }
 
             // If next match was also completed, warn that it may need re-evaluation
-            if (nextMatch.status === 'complete' || nextMatch.status === 'completed') {
+            if (nextMatch.status === 'completed') {
                 showMessage('Warning: Winner changed — downstream match results may need review', 'warning');
             }
         }

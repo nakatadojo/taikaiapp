@@ -31,6 +31,9 @@ const templates = {
   directorWelcome:          require('./emails/directorWelcome'),
   passwordReset:            require('./emails/passwordReset'),
   tournamentPublished:      require('./emails/tournamentPublished'),
+  roleRequest:              require('./emails/roleRequest'),
+  roleApproved:             require('./emails/roleApproved'),
+  roleDeclined:             require('./emails/roleDeclined'),
 };
 
 // ── Core send helper ─────────────────────────────────────────────────────────
@@ -127,12 +130,39 @@ async function sendTournamentPublishedEmail(email, tournament) {
   return sendEmail(email, `Your Tournament Is Live — ${tournament.name}`, html);
 }
 
+/**
+ * Send email to director when someone applies for a role.
+ */
+async function sendRoleRequestEmail(directorEmail, opts) {
+  const html = templates.roleRequest({ ...opts, appUrl: APP_URL() });
+  return sendEmail(directorEmail, `New ${opts.role} Application — ${opts.tournamentName}`, html);
+}
+
+/**
+ * Send email to applicant when their role is approved.
+ */
+async function sendRoleApprovedEmail(applicantEmail, opts) {
+  const html = templates.roleApproved({ ...opts, appUrl: APP_URL() });
+  return sendEmail(applicantEmail, `You're Approved — ${opts.tournamentName}`, html);
+}
+
+/**
+ * Send email to applicant when their role is declined.
+ */
+async function sendRoleDeclinedEmail(applicantEmail, opts) {
+  const html = templates.roleDeclined({ ...opts, appUrl: APP_URL() });
+  return sendEmail(applicantEmail, `Application Update — ${opts.tournamentName}`, html);
+}
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendRegistrationConfirmationEmail,
   sendTournamentPublishedEmail,
+  sendRoleRequestEmail,
+  sendRoleApprovedEmail,
+  sendRoleDeclinedEmail,
   APP_URL,
   EMAIL_FROM,
   templates,
