@@ -115,15 +115,9 @@ router.get('/settings',
 );
 
 // PUT /api/auth/settings (requires authentication)
+// Validation handled in controller for complex nested objects
 router.put('/settings',
   requireAuth,
-  [
-    body('defaultEventTypes')
-      .optional()
-      .isArray()
-      .withMessage('defaultEventTypes must be an array'),
-  ],
-  validate,
   authController.updateSettings
 );
 

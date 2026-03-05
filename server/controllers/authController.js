@@ -438,11 +438,21 @@ async function getSettings(req, res, next) {
 /**
  * PUT /api/auth/settings
  * Updates the current user's settings (partial merge).
+ * Supports: defaultEventTypes, pricingDefaults, matchDurationDefaults,
+ *           ringSetup, scoreboardPreferences, divisionTemplates
  */
 async function updateSettings(req, res, next) {
   try {
-    const { defaultEventTypes } = req.body;
+    const {
+      defaultEventTypes,
+      pricingDefaults,
+      matchDurationDefaults,
+      ringSetup,
+      scoreboardPreferences,
+      divisionTemplates,
+    } = req.body;
 
+    // --- Validate defaultEventTypes ---
     const validTypes = ['kata', 'kumite', 'weapons', 'team-kata'];
     if (defaultEventTypes !== undefined) {
       if (!Array.isArray(defaultEventTypes)) {
@@ -454,11 +464,84 @@ async function updateSettings(req, res, next) {
       }
     }
 
+    // --- Validate pricingDefaults ---
+    if (pricingDefaults !== undefined) {
+      if (typeof pricingDefaults !== 'object' || pricingDefaults === null) {
+        return res.status(400).json({ error: 'pricingDefaults must be an object' });
+      }
+      const { baseEventPrice, addonEventPrice } = pricingDefaults;
+      if (baseEventPrice !== undefined && (isNaN(baseEventPrice) || baseEventPrice < 0)) {
+        return res.status(400).json({ error: 'baseEventPrice must be a non-negative number' });
+      }
+      if (addonEventPrice !== undefined && (isNaN(addonEventPrice) || addonEventPrice < 0)) {
+        return res.status(400).json({ error: 'addonEventPrice must be a non-negative number' });
+      }
+    }
+
+    // --- Validate matchDurationDefaults ---
+    if (matchDurationDefaults !== undefined) {
+      if (typeof matchDurationDefaults !== 'object' || matchDurationDefaults === null) {
+        return res.status(400).json({ error: 'matchDurationDefaults must be an object' });
+      }
+      for (const [key, val] of Object.entries(matchDurationDefaults)) {
+        if (val !== null && (isNaN(val) || val < 0 || val > 600)) {
+          return res.status(400).json({ error: `Invalid duration for ${key}: must be 0-600 seconds` });
+        }
+      }
+    }
+
+    // --- Validate ringSetup ---
+    if (ringSetup !== undefined) {
+      if (typeof ringSetup !== 'object' || ringSetup === null) {
+        return res.status(400).json({ error: 'ringSetup must be an object' });
+      }
+      if (ringSetup.count !== undefined && (!Number.isInteger(ringSetup.count) || ringSetup.count < 1 || ringSetup.count > 20)) {
+        return res.status(400).json({ error: 'ringSetup.count must be 1-20' });
+      }
+      if (ringSetup.names !== undefined && !Array.isArray(ringSetup.names)) {
+        return res.status(400).json({ error: 'ringSetup.names must be an array' });
+      }
+    }
+
+    // --- Validate scoreboardPreferences ---
+    if (scoreboardPreferences !== undefined) {
+      if (typeof scoreboardPreferences !== 'object' || scoreboardPreferences === null) {
+        return res.status(400).json({ error: 'scoreboardPreferences must be an object' });
+      }
+      const validSystems = ['wkf', 'aau'];
+      if (scoreboardPreferences.defaultScoringSystem && !validSystems.includes(scoreboardPreferences.defaultScoringSystem)) {
+        return res.status(400).json({ error: 'defaultScoringSystem must be wkf or aau' });
+      }
+      if (scoreboardPreferences.defaultOvertimeDuration !== undefined) {
+        const ot = scoreboardPreferences.defaultOvertimeDuration;
+        if (isNaN(ot) || ot < 0 || ot > 300) {
+          return res.status(400).json({ error: 'defaultOvertimeDuration must be 0-300 seconds' });
+        }
+      }
+    }
+
+    // --- Validate divisionTemplates ---
+    if (divisionTemplates !== undefined) {
+      if (!Array.isArray(divisionTemplates)) {
+        return res.status(400).json({ error: 'divisionTemplates must be an array' });
+      }
+      for (const tmpl of divisionTemplates) {
+        if (!tmpl.name || typeof tmpl.name !== 'string') {
+          return res.status(400).json({ error: 'Each division template must have a name' });
+        }
+      }
+    }
+
     // Fetch current settings, merge, save
     const current = await userQueries.getSettings(req.user.id);
     const merged = {
       ...current,
       ...(defaultEventTypes !== undefined && { defaultEventTypes }),
+      ...(pricingDefaults !== undefined && { pricingDefaults }),
+      ...(matchDurationDefaults !== undefined && { matchDurationDefaults }),
+      ...(ringSetup !== undefined && { ringSetup }),
+      ...(scoreboardPreferences !== undefined && { scoreboardPreferences }),
+      ...(divisionTemplates !== undefined && { divisionTemplates }),
     };
 
     const result = await userQueries.updateSettings(req.user.id, merged);

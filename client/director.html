@@ -1368,6 +1368,162 @@
 
             <hr class="settings-divider">
 
+            <!-- Pricing Defaults -->
+            <div class="settings-section">
+                <div class="settings-section-title">Pricing Defaults</div>
+                <div class="settings-section-desc">
+                    Default prices pre-populated when you create a new tournament. You can always override per tournament.
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; max-width:480px;">
+                    <div>
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Base Event Price (1st Event)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:44px;">
+                            <span style="color:var(--text-muted); margin-right:6px;">$</span>
+                            <input type="number" id="settings-base-price" min="0" step="0.01" placeholder="75.00"
+                                style="background:transparent; border:none; color:var(--text); font-size:15px; width:100%; outline:none;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Add-on Event Price</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:44px;">
+                            <span style="color:var(--text-muted); margin-right:6px;">$</span>
+                            <input type="number" id="settings-addon-price" min="0" step="0.01" placeholder="25.00"
+                                style="background:transparent; border:none; color:var(--text); font-size:15px; width:100%; outline:none;">
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-save-status" id="settings-pricing-status"></div>
+            </div>
+
+            <hr class="settings-divider">
+
+            <!-- Match Duration Defaults -->
+            <div class="settings-section">
+                <div class="settings-section-title">Match Duration Defaults</div>
+                <div class="settings-section-desc">
+                    Default kumite match durations by age category. Used when generating divisions and on the scoreboard.
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; max-width:720px;">
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Mini Kids (6–7)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-minikids" min="0" max="600" step="1" placeholder="60"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Kids (8–11)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-kids" min="0" max="600" step="1" placeholder="90"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Cadets (12–13)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-cadets" min="0" max="600" step="1" placeholder="90"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Juniors (14–15)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-juniors" min="0" max="600" step="1" placeholder="120"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Youth (16–17)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-youth" min="0" max="600" step="1" placeholder="120"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Under 21 (18–20)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-u21" min="0" max="600" step="1" placeholder="180"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                    <div class="settings-duration-item">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Seniors (21+)</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;">
+                            <input type="number" id="settings-dur-seniors" min="0" max="600" step="1" placeholder="180"
+                                style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-save-status" id="settings-duration-status"></div>
+            </div>
+
+            <hr class="settings-divider">
+
+            <!-- Default Ring/Mat Setup -->
+            <div class="settings-section">
+                <div class="settings-section-title">Default Ring / Mat Setup</div>
+                <div class="settings-section-desc">
+                    Pre-populate the scheduling wizard with your typical ring layout. Names can be customized per tournament.
+                </div>
+                <div style="max-width:480px;">
+                    <div style="margin-bottom:16px;">
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Number of Rings</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:44px; max-width:160px;">
+                            <input type="number" id="settings-ring-count" min="1" max="20" step="1" placeholder="4"
+                                style="background:transparent; border:none; color:var(--text); font-size:15px; width:100%; outline:none;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Ring Names</label>
+                        <div id="settings-ring-names" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        <button type="button" onclick="settingsUpdateRingNames()" style="margin-top:10px; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:var(--text); padding:8px 16px; cursor:pointer; font-size:13px; transition:all 0.2s;"
+                            onmouseover="this.style.background='var(--glass-hover)'" onmouseout="this.style.background='var(--glass)'">
+                            Update Ring Names
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-save-status" id="settings-ring-status"></div>
+            </div>
+
+            <hr class="settings-divider">
+
+            <!-- Scoreboard Preferences -->
+            <div class="settings-section">
+                <div class="settings-section-title">Scoreboard Preferences</div>
+                <div class="settings-section-desc">
+                    Default scoring system and overtime settings for your scoreboards.
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; max-width:480px;">
+                    <div>
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Default Scoring System</label>
+                        <select id="settings-scoring-system"
+                            style="width:100%; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); color:var(--text); padding:10px 14px; font-size:14px; outline:none; cursor:pointer; appearance:auto;">
+                            <option value="" style="background:#1a1a24;">Not Set</option>
+                            <option value="wkf" style="background:#1a1a24;">WKF</option>
+                            <option value="aau" style="background:#1a1a24;">AAU</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Default Overtime Duration</label>
+                        <div style="display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:44px;">
+                            <input type="number" id="settings-overtime-dur" min="0" max="300" step="1" placeholder="60"
+                                style="background:transparent; border:none; color:var(--text); font-size:15px; width:100%; outline:none;">
+                            <span style="color:var(--text-muted); font-size:12px; margin-left:6px; white-space:nowrap;">sec</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-save-status" id="settings-scoreboard-status"></div>
+            </div>
+
+            <hr class="settings-divider">
+
             <!-- Credits -->
             <div class="settings-section">
                 <div class="settings-section-title">Credits</div>
@@ -1921,52 +2077,179 @@
         // SETTINGS VIEW
         // ============================================================
         let userSettings = {};
+        let settingsSaveTimeout = null;
 
         async function loadSettingsView() {
-            // Load event type defaults
-            await loadSettingsEventTypes();
+            // Load all settings from backend
+            try {
+                const data = await apiFetch('/api/auth/settings');
+                userSettings = data.settings || {};
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+                userSettings = {};
+            }
+
+            // Populate event type toggles
+            const defaults = userSettings.defaultEventTypes || [];
+            document.querySelectorAll('#settings-event-types .event-type-toggle').forEach(card => {
+                card.classList.toggle('active', defaults.includes(card.dataset.event));
+            });
+
+            // Populate pricing defaults
+            const pricing = userSettings.pricingDefaults || {};
+            if (pricing.baseEventPrice !== undefined) $('#settings-base-price').value = pricing.baseEventPrice;
+            if (pricing.addonEventPrice !== undefined) $('#settings-addon-price').value = pricing.addonEventPrice;
+
+            // Populate match duration defaults
+            const durations = userSettings.matchDurationDefaults || {};
+            const durMap = {
+                minikids: 'settings-dur-minikids', kids: 'settings-dur-kids',
+                cadets: 'settings-dur-cadets', juniors: 'settings-dur-juniors',
+                youth: 'settings-dur-youth', u21: 'settings-dur-u21', seniors: 'settings-dur-seniors'
+            };
+            for (const [key, elId] of Object.entries(durMap)) {
+                if (durations[key] !== undefined) $(`#${elId}`).value = durations[key];
+            }
+
+            // Populate ring setup
+            const rings = userSettings.ringSetup || {};
+            if (rings.count) $('#settings-ring-count').value = rings.count;
+            settingsRenderRingNames(rings.count || 4, rings.names || []);
+
+            // Populate scoreboard preferences
+            const sb = userSettings.scoreboardPreferences || {};
+            if (sb.defaultScoringSystem) $('#settings-scoring-system').value = sb.defaultScoringSystem;
+            if (sb.defaultOvertimeDuration !== undefined) $('#settings-overtime-dur').value = sb.defaultOvertimeDuration;
 
             // Load credits
             const balance = await fetchCreditBalance();
             $('#settings-credits-balance').textContent = balance;
             loadSettingsPackages();
             loadSettingsTransactions();
+
+            // Wire up auto-save on input changes (debounced)
+            settingsWireAutoSave();
         }
 
-        async function loadSettingsEventTypes() {
-            try {
-                const data = await apiFetch('/api/auth/settings');
-                userSettings = data.settings || {};
-                const defaults = userSettings.defaultEventTypes || [];
+        function settingsWireAutoSave() {
+            // Pricing inputs
+            ['settings-base-price', 'settings-addon-price'].forEach(id => {
+                $(`#${id}`).addEventListener('input', () => settingsAutoSave('pricingDefaults', 'settings-pricing-status'));
+            });
+            // Duration inputs
+            ['settings-dur-minikids','settings-dur-kids','settings-dur-cadets','settings-dur-juniors',
+             'settings-dur-youth','settings-dur-u21','settings-dur-seniors'].forEach(id => {
+                $(`#${id}`).addEventListener('input', () => settingsAutoSave('matchDurationDefaults', 'settings-duration-status'));
+            });
+            // Ring count
+            $('#settings-ring-count').addEventListener('input', () => {
+                const count = parseInt($('#settings-ring-count').value) || 4;
+                settingsRenderRingNames(count, []);
+                settingsAutoSave('ringSetup', 'settings-ring-status');
+            });
+            // Scoreboard preferences
+            $('#settings-scoring-system').addEventListener('change', () => settingsAutoSave('scoreboardPreferences', 'settings-scoreboard-status'));
+            $('#settings-overtime-dur').addEventListener('input', () => settingsAutoSave('scoreboardPreferences', 'settings-scoreboard-status'));
+        }
 
-                document.querySelectorAll('#settings-event-types .event-type-toggle').forEach(card => {
-                    const type = card.dataset.event;
-                    card.classList.toggle('active', defaults.includes(type));
-                });
-            } catch (err) {
-                console.error('Failed to load settings:', err);
+        function settingsRenderRingNames(count, existingNames) {
+            const container = $('#settings-ring-names');
+            container.innerHTML = '';
+            for (let i = 0; i < Math.min(count, 20); i++) {
+                const defaultName = existingNames[i] || `Ring ${i + 1}`;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:0 14px; height:40px;';
+                row.innerHTML = `<input type="text" class="settings-ring-name-input" value="${defaultName}" placeholder="Ring ${i+1}"
+                    style="background:transparent; border:none; color:var(--text); font-size:14px; width:100%; outline:none;">`;
+                container.appendChild(row);
             }
+        }
+
+        window.settingsUpdateRingNames = function() {
+            settingsAutoSave('ringSetup', 'settings-ring-status');
+        };
+
+        function settingsCollectData(section) {
+            switch (section) {
+                case 'pricingDefaults': return {
+                    pricingDefaults: {
+                        baseEventPrice: parseFloat($('#settings-base-price').value) || 0,
+                        addonEventPrice: parseFloat($('#settings-addon-price').value) || 0,
+                    }
+                };
+                case 'matchDurationDefaults': return {
+                    matchDurationDefaults: {
+                        minikids: parseInt($('#settings-dur-minikids').value) || null,
+                        kids: parseInt($('#settings-dur-kids').value) || null,
+                        cadets: parseInt($('#settings-dur-cadets').value) || null,
+                        juniors: parseInt($('#settings-dur-juniors').value) || null,
+                        youth: parseInt($('#settings-dur-youth').value) || null,
+                        u21: parseInt($('#settings-dur-u21').value) || null,
+                        seniors: parseInt($('#settings-dur-seniors').value) || null,
+                    }
+                };
+                case 'ringSetup': {
+                    const names = Array.from(document.querySelectorAll('.settings-ring-name-input')).map(inp => inp.value.trim()).filter(Boolean);
+                    return {
+                        ringSetup: {
+                            count: parseInt($('#settings-ring-count').value) || 4,
+                            names: names,
+                        }
+                    };
+                }
+                case 'scoreboardPreferences': return {
+                    scoreboardPreferences: {
+                        defaultScoringSystem: $('#settings-scoring-system').value || null,
+                        defaultOvertimeDuration: parseInt($('#settings-overtime-dur').value) || null,
+                    }
+                };
+                default: return {};
+            }
+        }
+
+        function settingsAutoSave(section, statusElId) {
+            const statusEl = $(`#${statusElId}`);
+            if (statusEl) {
+                statusEl.textContent = 'Saving...';
+                statusEl.className = 'settings-save-status';
+            }
+
+            if (settingsSaveTimeout) clearTimeout(settingsSaveTimeout);
+            settingsSaveTimeout = setTimeout(async () => {
+                const payload = settingsCollectData(section);
+                try {
+                    const data = await apiFetch('/api/auth/settings', {
+                        method: 'PUT',
+                        body: JSON.stringify(payload),
+                    });
+                    userSettings = data.settings || {};
+                    if (statusEl) {
+                        statusEl.textContent = 'Saved';
+                        statusEl.className = 'settings-save-status saved';
+                        setTimeout(() => { statusEl.textContent = ''; }, 2000);
+                    }
+                } catch (err) {
+                    if (statusEl) {
+                        statusEl.textContent = 'Failed to save';
+                        statusEl.className = 'settings-save-status error';
+                    }
+                    showToast(err.message || 'Failed to save settings', 'error');
+                }
+            }, 600);
         }
 
         window.toggleSettingsEventType = function(card) {
             card.classList.toggle('active');
-            saveSettingsEventTypes();
-        };
-
-        let settingsSaveTimeout = null;
-
-        function saveSettingsEventTypes() {
+            // Save event types
             const statusEl = $('#settings-save-status');
             statusEl.textContent = 'Saving...';
             statusEl.className = 'settings-save-status';
 
             if (settingsSaveTimeout) clearTimeout(settingsSaveTimeout);
-
             settingsSaveTimeout = setTimeout(async () => {
                 const selected = Array.from(
                     document.querySelectorAll('#settings-event-types .event-type-toggle.active')
                 ).map(c => c.dataset.event);
-
                 try {
                     const data = await apiFetch('/api/auth/settings', {
                         method: 'PUT',
@@ -1982,7 +2265,7 @@
                     showToast(err.message || 'Failed to save settings', 'error');
                 }
             }, 500);
-        }
+        };
 
         async function loadSettingsPackages() {
             const grid = $('#settings-packages-grid');

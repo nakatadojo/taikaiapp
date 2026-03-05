@@ -1140,12 +1140,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             wizardData.contactEmail = $('#t-contact-email').value;
         }
 
-        // Pre-select default event types from user settings
+        // Pre-populate wizard from director's saved settings
         try {
             const settingsRes = await fetch('/api/auth/settings', { credentials: 'include' });
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
-                const defaults = settingsData.settings?.defaultEventTypes || [];
+                const dirSettings = settingsData.settings || {};
+
+                // Pre-select default event types
+                const defaults = dirSettings.defaultEventTypes || [];
                 if (defaults.length > 0) {
                     defaults.forEach(et => {
                         const card = document.querySelector(`.event-type-card[data-event="${et}"]`);
@@ -1153,9 +1156,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     wizardData.eventTypes = [...defaults];
                 }
+
+                // Pre-populate pricing defaults (Step 4)
+                const pricing = dirSettings.pricingDefaults || {};
+                if (pricing.baseEventPrice !== undefined) {
+                    $('#t-base-price').value = pricing.baseEventPrice;
+                    wizardData.basePrice = pricing.baseEventPrice;
+                }
+                if (pricing.addonEventPrice !== undefined) {
+                    $('#t-addon-price').value = pricing.addonEventPrice;
+                    wizardData.addonPrice = pricing.addonEventPrice;
+                }
+
+                // Pre-select sanctioning body from scoreboard preferences
+                const sbPrefs = dirSettings.scoreboardPreferences || {};
+                if (sbPrefs.defaultScoringSystem) {
+                    const presetCard = document.querySelector(`.preset-card[data-preset="${sbPrefs.defaultScoringSystem}"]`);
+                    if (presetCard) {
+                        selectPreset(sbPrefs.defaultScoringSystem);
+                    }
+                }
             }
         } catch (e) {
-            console.warn('Could not load default event types:', e);
+            console.warn('Could not load director settings:', e);
         }
     }
 
