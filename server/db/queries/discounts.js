@@ -87,6 +87,17 @@ async function update(id, updates) {
 }
 
 /**
+ * Get all discount codes for a specific tournament.
+ */
+async function getByTournament(tournamentId) {
+  const result = await pool.query(
+    `SELECT * FROM discount_codes WHERE tournament_id = $1 ORDER BY created_at DESC`,
+    [tournamentId]
+  );
+  return result.rows;
+}
+
+/**
  * Delete a discount code.
  */
 async function remove(id) {
@@ -132,6 +143,7 @@ async function incrementUsage(id) {
 module.exports = {
   create,
   getAll,
+  getByTournament,
   findById,
   findByCode,
   update,

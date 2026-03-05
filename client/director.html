@@ -1614,6 +1614,95 @@
             </div>
         </div>
 
+        <!-- ===== DISCOUNT CODES VIEW ===== -->
+        <div class="view" id="view-discount-codes">
+            <div class="registrants-header">
+                <div>
+                    <h1 id="discounts-title">Discount Codes</h1>
+                    <p style="color:var(--text-muted);font-size:14px;margin-top:4px;" id="discounts-subtitle"></p>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <button class="btn btn-primary btn-sm" onclick="showDiscountModal()">+ New Code</button>
+                    <button class="registrants-back" onclick="navigateTo('dashboard')">&larr; Back</button>
+                </div>
+            </div>
+
+            <div id="discounts-loading" class="loading-overlay">
+                <span class="spinner"></span> Loading discount codes...
+            </div>
+            <div id="discounts-empty" class="empty-state" style="display:none;">
+                <div class="empty-state-icon">🏷️</div>
+                <h3>No discount codes yet</h3>
+                <p>Create discount codes to offer promotions for this tournament.</p>
+            </div>
+            <div class="registrants-table-wrap" id="discounts-table-wrap" style="display:none;">
+                <table class="registrants-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Type</th>
+                            <th>Value</th>
+                            <th>Uses</th>
+                            <th>Expires</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="discounts-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Create/Edit Modal -->
+            <div id="discount-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1000; display:none; align-items:center; justify-content:center;">
+                <div style="background:var(--bg); border:1px solid var(--glass-border); border-radius:var(--radius); padding:32px; max-width:480px; width:90%; position:relative;">
+                    <h2 id="discount-modal-title" style="margin:0 0 20px;">New Discount Code</h2>
+                    <form id="discount-form" onsubmit="saveDiscountCode(event)">
+                        <input type="hidden" id="discount-edit-id">
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Code *</label>
+                            <input type="text" id="discount-code" required placeholder="e.g. EARLY20"
+                                style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;text-transform:uppercase;">
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Type *</label>
+                                <select id="discount-type" required
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                                    <option value="percentage">Percentage (%)</option>
+                                    <option value="fixed">Fixed Amount ($)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Value *</label>
+                                <input type="number" id="discount-value" required min="0" step="0.01" placeholder="20"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Max Uses (optional)</label>
+                                <input type="number" id="discount-max-uses" min="1" placeholder="Unlimited"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Expires (optional)</label>
+                                <input type="date" id="discount-expires"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+                            <input type="checkbox" id="discount-active" checked style="accent-color:var(--accent);">
+                            <label for="discount-active" style="font-size:14px;color:var(--text);">Active</label>
+                        </div>
+                        <div style="display:flex;gap:12px;justify-content:flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeDiscountModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- ===== CREDITS SUCCESS VIEW ===== -->
         <div class="view" id="view-credits-success">
             <div class="success-view">
@@ -1681,7 +1770,7 @@
         // ============================================================
         // ROUTING
         // ============================================================
-        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'credits-success'];
+        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'discount-codes', 'credits-success'];
 
         function getHashRoute() {
             const hash = window.location.hash.replace('#', '').split('?')[0];
@@ -1709,6 +1798,7 @@
             else if (route === 'create') initCreateForm();
             else if (route === 'settings') loadSettingsView();
             else if (route === 'registrants') loadRegistrantsView();
+            else if (route === 'discount-codes') loadDiscountCodesView();
             else if (route === 'credits-success') handleCreditsSuccess();
         }
 
@@ -1949,6 +2039,7 @@
                     <a href="/director/tournaments/${t.id}/manage" class="btn btn-primary btn-sm">Manage</a>
                     <a href="/director/tournaments/${t.id}/wizard" class="btn btn-secondary btn-sm">Edit</a>
                     <a href="#registrants?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Registrants</a>
+                    <a href="#discount-codes?tournamentId=${t.id}" class="btn btn-secondary btn-sm">🏷️ Codes</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
@@ -2364,6 +2455,172 @@
                 empty.style.display = 'block';
             }
         }
+
+        // ============================================================
+        // DISCOUNT CODES
+        // ============================================================
+        let discountTournamentId = null;
+
+        async function loadDiscountCodesView() {
+            const params = getHashParams();
+            discountTournamentId = params.tournamentId;
+
+            if (!discountTournamentId) {
+                showToast('No tournament selected', 'error');
+                navigateTo('dashboard');
+                return;
+            }
+
+            const loading = $('#discounts-loading');
+            const empty = $('#discounts-empty');
+            const tableWrap = $('#discounts-table-wrap');
+            const tbody = $('#discounts-body');
+
+            loading.style.display = 'flex';
+            empty.style.display = 'none';
+            tableWrap.style.display = 'none';
+
+            try {
+                // Fetch tournament name for header
+                const tData = await apiFetch(`/api/tournaments/${discountTournamentId}`);
+                const tName = tData.tournament?.name || tData.name || 'Tournament';
+                $('#discounts-title').textContent = `Discount Codes`;
+                $('#discounts-subtitle').textContent = tName;
+
+                // Fetch codes
+                const data = await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes`);
+                const codes = data.discountCodes || [];
+
+                loading.style.display = 'none';
+
+                if (codes.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                tableWrap.style.display = 'block';
+                tbody.innerHTML = codes.map(c => {
+                    const typeLabel = c.type === 'percentage' ? `${parseFloat(c.value)}%` : `$${parseFloat(c.value).toFixed(2)}`;
+                    const usesLabel = c.max_uses ? `${c.times_used || 0} / ${c.max_uses}` : `${c.times_used || 0} / ∞`;
+                    const expiresLabel = c.expires_at
+                        ? new Date(c.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : '—';
+                    const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
+                    const isMaxed = c.max_uses && c.times_used >= c.max_uses;
+                    const statusClass = !c.active ? 'unpaid' : (isExpired || isMaxed) ? 'unpaid' : 'paid';
+                    const statusLabel = !c.active ? 'Inactive' : isExpired ? 'Expired' : isMaxed ? 'Maxed' : 'Active';
+
+                    return `<tr>
+                        <td><code style="background:var(--glass);padding:3px 8px;border-radius:4px;font-size:13px;">${escapeHtml(c.code.toUpperCase())}</code></td>
+                        <td>${c.type === 'percentage' ? 'Percentage' : 'Fixed'}</td>
+                        <td>${typeLabel}</td>
+                        <td>${usesLabel}</td>
+                        <td>${expiresLabel}</td>
+                        <td><span class="payment-badge ${statusClass}">${statusLabel}</span></td>
+                        <td style="display:flex;gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="editDiscountCode('${c.id}')" style="font-size:12px;padding:4px 10px;">Edit</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleDiscountActive('${c.id}', ${!c.active})" style="font-size:12px;padding:4px 10px;">${c.active ? 'Disable' : 'Enable'}</button>
+                            <button class="btn btn-secondary btn-sm" onclick="deleteDiscountCode('${c.id}')" style="font-size:12px;padding:4px 10px;color:var(--danger);">Delete</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+            } catch (err) {
+                loading.style.display = 'none';
+                showToast(err.message || 'Failed to load discount codes', 'error');
+            }
+        }
+
+        // Store codes for edit lookups
+        let _discountCodes = [];
+
+        window.showDiscountModal = function(editData) {
+            const modal = $('#discount-modal');
+            modal.style.display = 'flex';
+            $('#discount-modal-title').textContent = editData ? 'Edit Discount Code' : 'New Discount Code';
+            $('#discount-edit-id').value = editData?.id || '';
+            $('#discount-code').value = editData?.code || '';
+            $('#discount-type').value = editData?.type || 'percentage';
+            $('#discount-value').value = editData?.value || '';
+            $('#discount-max-uses').value = editData?.max_uses || '';
+            $('#discount-expires').value = editData?.expires_at ? editData.expires_at.split('T')[0] : '';
+            $('#discount-active').checked = editData ? editData.active : true;
+        };
+
+        window.closeDiscountModal = function() {
+            $('#discount-modal').style.display = 'none';
+        };
+
+        window.saveDiscountCode = async function(e) {
+            e.preventDefault();
+            const editId = $('#discount-edit-id').value;
+            const payload = {
+                code: $('#discount-code').value.trim(),
+                type: $('#discount-type').value,
+                value: parseFloat($('#discount-value').value),
+                maxUses: parseInt($('#discount-max-uses').value) || null,
+                expiresAt: $('#discount-expires').value ? new Date($('#discount-expires').value).toISOString() : null,
+                active: $('#discount-active').checked,
+            };
+
+            try {
+                if (editId) {
+                    await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes/${editId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(payload),
+                    });
+                    showToast('Discount code updated', 'success');
+                } else {
+                    await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes`, {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                    showToast('Discount code created', 'success');
+                }
+                closeDiscountModal();
+                loadDiscountCodesView();
+            } catch (err) {
+                showToast(err.message || 'Failed to save', 'error');
+            }
+        };
+
+        window.editDiscountCode = async function(codeId) {
+            try {
+                const data = await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes`);
+                const code = (data.discountCodes || []).find(c => c.id === codeId);
+                if (code) {
+                    showDiscountModal({ ...code, value: parseFloat(code.value) });
+                }
+            } catch (err) {
+                showToast('Failed to load code details', 'error');
+            }
+        };
+
+        window.toggleDiscountActive = async function(codeId, active) {
+            try {
+                await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes/${codeId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ active }),
+                });
+                showToast(active ? 'Code enabled' : 'Code disabled', 'success');
+                loadDiscountCodesView();
+            } catch (err) {
+                showToast(err.message || 'Failed to update', 'error');
+            }
+        };
+
+        window.deleteDiscountCode = async function(codeId) {
+            if (!confirm('Delete this discount code? This cannot be undone.')) return;
+            try {
+                await apiFetch(`/api/tournaments/${discountTournamentId}/discount-codes/${codeId}`, {
+                    method: 'DELETE',
+                });
+                showToast('Discount code deleted', 'success');
+                loadDiscountCodesView();
+            } catch (err) {
+                showToast(err.message || 'Failed to delete', 'error');
+            }
+        };
 
         // ============================================================
         // CREDITS SUCCESS

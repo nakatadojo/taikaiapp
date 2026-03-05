@@ -1176,6 +1176,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         selectPreset(sbPrefs.defaultScoringSystem);
                     }
                 }
+
+                // Store match duration defaults for template override
+                if (dirSettings.matchDurationDefaults) {
+                    wizardData.matchDurationDefaults = dirSettings.matchDurationDefaults;
+                }
             }
         } catch (e) {
             console.warn('Could not load director settings:', e);
@@ -1456,6 +1461,74 @@ function collectStepData(step) {
 }
 
 // ============================================================
+// TEMPLATE DURATION OVERRIDES
+// ============================================================
+
+/**
+ * Apply director's matchDurationDefaults (from Settings page) to template durations.
+ * Maps settings keys (minikids, kids, cadets...) to template age labels.
+ */
+function applyDirectorDurationOverrides(templates) {
+    const overrides = wizardData.matchDurationDefaults;
+    if (!overrides || typeof overrides !== 'object') return templates;
+
+    // Map settings keys → age labels used in templates
+    const keyToLabel = {
+        minikids: 'Mini Kids', kids: 'Kids', cadets: 'Cadets',
+        juniors: 'Juniors', youth: 'Youth', u21: 'Under 21', seniors: 'Seniors',
+        // AAU tier labels
+    };
+
+    templates.forEach(tmpl => {
+        if (!tmpl.matchDuration || !tmpl.criteria) return;
+        const ageCriteria = tmpl.criteria.find(c => c.type === 'age');
+        if (!ageCriteria) return;
+
+        for (const [key, label] of Object.entries(keyToLabel)) {
+            const dur = overrides[key];
+            if (!dur || dur <= 0) continue;
+            // If this template's age ranges include this label, use the override
+            if (ageCriteria.ranges.some(r => r.label === label)) {
+                tmpl.matchDuration = dur;
+                break;
+            }
+        }
+    });
+
+    return templates;
+}
+
+/**
+ * Build event objects for sync, applying director duration overrides.
+ */
+function buildEventsForSync() {
+    return wizardData.eventTypes.map(et => {
+        const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+        const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
+
+        // Apply director's per-age-group duration overrides
+        if (et === 'kumite') {
+            applyDirectorDurationOverrides(templates);
+        }
+
+        // Event-level duration = max of all template durations (fallback for divisions without a template match)
+        let eventDuration = null;
+        if (et === 'kumite') {
+            const maxDur = templates.reduce((max, t) => Math.max(max, t.matchDuration || 0), 0);
+            eventDuration = maxDur || CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody);
+        }
+
+        return {
+            name: typeLabel,
+            eventType: et,
+            isEventType: true,
+            criteriaTemplates: templates,
+            matchDurationSeconds: eventDuration,
+        };
+    });
+}
+
+// ============================================================
 // AUTO-SAVE
 // ============================================================
 function setSaveStatus(status, msg) {
@@ -1527,18 +1600,8 @@ async function autoSave(step) {
                 body: JSON.stringify({ sanctioningBody: wizardData.sanctioningBody }),
             });
 
-            // Sync event types (not individual divisions)
-            const events = wizardData.eventTypes.map(et => {
-                const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
-                const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
-                return {
-                    name: typeLabel,
-                    eventType: et,
-                    isEventType: true,
-                    criteriaTemplates: templates,
-                    matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
-                };
-            });
+            // Sync event types with director duration overrides
+            const events = buildEventsForSync();
 
             const data = await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
                 method: 'POST',
@@ -1564,16 +1627,10 @@ async function autoSave(step) {
 
             // Sync per-event price overrides
             if (Object.keys(wizardData.eventPriceOverrides).length > 0) {
-                const events = wizardData.eventTypes.map(et => {
-                    const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
-                    const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
-                    const override = wizardData.eventPriceOverrides[et] || {};
+                const events = buildEventsForSync().map(evt => {
+                    const override = wizardData.eventPriceOverrides[evt.eventType] || {};
                     return {
-                        name: typeLabel,
-                        eventType: et,
-                        isEventType: true,
-                        criteriaTemplates: templates,
-                        matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
+                        ...evt,
                         priceOverride: override.base || undefined,
                         addonPriceOverride: override.addon || undefined,
                     };
@@ -1893,16 +1950,10 @@ async function publishTournament() {
                 body: JSON.stringify({ sanctioningBody: wizardData.sanctioningBody }),
             });
 
-            const events = wizardData.eventTypes.map(et => {
-                const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
-                const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
-                const override = wizardData.eventPriceOverrides[et] || {};
+            const events = buildEventsForSync().map(evt => {
+                const override = wizardData.eventPriceOverrides[evt.eventType] || {};
                 return {
-                    name: typeLabel,
-                    eventType: et,
-                    isEventType: true,
-                    criteriaTemplates: templates,
-                    matchDurationSeconds: et === 'kumite' ? CRITERIA_PRESETS.getDefaultDuration(wizardData.sanctioningBody) : null,
+                    ...evt,
                     priceOverride: override.base || undefined,
                     addonPriceOverride: override.addon || undefined,
                 };

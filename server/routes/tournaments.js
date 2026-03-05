@@ -164,4 +164,118 @@ router.post('/:id/sync',
   tournamentController.syncEvents
 );
 
+// ── Director Discount Codes ──────────────────────────────────────────────
+const discountQueries = require('../db/queries/discounts');
+
+// GET /api/tournaments/:id/discount-codes
+router.get('/:id/discount-codes',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  async (req, res, next) => {
+    try {
+      // Verify tournament belongs to director
+      const tournament = await require('../db/queries/tournaments').findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const codes = await discountQueries.getByTournament(req.params.id);
+      res.json({ discountCodes: codes });
+    } catch (err) { next(err); }
+  }
+);
+
+// POST /api/tournaments/:id/discount-codes
+router.post('/:id/discount-codes',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  [
+    body('code').trim().notEmpty().withMessage('Code is required'),
+    body('type').isIn(['percentage', 'fixed']).withMessage('Type must be percentage or fixed'),
+    body('value').isFloat({ min: 0 }).withMessage('Value must be a positive number'),
+    body('maxUses').optional({ nullable: true }).isInt({ min: 1 }),
+    body('expiresAt').optional({ nullable: true }).isISO8601(),
+    body('active').optional().isBoolean(),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const tournament = await require('../db/queries/tournaments').findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      // Check duplicate
+      const existing = await discountQueries.findByCode(req.body.code);
+      if (existing) return res.status(409).json({ error: 'A discount code with this name already exists' });
+
+      const discount = await discountQueries.create({
+        code: req.body.code,
+        type: req.body.type,
+        value: req.body.value,
+        maxUses: req.body.maxUses,
+        expiresAt: req.body.expiresAt,
+        active: req.body.active,
+        tournamentId: req.params.id,
+        createdBy: req.user.id,
+      });
+      res.status(201).json({ discount });
+    } catch (err) { next(err); }
+  }
+);
+
+// PUT /api/tournaments/:id/discount-codes/:codeId
+router.put('/:id/discount-codes/:codeId',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  [
+    body('code').optional().trim().notEmpty(),
+    body('type').optional().isIn(['percentage', 'fixed']),
+    body('value').optional().isFloat({ min: 0 }),
+    body('maxUses').optional({ nullable: true }),
+    body('expiresAt').optional({ nullable: true }),
+    body('active').optional().isBoolean(),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const tournament = await require('../db/queries/tournaments').findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const updates = {};
+      const { code, type, value, maxUses, expiresAt, active } = req.body;
+      if (code !== undefined) updates.code = code;
+      if (type !== undefined) updates.type = type;
+      if (value !== undefined) updates.value = value;
+      if (maxUses !== undefined) updates.max_uses = maxUses;
+      if (expiresAt !== undefined) updates.expires_at = expiresAt;
+      if (active !== undefined) updates.active = active;
+
+      const discount = await discountQueries.update(req.params.codeId, updates);
+      if (!discount) return res.status(404).json({ error: 'Discount code not found' });
+      res.json({ discount });
+    } catch (err) { next(err); }
+  }
+);
+
+// DELETE /api/tournaments/:id/discount-codes/:codeId
+router.delete('/:id/discount-codes/:codeId',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  async (req, res, next) => {
+    try {
+      const tournament = await require('../db/queries/tournaments').findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const result = await discountQueries.remove(req.params.codeId);
+      if (!result) return res.status(404).json({ error: 'Discount code not found' });
+      res.json({ message: 'Discount code deleted' });
+    } catch (err) { next(err); }
+  }
+);
+
 module.exports = router;
