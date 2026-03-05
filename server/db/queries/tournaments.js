@@ -189,7 +189,7 @@ async function create({
   name, date, location, registrationOpen, baseEventPrice, addonEventPrice, createdBy,
   slug, description, city, state, venueName, venueAddress,
   published, organizationName, contactEmail, registrationDeadline, coverImageUrl,
-  sanctioningBody,
+  sanctioningBody, collectTshirtSizes,
 }) {
   const finalSlug = slug || await generateUniqueSlug(name);
 
@@ -198,8 +198,8 @@ async function create({
       (name, date, location, registration_open, base_event_price, addon_event_price, created_by,
        slug, description, city, state, venue_name, venue_address,
        published, organization_name, contact_email, registration_deadline, cover_image_url,
-       sanctioning_body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       sanctioning_body, collect_tshirt_sizes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
      RETURNING *`,
     [
       name,
@@ -221,6 +221,7 @@ async function create({
       registrationDeadline || null,
       coverImageUrl || null,
       sanctioningBody || null,
+      collectTshirtSizes || false,
     ]
   );
   return result.rows[0];

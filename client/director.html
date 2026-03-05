@@ -1703,6 +1703,124 @@
             </div>
         </div>
 
+        <!-- ===== EVENT STAFF VIEW ===== -->
+        <div class="view" id="view-staff">
+            <div class="registrants-header">
+                <div>
+                    <h1 id="staff-title">Event Staff</h1>
+                    <p style="color:var(--text-muted);font-size:14px;margin-top:4px;" id="staff-subtitle"></p>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <button class="btn btn-primary btn-sm" onclick="showStaffModal()">+ Add Staff</button>
+                    <button class="registrants-back" onclick="navigateTo('dashboard')">&larr; Back</button>
+                </div>
+            </div>
+
+            <div class="registrants-stats" id="staff-stats"></div>
+
+            <div id="staff-loading" class="loading-overlay">
+                <span class="spinner"></span> Loading staff...
+            </div>
+            <div id="staff-empty" class="empty-state" style="display:none;">
+                <div class="empty-state-icon">&#128101;</div>
+                <h3>No staff assigned yet</h3>
+                <p>Add judges, ring coordinators, and volunteers for this tournament.</p>
+            </div>
+            <div class="registrants-table-wrap" id="staff-table-wrap" style="display:none;">
+                <table class="registrants-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>T-Shirt</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="staff-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Staff Modal -->
+            <div id="staff-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
+                <div style="background:var(--bg); border:1px solid var(--glass-border); border-radius:var(--radius); padding:32px; max-width:480px; width:90%; position:relative;">
+                    <h2 id="staff-modal-title" style="margin:0 0 20px;">Add Staff Member</h2>
+                    <form id="staff-form" onsubmit="saveStaffMember(event)">
+                        <input type="hidden" id="staff-edit-id">
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Name *</label>
+                            <input type="text" id="staff-name" required placeholder="Full name"
+                                style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Role *</label>
+                                <select id="staff-role" required
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                                    <option value="judge">Judge</option>
+                                    <option value="ring_coordinator">Ring Coordinator</option>
+                                    <option value="table_worker">Table Worker</option>
+                                    <option value="medical">Medical</option>
+                                    <option value="volunteer">General Volunteer</option>
+                                    <option value="announcer">Announcer</option>
+                                    <option value="photographer">Photographer</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Status</label>
+                                <select id="staff-status"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                                    <option value="pending">Pending</option>
+                                    <option value="confirmed">Confirmed</option>
+                                    <option value="declined">Declined</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Email</label>
+                                <input type="email" id="staff-email" placeholder="email@example.com"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Phone</label>
+                                <input type="tel" id="staff-phone" placeholder="(555) 123-4567"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                            <div>
+                                <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">T-Shirt Size</label>
+                                <select id="staff-tshirt"
+                                    style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                                    <option value="">&#8212;</option>
+                                    <option value="XS">XS</option>
+                                    <option value="S">S</option>
+                                    <option value="M">M</option>
+                                    <option value="L">L</option>
+                                    <option value="XL">XL</option>
+                                    <option value="2XL">2XL</option>
+                                    <option value="3XL">3XL</option>
+                                </select>
+                            </div>
+                            <div></div>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                            <label style="display:block;font-size:13px;color:var(--text-muted);margin-bottom:6px;">Notes</label>
+                            <textarea id="staff-notes" rows="2" placeholder="Certifications, availability, etc."
+                                style="width:100%;padding:10px 14px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;resize:vertical;"></textarea>
+                        </div>
+                        <div style="display:flex;gap:12px;justify-content:flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="closeStaffModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- ===== CREDITS SUCCESS VIEW ===== -->
         <div class="view" id="view-credits-success">
             <div class="success-view">
@@ -1770,7 +1888,7 @@
         // ============================================================
         // ROUTING
         // ============================================================
-        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'discount-codes', 'credits-success'];
+        const views = ['signup', 'dashboard', 'create', 'settings', 'registrants', 'discount-codes', 'staff', 'credits-success'];
 
         function getHashRoute() {
             const hash = window.location.hash.replace('#', '').split('?')[0];
@@ -1799,6 +1917,7 @@
             else if (route === 'settings') loadSettingsView();
             else if (route === 'registrants') loadRegistrantsView();
             else if (route === 'discount-codes') loadDiscountCodesView();
+            else if (route === 'staff') loadStaffView();
             else if (route === 'credits-success') handleCreditsSuccess();
         }
 
@@ -2039,7 +2158,8 @@
                     <a href="/director/tournaments/${t.id}/manage" class="btn btn-primary btn-sm">Manage</a>
                     <a href="/director/tournaments/${t.id}/wizard" class="btn btn-secondary btn-sm">Edit</a>
                     <a href="#registrants?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Registrants</a>
-                    <a href="#discount-codes?tournamentId=${t.id}" class="btn btn-secondary btn-sm">🏷️ Codes</a>
+                    <a href="#discount-codes?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#127991; Codes</a>
+                    <a href="#staff?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Staff</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
@@ -2619,6 +2739,168 @@
                 loadDiscountCodesView();
             } catch (err) {
                 showToast(err.message || 'Failed to delete', 'error');
+            }
+        };
+
+        // ============================================================
+        // EVENT STAFF
+        // ============================================================
+        let staffTournamentId = null;
+
+        const ROLE_LABELS = {
+            judge: 'Judge', ring_coordinator: 'Ring Coordinator',
+            table_worker: 'Table Worker', medical: 'Medical',
+            volunteer: 'Volunteer', announcer: 'Announcer', photographer: 'Photographer',
+        };
+
+        async function loadStaffView() {
+            const params = getHashParams();
+            staffTournamentId = params.tournamentId;
+
+            if (!staffTournamentId) {
+                showToast('No tournament selected', 'error');
+                navigateTo('dashboard');
+                return;
+            }
+
+            const loading = $('#staff-loading');
+            const empty = $('#staff-empty');
+            const tableWrap = $('#staff-table-wrap');
+            const tbody = $('#staff-body');
+            const statsEl = $('#staff-stats');
+
+            loading.style.display = 'flex';
+            empty.style.display = 'none';
+            tableWrap.style.display = 'none';
+            statsEl.innerHTML = '';
+
+            try {
+                const tData = await apiFetch(`/api/tournaments/${staffTournamentId}`);
+                const tName = tData.tournament?.name || tData.name || 'Tournament';
+                $('#staff-title').textContent = 'Event Staff';
+                $('#staff-subtitle').textContent = tName;
+
+                const data = await apiFetch(`/api/tournaments/${staffTournamentId}/staff`);
+                const staff = data.staff || [];
+
+                loading.style.display = 'none';
+
+                // Build stats
+                const confirmed = staff.filter(s => s.status === 'confirmed').length;
+                const pending = staff.filter(s => s.status === 'pending').length;
+                const roleCounts = {};
+                staff.forEach(s => { roleCounts[s.role] = (roleCounts[s.role] || 0) + 1; });
+
+                statsEl.innerHTML = `
+                    <div class="stat-card"><div class="stat-value">${staff.length}</div><div class="stat-label">Total Staff</div></div>
+                    <div class="stat-card"><div class="stat-value" style="color:var(--success);">${confirmed}</div><div class="stat-label">Confirmed</div></div>
+                    <div class="stat-card"><div class="stat-value" style="color:var(--warning);">${pending}</div><div class="stat-label">Pending</div></div>
+                    <div class="stat-card"><div class="stat-value">${Object.keys(roleCounts).length}</div><div class="stat-label">Roles Filled</div></div>
+                `;
+
+                if (staff.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                tableWrap.style.display = 'block';
+                tbody.innerHTML = staff.map(s => {
+                    const roleLabel = ROLE_LABELS[s.role] || s.role;
+                    const statusClass = s.status === 'confirmed' ? 'paid' : s.status === 'declined' ? 'unpaid' : '';
+                    const statusLabel = s.status.charAt(0).toUpperCase() + s.status.slice(1);
+
+                    return `<tr>
+                        <td>${escapeHtml(s.name)}</td>
+                        <td>${roleLabel}</td>
+                        <td>${s.email ? escapeHtml(s.email) : '<span style="color:var(--text-muted);">—</span>'}</td>
+                        <td>${s.phone ? escapeHtml(s.phone) : '<span style="color:var(--text-muted);">—</span>'}</td>
+                        <td>${s.tshirt_size || '<span style="color:var(--text-muted);">—</span>'}</td>
+                        <td><span class="payment-badge ${statusClass}">${statusLabel}</span></td>
+                        <td style="display:flex;gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="editStaffMember('${s.id}')" style="font-size:12px;padding:4px 10px;">Edit</button>
+                            <button class="btn btn-secondary btn-sm" onclick="deleteStaffMember('${s.id}')" style="font-size:12px;padding:4px 10px;color:var(--danger);">Remove</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+            } catch (err) {
+                loading.style.display = 'none';
+                showToast(err.message || 'Failed to load staff', 'error');
+            }
+        }
+
+        window.showStaffModal = function(editData) {
+            const modal = $('#staff-modal');
+            modal.style.display = 'flex';
+            $('#staff-modal-title').textContent = editData ? 'Edit Staff Member' : 'Add Staff Member';
+            $('#staff-edit-id').value = editData?.id || '';
+            $('#staff-name').value = editData?.name || '';
+            $('#staff-role').value = editData?.role || 'judge';
+            $('#staff-status').value = editData?.status || 'pending';
+            $('#staff-email').value = editData?.email || '';
+            $('#staff-phone').value = editData?.phone || '';
+            $('#staff-tshirt').value = editData?.tshirt_size || '';
+            $('#staff-notes').value = editData?.notes || '';
+        };
+
+        window.closeStaffModal = function() {
+            $('#staff-modal').style.display = 'none';
+        };
+
+        window.saveStaffMember = async function(e) {
+            e.preventDefault();
+            const editId = $('#staff-edit-id').value;
+            const payload = {
+                name: $('#staff-name').value.trim(),
+                role: $('#staff-role').value,
+                status: $('#staff-status').value,
+                email: $('#staff-email').value.trim() || null,
+                phone: $('#staff-phone').value.trim() || null,
+                tshirtSize: $('#staff-tshirt').value || null,
+                notes: $('#staff-notes').value.trim() || null,
+            };
+
+            try {
+                if (editId) {
+                    await apiFetch(`/api/tournaments/${staffTournamentId}/staff/${editId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(payload),
+                    });
+                    showToast('Staff member updated', 'success');
+                } else {
+                    await apiFetch(`/api/tournaments/${staffTournamentId}/staff`, {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                    });
+                    showToast('Staff member added', 'success');
+                }
+                closeStaffModal();
+                loadStaffView();
+            } catch (err) {
+                showToast(err.message || 'Failed to save', 'error');
+            }
+        };
+
+        window.editStaffMember = async function(staffId) {
+            try {
+                const data = await apiFetch(`/api/tournaments/${staffTournamentId}/staff`);
+                const member = (data.staff || []).find(s => s.id === staffId);
+                if (member) showStaffModal(member);
+            } catch (err) {
+                showToast('Failed to load staff details', 'error');
+            }
+        };
+
+        window.deleteStaffMember = async function(staffId) {
+            if (!confirm('Remove this staff member?')) return;
+            try {
+                await apiFetch(`/api/tournaments/${staffTournamentId}/staff/${staffId}`, {
+                    method: 'DELETE',
+                });
+                showToast('Staff member removed', 'success');
+                loadStaffView();
+            } catch (err) {
+                showToast(err.message || 'Failed to remove', 'error');
             }
         };
 

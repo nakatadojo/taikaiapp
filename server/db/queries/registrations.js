@@ -7,7 +7,7 @@ async function createCompetitorRegistration({
   tournamentId, userId, registeredBy, academyId,
   firstName, lastName, dateOfBirth, weight, rank, experience,
   gender, club, email, phone, photo, clubLogo,
-  events, pricing, paymentStatus, source,
+  events, pricing, paymentStatus, source, tshirtSize,
 }) {
   const client = await pool.connect();
   try {
@@ -16,8 +16,8 @@ async function createCompetitorRegistration({
     // Insert registration
     const regResult = await client.query(
       `INSERT INTO registrations
-        (tournament_id, user_id, registered_by, academy_id, payment_status, amount_paid, total_due, notes)
-       VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
+        (tournament_id, user_id, registered_by, academy_id, payment_status, amount_paid, total_due, notes, tshirt_size)
+       VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
        RETURNING *`,
       [
         tournamentId || null,
@@ -30,6 +30,7 @@ async function createCompetitorRegistration({
           firstName, lastName, dateOfBirth, weight, rank, experience,
           gender, club, email, phone, photo, clubLogo, source,
         }),
+        tshirtSize || null,
       ]
     );
     const registration = regResult.rows[0];

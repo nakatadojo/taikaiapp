@@ -1318,6 +1318,19 @@
                             <label for="pf-weight">Weight (lbs)</label>
                             <input type="number" id="pf-weight" step="0.1" min="0" placeholder="Optional">
                         </div>
+                        <div class="form-group" id="tshirt-group" style="display:none;">
+                            <label for="pf-tshirt">T-Shirt Size</label>
+                            <select id="pf-tshirt">
+                                <option value="">Select size</option>
+                                <option value="XS">XS</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="2XL">2XL</option>
+                                <option value="3XL">3XL</option>
+                            </select>
+                        </div>
                         <div class="form-group academy-autocomplete">
                             <label for="pf-academy">Academy / Dojo</label>
                             <input type="text" id="pf-academy" placeholder="Start typing..." autocomplete="off">
@@ -1880,6 +1893,12 @@
             }
             statsEl.innerHTML = statsHTML;
 
+            // Show t-shirt size field if tournament collects them
+            if (t.collect_tshirt_sizes || t.collectTshirtSizes) {
+                const tshirtGroup = document.getElementById('tshirt-group');
+                if (tshirtGroup) tshirtGroup.style.display = '';
+            }
+
             infoLoaded = true;
         } catch (err) {
             document.getElementById('info-title').textContent = 'Tournament';
@@ -2056,6 +2075,7 @@
             beltRank: document.getElementById('pf-belt').value,
             experienceLevel: document.getElementById('pf-experience').value,
             weight: document.getElementById('pf-weight').value ? parseFloat(document.getElementById('pf-weight').value) : undefined,
+            tshirtSize: document.getElementById('pf-tshirt').value || undefined,
             academyName: document.getElementById('pf-academy').value.trim() || undefined,
         };
 

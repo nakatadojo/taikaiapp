@@ -278,4 +278,118 @@ router.delete('/:id/discount-codes/:codeId',
   }
 );
 
+// ── Director Event Staff ───────────────────────────────────────────────────
+const eventStaffQueries = require('../db/queries/eventStaff');
+
+// GET /api/tournaments/:id/staff
+router.get('/:id/staff',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  async (req, res, next) => {
+    try {
+      const tournament = await tournaments.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const staff = await eventStaffQueries.getByTournament(req.params.id);
+      res.json({ staff });
+    } catch (err) { next(err); }
+  }
+);
+
+// POST /api/tournaments/:id/staff
+router.post('/:id/staff',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  [
+    body('name').trim().notEmpty().withMessage('Name is required'),
+    body('role').isIn(['judge', 'ring_coordinator', 'table_worker', 'medical', 'volunteer', 'announcer', 'photographer'])
+      .withMessage('Invalid role'),
+    body('email').optional({ nullable: true }).isEmail(),
+    body('phone').optional({ nullable: true }),
+    body('status').optional().isIn(['pending', 'confirmed', 'declined']),
+    body('notes').optional({ nullable: true }),
+    body('tshirtSize').optional({ nullable: true }),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const tournament = await tournaments.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const staff = await eventStaffQueries.create({
+        tournamentId: req.params.id,
+        name: req.body.name,
+        email: req.body.email,
+        phone: req.body.phone,
+        role: req.body.role,
+        status: req.body.status || 'pending',
+        notes: req.body.notes,
+        tshirtSize: req.body.tshirtSize,
+        createdBy: req.user.id,
+      });
+      res.status(201).json({ staff });
+    } catch (err) { next(err); }
+  }
+);
+
+// PUT /api/tournaments/:id/staff/:staffId
+router.put('/:id/staff/:staffId',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  [
+    body('name').optional().trim().notEmpty(),
+    body('role').optional().isIn(['judge', 'ring_coordinator', 'table_worker', 'medical', 'volunteer', 'announcer', 'photographer']),
+    body('email').optional({ nullable: true }),
+    body('phone').optional({ nullable: true }),
+    body('status').optional().isIn(['pending', 'confirmed', 'declined']),
+    body('notes').optional({ nullable: true }),
+    body('tshirtSize').optional({ nullable: true }),
+  ],
+  validate,
+  async (req, res, next) => {
+    try {
+      const tournament = await tournaments.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const updates = {};
+      const { name, email, phone, role, status, notes, tshirtSize } = req.body;
+      if (name !== undefined) updates.name = name;
+      if (email !== undefined) updates.email = email;
+      if (phone !== undefined) updates.phone = phone;
+      if (role !== undefined) updates.role = role;
+      if (status !== undefined) updates.status = status;
+      if (notes !== undefined) updates.notes = notes;
+      if (tshirtSize !== undefined) updates.tshirt_size = tshirtSize;
+
+      const staff = await eventStaffQueries.update(req.params.staffId, updates);
+      if (!staff) return res.status(404).json({ error: 'Staff member not found' });
+      res.json({ staff });
+    } catch (err) { next(err); }
+  }
+);
+
+// DELETE /api/tournaments/:id/staff/:staffId
+router.delete('/:id/staff/:staffId',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  async (req, res, next) => {
+    try {
+      const tournament = await tournaments.findById(req.params.id);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const result = await eventStaffQueries.remove(req.params.staffId);
+      if (!result) return res.status(404).json({ error: 'Staff member not found' });
+      res.json({ message: 'Staff member removed' });
+    } catch (err) { next(err); }
+  }
+);
+
 module.exports = router;

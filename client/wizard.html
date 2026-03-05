@@ -855,6 +855,14 @@
             <img id="t-cover-preview" class="cover-preview" alt="Cover preview">
             <p class="form-hint">Recommended: 1200x630px. Will be cropped to fit.</p>
         </div>
+
+        <div class="form-group" style="margin-top:16px;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="t-collect-tshirts" style="accent-color:var(--accent);width:18px;height:18px;">
+                <span class="form-label" style="margin:0;">Collect T-Shirt Sizes</span>
+            </label>
+            <p class="form-hint">Ask competitors for their t-shirt size during registration.</p>
+        </div>
     </div>
 
     <!-- ============================================================ -->
@@ -1226,6 +1234,8 @@ async function loadExistingTournament() {
         $('#t-venue-address').value = t.venue_address || '';
         $('#t-description').value = t.description || '';
         $('#t-contact-email').value = t.contact_email || '';
+        $('#t-collect-tshirts').checked = t.collect_tshirt_sizes || false;
+        wizardData.collectTshirtSizes = t.collect_tshirt_sizes || false;
 
         if (t.cover_image_url) {
             $('#t-cover-preview').src = t.cover_image_url;
@@ -1435,6 +1445,7 @@ function collectStepData(step) {
         wizardData.venueAddress = $('#t-venue-address').value.trim();
         wizardData.description = $('#t-description').value.trim();
         wizardData.contactEmail = $('#t-contact-email').value.trim();
+        wizardData.collectTshirtSizes = $('#t-collect-tshirts').checked;
     }
 
     if (step === 2) {
@@ -1555,6 +1566,7 @@ async function autoSave(step) {
                 contactEmail: wizardData.contactEmail || undefined,
                 registrationDeadline: wizardData.deadline || undefined,
                 organizationName: wizardData.organization || undefined,
+                collectTshirtSizes: wizardData.collectTshirtSizes || false,
             };
 
             if (tournamentId) {
@@ -1677,6 +1689,7 @@ async function saveDraft() {
             contactEmail: wizardData.contactEmail || undefined,
             registrationDeadline: wizardData.deadline || undefined,
             organizationName: wizardData.organization || undefined,
+            collectTshirtSizes: wizardData.collectTshirtSizes || false,
             baseEventPrice: wizardData.basePrice,
             addonEventPrice: wizardData.addonPrice,
             published: false,
