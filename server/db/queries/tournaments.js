@@ -343,6 +343,17 @@ async function updateEvent(eventId, updates) {
 }
 
 /**
+ * Delete a tournament and all associated data (cascading).
+ */
+async function deleteTournament(tournamentId) {
+  const result = await pool.query(
+    'DELETE FROM tournaments WHERE id = $1 RETURNING id',
+    [tournamentId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Delete an event.
  */
 async function deleteEvent(eventId) {
@@ -514,6 +525,7 @@ module.exports = {
   getEventsForTournament,
   createEvent,
   updateEvent,
+  deleteTournament,
   deleteEvent,
   syncEvents,
   getEligibleEvents,

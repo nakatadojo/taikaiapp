@@ -141,6 +141,13 @@ router.put('/:id/events/:eventId',
   tournamentController.updateEvent
 );
 
+// DELETE /api/tournaments/:id — Delete tournament
+router.delete('/:id',
+  requireAuth,
+  requireRole('event_director', 'admin', 'super_admin'),
+  tournamentController.deleteTournament
+);
+
 // DELETE /api/tournaments/:id/events/:eventId — Delete event
 router.delete('/:id/events/:eventId',
   requireAuth,

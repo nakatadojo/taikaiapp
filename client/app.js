@@ -15899,6 +15899,8 @@ function openStagingDisplay() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function loadSettings() {
+    loadSettingsEvents();
+
     const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
     if (template && template.data) {
         const previewImg = document.getElementById('certificate-preview-img');
@@ -15909,6 +15911,102 @@ function loadSettings() {
         }
         document.getElementById('merge-tag-config-panel').style.display = 'block';
         loadMergeTagEditors();
+    }
+}
+
+function loadSettingsEvents() {
+    const container = document.getElementById('settings-events-list');
+    if (!container) return;
+
+    const eventTypes = db.load('eventTypes');
+    if (!eventTypes || eventTypes.length === 0) {
+        container.innerHTML = '<p class="hint">No event types configured for this tournament.</p>';
+        return;
+    }
+
+    container.innerHTML = eventTypes.map(ev => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px; margin-bottom: 8px;">
+            <div>
+                <strong>${ev.name}</strong>
+                ${ev.eventType ? `<span style="margin-left: 8px; opacity: 0.6; font-size: 0.85em;">${ev.eventType}</span>` : ''}
+            </div>
+            <button class="btn btn-small btn-danger" onclick="deleteEventFromServer(${ev.id})">Delete</button>
+        </div>
+    `).join('');
+}
+
+async function deleteEventFromServer(eventId) {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+    if (!confirm('Are you sure you want to delete this event type? This will also remove its divisions and brackets.')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to delete event');
+        }
+
+        // Remove from localStorage
+        db.delete('eventTypes', eventId);
+
+        // Remove associated divisions
+        const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+        delete allDivisions[eventId];
+        localStorage.setItem('divisions', JSON.stringify(allDivisions));
+
+        // Refresh UI
+        loadSettingsEvents();
+        loadEventTypes();
+        loadEventTypeSelector();
+        showMessage('Event deleted successfully');
+    } catch (err) {
+        showMessage(err.message, 'error');
+    }
+}
+
+async function deleteTournamentFromServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+    if (!confirm('Are you sure you want to permanently delete this tournament? This will remove all events, registrations, and brackets. This cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to delete tournament');
+        }
+
+        // Clear localStorage
+        localStorage.removeItem('eventTypes');
+        localStorage.removeItem('divisions');
+        localStorage.removeItem('scoreboardConfig');
+        currentTournamentId = null;
+
+        showMessage('Tournament deleted successfully');
+
+        // Redirect to director dashboard
+        setTimeout(() => {
+            window.location.href = '/director';
+        }, 1000);
+    } catch (err) {
+        showMessage(err.message, 'error');
     }
 }
 

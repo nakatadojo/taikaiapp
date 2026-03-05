@@ -1437,6 +1437,20 @@
                 <h2>Settings</h2>
 
                 <div class="glass-panel">
+                    <h3>Event Types</h3>
+                    <p class="hint">Manage the event types for this tournament. Deleting an event will also remove its divisions and brackets.</p>
+                    <div id="settings-events-list" style="margin-top: 12px;">
+                        <p class="hint">No events loaded.</p>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <h3>Danger Zone</h3>
+                    <p class="hint">Permanently delete this tournament and all associated data (events, registrations, brackets). This cannot be undone.</p>
+                    <button class="btn btn-danger" onclick="deleteTournamentFromServer()" style="margin-top: 12px;">Delete Tournament</button>
+                </div>
+
+                <div class="glass-panel">
                     <h3>Certificate Template</h3>
                     <div class="form-group">
                         <label for="settings-certificate-template">Upload Certificate Template (Image)</label>

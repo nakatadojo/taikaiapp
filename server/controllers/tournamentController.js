@@ -393,6 +393,25 @@ async function updateEvent(req, res, next) {
  * DELETE /api/tournaments/:id/events/:eventId
  * Delete an event.
  */
+async function deleteTournament(req, res, next) {
+  try {
+    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
+      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+      if (!owned) {
+        return res.status(403).json({ error: 'You do not own this tournament' });
+      }
+    }
+
+    const deleted = await tournamentQueries.deleteTournament(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    res.json({ message: 'Tournament deleted' });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function deleteEvent(req, res, next) {
   try {
     // Check ownership
@@ -547,6 +566,7 @@ module.exports = {
   uploadCoverImage,
   createEvent,
   updateEvent,
+  deleteTournament,
   deleteEvent,
   syncEvents,
   getRegistrants,
