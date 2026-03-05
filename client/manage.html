@@ -1845,6 +1845,18 @@
             const select = document.getElementById('active-tournament');
             select.value = t.id;
             switchTournament();
+
+            // Auto-generate scoreboard config from sanctioning body (after switchTournament sets currentTournamentId)
+            if (t.sanctioning_body && typeof autoGenerateScoreboardConfig === 'function') {
+                const existing = JSON.parse(localStorage.getItem('scoreboardConfig') || 'null');
+                if (!existing || String(existing.tournamentId) !== String(t.id)) {
+                    autoGenerateScoreboardConfig(t.sanctioning_body);
+                }
+                // Load it into the Scoreboard Setup form
+                if (typeof loadUnifiedScoreboardConfig === 'function') {
+                    loadUnifiedScoreboardConfig();
+                }
+            }
         } catch (err) {
             console.error('Failed to auto-load tournament:', err);
         }
