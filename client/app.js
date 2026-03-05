@@ -12206,12 +12206,20 @@ function kataFlagsDeclareWinner() {
         let advanceMatch = match;
         let advanceWinner = winner;
 
+        console.log(`[ADVANCE] Starting advancement from Round ${match.round} Pos ${match.position}, winner: ${winner.firstName} ${winner.lastName}`);
+
         while (true) {
             const nextRound = advanceMatch.round + 1;
             const nextPosition = Math.floor(advanceMatch.position / 2);
             const nextMatch = matchPool.find(m => m.round === nextRound && m.position === nextPosition);
 
-            if (!nextMatch) break;
+            if (!nextMatch) {
+                console.log(`[ADVANCE] No next match found for Round ${nextRound} Pos ${nextPosition} — end of bracket`);
+                break;
+            }
+
+            console.log(`[ADVANCE] Found next match: Round ${nextRound} Pos ${nextPosition} (id: ${nextMatch.id}, status: ${nextMatch.status})`);
+            console.log(`[ADVANCE] Before: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
 
             if (advanceMatch.position % 2 === 0) {
                 if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
@@ -12221,9 +12229,14 @@ function kataFlagsDeclareWinner() {
                 else nextMatch.redCorner = advanceWinner;
             }
 
+            console.log(`[ADVANCE] After: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
+
+            // Check for BYE cascade — if the other feeder match is empty/bye, auto-advance
             if (nextMatch.redCorner && !nextMatch.blueCorner) {
                 const blueFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2 + 1);
+                console.log(`[ADVANCE] Blue feeder (R${nextMatch.round - 1} P${nextMatch.position * 2 + 1}): ${blueFeeder ? blueFeeder.status : 'NOT FOUND'}`);
                 if (blueFeeder && (blueFeeder.status === 'empty' || blueFeeder.status === 'bye')) {
+                    console.log(`[ADVANCE] BYE cascade — advancing ${nextMatch.redCorner.firstName} through Round ${nextRound}`);
                     nextMatch.status = 'bye';
                     nextMatch.winner = nextMatch.redCorner;
                     nextMatch.score1 = 'BYE';
@@ -12233,7 +12246,9 @@ function kataFlagsDeclareWinner() {
                 }
             } else if (!nextMatch.redCorner && nextMatch.blueCorner) {
                 const redFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2);
+                console.log(`[ADVANCE] Red feeder (R${nextMatch.round - 1} P${nextMatch.position * 2}): ${redFeeder ? redFeeder.status : 'NOT FOUND'}`);
                 if (redFeeder && (redFeeder.status === 'empty' || redFeeder.status === 'bye')) {
+                    console.log(`[ADVANCE] BYE cascade — advancing ${nextMatch.blueCorner.firstName} through Round ${nextRound}`);
                     nextMatch.status = 'bye';
                     nextMatch.winner = nextMatch.blueCorner;
                     nextMatch.score2 = 'BYE';
@@ -12242,6 +12257,7 @@ function kataFlagsDeclareWinner() {
                     continue;
                 }
             }
+            console.log(`[ADVANCE] Done — next match Round ${nextRound} Pos ${nextPosition} now has both corners: ${!!nextMatch.redCorner && !!nextMatch.blueCorner}`);
             break;
         }
     } else if (bracket.type === 'double-elimination') {
@@ -12346,6 +12362,21 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
 function kataFlagsNextMatch() {
     // Check if the division is now complete
     const divisionComplete = checkBracketComplete(kataFlagsDivisionName, kataFlagsEventId);
+    console.log(`[NEXT MATCH] Division: ${kataFlagsDivisionName}, complete: ${divisionComplete}`);
+
+    // Debug: dump the full bracket state
+    const debugBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    for (const id in debugBrackets) {
+        const b = debugBrackets[id];
+        if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
+            const matches = b.matches || [];
+            console.log(`[NEXT MATCH] Bracket ${id} has ${matches.length} matches:`);
+            matches.forEach(m => {
+                console.log(`  R${m.round} P${m.position}: ${m.status} | red=${m.redCorner?.firstName || 'null'} blue=${m.blueCorner?.firstName || 'null'} winner=${m.winner?.firstName || 'null'}`);
+            });
+            break;
+        }
+    }
 
     if (divisionComplete) {
         // Division is done — show results + countdown to next division
