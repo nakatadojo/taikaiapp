@@ -1806,30 +1806,27 @@
                 localStorage.setItem('tournaments', JSON.stringify(tournaments));
             }
 
-            // Inject tournament events into localStorage eventTypes
-            if (t.events && t.events.length > 0) {
-                const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
-                const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+            // Replace localStorage eventTypes with this tournament's events (clear stale data)
+            const eventTypes = [];
+            const allDivisions = {};
 
+            if (t.events && t.events.length > 0) {
                 t.events.forEach(ev => {
-                    if (!eventTypes.find(x => String(x.id) === String(ev.id))) {
-                        eventTypes.push({
-                            id: ev.id,
-                            name: ev.name,
-                            description: ev.description || '',
-                            teamSize: ev.team_size || 1,
-                            basePrice: ev.base_price != null ? parseFloat(ev.base_price) : null,
-                            addOnPrice: ev.addon_price != null ? parseFloat(ev.addon_price) : null,
-                            price: ev.base_price != null ? parseFloat(ev.base_price) : 0,
-                            isDefault: false,
-                            createdAt: ev.created_at || new Date().toISOString()
-                        });
-                    }
+                    eventTypes.push({
+                        id: ev.id,
+                        name: ev.name,
+                        description: ev.description || '',
+                        teamSize: ev.team_size || 1,
+                        basePrice: ev.base_price != null ? parseFloat(ev.base_price) : null,
+                        addOnPrice: ev.addon_price != null ? parseFloat(ev.addon_price) : null,
+                        price: ev.base_price != null ? parseFloat(ev.base_price) : 0,
+                        isDefault: false,
+                        createdAt: ev.created_at || new Date().toISOString()
+                    });
 
                     // Inject criteria templates for event-type rows
-                    if (ev.is_event_type && !allDivisions[ev.id]) {
+                    if (ev.is_event_type) {
                         let templates = ev.criteria_templates;
-                        // If no templates stored, auto-generate from sanctioning body
                         if (!templates && t.sanctioning_body && typeof CRITERIA_PRESETS !== 'undefined') {
                             templates = CRITERIA_PRESETS.buildTemplates(t.sanctioning_body, ev.event_type || 'kata');
                         }
@@ -1838,10 +1835,10 @@
                         }
                     }
                 });
-
-                localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
-                localStorage.setItem('divisions', JSON.stringify(allDivisions));
             }
+
+            localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
+            localStorage.setItem('divisions', JSON.stringify(allDivisions));
 
             // Reload the tournament selector and auto-select
             loadTournamentSelector();
