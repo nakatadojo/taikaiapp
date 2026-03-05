@@ -11727,7 +11727,22 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         ];
         if (bracket.finals) allMatches.push(bracket.finals);
         if (bracket.reset) allMatches.push(bracket.reset);
-        currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner && (m.redCorner.id ?? m.redCorner) !== (m.blueCorner.id ?? m.blueCorner));
+
+        // Find next pending match with both corners populated
+        currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner);
+
+        // Diagnostic: log all pending matches to help debug stuck brackets
+        const pendingMatches = allMatches.filter(m => m.status === 'pending');
+        console.log('Kata-flags match search:', {
+            totalMatches: allMatches.length,
+            pendingCount: pendingMatches.length,
+            pendingWithBothCorners: pendingMatches.filter(m => m.redCorner && m.blueCorner).length,
+            pendingMissing: pendingMatches.filter(m => !m.redCorner || !m.blueCorner).map(m => ({
+                round: m.round, position: m.position,
+                hasRed: !!m.redCorner, hasBlue: !!m.blueCorner
+            })),
+            foundMatch: currentMatch ? { id: currentMatch.id, round: currentMatch.round, position: currentMatch.position } : null
+        });
     }
     kataFlagsCurrentMatch = currentMatch;
 
