@@ -189,6 +189,7 @@ async function create({
   name, date, location, registrationOpen, baseEventPrice, addonEventPrice, createdBy,
   slug, description, city, state, venueName, venueAddress,
   published, organizationName, contactEmail, registrationDeadline, coverImageUrl,
+  sanctioningBody,
 }) {
   const finalSlug = slug || await generateUniqueSlug(name);
 
@@ -196,8 +197,9 @@ async function create({
     `INSERT INTO tournaments
       (name, date, location, registration_open, base_event_price, addon_event_price, created_by,
        slug, description, city, state, venue_name, venue_address,
-       published, organization_name, contact_email, registration_deadline, cover_image_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       published, organization_name, contact_email, registration_deadline, cover_image_url,
+       sanctioning_body)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      RETURNING *`,
     [
       name,
@@ -218,6 +220,7 @@ async function create({
       contactEmail || null,
       registrationDeadline || null,
       coverImageUrl || null,
+      sanctioningBody || null,
     ]
   );
   return result.rows[0];
@@ -232,7 +235,7 @@ async function update(tournamentId, updates) {
     'base_event_price', 'addon_event_price',
     'slug', 'description', 'city', 'state', 'venue_name', 'venue_address',
     'published', 'organization_name', 'contact_email', 'registration_deadline',
-    'cover_image_url',
+    'cover_image_url', 'sanctioning_body',
   ];
   const fields = [];
   const values = [];
@@ -367,6 +370,9 @@ async function syncEvents(tournamentId, events) {
     const results = [];
 
     for (const evt of events) {
+      const criteriaJson = evt.criteriaTemplates ? JSON.stringify(evt.criteriaTemplates) : null;
+      const isEventType = evt.isEventType || false;
+
       if (evt.id && existingIds.has(evt.id)) {
         incomingIds.add(evt.id);
         const updated = await client.query(
@@ -374,13 +380,15 @@ async function syncEvents(tournamentId, events) {
             name = $1, event_type = $2, division = $3, gender = $4,
             age_min = $5, age_max = $6, rank_min = $7, rank_max = $8,
             price_override = $9, addon_price_override = $10, max_competitors = $11,
+            criteria_templates = $12, is_event_type = $13,
             updated_at = NOW()
-           WHERE id = $12 AND tournament_id = $13
+           WHERE id = $14 AND tournament_id = $15
            RETURNING *`,
           [
             evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
+            criteriaJson, isEventType,
             evt.id, tournamentId,
           ]
         );
@@ -390,13 +398,15 @@ async function syncEvents(tournamentId, events) {
           `INSERT INTO tournament_events
             (tournament_id, name, event_type, division, gender,
              age_min, age_max, rank_min, rank_max,
-             price_override, addon_price_override, max_competitors)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             price_override, addon_price_override, max_competitors,
+             criteria_templates, is_event_type)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
            RETURNING *`,
           [
             tournamentId, evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
+            criteriaJson, isEventType,
           ]
         );
         if (inserted.rows[0]) results.push(inserted.rows[0]);
@@ -445,18 +455,23 @@ async function getEligibleEvents(tournamentId, profile) {
     ? rankOrder.indexOf(profile.belt_rank.toLowerCase())
     : -1;
 
-  const eligible = events.filter(event => {
-    if (event.age_min !== null && age < event.age_min) return false;
-    if (event.age_max !== null && age > event.age_max) return false;
-    if (event.gender && event.gender !== 'mixed' && event.gender !== profile.gender) return false;
-    if (event.rank_min || event.rank_max) {
-      if (profileRankIndex === -1) return false;
-      const minIndex = event.rank_min ? rankOrder.indexOf(event.rank_min.toLowerCase()) : 0;
-      const maxIndex = event.rank_max ? rankOrder.indexOf(event.rank_max.toLowerCase()) : rankOrder.length - 1;
-      if (profileRankIndex < minIndex || profileRankIndex > maxIndex) return false;
-    }
-    return true;
-  });
+  // Check if this tournament uses event-type mode (new criteria-based system)
+  const hasEventTypes = events.some(e => e.is_event_type === true);
+
+  const eligible = hasEventTypes
+    ? events.filter(e => e.is_event_type === true)
+    : events.filter(event => {
+        if (event.age_min !== null && age < event.age_min) return false;
+        if (event.age_max !== null && age > event.age_max) return false;
+        if (event.gender && event.gender !== 'mixed' && event.gender !== profile.gender) return false;
+        if (event.rank_min || event.rank_max) {
+          if (profileRankIndex === -1) return false;
+          const minIndex = event.rank_min ? rankOrder.indexOf(event.rank_min.toLowerCase()) : 0;
+          const maxIndex = event.rank_max ? rankOrder.indexOf(event.rank_max.toLowerCase()) : rankOrder.length - 1;
+          if (profileRankIndex < minIndex || profileRankIndex > maxIndex) return false;
+        }
+        return true;
+      });
 
   const basePrice = parseFloat(tournament.base_event_price) || 75;
   const addonPrice = parseFloat(tournament.addon_event_price) || 25;

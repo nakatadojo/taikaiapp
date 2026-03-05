@@ -899,94 +899,31 @@
     <!-- ============================================================ -->
     <div class="wizard-step" id="step-3">
         <div class="step-header">
-            <h2>Division Presets</h2>
-            <p>Choose a template to auto-generate divisions, or build custom divisions.</p>
+            <h2>Division Rules</h2>
+            <p>Choose a sanctioning body rule set. Divisions will be generated from registered competitors in the Tournament Manager.</p>
         </div>
 
         <div class="preset-grid">
             <div class="preset-card" data-preset="aau" onclick="selectPreset('aau')">
                 <div class="preset-name">Standard AAU</div>
                 <div class="preset-desc">Age groups with experience levels (Beginner, Intermediate, Advanced, Black Belt)</div>
-                <div class="preset-count" id="aau-count"></div>
             </div>
             <div class="preset-card" data-preset="wkf" onclick="selectPreset('wkf')">
                 <div class="preset-name">Standard WKF</div>
                 <div class="preset-desc">Age groups with belt-based divisions (White-Yellow, Orange-Green, etc.)</div>
-                <div class="preset-count" id="wkf-count"></div>
             </div>
             <div class="preset-card" data-preset="simple" onclick="selectPreset('simple')">
                 <div class="preset-name">Simple</div>
                 <div class="preset-desc">Age groups + gender only. No rank/experience split.</div>
-                <div class="preset-count" id="simple-count"></div>
             </div>
             <div class="preset-card" data-preset="custom" onclick="selectPreset('custom')">
                 <div class="preset-name">Custom</div>
-                <div class="preset-desc">Start from scratch. Add divisions manually one at a time.</div>
-                <div class="preset-count"></div>
+                <div class="preset-desc">Configure your own division criteria in the Tournament Manager.</div>
             </div>
         </div>
 
-        <!-- Generated divisions preview -->
-        <div class="division-summary" id="division-summary" style="display:none;">
-            <div class="division-summary-header">
-                <h3>Generated Divisions</h3>
-                <span class="division-count-badge" id="division-total-count">0 divisions</span>
-            </div>
-            <div id="division-groups"></div>
-
-            <!-- Add custom division -->
-            <div class="add-custom-division">
-                <button class="btn btn-secondary btn-sm" onclick="toggleCustomForm()">+ Add Custom Division</button>
-                <div id="custom-form" style="display:none; margin-top:12px;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Name *</label>
-                            <input type="text" class="form-input" id="custom-div-name" placeholder="e.g., Open Black Belt">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Event Type</label>
-                            <select class="form-select" id="custom-div-type"></select>
-                        </div>
-                    </div>
-                    <div class="form-row-3">
-                        <div class="form-group">
-                            <label class="form-label">Gender</label>
-                            <select class="form-select" id="custom-div-gender">
-                                <option value="">Any</option>
-                                <option value="male">Male</option>
-                                <option value="female">Female</option>
-                                <option value="mixed">Mixed</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Min Age</label>
-                            <input type="number" class="form-input" id="custom-div-age-min" min="0" placeholder="4">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Max Age</label>
-                            <input type="number" class="form-input" id="custom-div-age-max" min="0" placeholder="99">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Min Rank</label>
-                            <select class="form-select" id="custom-div-rank-min">
-                                <option value="">Any</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Max Rank</label>
-                            <select class="form-select" id="custom-div-rank-max">
-                                <option value="">Any</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:8px; margin-top:8px;">
-                        <button class="btn btn-primary btn-sm" onclick="addCustomDivision()">Add Division</button>
-                        <button class="btn btn-secondary btn-sm" onclick="toggleCustomForm()">Cancel</button>
-                    </div>
-                </div>
-            </div>
+        <div id="preset-summary" class="card" style="display:none; margin-top: 20px; padding: 20px;">
+            <p id="preset-summary-text" style="color: var(--text-muted); line-height: 1.6;"></p>
         </div>
     </div>
 
@@ -1095,6 +1032,7 @@
     </div>
 </div>
 
+<script src="/criteria-presets.js"></script>
 <script src="/auth.js"></script>
 <script>
 // ============================================================
@@ -1157,84 +1095,13 @@ let wizardData = {
     coverImageUrl: '',
     // Step 2: Event types
     eventTypes: [],
-    // Step 3: Divisions
-    preset: '',
-    divisions: [],
+    // Step 3: Division Rules
+    sanctioningBody: '',
     // Step 4: Pricing
     basePrice: 75,
     addonPrice: 25,
     eventPriceOverrides: {},
 };
-
-// ============================================================
-// RANKS
-// ============================================================
-const RANKS = [
-    'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
-    'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
-    '6th dan', '7th dan', '8th dan', '9th dan', '10th dan',
-];
-
-function rankLabel(r) {
-    if (!r) return '';
-    return r.charAt(0).toUpperCase() + r.slice(1);
-}
-
-// ============================================================
-// DIVISION PRESET TEMPLATES
-// ============================================================
-const AGE_GROUPS = [
-    { label: 'U6',     min: 4,  max: 5,  youth: true },
-    { label: 'U8',     min: 6,  max: 7,  youth: true },
-    { label: 'U10',    min: 8,  max: 9,  youth: true },
-    { label: 'U12',    min: 10, max: 11, youth: true },
-    { label: 'U14',    min: 12, max: 13, youth: true },
-    { label: 'U16',    min: 14, max: 15, youth: true },
-    { label: 'U18',    min: 16, max: 17, youth: true },
-    { label: 'Adult',  min: 18, max: 34, youth: false },
-    { label: 'Senior', min: 35, max: 99, youth: false },
-];
-
-const GENDERS = [
-    { value: 'male',   labelYouth: 'Boys',  labelAdult: 'Men' },
-    { value: 'female', labelYouth: 'Girls', labelAdult: 'Women' },
-];
-
-const AAU_EXPERIENCE = {
-    // U6–U8
-    young: [
-        { label: 'Beginner',     rankMin: 'white',  rankMax: 'yellow' },
-        { label: 'Intermediate', rankMin: 'orange', rankMax: 'blue' },
-        { label: 'Advanced',     rankMin: 'purple', rankMax: 'brown' },
-    ],
-    // U10–U14
-    middle: [
-        { label: 'Beginner',     rankMin: 'white',  rankMax: 'yellow' },
-        { label: 'Intermediate', rankMin: 'orange', rankMax: 'green' },
-        { label: 'Advanced',     rankMin: 'blue',   rankMax: 'brown' },
-        { label: 'Black Belt',   rankMin: 'black',  rankMax: '10th dan' },
-    ],
-    // U16–Adult
-    older: [
-        { label: 'Novice',       rankMin: 'white',   rankMax: 'green' },
-        { label: 'Intermediate', rankMin: 'blue',    rankMax: 'brown' },
-        { label: 'Advanced',     rankMin: '1st dan', rankMax: '3rd dan' },
-        { label: 'Elite',        rankMin: '4th dan', rankMax: '10th dan' },
-    ],
-    // Senior
-    senior: [
-        { label: 'Novice',     rankMin: 'white', rankMax: 'brown' },
-        { label: 'Black Belt', rankMin: 'black', rankMax: '10th dan' },
-    ],
-};
-
-const WKF_BELTS = [
-    { label: 'White-Yellow',  rankMin: 'white',  rankMax: 'yellow' },
-    { label: 'Orange-Green',  rankMin: 'orange', rankMax: 'green' },
-    { label: 'Blue-Purple',   rankMin: 'blue',   rankMax: 'purple' },
-    { label: 'Brown',         rankMin: 'brown',  rankMax: 'brown' },
-    { label: 'Black Belt',    rankMin: 'black',  rankMax: '10th dan' },
-];
 
 const EVENT_TYPE_INFO = {
     kata:      { label: 'Kata',      icon: '\u{1F94B}' },
@@ -1242,95 +1109,6 @@ const EVENT_TYPE_INFO = {
     weapons:   { label: 'Weapons',   icon: '\u{1F5E1}' },
     'team-kata': { label: 'Team Kata', icon: '\u{1F465}' },
 };
-
-function getAAUExperienceLevels(ageGroup) {
-    if (ageGroup.label === 'U6' || ageGroup.label === 'U8') return AAU_EXPERIENCE.young;
-    if (ageGroup.label === 'U10' || ageGroup.label === 'U12' || ageGroup.label === 'U14') return AAU_EXPERIENCE.middle;
-    if (ageGroup.label === 'Senior') return AAU_EXPERIENCE.senior;
-    return AAU_EXPERIENCE.older;
-}
-
-function generateDivisions(preset, eventTypes) {
-    const divisions = [];
-
-    for (const eventType of eventTypes) {
-        const typeInfo = EVENT_TYPE_INFO[eventType];
-        if (!typeInfo) continue;
-
-        // Team Kata doesn't split by gender/experience the same way
-        if (eventType === 'team-kata') {
-            for (const ag of AGE_GROUPS) {
-                divisions.push({
-                    name: `${ag.label} Team Kata`,
-                    eventType: 'team-kata',
-                    gender: 'mixed',
-                    ageMin: ag.min,
-                    ageMax: ag.max,
-                    rankMin: null,
-                    rankMax: null,
-                    division: ag.label,
-                    enabled: true,
-                    custom: false,
-                });
-            }
-            continue;
-        }
-
-        for (const ag of AGE_GROUPS) {
-            for (const gen of GENDERS) {
-                const genderLabel = ag.youth ? gen.labelYouth : gen.labelAdult;
-
-                if (preset === 'simple') {
-                    divisions.push({
-                        name: `${genderLabel} ${ag.label} ${typeInfo.label}`,
-                        eventType,
-                        gender: gen.value,
-                        ageMin: ag.min,
-                        ageMax: ag.max,
-                        rankMin: null,
-                        rankMax: null,
-                        division: ag.label,
-                        enabled: true,
-                        custom: false,
-                    });
-                } else if (preset === 'aau') {
-                    const levels = getAAUExperienceLevels(ag);
-                    for (const lvl of levels) {
-                        divisions.push({
-                            name: `${genderLabel} ${ag.label} ${lvl.label} ${typeInfo.label}`,
-                            eventType,
-                            gender: gen.value,
-                            ageMin: ag.min,
-                            ageMax: ag.max,
-                            rankMin: lvl.rankMin,
-                            rankMax: lvl.rankMax,
-                            division: `${ag.label} ${lvl.label}`,
-                            enabled: true,
-                            custom: false,
-                        });
-                    }
-                } else if (preset === 'wkf') {
-                    for (const belt of WKF_BELTS) {
-                        divisions.push({
-                            name: `${genderLabel} ${ag.label} ${belt.label} ${typeInfo.label}`,
-                            eventType,
-                            gender: gen.value,
-                            ageMin: ag.min,
-                            ageMax: ag.max,
-                            rankMin: belt.rankMin,
-                            rankMax: belt.rankMax,
-                            division: `${ag.label} ${belt.label}`,
-                            enabled: true,
-                            custom: false,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    return divisions;
-}
 
 // ============================================================
 // INITIALIZATION
@@ -1398,9 +1176,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Populate rank selects for custom form
-    populateRankSelects();
-
     updateStepIndicator();
     updateNavButtons();
 });
@@ -1449,10 +1224,22 @@ async function loadExistingTournament() {
         $('#t-base-price').value = wizardData.basePrice;
         $('#t-addon-price').value = wizardData.addonPrice;
 
-        // Load existing events to determine event types and divisions
+        // Load sanctioning body
+        if (t.sanctioning_body) {
+            wizardData.sanctioningBody = t.sanctioning_body;
+            // Select the preset card
+            const card = document.querySelector(`.preset-card[data-preset="${t.sanctioning_body}"]`);
+            if (card) card.classList.add('selected');
+            // Show summary
+            const summaryEl = $('#preset-summary');
+            const textEl = $('#preset-summary-text');
+            textEl.textContent = CRITERIA_PRESETS.getPresetSummary(t.sanctioning_body);
+            summaryEl.style.display = 'block';
+        }
+
+        // Load existing events to determine event types
         const events = t.events || [];
         if (events.length > 0) {
-            // Determine event types from existing events
             const types = new Set();
             events.forEach(e => {
                 const et = e.event_type || 'kata';
@@ -1465,25 +1252,6 @@ async function loadExistingTournament() {
                 const card = document.querySelector(`.event-type-card[data-event="${et}"]`);
                 if (card) card.classList.add('selected');
             });
-
-            // Convert existing events to division format
-            wizardData.divisions = events.map(e => ({
-                id: e.id,
-                name: e.name,
-                eventType: e.event_type || 'kata',
-                gender: e.gender || null,
-                ageMin: e.age_min,
-                ageMax: e.age_max,
-                rankMin: e.rank_min,
-                rankMax: e.rank_max,
-                division: e.division || '',
-                priceOverride: e.price_override ? parseFloat(e.price_override) : null,
-                addonPriceOverride: e.addon_price_override ? parseFloat(e.addon_price_override) : null,
-                enabled: true,
-                custom: true,
-            }));
-
-            wizardData.preset = 'custom';
         }
 
         showToast('Tournament loaded', 'success');
@@ -1493,19 +1261,6 @@ async function loadExistingTournament() {
     } finally {
         showLoading(false);
     }
-}
-
-function populateRankSelects() {
-    const selects = ['#custom-div-rank-min', '#custom-div-rank-max'];
-    selects.forEach(sel => {
-        const select = $(sel);
-        RANKS.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = r;
-            opt.textContent = rankLabel(r);
-            select.appendChild(opt);
-        });
-    });
 }
 
 // ============================================================
@@ -1561,7 +1316,6 @@ function goToStep(step) {
     updateNavButtons();
 
     // Prepare step content
-    if (step === 3) renderDivisions();
     if (step === 4) renderPricingOverrides();
     if (step === 5) renderReview();
 
@@ -1582,10 +1336,6 @@ async function nextStep() {
     updateNavButtons();
 
     // Prepare next step content
-    if (currentStep === 3) {
-        updatePresetCounts();
-        renderDivisions();
-    }
     if (currentStep === 4) renderPricingOverrides();
     if (currentStep === 5) renderReview();
 
@@ -1599,7 +1349,6 @@ function prevStep() {
         updateStepIndicator();
         updateNavButtons();
 
-        if (currentStep === 3) renderDivisions();
         if (currentStep === 4) renderPricingOverrides();
 
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1632,9 +1381,8 @@ function validateStep(step) {
     }
 
     if (step === 3) {
-        const enabled = wizardData.divisions.filter(d => d.enabled);
-        if (enabled.length === 0) {
-            showToast('You need at least one division', 'error');
+        if (!wizardData.sanctioningBody) {
+            showToast('Please select a division rule set', 'error');
             return false;
         }
         return true;
@@ -1750,34 +1498,32 @@ async function autoSave(step) {
         }
 
         if (step === 3 && tournamentId) {
-            // Sync divisions/events to database
-            const enabled = wizardData.divisions.filter(d => d.enabled);
-            const events = enabled.map(d => ({
-                id: d.id || undefined,
-                name: d.name,
-                eventType: d.eventType,
-                gender: d.gender || undefined,
-                ageMin: d.ageMin || undefined,
-                ageMax: d.ageMax || undefined,
-                rankMin: d.rankMin || undefined,
-                rankMax: d.rankMax || undefined,
-                division: d.division || undefined,
-                priceOverride: d.priceOverride || undefined,
-                addonPriceOverride: d.addonPriceOverride || undefined,
-            }));
+            // Save sanctioning body to tournament
+            await apiFetch(`/api/tournaments/${tournamentId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ sanctioningBody: wizardData.sanctioningBody }),
+            });
+
+            // Sync event types (not individual divisions)
+            const events = wizardData.eventTypes.map(et => {
+                const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+                const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
+                return {
+                    name: typeLabel,
+                    eventType: et,
+                    isEventType: true,
+                    criteriaTemplates: templates,
+                };
+            });
 
             const data = await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
                 method: 'POST',
                 body: JSON.stringify({ events }),
             });
 
-            // Update division IDs from synced data
+            // Store synced IDs
             if (data.events) {
-                data.events.forEach((synced, idx) => {
-                    if (idx < enabled.length) {
-                        enabled[idx].id = synced.id;
-                    }
-                });
+                wizardData.syncedEventIds = data.events.map(e => e.id);
             }
         }
 
@@ -1792,32 +1538,21 @@ async function autoSave(step) {
                 body: JSON.stringify(payload),
             });
 
-            // Update per-event price overrides by syncing events again
-            const enabled = wizardData.divisions.filter(d => d.enabled);
-            let hasOverrides = false;
-            enabled.forEach(d => {
-                const override = wizardData.eventPriceOverrides[d.eventType];
-                if (override) {
-                    d.priceOverride = override.base || null;
-                    d.addonPriceOverride = override.addon || null;
-                    hasOverrides = true;
-                }
-            });
-
-            if (hasOverrides) {
-                const events = enabled.map(d => ({
-                    id: d.id || undefined,
-                    name: d.name,
-                    eventType: d.eventType,
-                    gender: d.gender || undefined,
-                    ageMin: d.ageMin || undefined,
-                    ageMax: d.ageMax || undefined,
-                    rankMin: d.rankMin || undefined,
-                    rankMax: d.rankMax || undefined,
-                    division: d.division || undefined,
-                    priceOverride: d.priceOverride || undefined,
-                    addonPriceOverride: d.addonPriceOverride || undefined,
-                }));
+            // Sync per-event price overrides
+            if (Object.keys(wizardData.eventPriceOverrides).length > 0) {
+                const events = wizardData.eventTypes.map(et => {
+                    const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+                    const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
+                    const override = wizardData.eventPriceOverrides[et] || {};
+                    return {
+                        name: typeLabel,
+                        eventType: et,
+                        isEventType: true,
+                        criteriaTemplates: templates,
+                        priceOverride: override.base || undefined,
+                        addonPriceOverride: override.addon || undefined,
+                    };
+                });
 
                 await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
                     method: 'POST',
@@ -1895,29 +1630,31 @@ async function saveDraft() {
             } catch (e) { /* ignore */ }
         }
 
-        // Sync events if any divisions exist
-        if (tournamentId && wizardData.divisions.length > 0) {
-            const enabled = wizardData.divisions.filter(d => d.enabled);
-            if (enabled.length > 0) {
-                const events = enabled.map(d => ({
-                    id: d.id || undefined,
-                    name: d.name,
-                    eventType: d.eventType,
-                    gender: d.gender || undefined,
-                    ageMin: d.ageMin || undefined,
-                    ageMax: d.ageMax || undefined,
-                    rankMin: d.rankMin || undefined,
-                    rankMax: d.rankMax || undefined,
-                    division: d.division || undefined,
-                    priceOverride: d.priceOverride || undefined,
-                    addonPriceOverride: d.addonPriceOverride || undefined,
-                }));
+        // Sync event types if sanctioning body is set
+        if (tournamentId && wizardData.sanctioningBody && wizardData.eventTypes.length > 0) {
+            await apiFetch(`/api/tournaments/${tournamentId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ sanctioningBody: wizardData.sanctioningBody }),
+            });
 
-                await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
-                    method: 'POST',
-                    body: JSON.stringify({ events }),
-                });
-            }
+            const events = wizardData.eventTypes.map(et => {
+                const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+                const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
+                const override = wizardData.eventPriceOverrides[et] || {};
+                return {
+                    name: typeLabel,
+                    eventType: et,
+                    isEventType: true,
+                    criteriaTemplates: templates,
+                    priceOverride: override.base || undefined,
+                    addonPriceOverride: override.addon || undefined,
+                };
+            });
+
+            await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
+                method: 'POST',
+                body: JSON.stringify({ events }),
+            });
         }
 
         setSaveStatus('saved', 'Draft saved');
@@ -1939,15 +1676,6 @@ function toggleEventType(card) {
 // ============================================================
 // STEP 3: DIVISION PRESET SELECTION
 // ============================================================
-function updatePresetCounts() {
-    const types = wizardData.eventTypes;
-    ['aau', 'wkf', 'simple'].forEach(preset => {
-        const divs = generateDivisions(preset, types);
-        const el = $(`#${preset}-count`);
-        if (el) el.textContent = `${divs.length} divisions`;
-    });
-}
-
 function selectPreset(preset) {
     // Deselect all
     $$('.preset-card').forEach(c => c.classList.remove('selected'));
@@ -1956,143 +1684,14 @@ function selectPreset(preset) {
     const card = document.querySelector(`.preset-card[data-preset="${preset}"]`);
     if (card) card.classList.add('selected');
 
-    wizardData.preset = preset;
+    wizardData.sanctioningBody = preset;
 
-    if (preset === 'custom') {
-        // Keep existing custom divisions or start empty
-        if (!wizardData.divisions.some(d => d.custom)) {
-            wizardData.divisions = [];
-        }
-    } else {
-        // Generate from template
-        const generated = generateDivisions(preset, wizardData.eventTypes);
-        // Merge with any existing custom divisions
-        const customDivs = wizardData.divisions.filter(d => d.custom);
-        wizardData.divisions = [...generated, ...customDivs];
-    }
-
-    renderDivisions();
-}
-
-function renderDivisions() {
-    const summary = $('#division-summary');
-    const container = $('#division-groups');
-
-    if (wizardData.divisions.length === 0 && wizardData.preset !== 'custom') {
-        summary.style.display = 'none';
-        return;
-    }
-
-    summary.style.display = 'block';
-
-    // Group by event type
-    const groups = {};
-    wizardData.divisions.forEach((d, idx) => {
-        const key = d.eventType || 'other';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push({ ...d, idx });
-    });
-
-    container.innerHTML = '';
-
-    for (const [eventType, divs] of Object.entries(groups)) {
-        const info = EVENT_TYPE_INFO[eventType] || { label: eventType, icon: '' };
-        const groupEl = document.createElement('div');
-        groupEl.className = 'division-event-group';
-        groupEl.innerHTML = `
-            <div class="division-event-group-title">
-                ${info.icon} ${info.label} (${divs.filter(d => d.enabled).length} active)
-            </div>
-            <div class="division-list" id="divlist-${eventType}"></div>
-        `;
-        container.appendChild(groupEl);
-
-        const listEl = groupEl.querySelector('.division-list');
-        divs.forEach(d => {
-            const chip = document.createElement('span');
-            chip.className = `division-chip ${d.enabled ? 'enabled' : ''}`;
-            chip.innerHTML = `
-                <span>${escapeHtml(d.name)}</span>
-                <button class="remove-btn" onclick="toggleDivision(${d.idx})" title="${d.enabled ? 'Disable' : 'Enable'}">
-                    ${d.enabled ? '\u00D7' : '+'}
-                </button>
-            `;
-            chip.style.cursor = 'pointer';
-            chip.querySelector('span').addEventListener('click', () => toggleDivision(d.idx));
-            listEl.appendChild(chip);
-        });
-    }
-
-    // Update count
-    const enabledCount = wizardData.divisions.filter(d => d.enabled).length;
-    $('#division-total-count').textContent = `${enabledCount} division${enabledCount !== 1 ? 's' : ''}`;
-
-    // Update custom form event type select
-    updateCustomFormEventTypes();
-
-    // Select the preset card if applicable
-    if (wizardData.preset) {
-        $$('.preset-card').forEach(c => c.classList.remove('selected'));
-        const card = document.querySelector(`.preset-card[data-preset="${wizardData.preset}"]`);
-        if (card) card.classList.add('selected');
-    }
-}
-
-function toggleDivision(idx) {
-    if (wizardData.divisions[idx]) {
-        wizardData.divisions[idx].enabled = !wizardData.divisions[idx].enabled;
-        renderDivisions();
-    }
-}
-
-function updateCustomFormEventTypes() {
-    const select = $('#custom-div-type');
-    select.innerHTML = '';
-    wizardData.eventTypes.forEach(et => {
-        const info = EVENT_TYPE_INFO[et] || { label: et };
-        const opt = document.createElement('option');
-        opt.value = et;
-        opt.textContent = info.label;
-        select.appendChild(opt);
-    });
-}
-
-function toggleCustomForm() {
-    const form = $('#custom-form');
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
-}
-
-function addCustomDivision() {
-    const name = $('#custom-div-name').value.trim();
-    if (!name) {
-        showToast('Division name is required', 'error');
-        return;
-    }
-
-    wizardData.divisions.push({
-        name,
-        eventType: $('#custom-div-type').value,
-        gender: $('#custom-div-gender').value || null,
-        ageMin: $('#custom-div-age-min').value ? parseInt($('#custom-div-age-min').value) : null,
-        ageMax: $('#custom-div-age-max').value ? parseInt($('#custom-div-age-max').value) : null,
-        rankMin: $('#custom-div-rank-min').value || null,
-        rankMax: $('#custom-div-rank-max').value || null,
-        division: name,
-        enabled: true,
-        custom: true,
-    });
-
-    // Reset form
-    $('#custom-div-name').value = '';
-    $('#custom-div-gender').value = '';
-    $('#custom-div-age-min').value = '';
-    $('#custom-div-age-max').value = '';
-    $('#custom-div-rank-min').value = '';
-    $('#custom-div-rank-max').value = '';
-    toggleCustomForm();
-
-    renderDivisions();
-    showToast('Custom division added', 'success');
+    // Show summary
+    const summaryEl = $('#preset-summary');
+    const textEl = $('#preset-summary-text');
+    const summary = CRITERIA_PRESETS.getPresetSummary(preset);
+    textEl.textContent = summary;
+    summaryEl.style.display = 'block';
 }
 
 // ============================================================
@@ -2182,46 +1781,28 @@ function renderReview() {
         ` : ''}
     `;
 
-    // Events & Divisions
+    // Events & Division Rules
     const eventsEl = $('#review-events');
-    const enabledDivisions = wizardData.divisions.filter(d => d.enabled);
+    let eventsHtml = '';
 
-    // Group by event type
-    const groups = {};
-    enabledDivisions.forEach(d => {
-        const key = d.eventType || 'other';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(d);
+    // Show event types
+    eventsHtml += `<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">${wizardData.eventTypes.length} event type${wizardData.eventTypes.length !== 1 ? 's' : ''}</p>`;
+    wizardData.eventTypes.forEach(et => {
+        const info = EVENT_TYPE_INFO[et] || { label: et };
+        eventsHtml += `<div class="review-event-item">
+            <span class="review-event-type-badge ${et}">${info.icon || ''} ${info.label}</span>
+        </div>`;
     });
 
-    let eventsHtml = `<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">${enabledDivisions.length} total divisions across ${wizardData.eventTypes.length} event type${wizardData.eventTypes.length !== 1 ? 's' : ''}</p>`;
-
-    for (const [eventType, divs] of Object.entries(groups)) {
-        const info = EVENT_TYPE_INFO[eventType] || { label: eventType };
-        eventsHtml += `<div style="margin-bottom: 12px;">`;
-        eventsHtml += `<div style="font-weight: 600; font-size: 14px; margin-bottom: 6px; color: var(--accent);">${info.icon || ''} ${info.label} (${divs.length} divisions)</div>`;
-        eventsHtml += `<div class="review-event-list">`;
-
-        // Show first 10 and a "show more" if needed
-        const showLimit = 10;
-        const displayDivs = divs.slice(0, showLimit);
-        displayDivs.forEach(d => {
-            const details = [];
-            if (d.gender) details.push(d.gender === 'male' ? 'M' : d.gender === 'female' ? 'F' : 'Mixed');
-            if (d.ageMin !== null && d.ageMax !== null) details.push(`Ages ${d.ageMin}-${d.ageMax}`);
-            if (d.rankMin) details.push(`${rankLabel(d.rankMin)}-${rankLabel(d.rankMax || d.rankMin)}`);
-            eventsHtml += `<div class="review-event-item">
-                <span class="review-event-type-badge ${eventType}">${eventType.replace('-', ' ')}</span>
-                <span>${escapeHtml(d.name)}</span>
-                ${details.length > 0 ? `<span style="color: var(--text-dim); font-size: 11px;">(${details.join(', ')})</span>` : ''}
-            </div>`;
-        });
-
-        if (divs.length > showLimit) {
-            eventsHtml += `<div class="review-event-item" style="color: var(--text-dim);">... and ${divs.length - showLimit} more ${info.label} divisions</div>`;
-        }
-
-        eventsHtml += `</div></div>`;
+    // Show division rules
+    if (wizardData.sanctioningBody) {
+        const presetNames = { aau: 'Standard AAU', wkf: 'Standard WKF', simple: 'Simple', custom: 'Custom' };
+        const summary = CRITERIA_PRESETS.getPresetSummary(wizardData.sanctioningBody);
+        eventsHtml += `<div style="margin-top: 16px; padding: 12px 16px; background: var(--glass); border-radius: var(--radius-sm); border: 1px solid var(--glass-border);">
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: var(--accent);">Division Rules: ${presetNames[wizardData.sanctioningBody] || wizardData.sanctioningBody}</div>
+            <div style="color: var(--text-muted); font-size: 13px;">${escapeHtml(summary)}</div>
+            <div style="color: var(--text-dim); font-size: 12px; margin-top: 6px;">Divisions will be generated from registered competitors in the Tournament Manager.</div>
+        </div>`;
     }
 
     eventsEl.innerHTML = eventsHtml;
@@ -2274,22 +1855,26 @@ async function publishTournament() {
             await autoSave(1);
         }
 
-        // Make sure events are synced
-        if (wizardData.divisions.length > 0) {
-            const enabled = wizardData.divisions.filter(d => d.enabled);
-            const events = enabled.map(d => ({
-                id: d.id || undefined,
-                name: d.name,
-                eventType: d.eventType,
-                gender: d.gender || undefined,
-                ageMin: d.ageMin || undefined,
-                ageMax: d.ageMax || undefined,
-                rankMin: d.rankMin || undefined,
-                rankMax: d.rankMax || undefined,
-                division: d.division || undefined,
-                priceOverride: d.priceOverride || undefined,
-                addonPriceOverride: d.addonPriceOverride || undefined,
-            }));
+        // Make sure event types are synced
+        if (wizardData.sanctioningBody && wizardData.eventTypes.length > 0) {
+            await apiFetch(`/api/tournaments/${tournamentId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ sanctioningBody: wizardData.sanctioningBody }),
+            });
+
+            const events = wizardData.eventTypes.map(et => {
+                const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+                const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
+                const override = wizardData.eventPriceOverrides[et] || {};
+                return {
+                    name: typeLabel,
+                    eventType: et,
+                    isEventType: true,
+                    criteriaTemplates: templates,
+                    priceOverride: override.base || undefined,
+                    addonPriceOverride: override.addon || undefined,
+                };
+            });
 
             await apiFetch(`/api/tournaments/${tournamentId}/sync`, {
                 method: 'POST',

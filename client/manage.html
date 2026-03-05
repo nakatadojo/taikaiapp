@@ -1762,6 +1762,7 @@
         </div>
     </div>
 
+    <script src="/criteria-presets.js"></script>
     <script src="/auth.js"></script>
     <script src="/app.js"></script>
     <script>lucide.createIcons();</script>
@@ -1808,6 +1809,8 @@
             // Inject tournament events into localStorage eventTypes
             if (t.events && t.events.length > 0) {
                 const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+                const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+
                 t.events.forEach(ev => {
                     if (!eventTypes.find(x => String(x.id) === String(ev.id))) {
                         eventTypes.push({
@@ -1822,8 +1825,22 @@
                             createdAt: ev.created_at || new Date().toISOString()
                         });
                     }
+
+                    // Inject criteria templates for event-type rows
+                    if (ev.is_event_type && !allDivisions[ev.id]) {
+                        let templates = ev.criteria_templates;
+                        // If no templates stored, auto-generate from sanctioning body
+                        if (!templates && t.sanctioning_body && typeof CRITERIA_PRESETS !== 'undefined') {
+                            templates = CRITERIA_PRESETS.buildTemplates(t.sanctioning_body, ev.event_type || 'kata');
+                        }
+                        if (templates && templates.length > 0) {
+                            allDivisions[ev.id] = { templates };
+                        }
+                    }
                 });
+
                 localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
+                localStorage.setItem('divisions', JSON.stringify(allDivisions));
             }
 
             // Reload the tournament selector and auto-select

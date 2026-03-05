@@ -154,6 +154,7 @@ async function createTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
+      sanctioningBody,
     } = req.body;
 
     // If slug provided, validate uniqueness
@@ -169,6 +170,7 @@ async function createTournament(req, res, next) {
       createdBy: req.user.id,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
+      sanctioningBody,
     });
     res.status(201).json({ tournament });
   } catch (err) {
@@ -197,6 +199,7 @@ async function updateTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
+      sanctioningBody,
     } = req.body;
 
     const updates = {};
@@ -215,6 +218,7 @@ async function updateTournament(req, res, next) {
     if (organizationName !== undefined) updates.organization_name = organizationName;
     if (contactEmail !== undefined) updates.contact_email = contactEmail;
     if (registrationDeadline !== undefined) updates.registration_deadline = registrationDeadline;
+    if (sanctioningBody !== undefined) updates.sanctioning_body = sanctioningBody;
 
     // Handle slug update with uniqueness check
     if (slug !== undefined) {

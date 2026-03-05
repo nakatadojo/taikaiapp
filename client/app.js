@@ -246,6 +246,13 @@ let currentTemplate = null;
 let criteriaCounter = 0;
 let currentTournamentId = null;
 
+// Ordered rank list for grouped belt-range matching (WKF/AAU)
+const RANK_ORDER = [
+    'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
+    'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
+    '6th dan', '7th dan', '8th dan', '9th dan', '10th dan',
+];
+
 // ── Pricing Helpers ──────────────────────────────────────────────────────────
 
 function getCurrentTournament() {
@@ -5688,19 +5695,21 @@ function generateDivisions() {
         });
     });
 
-    // Generate divisions for each template
+    // Generate divisions for each template (AAU has multiple age-tier templates)
     console.log('Generating divisions for all templates...');
 
-    // Use the first template for now (TODO: support multiple templates)
-    const template = eventData.templates[0];
-    console.log('Using template:', template);
+    const generatedDivisions = {};
+    eventData.templates.forEach(template => {
+        console.log('Using template:', template.name || template.id);
+        const result = buildDivisions(competitorsWithAge, template.criteria);
+        Object.assign(generatedDivisions, result);
+    });
 
-    const generatedDivisions = buildDivisions(competitorsWithAge, template.criteria);
     console.log('Generated divisions:', generatedDivisions);
     console.log('Generated division keys:', Object.keys(generatedDivisions));
 
     // Validate division sizes and warn user
-    validateDivisionSizes(generatedDivisions, template);
+    validateDivisionSizes(generatedDivisions, eventData.templates[0]);
 
     // Store the generated divisions under this event (preserve templates)
     allDivisions[eventId] = {
@@ -5752,8 +5761,19 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                 console.log(`      → Weight filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'rank':
-                filtered = competitors.filter(c => c.rank === range.value);
-                console.log(`      → Rank filter (${range.value}): ${filtered.length} matches`);
+                if (range.rankMin !== undefined && range.rankMax !== undefined) {
+                    // Grouped belt range (WKF/AAU style)
+                    const minIdx = RANK_ORDER.indexOf(range.rankMin.toLowerCase());
+                    const maxIdx = RANK_ORDER.indexOf(range.rankMax.toLowerCase());
+                    filtered = competitors.filter(c => {
+                        const cIdx = RANK_ORDER.indexOf((c.rank || '').toLowerCase());
+                        return cIdx >= minIdx && cIdx <= maxIdx;
+                    });
+                    console.log(`      → Rank range filter (${range.rankMin}-${range.rankMax}): ${filtered.length} matches`);
+                } else {
+                    filtered = competitors.filter(c => c.rank === range.value);
+                    console.log(`      → Rank filter (${range.value}): ${filtered.length} matches`);
+                }
                 break;
             case 'experience':
                 // DEBUG: Check what experience values we're working with
