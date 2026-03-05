@@ -1336,7 +1336,8 @@ function generateDivisions(preset, eventTypes) {
 // INITIALIZATION
 // ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
-    // Check auth
+    // Check auth — must await init() so the session cookie is verified first
+    await Auth.init();
     if (!Auth.isLoggedIn()) {
         window.location.href = '/director#signup';
         return;
