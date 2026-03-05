@@ -520,36 +520,6 @@
         display: block;
     }
 
-    /* Account type pills */
-    .acct-type-pills {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 20px;
-        flex-wrap: wrap;
-    }
-    .acct-type-pill {
-        flex: 1;
-        min-width: 100px;
-        padding: 10px 12px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border-color);
-        border-radius: var(--radius-sm);
-        color: var(--text-secondary);
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        text-align: center;
-        transition: all var(--transition);
-        user-select: none;
-    }
-    .acct-type-pill.active {
-        background: var(--accent-subtle);
-        border-color: var(--accent);
-        color: var(--accent);
-    }
-    .acct-type-pill:hover:not(.active) {
-        border-color: var(--text-muted);
-    }
     .auth-divider {
         display: flex;
         align-items: center;
@@ -1130,12 +1100,6 @@
         .reg-section-title {
             font-size: 24px;
         }
-        .acct-type-pills {
-            flex-direction: column;
-        }
-        .acct-type-pill {
-            flex: unset;
-        }
     }
 
     @media (max-width: 380px) {
@@ -1493,16 +1457,6 @@
             <div id="signup-error" class="msg-error msg-hidden"></div>
             <div id="signup-success" class="msg-success msg-hidden"></div>
 
-            <!-- Account Type Pills -->
-            <div class="form-group mb-16">
-                <label>I am...</label>
-                <div class="acct-type-pills" id="acct-type-pills">
-                    <div class="acct-type-pill active" data-type="competitor" onclick="selectAccountType('competitor')">I'm a Competitor</div>
-                    <div class="acct-type-pill" data-type="guardian" onclick="selectAccountType('guardian')">I'm a Parent/Guardian</div>
-                    <div class="acct-type-pill" data-type="both" onclick="selectAccountType('both')">Both</div>
-                </div>
-            </div>
-
             <div class="form-grid mb-16">
                 <div class="form-group">
                     <label for="signup-first">First Name *</label>
@@ -1580,8 +1534,6 @@
             discountAmount: 0,
             discountPercent: 0,
         },
-        // Account type for signup
-        signupAccountType: 'competitor',
     };
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -1691,22 +1643,6 @@
         hideEl('forgot-success');
     };
 
-    window.selectAccountType = function(type) {
-        state.signupAccountType = type;
-        document.querySelectorAll('#acct-type-pills .acct-type-pill').forEach(el => {
-            el.classList.toggle('active', el.dataset.type === type);
-        });
-        // Show/hide gender based on type
-        const genderGroup = document.getElementById('signup-gender-group');
-        if (type === 'guardian') {
-            genderGroup.style.display = 'none';
-            document.getElementById('signup-gender').removeAttribute('required');
-        } else {
-            genderGroup.style.display = '';
-            document.getElementById('signup-gender').setAttribute('required', '');
-        }
-    };
-
     window.handleLogin = async function(e) {
         e.preventDefault();
         const btn = document.getElementById('login-submit-btn');
@@ -1759,24 +1695,17 @@
         const password = document.getElementById('signup-password').value;
         const dob = document.getElementById('signup-dob').value;
         const gender = document.getElementById('signup-gender').value;
-        const accountType = state.signupAccountType;
-
         hideEl('signup-error');
         hideEl('signup-success');
 
-        // Age validation: competitors must be 18+
-        if (accountType === 'competitor' || accountType === 'both') {
-            const age = calcAge(dob);
-            if (age < 18) {
-                showError('signup-error', 'Competitors must be at least 18 years old to create an account. If you are under 18, a parent or guardian must register on your behalf.');
-                return;
-            }
+        // Age validation: must be 18+ to create an account
+        const age = calcAge(dob);
+        if (age < 18) {
+            showError('signup-error', 'You must be at least 18 years old to create an account. If you are under 18, a parent or guardian must register on your behalf.');
+            return;
         }
 
-        // Build roles array
-        const roles = [];
-        if (accountType === 'competitor' || accountType === 'both') roles.push('competitor');
-        if (accountType === 'guardian' || accountType === 'both') roles.push('guardian');
+        const roles = ['competitor'];
 
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Creating account...';
