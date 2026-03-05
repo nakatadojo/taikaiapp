@@ -13144,6 +13144,13 @@ function operatorDeclareWinner(corner) {
         return;
     }
 
+    // Safety confirmation to prevent accidental winner declaration
+    const winnerName = `${winner.firstName} ${winner.lastName}`;
+    const cornerLabel = corner === 'red' ? 'RED' : 'BLUE';
+    if (!confirm(`Declare ${cornerLabel} corner (${winnerName}) as the WINNER?\n\nThis action will record the match result.`)) {
+        return;
+    }
+
     operatorPauseTimer();
 
     // Save match result to bracket

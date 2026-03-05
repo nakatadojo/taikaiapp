@@ -1868,6 +1868,11 @@ function renderReview() {
 // PUBLISH
 // ============================================================
 async function publishTournament() {
+    // Confirmation dialog — prevent accidental publish
+    if (!confirm('Publish this tournament?\n\nThis will make it visible to the public and open for registrations. You can unpublish later from the Tournament Manager.')) {
+        return;
+    }
+
     const btn = $('#btn-publish');
     btn.disabled = true;
     btn.textContent = 'Publishing...';
