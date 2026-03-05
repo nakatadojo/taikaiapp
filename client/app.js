@@ -11958,6 +11958,16 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // Initialize TV display
     updateKataFlagsTVDisplay();
 
+    // CRITICAL: Remove any previous kata-flags click handler to prevent accumulation.
+    // Each call to openKataFlagsHeadToHeadOperator adds a new window click listener.
+    // Without cleanup, handlers pile up and kataFlagsDeclareWinner() gets called N times
+    // (once per accumulated handler), causing winners to be advanced multiple times
+    // and overwriting BYE-advanced competitors in later bracket rounds.
+    if (window._kataFlagsClickHandler) {
+        window.removeEventListener('click', window._kataFlagsClickHandler, true);
+        window._kataFlagsClickHandler = null;
+    }
+
     // Add event delegation using window to catch ALL clicks
     const clickHandler = function(e) {
         console.log('Click detected, target classes:', e.target.className);
@@ -12011,8 +12021,8 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // Attach to window and store reference for cleanup
     window.addEventListener('click', clickHandler, true);
 
-    // Store handler for potential cleanup later
-    modal.kataFlagsClickHandler = clickHandler;
+    // Store handler on window for reliable cleanup on next call
+    window._kataFlagsClickHandler = clickHandler;
 }
 
 function openKataFlagsTVDisplay() {
@@ -12147,11 +12157,19 @@ function kataFlagsResetVotes() {
 }
 
 function kataFlagsDeclareWinner() {
+    // Guard against duplicate calls (accumulated event handlers or double-clicks)
+    if (window._kataFlagsDeclaring) {
+        console.warn('[DECLARE] Ignoring duplicate kataFlagsDeclareWinner call');
+        return;
+    }
+    window._kataFlagsDeclaring = true;
+
     const corner1Votes = kataFlagsJudgeVotes.filter(v => v === 'corner1').length;
     const corner2Votes = kataFlagsJudgeVotes.filter(v => v === 'corner2').length;
     const totalVotes = corner1Votes + corner2Votes;
 
     if (totalVotes === 0) {
+        window._kataFlagsDeclaring = false;
         alert('No votes recorded! Judges must vote before declaring a winner.');
         return;
     }
@@ -12160,6 +12178,7 @@ function kataFlagsDeclareWinner() {
     const bracket = brackets[window.currentBracketId];
 
     if (!bracket) {
+        window._kataFlagsDeclaring = false;
         alert('Error: Bracket not found. Please reload the operator.');
         console.error('Bracket ID not found:', window.currentBracketId);
         return;
@@ -12177,7 +12196,15 @@ function kataFlagsDeclareWinner() {
     if (bracket.reset) allBracketMatches.push(bracket.reset);
     const match = allBracketMatches.find(m => m.id === window.currentMatchId);
 
+    // Guard: if match is already completed, don't re-process (prevents double advancement)
+    if (match && (match.status === 'completed' || match.status === 'complete')) {
+        console.warn('[DECLARE] Match already completed, skipping:', match.id);
+        window._kataFlagsDeclaring = false;
+        return;
+    }
+
     if (!match) {
+        window._kataFlagsDeclaring = false;
         alert('Error: Match not found in bracket.');
         console.error('Match ID not found:', window.currentMatchId);
         return;
@@ -12190,6 +12217,7 @@ function kataFlagsDeclareWinner() {
     } else if (corner2Votes > corner1Votes) {
         winner = match.blueCorner;
     } else {
+        window._kataFlagsDeclaring = false;
         alert('Tie! Judges must break the tie.');
         return;
     }
@@ -12221,12 +12249,23 @@ function kataFlagsDeclareWinner() {
             console.log(`[ADVANCE] Found next match: Round ${nextRound} Pos ${nextPosition} (id: ${nextMatch.id}, status: ${nextMatch.status})`);
             console.log(`[ADVANCE] Before: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
 
+            // Guard: if this winner is already in the next match, skip (prevents double-advancement)
+            const winnerId = advanceWinner.id || `${advanceWinner.firstName}_${advanceWinner.lastName}`;
+            const redId = nextMatch.redCorner ? (nextMatch.redCorner.id || `${nextMatch.redCorner.firstName}_${nextMatch.redCorner.lastName}`) : null;
+            const blueId = nextMatch.blueCorner ? (nextMatch.blueCorner.id || `${nextMatch.blueCorner.firstName}_${nextMatch.blueCorner.lastName}`) : null;
+            if (winnerId === redId || winnerId === blueId) {
+                console.log(`[ADVANCE] Winner ${advanceWinner.firstName} already in next match — skipping duplicate advancement`);
+                break;
+            }
+
             if (advanceMatch.position % 2 === 0) {
                 if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
-                else nextMatch.blueCorner = advanceWinner;
+                else if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
+                else { console.warn('[ADVANCE] Both corners already filled — cannot place winner'); break; }
             } else {
                 if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
-                else nextMatch.redCorner = advanceWinner;
+                else if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
+                else { console.warn('[ADVANCE] Both corners already filled — cannot place winner'); break; }
             }
 
             console.log(`[ADVANCE] After: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
@@ -12308,6 +12347,9 @@ function kataFlagsDeclareWinner() {
 
     // Update TV display to show winner
     updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes);
+
+    // Allow future declarations (for the NEXT match, after kataFlagsNextMatch reloads)
+    window._kataFlagsDeclaring = false;
 }
 
 function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
@@ -14026,6 +14068,12 @@ function closeOperatorScoreboard() {
 
     // Stop timer and clear interval
     operatorPauseTimer();
+
+    // Clean up kata-flags click handler to prevent handler accumulation
+    if (window._kataFlagsClickHandler) {
+        window.removeEventListener('click', window._kataFlagsClickHandler, true);
+        window._kataFlagsClickHandler = null;
+    }
 
     // Disable keyboard shortcuts
     operatorKeyboardEnabled = false;
