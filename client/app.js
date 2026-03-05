@@ -14032,8 +14032,8 @@ function findNextScheduledDivision(matId, currentDivisionName, currentEventId) {
     return null;
 }
 
-// Get division progress within the mat schedule
-function getDivisionProgress(matId, divisionName, eventId) {
+// Get division position within the mat schedule (which division # out of total)
+function getMatSchedulePosition(matId, divisionName, eventId) {
     const matScheduleData = loadMatScheduleData();
     const schedule = (matScheduleData[matId] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
     const currentIdx = schedule.findIndex(s => s.division === divisionName && s.eventId == eventId);
@@ -14046,7 +14046,7 @@ function getDivisionProgress(matId, divisionName, eventId) {
 
 // Build HTML snippet for division progress counter
 function buildDivisionProgressHTML(matId, divisionName, eventId) {
-    const progress = getDivisionProgress(matId, divisionName, eventId);
+    const progress = getMatSchedulePosition(matId, divisionName, eventId);
     if (!progress.current || progress.total <= 1) return '';
     if (progress.isLast) {
         return `<div style="font-size: 11px; color: #ff9500; font-weight: 600; margin-top: 2px;">Division ${progress.current} of ${progress.total} — FINAL DIVISION 🏁</div>`;
@@ -14175,7 +14175,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     }
 
     const nextDivision = findNextScheduledDivision(matId, divisionName, eventId);
-    const divProgress = getDivisionProgress(matId, divisionName, eventId);
+    const divProgress = getMatSchedulePosition(matId, divisionName, eventId);
     const content = document.getElementById('operator-scoreboard-content');
     if (!content) return;
 
