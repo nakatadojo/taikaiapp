@@ -8700,15 +8700,24 @@ function renderMatchCard(match, matchIdx, roundNum) {
     const redCompetitor = match.redCorner;
     const blueCompetitor = match.blueCorner;
     const isBye = match.status === 'bye';
+    const isEmpty = match.status === 'empty';
     const isCompleted = match.status === 'completed' || match.status === 'complete';
+
+    // Hide completely empty matches (no competitors in either corner, empty status)
+    if (isEmpty && !redCompetitor && !blueCompetitor) {
+        return '';
+    }
 
     const redName = redCompetitor ? `${redCompetitor.firstName} ${redCompetitor.lastName}` : 'TBD';
     const blueName = blueCompetitor ? `${blueCompetitor.firstName} ${blueCompetitor.lastName}` : 'TBD';
     const redClub = redCompetitor?.club || '';
     const blueClub = blueCompetitor?.club || '';
 
-    const statusColor = isCompleted ? '#22c55e' : isBye ? '#ffd60a' : '#64d2ff';
-    const statusLabel = isCompleted ? '✓ Completed' : isBye ? 'BYE' : 'Pending';
+    // Determine if match can be scored (both corners must be filled, not bye/empty/completed)
+    const canScore = !isBye && !isEmpty && !isCompleted && redCompetitor && blueCompetitor;
+
+    const statusColor = isCompleted ? '#22c55e' : isBye ? '#ffd60a' : isEmpty ? '#666' : (!redCompetitor || !blueCompetitor) ? '#f59e0b' : '#64d2ff';
+    const statusLabel = isCompleted ? '✓ Completed' : isBye ? 'BYE' : isEmpty ? 'Empty' : (!redCompetitor || !blueCompetitor) ? 'Waiting' : 'Pending';
 
     const dragAttr = bracketEditMode && redCompetitor ? `draggable="true" ondragstart="handleDragStart(event, ${matchIdx}, 'red', ${roundNum})" ondragend="handleDragEnd(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${matchIdx}, 'red', ${roundNum})"` : '';
     const dragAttr2 = bracketEditMode && blueCompetitor ? `draggable="true" ondragstart="handleDragStart(event, ${matchIdx}, 'blue', ${roundNum})" ondragend="handleDragEnd(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${matchIdx}, 'blue', ${roundNum})"` : '';
@@ -8749,7 +8758,7 @@ function renderMatchCard(match, matchIdx, roundNum) {
                 </div>
             </div>
 
-            ${!isBye && !isCompleted ? `
+            ${canScore ? `
                 <button class="btn btn-primary btn-small" style="width: 100%; margin-top: 12px;" onclick="scoreMatch('${currentViewingBracket?.id}', ${match.id})">Score Match</button>
             ` : ''}
         </div>
