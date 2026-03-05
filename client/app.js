@@ -11715,17 +11715,19 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // Initialize judge votes
     kataFlagsJudgeVotes = Array(numJudges).fill(null); // null, 'corner1', or 'corner2'
 
-    // Find first pending match — check matches array, and also winners array for double-elimination
+    // Find first pending match — check all match arrays (matches, winners, losers, repechage, finals, reset)
     let currentMatch = null;
     if (bracket) {
         const allMatches = [
             ...(bracket.matches || []),
             ...(bracket.winners || []),
-            ...(bracket.losers || [])
+            ...(bracket.losers || []),
+            ...(bracket.repechageA || []),
+            ...(bracket.repechageB || [])
         ];
         if (bracket.finals) allMatches.push(bracket.finals);
         if (bracket.reset) allMatches.push(bracket.reset);
-        currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner && m.redCorner.id !== m.blueCorner.id);
+        currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner && (m.redCorner.id ?? m.redCorner) !== (m.blueCorner.id ?? m.blueCorner));
     }
     kataFlagsCurrentMatch = currentMatch;
 
@@ -11745,8 +11747,17 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             showDivisionCompleteCountdown(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId, results);
         } else {
             // Division not complete but no matches ready (waiting for opponents from other rounds)
-            // Build completed matches summary for reference/editing
-            const allMatches = [...(bracket?.matches || []), ...(bracket?.winners || []), ...(bracket?.losers || [])];
+            // Include all match pools for accurate counting
+            const allMatches = [
+                ...(bracket?.matches || []),
+                ...(bracket?.winners || []),
+                ...(bracket?.losers || []),
+                ...(bracket?.repechageA || []),
+                ...(bracket?.repechageB || [])
+            ];
+            if (bracket?.finals) allMatches.push(bracket.finals);
+            if (bracket?.reset) allMatches.push(bracket.reset);
+
             const completedMatches = allMatches.filter(m => m.status === 'completed' || m.status === 'complete');
             const pendingEmpty = allMatches.filter(m => m.status === 'pending' && (!m.redCorner || !m.blueCorner));
 
@@ -11766,6 +11777,19 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                 `).join('');
             }
 
+            // Auto-retry after 1 second — bracket data may have just been saved
+            if (!window._kataFlagsRetried) {
+                window._kataFlagsRetried = true;
+                setTimeout(() => {
+                    window._kataFlagsRetried = false;
+                    openOperatorScoreboard(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId);
+                }, 1000);
+            } else {
+                window._kataFlagsRetried = false;
+            }
+
+            const matchProgressHTML = buildMatchProgressHTML(bracket);
+
             content.innerHTML = `
                 <div style="max-height: 75vh; overflow-y: auto;">
                     <div class="glass-panel" style="text-align: center; padding: 20px; margin-bottom: 16px;">
@@ -11776,6 +11800,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                                 ? `${pendingEmpty.length} match${pendingEmpty.length > 1 ? 'es' : ''} waiting for opponents to advance.`
                                 : 'No pending matches found for this division.'}
                         </p>
+                        ${matchProgressHTML}
                     </div>
                     ${completedMatches.length > 0 ? `
                         <div class="glass-panel" style="padding: 16px; margin-bottom: 16px;">
@@ -11783,7 +11808,10 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                             ${matchListHTML}
                         </div>
                     ` : ''}
-                    <div style="text-align: center;">
+                    <div style="text-align: center; display: flex; gap: 8px; justify-content: center;">
+                        <button class="btn btn-primary" onclick="window._kataFlagsRetried=false; openOperatorScoreboard(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId);" style="font-size: 14px;">
+                            🔄 Retry
+                        </button>
                         <button class="btn btn-secondary" onclick="closeOperatorScoreboard()" style="font-size: 14px;">
                             Close
                         </button>
@@ -11825,11 +11853,13 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     const corner2TextColor = getCornerTextColor(corner2Color);
 
     const kfDivProgressHTML = buildDivisionProgressHTML(matId, divisionName, eventId);
+    const kfMatchProgressHTML = buildMatchProgressHTML(bracket);
     content.innerHTML = `
         <div class="operator-scoreboard">
             <div class="glass-panel" style="text-align: center; flex-shrink: 0; position: relative;">
-                <div style="font-size: clamp(12px, 1.3vw, 15px); color: var(--text-secondary);">Round ${currentMatch.round} - Match ${currentMatch.id} <span style="font-size: 11px; margin-left: 8px;">Judges vote with flags</span></div>
+                <div style="font-size: clamp(12px, 1.3vw, 15px); color: var(--text-secondary);">Round ${currentMatch.round} <span style="font-size: 11px; margin-left: 8px;">Judges vote with flags</span></div>
                 ${kfDivProgressHTML}
+                ${kfMatchProgressHTML}
                 <button id="swap-sides-btn" onclick="toggleOperatorSides()" title="${operatorSidesSwapped ? 'Sides swapped (click to reset)' : 'Swap sides'}" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: 1px solid var(--glass-border); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='none'">⇄</button>
             </div>
 
@@ -14024,6 +14054,41 @@ function buildDivisionProgressHTML(matId, divisionName, eventId) {
     return `<div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Division ${progress.current} of ${progress.total}</div>`;
 }
 
+// Build HTML snippet for match progress bar within a bracket
+function buildMatchProgressHTML(bracket) {
+    if (!bracket) return '';
+    const allMatches = [
+        ...(bracket.matches || []),
+        ...(bracket.winners || []),
+        ...(bracket.losers || []),
+        ...(bracket.repechageA || []),
+        ...(bracket.repechageB || [])
+    ];
+    if (bracket.finals) allMatches.push(bracket.finals);
+    if (bracket.reset) allMatches.push(bracket.reset);
+
+    // Count real matches (non-empty, non-bye, with at least one competitor)
+    const realMatches = allMatches.filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
+    const completedCount = realMatches.filter(m => m.status === 'complete' || m.status === 'completed').length;
+    const totalCount = realMatches.length;
+    if (totalCount === 0) return '';
+
+    const currentMatchNum = completedCount + 1;
+    const percent = Math.round((completedCount / totalCount) * 100);
+
+    return `
+        <div style="margin-top: 6px;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">
+                <span style="font-weight: 600;">Match ${Math.min(currentMatchNum, totalCount)} of ${totalCount}</span>
+                <span style="opacity: 0.6;">(${percent}%)</span>
+            </div>
+            <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; max-width: 300px; margin: 0 auto;">
+                <div style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #dc2626, #ff4444); border-radius: 3px; transition: width 0.5s ease;"></div>
+            </div>
+        </div>
+    `;
+}
+
 function checkBracketComplete(divisionName, eventId) {
     const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
 
@@ -14033,8 +14098,9 @@ function checkBracketComplete(divisionName, eventId) {
             if (bracket.type === 'ranking-list') {
                 return bracket.entries?.every(e => e.status === 'scored') || false;
             } else if (bracket.type === 'single-elimination') {
-                // Check if all non-empty matches with both competitors are complete
-                const realMatches = (bracket.matches || []).filter(m => m.status !== 'empty' && m.redCorner && m.blueCorner);
+                // Check if all non-empty, non-bye matches are complete
+                // Include matches with only one corner (still waiting for feeder) to prevent premature completion
+                const realMatches = (bracket.matches || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
                 return realMatches.length > 0 && realMatches.every(m => m.status === 'complete' || m.status === 'completed');
             } else if (bracket.type === 'round-robin') {
                 const realMatches = (bracket.matches || []).filter(m => m.redCorner && m.blueCorner);
@@ -14054,14 +14120,14 @@ function checkBracketComplete(divisionName, eventId) {
                 const resetComplete = !bracket.reset || bracket.reset.status === 'complete' || bracket.reset.status === 'completed';
                 return winnersComplete && losersComplete && finalsComplete && (finalsWBWon || !bracket.finals?.winner || resetComplete);
             } else if (bracket.type === 'repechage') {
-                // Main bracket must be complete
-                const realMain = (bracket.matches || []).filter(m => m.status !== 'empty' && m.redCorner && m.blueCorner);
+                // Main bracket must be complete (include matches with only one corner to prevent premature completion)
+                const realMain = (bracket.matches || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
                 const mainComplete = realMain.length > 0 && realMain.every(m => m.status === 'complete' || m.status === 'completed');
                 if (!mainComplete) return false;
                 // Repechage brackets must also be complete
                 if (bracket.repechageGenerated) {
-                    const realRepA = (bracket.repechageA || []).filter(m => m.status !== 'empty' && m.redCorner && m.blueCorner);
-                    const realRepB = (bracket.repechageB || []).filter(m => m.status !== 'empty' && m.redCorner && m.blueCorner);
+                    const realRepA = (bracket.repechageA || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
+                    const realRepB = (bracket.repechageB || []).filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
                     const repAComplete = realRepA.length === 0 || realRepA.every(m => m.status === 'complete' || m.status === 'completed');
                     const repBComplete = realRepB.length === 0 || realRepB.every(m => m.status === 'complete' || m.status === 'completed');
                     return repAComplete && repBComplete;
