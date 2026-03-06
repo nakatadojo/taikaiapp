@@ -1,4 +1,6 @@
 const pool = require('../db/pool');
+const ScheduleQueries = require('../db/queries/schedules');
+const BracketQueries = require('../db/queries/brackets');
 
 /**
  * GET /api/tournaments/:id/competitors/public
@@ -42,7 +44,7 @@ async function getPublicCompetitors(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/schedule/public
- * Placeholder — returns empty until scheduling is server-synced.
+ * Returns schedule data when published by the director.
  */
 async function getPublicSchedule(req, res, next) {
   try {
@@ -56,11 +58,19 @@ async function getPublicSchedule(req, res, next) {
 
     const visibility = t.rows[0].section_visibility || {};
     if (visibility.schedule === false) {
-      return res.json({ schedule: [], hidden: true });
+      return res.json({ schedule: {}, hidden: true });
     }
 
-    // Schedule data is currently in localStorage only — return empty
-    res.json({ schedule: [], message: 'Schedule not yet published' });
+    const data = await ScheduleQueries.get(tournamentId);
+    if (!data || !data.schedule_published) {
+      return res.json({ schedule: {}, published: false, message: 'Schedule not yet published' });
+    }
+
+    res.json({
+      schedule: data.mat_schedule || {},
+      scheduleSettings: data.schedule_settings || {},
+      published: true,
+    });
   } catch (err) {
     next(err);
   }
@@ -68,7 +78,7 @@ async function getPublicSchedule(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/brackets/public
- * Placeholder — returns empty until brackets are server-synced.
+ * Returns published brackets from the server.
  */
 async function getPublicBrackets(req, res, next) {
   try {
@@ -82,11 +92,17 @@ async function getPublicBrackets(req, res, next) {
 
     const visibility = t.rows[0].section_visibility || {};
     if (visibility.brackets === false) {
-      return res.json({ brackets: [], hidden: true });
+      return res.json({ brackets: {}, hidden: true });
     }
 
-    // Bracket data is currently in localStorage only — return empty
-    res.json({ brackets: [], message: 'Brackets not yet published' });
+    const rows = await BracketQueries.getAllPublished(tournamentId);
+    if (rows.length === 0) {
+      return res.json({ brackets: {}, message: 'Brackets not yet published' });
+    }
+
+    const byId = {};
+    for (const b of rows) { byId[b.id] = b.data; }
+    res.json({ brackets: byId });
   } catch (err) {
     next(err);
   }

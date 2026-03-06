@@ -26,6 +26,13 @@
     .awards-badge { display:inline-block; padding:2px 10px; border-radius:8px; font-size:11px; font-weight:600; }
     .awards-badge.pending { background:var(--warning); color:#000; }
     .awards-badge.published { background:var(--success); color:#fff; }
+
+    /* Sync indicator */
+    .sync-indicator { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted, #888); padding:4px 0; }
+    .sync-dot { width:8px; height:8px; border-radius:50%; background:var(--success, #22c55e); }
+    .sync-dot--syncing { background:var(--warning, #eab308); animation:sync-pulse 1s infinite; }
+    .sync-dot--error { background:var(--red, #ef4444); }
+    @keyframes sync-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
     </style>
 </head>
 <body>
@@ -129,6 +136,10 @@
                     </select>
                     <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
                 </div>
+                <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
+                    <span class="sync-dot"></span>
+                    <span class="sync-label">Saved</span>
+                </span>
             </div>
 
             <nav id="main-nav" class="hidden">
@@ -1167,9 +1178,12 @@
                                 <option value="">All Events</option>
                             </select>
                         </div>
-                        <div style="display: flex; gap: 12px;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <button class="btn btn-danger" onclick="deleteAllBrackets()">Delete All Brackets</button>
                             <button class="btn btn-primary" onclick="showBracketGenerator()">+ Generate New Bracket</button>
+                            <button class="btn" id="brackets-publish-btn" onclick="toggleBracketsPublished()" style="background:var(--accent);color:#fff;">
+                                <span id="brackets-publish-label">Publish All Brackets</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1329,12 +1343,15 @@
                                 <h3 style="margin: 0 0 8px 0;">Dynamic Timeline</h3>
                                 <p class="hint" style="margin: 0;">Drag divisions from the left to mat columns on the right. Times are calculated automatically.</p>
                             </div>
-                            <div style="display: flex; gap: 8px;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
                                     ⚡ Auto-Schedule All
                                 </button>
                                 <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">
                                     🗑️ Clear All Schedules
+                                </button>
+                                <button class="btn btn-small" id="schedule-publish-btn" onclick="toggleSchedulePublished()" style="background:var(--accent);color:#fff;">
+                                    <span id="schedule-publish-label">Publish Schedule</span>
                                 </button>
                             </div>
                         </div>
@@ -1943,6 +1960,53 @@
             localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
             localStorage.setItem('divisions', JSON.stringify(allDivisions));
 
+            // Load schedule, divisions, and brackets from server (parallel)
+            try {
+                const [schedResult, divResult, brkResult] = await Promise.allSettled([
+                    fetch(`/api/tournaments/${tournamentId}/schedule`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/divisions`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/brackets`, { credentials: 'include' }),
+                ]);
+
+                // Seed schedule from server
+                if (schedResult.status === 'fulfilled' && schedResult.value.ok) {
+                    const schedData = await schedResult.value.json();
+                    if (schedData.matSchedule && Object.keys(schedData.matSchedule).length > 0) {
+                        localStorage.setItem(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
+                        localStorage.setItem('matSchedule', JSON.stringify(schedData.matSchedule));
+                    }
+                    if (schedData.scheduleSettings && Object.keys(schedData.scheduleSettings).length > 0) {
+                        localStorage.setItem(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
+                    }
+                    // Track published state for UI
+                    window._schedulePublished = schedData.published || false;
+                }
+
+                // Merge generated divisions from server
+                if (divResult.status === 'fulfilled' && divResult.value.ok) {
+                    const divData = await divResult.value.json();
+                    if (divData.generatedDivisions && Object.keys(divData.generatedDivisions).length > 0) {
+                        const current = JSON.parse(localStorage.getItem('divisions') || '{}');
+                        Object.keys(divData.generatedDivisions).forEach(evId => {
+                            if (!current[evId]) current[evId] = {};
+                            current[evId].generated = divData.generatedDivisions[evId].generated;
+                            current[evId].updatedAt = divData.generatedDivisions[evId].updatedAt;
+                        });
+                        localStorage.setItem('divisions', JSON.stringify(current));
+                    }
+                }
+
+                // Seed brackets from server
+                if (brkResult.status === 'fulfilled' && brkResult.value.ok) {
+                    const brkData = await brkResult.value.json();
+                    if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
+                        localStorage.setItem('brackets', JSON.stringify(brkData.brackets));
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not load server data:', e.message);
+            }
+
             // Reload the tournament selector and auto-select
             loadTournamentSelector();
             const select = document.getElementById('active-tournament');
@@ -1963,7 +2027,54 @@
         } catch (err) {
             console.error('Failed to auto-load tournament:', err);
         }
+        // Update publish button labels after load
+        if (window._schedulePublished) {
+            const lbl = document.getElementById('schedule-publish-label');
+            if (lbl) lbl.textContent = 'Unpublish Schedule';
+        }
     })();
+
+    // ── Publish toggle functions ─────────────────────────────────────
+    window._schedulePublished = window._schedulePublished || false;
+    window._bracketsPublished = false;
+
+    window.toggleSchedulePublished = async function() {
+        if (!currentTournamentId) return;
+        window._schedulePublished = !window._schedulePublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule/publish`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._schedulePublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('schedule-publish-label').textContent =
+                window._schedulePublished ? 'Unpublish Schedule' : 'Publish Schedule';
+            showMessage(window._schedulePublished ? 'Schedule published to public page' : 'Schedule unpublished');
+        } catch (err) {
+            window._schedulePublished = !window._schedulePublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
+
+    window.toggleBracketsPublished = async function() {
+        if (!currentTournamentId) return;
+        window._bracketsPublished = !window._bracketsPublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/publish-all`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._bracketsPublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('brackets-publish-label').textContent =
+                window._bracketsPublished ? 'Unpublish All Brackets' : 'Publish All Brackets';
+            showMessage(window._bracketsPublished ? 'All brackets published to public page' : 'All brackets unpublished');
+        } catch (err) {
+            window._bracketsPublished = !window._bracketsPublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
     </script>
 
     <!-- Awards Dashboard Logic -->

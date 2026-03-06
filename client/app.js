@@ -246,6 +246,115 @@ let currentTemplate = null;
 let criteriaCounter = 0;
 let currentTournamentId = null;
 
+// ── Server Sync Helpers ──────────────────────────────────────────────────────
+// Non-blocking debounced sync to persist localStorage data to the server.
+
+const _syncDebounceTimers = {};
+
+function _debouncedSync(key, fn, delayMs = 1500) {
+    if (_syncDebounceTimers[key]) clearTimeout(_syncDebounceTimers[key]);
+    _syncDebounceTimers[key] = setTimeout(() => {
+        fn().catch(err => console.warn(`[sync] ${key} failed:`, err.message));
+    }, delayMs);
+}
+
+function setSyncIndicator(state) {
+    const el = document.getElementById('server-sync-indicator');
+    if (!el) return;
+    el.style.display = 'inline-flex';
+    const dot = el.querySelector('.sync-dot');
+    const label = el.querySelector('.sync-label');
+    if (!dot || !label) return;
+    dot.className = 'sync-dot';
+    if (state === 'syncing') {
+        dot.classList.add('sync-dot--syncing');
+        label.textContent = 'Saving...';
+    } else if (state === 'error') {
+        dot.classList.add('sync-dot--error');
+        label.textContent = 'Save failed';
+        setTimeout(() => setSyncIndicator('ok'), 10000);
+    } else {
+        label.textContent = 'Saved';
+    }
+}
+
+async function _syncScheduleToServer() {
+    if (!currentTournamentId) return;
+    const matSchedule = loadMatScheduleData();
+    const scheduleSettings = getScheduleSettings();
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matSchedule, scheduleSettings }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncBracketsToServer() {
+    if (!currentTournamentId) return;
+    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brackets }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncDivisionsToServer() {
+    if (!currentTournamentId) return;
+    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const generatedDivisions = {};
+    Object.keys(allDivisions).forEach(eventId => {
+        if (allDivisions[eventId]?.generated) {
+            generatedDivisions[eventId] = {
+                generated: allDivisions[eventId].generated,
+                updatedAt: allDivisions[eventId].updatedAt,
+            };
+        }
+    });
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ generatedDivisions }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncTemplateToServer(eventId, templates) {
+    if (!currentTournamentId || !eventId) return;
+    const res = await fetch(
+        `/api/tournaments/${currentTournamentId}/events/${eventId}/templates/sync`,
+        {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ criteriaTemplates: templates }),
+        }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 // Ordered rank list for grouped belt-range matching (WKF/AAU)
 const RANK_ORDER = [
     'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
@@ -2411,6 +2520,7 @@ function lockBracket(bracketId) {
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
     localStorage.setItem('brackets', JSON.stringify(brackets));
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
     showMessage(`Bracket locked for "${bracket.divisionName}"`, 'success');
@@ -2443,6 +2553,7 @@ function unlockBracket(bracketId) {
     bracket.locked = false;
     delete bracket.lockedAt;
     localStorage.setItem('brackets', JSON.stringify(brackets));
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
     showMessage(`Bracket unlocked for "${bracket.divisionName}"`, 'success');
@@ -5616,6 +5727,11 @@ function saveDivisionTemplate() {
 
     localStorage.setItem('divisions', JSON.stringify(divisions));
 
+    // Sync templates to server (debounced)
+    const syncEventId = eventId;
+    const syncTemplates = divisions[eventId]?.templates || [];
+    _debouncedSync(`templates_${syncEventId}`, () => _syncTemplateToServer(syncEventId, syncTemplates), 1000);
+
     showMessage(currentTemplateId ? 'Template updated successfully!' : 'Template created successfully!');
 
     hideDivisionBuilder();
@@ -5723,6 +5839,9 @@ function generateDivisions() {
 
     console.log('Saving to localStorage:', allDivisions[eventId]);
     localStorage.setItem('divisions', JSON.stringify(allDivisions));
+
+    // Sync generated divisions to server (debounced)
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
 
     console.log('Calling loadDivisions...');
     loadDivisions();
@@ -6609,6 +6728,9 @@ function generateBracketsForAllDivisions() {
             successCount++;
         }
     });
+
+    // Sync all brackets to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     hideBracketGenerator();
     showMessage(`Generated ${successCount} brackets successfully! ${skippedCount > 0 ? `(Skipped ${skippedCount} divisions with less than 2 competitors)` : ''}`);
@@ -8281,6 +8403,9 @@ function saveBracketChanges() {
     brackets[currentViewingBracket.id] = currentViewingBracket;
     localStorage.setItem('brackets', JSON.stringify(brackets));
 
+    // Sync to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
+
     bracketEditMode = false;
     originalBracketState = null;
 
@@ -9348,6 +9473,13 @@ function deleteBracket(bracketId) {
     delete brackets[bracketId];
     localStorage.setItem('brackets', JSON.stringify(brackets));
 
+    // Delete from server (fire-and-forget)
+    if (currentTournamentId) {
+        fetch(`/api/tournaments/${currentTournamentId}/brackets/${encodeURIComponent(bracketId)}`, {
+            method: 'DELETE', credentials: 'include',
+        }).catch(err => console.warn('[sync] bracket delete failed:', err.message));
+    }
+
     // Clean orphaned schedule entries for deleted bracket
     if (bracket) {
         const divisionName = bracket.division || bracket.divisionName;
@@ -9419,6 +9551,9 @@ function deleteAllBrackets() {
     // Delete all brackets
     localStorage.setItem('brackets', JSON.stringify({}));
 
+    // Sync deletion to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 1000);
+
     // Clear mat schedule (brackets no longer exist) - use new scoped system
     cleanOrphanScheduleEntries();
 
@@ -9467,6 +9602,8 @@ function saveScheduleSettings() {
     showMessage('Schedule settings saved');
     recalculateScheduleTimes();
     loadScheduleGrid();
+    // Sync to server (debounced)
+    _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
 
 function resetScheduleSettings() {
@@ -9547,6 +9684,8 @@ function saveMatScheduleData(data) {
     localStorage.setItem(key, JSON.stringify(data));
     // Also update the non-scoped key for backward compat with TV displays
     localStorage.setItem('matSchedule', JSON.stringify(data));
+    // Sync to server (debounced)
+    _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
 
 function migrateMatScheduleData(oldData) {
