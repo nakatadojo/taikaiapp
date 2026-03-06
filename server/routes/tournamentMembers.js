@@ -22,21 +22,21 @@ router.post('/',
 // GET /api/tournament-members/:tournamentId — List members for a tournament
 router.get('/:tournamentId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.list
 );
 
 // PATCH /api/tournament-members/:id/approve — Approve application
 router.patch('/:id/approve',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.approve
 );
 
 // PATCH /api/tournament-members/:id/decline — Decline application
 router.patch('/:id/decline',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.decline
 );
 

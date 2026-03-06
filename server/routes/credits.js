@@ -21,7 +21,7 @@ router.get('/transactions', creditsController.getTransactions);
 
 // POST /api/credits/checkout — Purchase credits via Stripe
 router.post('/checkout',
-  requireRole('event_director', 'super_admin'),
+  requireRole('event_director'),
   [body('packageId').notEmpty().withMessage('Package ID is required')],
   validate,
   creditsController.checkout
@@ -29,7 +29,7 @@ router.post('/checkout',
 
 // POST /api/credits/confirm — Confirm credit purchase
 router.post('/confirm',
-  requireRole('event_director', 'super_admin'),
+  requireRole('event_director'),
   [body('sessionId').notEmpty().withMessage('Session ID is required')],
   validate,
   creditsController.confirm

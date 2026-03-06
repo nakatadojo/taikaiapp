@@ -11,37 +11,37 @@ router.get('/:id/results/public', resultsController.getPublicResults);
 // ── Director (auth required) ────────────────────────────────────────────────
 router.post('/:id/results/sync',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.syncResults
 );
 
 router.get('/:id/results',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.getResults
 );
 
 router.put('/:id/results/publish-all',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.bulkPublish
 );
 
 router.put('/:id/results/unpublish-all',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.bulkUnpublish
 );
 
 router.put('/:id/results/:resultId/publish',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.publishDivision
 );
 
 router.put('/:id/results/:resultId/unpublish',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   resultsController.unpublishDivision
 );
 

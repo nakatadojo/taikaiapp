@@ -34,11 +34,6 @@ function requireTournamentPermission(...requiredPermissions) {
         return next();
       }
 
-      // Super admins and admins have all permissions
-      if (req.user.roles && (req.user.roles.includes('super_admin') || req.user.roles.includes('admin'))) {
-        return next();
-      }
-
       // Check tournament member's staff role permissions
       const { rows: [member] } = await pool.query(
         `SELECT tm.*, srd.permissions
