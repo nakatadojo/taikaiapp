@@ -235,6 +235,80 @@ nav {
     stroke-width: 1.75;
 }
 
+/* Expandable Settings Nav */
+.nav-settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    transition: all 0.15s ease;
+    letter-spacing: -0.2px;
+}
+
+.nav-settings-toggle:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.nav-settings-toggle .nav-chevron {
+    margin-left: auto;
+    width: 14px;
+    height: 14px;
+    transition: transform 0.25s ease;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.nav-settings-toggle.expanded .nav-chevron {
+    transform: rotate(90deg);
+}
+
+.nav-settings-children {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+
+.nav-settings-children.expanded {
+    max-height: 400px;
+}
+
+.nav-sub-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 12px 7px 42px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.nav-sub-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.nav-sub-btn.active {
+    background: var(--sidebar-active);
+    color: var(--accent-text);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN CONTENT AREA
    ═══════════════════════════════════════════════════════════════════════════ */

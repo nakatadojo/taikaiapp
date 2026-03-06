@@ -364,50 +364,44 @@
                 <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
             </div>
 
-            <div class="sidebar-tournament">
-                <div class="tournament-selector" id="tournament-selector">
-                    <select id="active-tournament" onchange="switchTournament()">
-                        <option value="">Select Tournament</option>
-                    </select>
-                    <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
-                </div>
-                <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
-                    <span class="sync-dot"></span>
-                    <span class="sync-label">Saved</span>
-                </span>
-            </div>
+            <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
+                <span class="sync-dot"></span>
+                <span class="sync-label">Saved</span>
+            </span>
 
             <nav id="main-nav" class="hidden">
                 <div class="nav-group">
                     <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-label">Setup</div>
+                    <div class="nav-group-label">Tournament</div>
                     <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
                     <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Clubs</button>
                     <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
-                    <button class="nav-btn" data-view="events"><i data-lucide="award" class="nav-icon"></i> Event Types</button>
-                </div>
-                <div class="nav-group">
-                    <div class="nav-group-label">Tournament</div>
-                    <button class="nav-btn" data-view="scoreboard-configs"><i data-lucide="settings" class="nav-icon"></i> Scoreboard Setup</button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
-                </div>
-                <div class="nav-group">
-                    <div class="nav-group-label">Live</div>
                     <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
-                    <button class="nav-btn" data-view="public-site"><i data-lucide="globe" class="nav-icon"></i> Public Site</button>
                 </div>
                 <div class="nav-group" id="academy-nav-group" style="display:none">
                     <div class="nav-group-label">Academy</div>
                     <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Academy</button>
                 </div>
-                <div class="nav-group">
+                <div class="nav-group" id="settings-nav-group">
                     <div class="nav-group-label">Admin</div>
-                    <button class="nav-btn" data-view="settings"><i data-lucide="settings-2" class="nav-icon"></i> Settings</button>
+                    <button class="nav-settings-toggle" id="settings-toggle" onclick="toggleSettingsNav()">
+                        <i data-lucide="settings-2" class="nav-icon"></i> Settings
+                        <i data-lucide="chevron-right" class="nav-chevron"></i>
+                    </button>
+                    <div class="nav-settings-children" id="settings-children">
+                        <button class="nav-sub-btn" data-view="settings-tournament-info">Tournament Info</button>
+                        <button class="nav-sub-btn" data-view="events">Event Types</button>
+                        <button class="nav-sub-btn" data-view="scoreboard-configs">Scoreboard Setup</button>
+                        <button class="nav-sub-btn" data-view="public-site">Public Site</button>
+                        <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
+                        <button class="nav-sub-btn" data-view="settings">Staff Roles</button>
+                    </div>
                 </div>
             </nav>
 
@@ -1744,20 +1738,47 @@
                 </div>
             </section>
 
-            <!-- Settings View -->
-            <section id="settings-view" class="view">
-                <h2>Settings</h2>
+            <!-- Tournament Info View (Settings sub-page) -->
+            <section id="settings-tournament-info-view" class="view">
+                <h2>Tournament Info</h2>
 
                 <div class="glass-panel">
-                    <h3>Event Types</h3>
-                    <p class="hint">Manage the event types for this tournament. Deleting an event will also remove its divisions and brackets.</p>
-                    <div id="settings-events-list" style="margin-top: 12px;">
-                        <p class="hint">No events loaded.</p>
+                    <h3>Active Tournament</h3>
+                    <p class="hint">Select which tournament to manage, or create a new one.</p>
+                    <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
+                        <select id="active-tournament" onchange="switchTournament()" style="flex: 1; min-width: 200px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                            <option value="">Select Tournament</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
                     </div>
                 </div>
 
+                <div class="glass-panel" id="tournament-info-details">
+                    <h3>Details</h3>
+                    <div id="tournament-info-content">
+                        <p class="hint">Select a tournament to view its details.</p>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <h3>Clone Tournament</h3>
+                    <p class="hint">Create a new draft copy of this tournament with all events, pricing periods, and staff roles.</p>
+                    <button class="btn btn-secondary" id="clone-tournament-btn" onclick="cloneTournamentFromManage()" style="margin-top: 12px;">Clone This Tournament</button>
+                </div>
+
+                <div class="glass-panel" style="border: 1px solid var(--danger); border-radius: 12px;">
+                    <h3 style="color: var(--danger);">Danger Zone</h3>
+                    <p class="hint">Permanently delete this tournament and all associated data (events, registrations, brackets). This cannot be undone.</p>
+                    <p id="delete-tournament-name" style="margin-top: 8px; font-weight: 600; color: var(--danger);"></p>
+                    <button class="btn btn-danger" id="delete-tournament-btn" onclick="deleteTournamentFromServer()" style="margin-top: 12px;">Delete Tournament</button>
+                </div>
+            </section>
+
+            <!-- Staff Roles View (Settings sub-page) -->
+            <section id="settings-view" class="view">
+                <h2>Staff Roles & Permissions</h2>
+
                 <div class="glass-panel" id="staff-roles-panel">
-                    <h3>Staff Roles & Permissions</h3>
                     <p class="hint">Define custom roles for staff members with specific permissions. Assign roles to approved tournament members.</p>
 
                     <div id="staff-roles-list" style="margin-top: 12px;"></div>
@@ -1778,12 +1799,11 @@
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <div class="glass-panel">
-                    <h3>Danger Zone</h3>
-                    <p class="hint">Permanently delete this tournament and all associated data (events, registrations, brackets). This cannot be undone.</p>
-                    <button class="btn btn-danger" onclick="deleteTournamentFromServer()" style="margin-top: 12px;">Delete Tournament</button>
-                </div>
+            <!-- Certificates View (Settings sub-page) -->
+            <section id="settings-certificates-view" class="view">
+                <h2>Certificates</h2>
 
                 <div class="glass-panel">
                     <h3>Certificate Template</h3>
@@ -2932,7 +2952,7 @@
         overlay.classList.remove('active');
     }
     // Close sidebar when a nav button is clicked (mobile)
-    document.querySelectorAll('.nav-btn').forEach(function(btn) {
+    document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
             if (window.innerWidth <= 1024) {
                 closeMobileSidebar();

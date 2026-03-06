@@ -1036,13 +1036,23 @@ function closeMedalCountModal() {
 }
 
 // Navigation
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const view = btn.dataset.view;
 
-        // Update active button
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        // Update active button (clear both nav-btn and nav-sub-btn active states)
+        document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+
+        // Auto-expand settings children when a sub-item is clicked
+        if (btn.classList.contains('nav-sub-btn')) {
+            const toggle = document.getElementById('settings-toggle');
+            const children = document.getElementById('settings-children');
+            if (toggle && children) {
+                toggle.classList.add('expanded');
+                children.classList.add('expanded');
+            }
+        }
 
         // Update active view
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1085,11 +1095,27 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         if (view === 'settings') {
             loadSettings();
         }
+        if (view === 'settings-tournament-info') {
+            loadTournamentInfoView();
+        }
+        if (view === 'settings-certificates') {
+            loadCertificatesView();
+        }
         if (view === 'academy') {
             loadAcademyView();
         }
     });
 });
+
+// Toggle settings nav expand/collapse
+function toggleSettingsNav() {
+    const toggle = document.getElementById('settings-toggle');
+    const children = document.getElementById('settings-children');
+    if (toggle && children) {
+        toggle.classList.toggle('expanded');
+        children.classList.toggle('expanded');
+    }
+}
 
 // Navigation helper
 function navigateTo(viewName) {
@@ -16307,8 +16333,47 @@ function openStagingDisplay() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function loadSettings() {
-    loadSettingsEvents();
+    // Settings view now contains only Staff Roles — no additional loading needed
+    // Staff roles render via createStaffRole()/etc. on demand
+}
 
+function loadTournamentInfoView() {
+    loadTournamentSelector();
+    const content = document.getElementById('tournament-info-content');
+    const deleteNameEl = document.getElementById('delete-tournament-name');
+
+    if (!currentTournamentId) {
+        if (content) content.innerHTML = '<p class="hint">No tournament selected.</p>';
+        if (deleteNameEl) deleteNameEl.textContent = '';
+        return;
+    }
+
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    if (!t) {
+        if (content) content.innerHTML = '<p class="hint">Tournament not found.</p>';
+        return;
+    }
+
+    if (content) {
+        const dateStr = t.date ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString() : '\u2014';
+        content.innerHTML = `
+            <div style="display: grid; gap: 10px; font-size: 14px;">
+                <div><strong>Name:</strong> ${t.name || '\u2014'}</div>
+                <div><strong>Date:</strong> ${dateStr}</div>
+                <div><strong>Location:</strong> ${t.location || t.venue || '\u2014'}</div>
+                <div><strong>Sanctioning Body:</strong> ${t.sanctioningBody ? t.sanctioningBody.toUpperCase() : '\u2014'}</div>
+                <div><strong>Status:</strong> ${t.published ? 'Published' : 'Draft'}</div>
+            </div>
+        `;
+    }
+
+    if (deleteNameEl) {
+        deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
+    }
+}
+
+function loadCertificatesView() {
     const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (template && template.data) {
         const previewImg = document.getElementById('certificate-preview-img');
@@ -16317,7 +16382,8 @@ function loadSettings() {
             previewImg.src = template.data;
             previewDiv.style.display = 'block';
         }
-        document.getElementById('merge-tag-config-panel').style.display = 'block';
+        const mergePanel = document.getElementById('merge-tag-config-panel');
+        if (mergePanel) mergePanel.style.display = 'block';
         loadMergeTagEditors();
     }
 }
@@ -16386,7 +16452,13 @@ async function deleteTournamentFromServer() {
         showMessage('No tournament selected', 'error');
         return;
     }
-    if (!confirm('Are you sure you want to permanently delete this tournament? This will remove all events, registrations, and brackets. This cannot be undone.')) {
+
+    // Look up tournament name for the confirmation dialog
+    const tournaments = db.load('tournaments');
+    const tournament = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const tournamentName = tournament ? tournament.name : 'this tournament';
+
+    if (!confirm(`Are you sure you want to permanently delete "${tournamentName}"?\n\nThis will remove all events, registrations, and brackets. This cannot be undone.`)) {
         return;
     }
 
@@ -16401,20 +16473,61 @@ async function deleteTournamentFromServer() {
             throw new Error(data.error || 'Failed to delete tournament');
         }
 
-        // Clear localStorage
+        // Clear scoped localStorage keys
         localStorage.removeItem(_scopedKey('eventTypes'));
         localStorage.removeItem(_scopedKey('divisions'));
         localStorage.removeItem(_scopedKey('scoreboardConfig'));
+
+        // Remove from the tournaments array in localStorage so it disappears from dropdown
+        const remaining = tournaments.filter(t => String(t.id) !== String(currentTournamentId));
+        localStorage.setItem('tournaments', JSON.stringify(remaining));
+
         currentTournamentId = null;
 
-        showMessage('Tournament deleted successfully');
+        // Update UI immediately
+        loadTournamentSelector();
+        document.getElementById('main-nav').classList.add('hidden');
 
-        // Redirect to director dashboard
+        showToast(`Tournament "${tournamentName}" deleted successfully`, 'success');
+
+        // Redirect to director dashboard after a moment
         setTimeout(() => {
             window.location.href = '/director';
-        }, 1000);
+        }, 1500);
     } catch (err) {
-        showMessage(err.message, 'error');
+        showToast(err.message || 'Failed to delete tournament', 'error');
+    }
+}
+
+async function cloneTournamentFromManage() {
+    if (!currentTournamentId) {
+        showToast('No tournament selected', 'error');
+        return;
+    }
+    if (!confirm('Clone this tournament? A new draft copy will be created with all events, pricing periods, and staff roles.')) return;
+
+    const btn = document.getElementById('clone-tournament-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Cloning...'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/clone`, {
+            method: 'POST',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to clone tournament');
+        }
+        const data = await res.json();
+        showToast('Tournament cloned successfully!', 'success');
+        if (data.tournament && data.tournament.id) {
+            setTimeout(() => {
+                window.location.href = `/director/tournaments/${data.tournament.id}/manage`;
+            }, 1000);
+        }
+    } catch (err) {
+        showToast(err.message || 'Failed to clone tournament', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Clone This Tournament'; }
     }
 }
 
@@ -18168,27 +18281,26 @@ window.addEventListener('load', () => {
         const isStaff = user.roles.includes('staff');
         const isCoach = user.roles.includes('coach');
 
-        // Views to hide for non-directors
-        const setupViews = ['competitors', 'clubs', 'instructors', 'events'];
-        const adminViews = ['settings', 'public-site'];
-
+        // Tournament-level nav items to hide for non-directors
         let viewsToHide = [];
 
         if (isJudge) {
             // Judges see: Dashboard, Scoreboards, Brackets, Schedule, Results
-            viewsToHide = [...setupViews, ...adminViews, 'scoreboard-configs'];
+            viewsToHide = ['competitors', 'clubs', 'instructors'];
         } else if (isStaff) {
             // Staff sees: Dashboard, Schedule, Results
-            viewsToHide = [...setupViews, ...adminViews, 'scoreboard-configs', 'scoreboards', 'brackets'];
-        } else if (isCoach) {
-            // Coaches handled separately (academy nav shown above)
-            viewsToHide = [...adminViews, 'scoreboard-configs'];
+            viewsToHide = ['competitors', 'clubs', 'instructors', 'scoreboards', 'brackets'];
         }
 
         viewsToHide.forEach(view => {
             const btn = document.querySelector(`.nav-btn[data-view="${view}"]`);
             if (btn) btn.style.display = 'none';
         });
+
+        // Hide entire Settings nav group for non-directors
+        // (Event Types, Scoreboard Setup, Public Site, Certificates, Staff Roles all live under Settings)
+        const settingsGroup = document.getElementById('settings-nav-group');
+        if (settingsGroup) settingsGroup.style.display = 'none';
 
         // Hide nav group labels for empty groups
         document.querySelectorAll('.nav-group').forEach(group => {
