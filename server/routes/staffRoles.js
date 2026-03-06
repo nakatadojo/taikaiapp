@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/staffRoleController');
 
 const router = express.Router();
@@ -8,38 +8,38 @@ const router = express.Router();
 // Staff role definitions
 router.get('/:id/staff-roles',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.list
 );
 
 router.post('/:id/staff-roles',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.create
 );
 
 router.put('/:id/staff-roles/:roleId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.update
 );
 
 router.delete('/:id/staff-roles/:roleId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.remove
 );
 
 // Member role assignment
 router.put('/:id/members/:memberId/assign-role',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.assignRole
 );
 
 router.get('/:id/members-with-roles',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.listMembersWithRoles
 );
 

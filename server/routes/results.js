@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const resultsController = require('../controllers/resultsController');
 
 const router = express.Router();
@@ -11,37 +11,37 @@ router.get('/:id/results/public', resultsController.getPublicResults);
 // ── Director (auth required) ────────────────────────────────────────────────
 router.post('/:id/results/sync',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.syncResults
 );
 
 router.get('/:id/results',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.getResults
 );
 
 router.put('/:id/results/publish-all',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.bulkPublish
 );
 
 router.put('/:id/results/unpublish-all',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.bulkUnpublish
 );
 
 router.put('/:id/results/:resultId/publish',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.publishDivision
 );
 
 router.put('/:id/results/:resultId/unpublish',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   resultsController.unpublishDivision
 );
 

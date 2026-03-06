@@ -446,6 +446,27 @@ async function checkout(req, res, next) {
     if (finalTotal > 0 && process.env.STRIPE_SECRET_KEY) {
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+      // Ensure user has a Stripe Customer ID for future payment method storage
+      let stripeCustomerId = null;
+      const userRow = await pool.query('SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = $1', [req.user.id]);
+      const userData = userRow.rows[0];
+      if (userData) {
+        stripeCustomerId = userData.stripe_customer_id;
+        if (!stripeCustomerId) {
+          try {
+            const customer = await stripe.customers.create({
+              email: userData.email,
+              name: `${userData.first_name} ${userData.last_name}`,
+              metadata: { userId: req.user.id },
+            });
+            stripeCustomerId = customer.id;
+            await pool.query('UPDATE users SET stripe_customer_id = $1 WHERE id = $2', [stripeCustomerId, req.user.id]);
+          } catch (e) {
+            console.warn('Failed to create Stripe customer:', e.message);
+          }
+        }
+      }
+
       const lineItems = validatedCompetitors.map(comp => ({
         price_data: {
           currency: 'usd',
@@ -475,6 +496,7 @@ async function checkout(req, res, next) {
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
+        ...(stripeCustomerId && { customer: stripeCustomerId }),
         line_items: discountAmount > 0
           ? [{
             price_data: {

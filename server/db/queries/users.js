@@ -105,6 +105,7 @@ async function updateProfile(id, updates) {
     'account_type', 'profile_completed',
     'address_line1', 'address_city', 'address_state', 'address_zip',
     'is_certified', 'certification_body', 'certification_class',
+    'timezone',
   ];
   const fields = [];
   const values = [];

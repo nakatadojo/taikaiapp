@@ -1,22 +1,22 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const c = require('../controllers/scheduleController');
 
 const router = express.Router();
 
 router.get('/:id/schedule',
-  requireAuth, requireRole('event_director'),
+  requireAuth, requireTournamentOwner,
   c.getSchedule
 );
 
 router.post('/:id/schedule/sync',
-  requireAuth, requireRole('event_director'),
+  requireAuth, requireTournamentOwner,
   c.syncSchedule
 );
 
 router.put('/:id/schedule/publish',
-  requireAuth, requireRole('event_director'),
+  requireAuth, requireTournamentOwner,
   c.setSchedulePublished
 );
 

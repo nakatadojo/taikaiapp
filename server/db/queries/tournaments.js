@@ -189,7 +189,7 @@ async function create({
   name, date, location, registrationOpen, baseEventPrice, addonEventPrice, createdBy,
   slug, description, city, state, venueName, venueAddress,
   published, organizationName, contactEmail, registrationDeadline, coverImageUrl,
-  sanctioningBody, collectTshirtSizes,
+  sanctioningBody, collectTshirtSizes, timezone,
 }) {
   const finalSlug = slug || await generateUniqueSlug(name);
 
@@ -198,8 +198,8 @@ async function create({
       (name, date, location, registration_open, base_event_price, addon_event_price, created_by,
        slug, description, city, state, venue_name, venue_address,
        published, organization_name, contact_email, registration_deadline, cover_image_url,
-       sanctioning_body, collect_tshirt_sizes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+       sanctioning_body, collect_tshirt_sizes, timezone)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
      RETURNING *`,
     [
       name,
@@ -222,6 +222,7 @@ async function create({
       coverImageUrl || null,
       sanctioningBody || null,
       collectTshirtSizes || false,
+      timezone || 'America/New_York',
     ]
   );
   return result.rows[0];
@@ -237,7 +238,7 @@ async function update(tournamentId, updates) {
     'slug', 'description', 'city', 'state', 'venue_name', 'venue_address',
     'published', 'organization_name', 'contact_email', 'registration_deadline',
     'cover_image_url', 'sanctioning_body', 'collect_tshirt_sizes',
-    'registration_settings',
+    'registration_settings', 'timezone',
   ];
   const fields = [];
   const values = [];

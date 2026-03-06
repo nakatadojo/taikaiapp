@@ -39,7 +39,7 @@ router.post('/instructor', optionalAuth, registrationController.registerInstruct
 router.post('/club', optionalAuth, registrationController.registerClub);
 
 // Admin sync endpoint
-router.get('/', requireAuth, requireRole('admin', 'coach', 'judge', 'event_director'), registrationController.getRegistrations);
+router.get('/', requireAuth, registrationController.getRegistrations);
 
 // Force-activate a pending registration (coach/admin override)
 router.put('/:id/activate', requireAuth, requireRole('coach', 'admin'), registrationController.activateRegistration);

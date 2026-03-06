@@ -384,6 +384,7 @@
                     <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
                     <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
+                    <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
                 </div>
                 <div class="nav-group" id="academy-nav-group" style="display:none">
                     <div class="nav-group-label">Dojo</div>
@@ -402,6 +403,7 @@
                         <button class="nav-sub-btn" data-view="public-site">Public Site</button>
                         <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
                         <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
+                        <button class="nav-sub-btn" data-view="settings-feedback">Feedback</button>
                         <button class="nav-sub-btn" data-view="settings">Staff Roles</button>
                     </div>
                 </div>
@@ -1821,6 +1823,59 @@
                 </div>
             </section>
 
+            <!-- Judge Analytics View -->
+            <section id="judge-analytics-view" class="view">
+                <h2>Judge Performance Analytics</h2>
+
+                <div id="judge-analytics-loading" style="text-align:center;padding:40px;">
+                    <span class="spinner"></span> Loading analytics...
+                </div>
+
+                <div id="judge-analytics-empty" style="display:none;text-align:center;padding:40px;color:var(--text-muted);">
+                    <div style="font-size:48px;margin-bottom:16px;">&#9878;</div>
+                    <h3 style="margin-bottom:8px;">No judge vote data yet</h3>
+                    <p>Judge vote analytics will appear here after kata-flags matches have been judged and synced.</p>
+                </div>
+
+                <div id="judge-analytics-content" style="display:none;">
+                    <!-- Summary Cards -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Total Matches Judged</div>
+                            <div id="ja-total-matches" style="font-size:28px; font-weight:700; color:var(--accent);">0</div>
+                        </div>
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Total Votes Recorded</div>
+                            <div id="ja-total-votes" style="font-size:28px; font-weight:700; color:var(--accent);">0</div>
+                        </div>
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Overall Consistency Rate</div>
+                            <div id="ja-overall-consistency" style="font-size:28px; font-weight:700;">0%</div>
+                        </div>
+                    </div>
+
+                    <!-- Per-Judge Table -->
+                    <div class="glass-panel">
+                        <h3 style="margin-bottom:12px;">Per-Judge Breakdown</h3>
+                        <div class="table-container">
+                            <table style="width:100%;">
+                                <thead>
+                                    <tr>
+                                        <th>Judge</th>
+                                        <th>Total Votes</th>
+                                        <th>Consistency %</th>
+                                        <th>Avg Decision Time</th>
+                                        <th>Bias Flags</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ja-judges-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Tournament Info View (Settings sub-page) -->
             <section id="settings-tournament-info-view" class="view">
                 <h2>Tournament Info</h2>
@@ -1977,6 +2032,75 @@
                     <!-- Sponsors List -->
                     <div id="sponsors-list">
                         <p style="color: var(--text-muted); font-size: 14px;">Loading sponsors...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Feedback View (Settings sub-page) -->
+            <section id="settings-feedback-view" class="view">
+                <h2>Post-Tournament Feedback</h2>
+
+                <div class="glass-panel">
+                    <h3>Feedback Form Configuration</h3>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="feedback-enabled" style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
+                            <span style="font-weight: 600;">Enable post-tournament feedback</span>
+                        </label>
+                        <p class="hint" style="margin-top: 6px;">When enabled, feedback emails will be sent to recipients after the tournament ends.</p>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="feedback-delay-hours">Send Delay (hours after tournament)</label>
+                            <input type="number" id="feedback-delay-hours" min="0" max="720" value="24" placeholder="24">
+                            <p class="hint">How many hours after the tournament ends to send feedback requests.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="feedback-recipients">Recipients</label>
+                            <select id="feedback-recipients">
+                                <option value="competitors">Competitors Only</option>
+                                <option value="parents">Parents Only</option>
+                                <option value="coaches">Coaches Only</option>
+                                <option value="all">All (Competitors, Parents, Coaches)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px;">
+                        <div id="feedback-form-link-box" style="display:none; margin-bottom: 16px; padding: 12px 16px; background: var(--glass); border-radius: 10px;">
+                            <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Public Feedback Link</div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="text" id="feedback-form-link" readonly style="flex: 1; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text-primary); font-size: 13px; font-family: monospace;">
+                                <button class="btn btn-secondary btn-sm" onclick="copyFeedbackLink()" style="white-space: nowrap;">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="margin: 0;">Questions</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="addFeedbackQuestion()">+ Add Question</button>
+                    </div>
+                    <div id="feedback-questions-list">
+                        <p style="color: var(--text-muted); font-size: 14px;">Loading questions...</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="saveFeedbackForm()">Save Feedback Form</button>
+                </div>
+                <div id="feedback-save-status" style="margin-top: 8px; font-size: 13px; color: var(--text-muted);"></div>
+
+                <div class="glass-panel" style="margin-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="margin: 0;">Responses &amp; Stats</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="exportFeedbackCSV()">Export CSV</button>
+                    </div>
+                    <div id="feedback-stats-container">
+                        <p style="color: var(--text-muted); font-size: 14px;">Save and enable the form to view responses.</p>
                     </div>
                 </div>
             </section>

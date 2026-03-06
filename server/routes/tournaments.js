@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const upload = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
 
@@ -29,14 +29,12 @@ router.get('/', tournamentController.getTournaments);
 // GET /api/tournaments/director/mine — My tournaments
 router.get('/director/mine',
   requireAuth,
-  requireRole('event_director'),
   tournamentController.getMyTournaments
 );
 
 // GET /api/tournaments/director/stats — Dashboard analytics for director
 router.get('/director/stats',
   requireAuth,
-  requireRole('event_director'),
   tournamentController.getDirectorStats
 );
 
@@ -52,7 +50,6 @@ router.get('/:id/events/eligible/:profileId',
 // POST /api/tournaments — Create tournament
 router.post('/',
   requireAuth,
-  requireRole('event_director'),
   [
     body('name').trim().notEmpty().withMessage('Tournament name is required'),
     body('date').optional().isISO8601(),
@@ -79,7 +76,7 @@ router.post('/',
 // PUT /api/tournaments/:id — Update tournament (must own)
 router.put('/:id',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('name').optional().trim().notEmpty(),
     body('date').optional().isISO8601(),
@@ -106,28 +103,28 @@ router.put('/:id',
 // GET /api/tournaments/:id/registrations — Director view of registrants
 router.get('/:id/registrations',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.getRegistrants
 );
 
 // PUT /api/tournaments/:id/publish — Publish/unpublish tournament
 router.put('/:id/publish',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.publishTournament
 );
 
 // POST /api/tournaments/:id/clone — Clone a tournament
 router.post('/:id/clone',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.cloneTournament
 );
 
 // POST /api/tournaments/:id/cover-image — Upload cover image
 router.post('/:id/cover-image',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   upload.single('coverImage'),
   tournamentController.uploadCoverImage
 );
@@ -135,7 +132,7 @@ router.post('/:id/cover-image',
 // POST /api/tournaments/:id/events — Create event
 router.post('/:id/events',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('name').trim().notEmpty().withMessage('Event name is required'),
     body('eventType').optional().trim(),
@@ -156,28 +153,28 @@ router.post('/:id/events',
 // PUT /api/tournaments/:id/events/:eventId — Update event
 router.put('/:id/events/:eventId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.updateEvent
 );
 
 // DELETE /api/tournaments/:id — Delete tournament
 router.delete('/:id',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.deleteTournament
 );
 
 // DELETE /api/tournaments/:id/events/:eventId — Delete event
 router.delete('/:id/events/:eventId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   tournamentController.deleteEvent
 );
 
 // POST /api/tournaments/:id/sync — Bulk sync events
 router.post('/:id/sync',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [body('events').isArray().withMessage('Events must be an array')],
   validate,
   tournamentController.syncEvents
@@ -189,7 +186,7 @@ const discountQueries = require('../db/queries/discounts');
 // GET /api/tournaments/:id/discount-codes
 router.get('/:id/discount-codes',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   async (req, res, next) => {
     try {
       // Verify tournament belongs to director
@@ -207,7 +204,7 @@ router.get('/:id/discount-codes',
 // POST /api/tournaments/:id/discount-codes
 router.post('/:id/discount-codes',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('code').trim().notEmpty().withMessage('Code is required'),
     body('type').isIn(['percentage', 'fixed']).withMessage('Type must be percentage or fixed'),
@@ -246,7 +243,7 @@ router.post('/:id/discount-codes',
 // PUT /api/tournaments/:id/discount-codes/:codeId
 router.put('/:id/discount-codes/:codeId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('code').optional().trim().notEmpty(),
     body('type').optional().isIn(['percentage', 'fixed']),
@@ -282,7 +279,7 @@ router.put('/:id/discount-codes/:codeId',
 // DELETE /api/tournaments/:id/discount-codes/:codeId
 router.delete('/:id/discount-codes/:codeId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   async (req, res, next) => {
     try {
       const tournament = await require('../db/queries/tournaments').findById(req.params.id);
@@ -303,7 +300,7 @@ const eventStaffQueries = require('../db/queries/eventStaff');
 // GET /api/tournaments/:id/staff
 router.get('/:id/staff',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   async (req, res, next) => {
     try {
       const tournament = await tournaments.findById(req.params.id);
@@ -320,7 +317,7 @@ router.get('/:id/staff',
 // POST /api/tournaments/:id/staff
 router.post('/:id/staff',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('role').isIn(['judge', 'ring_coordinator', 'table_worker', 'medical', 'volunteer', 'announcer', 'photographer'])
@@ -358,7 +355,7 @@ router.post('/:id/staff',
 // PUT /api/tournaments/:id/staff/:staffId
 router.put('/:id/staff/:staffId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   [
     body('name').optional().trim().notEmpty(),
     body('role').optional().isIn(['judge', 'ring_coordinator', 'table_worker', 'medical', 'volunteer', 'announcer', 'photographer']),
@@ -396,7 +393,7 @@ router.put('/:id/staff/:staffId',
 // DELETE /api/tournaments/:id/staff/:staffId
 router.delete('/:id/staff/:staffId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   async (req, res, next) => {
     try {
       const tournament = await tournaments.findById(req.params.id);

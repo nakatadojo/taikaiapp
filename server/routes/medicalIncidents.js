@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/medicalIncidentController');
 
 const router = express.Router();
@@ -14,14 +14,14 @@ router.post('/:id/medical-incidents',
 // GET — list all incidents (auth + event_director; ownership verified in controller)
 router.get('/:id/medical-incidents',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.getIncidents
 );
 
 // GET — export incidents as CSV (auth + event_director; ownership verified in controller)
 router.get('/:id/medical-incidents/export.csv',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.exportIncidents
 );
 

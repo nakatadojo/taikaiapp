@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const exportController = require('../controllers/exportController');
 
 const router = express.Router();
@@ -12,13 +12,13 @@ const router = express.Router();
 
 router.get('/:id/export/registrants.csv',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   exportController.exportRegistrantsCSV
 );
 
 router.get('/:id/export/registrants.pdf',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   exportController.exportRegistrantsPDF
 );
 
@@ -26,13 +26,13 @@ router.get('/:id/export/registrants.pdf',
 
 router.get('/:id/export/results.csv',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   exportController.exportResultsCSV
 );
 
 router.get('/:id/export/results.pdf',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   exportController.exportResultsPDF
 );
 
@@ -40,7 +40,7 @@ router.get('/:id/export/results.pdf',
 
 router.get('/:id/export/checkin.csv',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   exportController.exportCheckinCSV
 );
 

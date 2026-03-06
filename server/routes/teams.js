@@ -1,17 +1,17 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const c = require('../controllers/teamController');
 
 const router = express.Router();
 
 router.get('/:id/teams',
-  requireAuth, requireRole('event_director'),
+  requireAuth, requireTournamentOwner,
   c.getTeams
 );
 
 router.post('/:id/teams/sync',
-  requireAuth, requireRole('event_director'),
+  requireAuth, requireTournamentOwner,
   c.syncTeams
 );
 

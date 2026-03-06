@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const upload = require('../middleware/upload');
 const certificateController = require('../controllers/certificateController');
 
@@ -13,7 +13,7 @@ const router = express.Router();
 
 router.post('/:id/certificate-template',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   upload.single('template'),
   certificateController.uploadTemplate
 );
@@ -22,7 +22,7 @@ router.post('/:id/certificate-template',
 
 router.get('/:id/certificate-template',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   certificateController.getTemplate
 );
 
@@ -30,7 +30,7 @@ router.get('/:id/certificate-template',
 
 router.put('/:id/certificate-template/config',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   certificateController.saveConfig
 );
 
@@ -38,7 +38,7 @@ router.put('/:id/certificate-template/config',
 
 router.delete('/:id/certificate-template',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   certificateController.deleteTemplate
 );
 
@@ -46,7 +46,7 @@ router.delete('/:id/certificate-template',
 
 router.get('/:id/certificates/batch.pdf',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   certificateController.generateBatchPDF
 );
 

@@ -227,6 +227,7 @@ async function login(req, res, next) {
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
         profileCompleted: user.profile_completed || false,
+        timezone: user.timezone || 'America/New_York',
       },
     });
   } catch (err) {
@@ -466,6 +467,13 @@ async function getMe(req, res, next) {
 
     const roles = await roleQueries.getRolesForUser(user.id);
 
+    // Count owned tournaments for context-based UI
+    const ownedResult = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM tournaments WHERE created_by = $1',
+      [user.id]
+    );
+    const ownedTournamentCount = ownedResult.rows[0]?.count || 0;
+
     const response = {
       user: {
         id: user.id,
@@ -489,6 +497,8 @@ async function getMe(req, res, next) {
         certificationBody: user.certification_body || '',
         certificationClass: user.certification_class || '',
         settings: user.settings || {},
+        timezone: user.timezone || 'America/New_York',
+        ownedTournamentCount,
       },
     };
 
@@ -510,7 +520,7 @@ async function getMe(req, res, next) {
  */
 async function updateMe(req, res, next) {
   try {
-    const { firstName, lastName, phone, dateOfBirth } = req.body;
+    const { firstName, lastName, phone, dateOfBirth, timezone } = req.body;
 
     // Map camelCase request body → snake_case DB columns
     const updates = {};
@@ -518,6 +528,7 @@ async function updateMe(req, res, next) {
     if (lastName !== undefined) updates.last_name = lastName;
     if (phone !== undefined) updates.phone = phone;
     if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
+    if (timezone !== undefined) updates.timezone = timezone;
 
     const user = await userQueries.updateProfile(req.user.id, updates);
     if (!user) {

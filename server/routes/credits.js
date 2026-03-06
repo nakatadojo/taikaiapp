@@ -2,7 +2,6 @@ const express = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
 const creditsController = require('../controllers/creditsController');
 
 const router = express.Router();
@@ -21,7 +20,6 @@ router.get('/transactions', creditsController.getTransactions);
 
 // POST /api/credits/checkout — Purchase credits via Stripe
 router.post('/checkout',
-  requireRole('event_director'),
   [body('packageId').notEmpty().withMessage('Package ID is required')],
   validate,
   creditsController.checkout
@@ -29,7 +27,6 @@ router.post('/checkout',
 
 // POST /api/credits/confirm — Confirm credit purchase
 router.post('/confirm',
-  requireRole('event_director'),
   [body('sessionId').notEmpty().withMessage('Session ID is required')],
   validate,
   creditsController.confirm

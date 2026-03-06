@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/pricingPeriodController');
 
 const router = express.Router();
@@ -11,25 +11,25 @@ router.get('/:id/pricing-periods', controller.list);
 // Director
 router.post('/:id/pricing-periods',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.create
 );
 
 router.put('/:id/pricing-periods/bulk',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.bulkReplace
 );
 
 router.put('/:id/pricing-periods/:pid',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.update
 );
 
 router.delete('/:id/pricing-periods/:pid',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   controller.remove
 );
 

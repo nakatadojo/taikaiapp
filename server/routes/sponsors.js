@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const sponsorController = require('../controllers/sponsorController');
 
 const router = express.Router();
@@ -13,37 +13,37 @@ router.get('/:id/sponsors/public', sponsorController.getPublicSponsors);
 // Reorder must come before /:sponsorId to avoid treating "reorder" as a UUID
 router.put('/:id/sponsors/reorder',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.reorderSponsors
 );
 
 router.post('/:id/sponsors',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.createSponsor
 );
 
 router.get('/:id/sponsors',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.getSponsors
 );
 
 router.put('/:id/sponsors/:sponsorId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.updateSponsor
 );
 
 router.delete('/:id/sponsors/:sponsorId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.deleteSponsor
 );
 
 router.patch('/:id/sponsors/:sponsorId/toggle',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   sponsorController.toggleSponsorVisibility
 );
 

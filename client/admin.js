@@ -195,6 +195,7 @@ function switchView(view) {
     case 'payments': loadPayments(); break;
     case 'discounts': loadDiscounts(); break;
     case 'templates': break; // static content
+    case 'judge-analytics': loadAdminJudgeAnalytics(); break;
   }
 
   lucide.createIcons();
@@ -653,4 +654,84 @@ function updatePasswordStrength(value) {
   bar.style.width = (score * 20) + '%';
   bar.style.background = colors[score] || '';
   if (text) text.textContent = levels[score] || '';
+}
+
+// ── Judge Performance Analytics (Cross-Tournament) ─────────────────────────
+
+async function loadAdminJudgeAnalytics() {
+  const loading = document.getElementById('admin-ja-loading');
+  const empty = document.getElementById('admin-ja-empty');
+  const content = document.getElementById('admin-ja-content');
+
+  if (loading) loading.classList.remove('hidden');
+  if (empty) empty.classList.add('hidden');
+  if (content) content.classList.add('hidden');
+
+  try {
+    const data = await apiFetch('/api/admin/judge-analytics');
+
+    if (loading) loading.classList.add('hidden');
+
+    if (!data.judges || data.judges.length === 0) {
+      if (empty) empty.classList.remove('hidden');
+      return;
+    }
+
+    if (content) content.classList.remove('hidden');
+
+    // Summary
+    document.getElementById('admin-ja-total-judges').textContent = data.summary.totalJudges || 0;
+    document.getElementById('admin-ja-total-votes').textContent = data.summary.totalVotes || 0;
+
+    const overallEl = document.getElementById('admin-ja-overall-consistency');
+    const overallVal = data.summary.overallConsistency || 0;
+    overallEl.textContent = overallVal + '%';
+    overallEl.style.color = jaConsistencyColor(overallVal);
+
+    // Per-judge table
+    const tbody = document.getElementById('admin-ja-tbody');
+    tbody.innerHTML = data.judges.map(j => {
+      const consistency = parseFloat(j.consistency_rate) || 0;
+      const consistencyColor = jaConsistencyColor(consistency);
+      const avgTime = j.avg_vote_duration != null ? parseFloat(j.avg_vote_duration).toFixed(1) + 's' : '--';
+
+      let biasHtml = '<span style="color:var(--text-muted);">None</span>';
+      if (j.biasFlags && j.biasFlags.length > 0) {
+        biasHtml = j.biasFlags.map(b =>
+          `<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(239,68,68,0.15);color:#ef4444;margin:2px;" title="Voted for ${esc(b.dojo)} ${b.rate}% of the time (${b.votesForDojo}/${b.matchesWithDojo} matches)">${esc(b.dojo)} (${b.rate}%)</span>`
+        ).join(' ');
+      }
+
+      return `<tr>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);font-weight:600;">${esc(j.judge_name)}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);">${j.tournaments_judged || 0}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);">${j.total_votes}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);">
+          <span style="font-weight:700;color:${consistencyColor};">${consistency}%</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:4px;">(${j.votes_with_majority}/${j.total_votes})</span>
+        </td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);">${avgTime}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid var(--glass-border);">${biasHtml}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    if (loading) loading.classList.add('hidden');
+    if (empty) {
+      empty.classList.remove('hidden');
+      empty.innerHTML = `<h3>Failed to load analytics</h3><p>${esc(err.message || 'Unknown error')}</p>`;
+    }
+    console.error('[Admin Judge Analytics]', err);
+  }
+}
+
+function jaConsistencyColor(pct) {
+  if (pct >= 80) return '#22c55e';
+  if (pct >= 60) return '#eab308';
+  return '#ef4444';
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
 }

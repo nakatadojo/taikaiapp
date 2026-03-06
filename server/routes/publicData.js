@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const publicDataController = require('../controllers/publicDataController');
 const customTabController = require('../controllers/customTabController');
 
@@ -16,32 +16,32 @@ router.get('/:id/custom-tabs', customTabController.getCustomTabs);
 
 router.post('/:id/custom-tabs',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   customTabController.createCustomTab
 );
 
 router.put('/:id/custom-tabs/reorder',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   customTabController.reorderCustomTabs
 );
 
 router.put('/:id/custom-tabs/:tabId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   customTabController.updateCustomTab
 );
 
 router.delete('/:id/custom-tabs/:tabId',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   customTabController.deleteCustomTab
 );
 
 // ── Section visibility ──────────────────────────────────────────────────────
 router.put('/:id/section-visibility',
   requireAuth,
-  requireRole('event_director'),
+  requireTournamentOwner,
   customTabController.updateSectionVisibility
 );
 

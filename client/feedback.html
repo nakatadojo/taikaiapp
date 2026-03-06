@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tournament Feedback — Taikai</title>
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f0f14;
+            --bg-secondary: #1a1a24;
+            --accent: #e67e22;
+            --accent-hover: #d35400;
+            --text: #ffffff;
+            --text-muted: rgba(255,255,255,0.6);
+            --text-dim: rgba(255,255,255,0.35);
+            --glass: rgba(255,255,255,0.06);
+            --glass-border: rgba(255,255,255,0.08);
+            --green: #22c55e;
+            --star-color: #f59e0b;
+            --star-empty: rgba(255,255,255,0.15);
+            --radius: 14px;
+            --radius-sm: 10px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+
+        /* Brand */
+        .brand {
+            text-align: center; margin-bottom: 32px;
+        }
+        .brand-name {
+            font-size: 28px; font-weight: 800; letter-spacing: 3px; color: var(--accent);
+        }
+
+        /* Card */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 32px;
+        }
+        .card-icon {
+            text-align: center; font-size: 48px; margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 22px; font-weight: 700; text-align: center; margin-bottom: 8px;
+        }
+        .card-subtitle {
+            font-size: 14px; color: var(--text-muted); text-align: center; margin-bottom: 24px; line-height: 1.6;
+        }
+
+        /* Questions */
+        .question-block {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .question-block:last-of-type {
+            border-bottom: none;
+            margin-bottom: 16px;
+            padding-bottom: 0;
+        }
+        .question-text {
+            font-size: 15px; font-weight: 600; margin-bottom: 4px;
+        }
+        .question-required {
+            color: var(--accent); font-size: 12px; margin-bottom: 12px;
+        }
+
+        /* Star Rating */
+        .star-rating {
+            display: flex; gap: 6px; margin-top: 8px;
+        }
+        .star-rating .star {
+            font-size: 32px;
+            cursor: pointer;
+            color: var(--star-empty);
+            transition: color 0.15s, transform 0.15s;
+            user-select: none;
+            line-height: 1;
+        }
+        .star-rating .star:hover,
+        .star-rating .star.active {
+            color: var(--star-color);
+        }
+        .star-rating .star:hover {
+            transform: scale(1.15);
+        }
+        .star-label {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-top: 6px;
+            min-height: 18px;
+        }
+
+        /* Text Input */
+        .feedback-textarea {
+            width: 100%; padding: 12px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text); font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            transition: border-color 0.2s; outline: none;
+        }
+        .feedback-textarea:focus { border-color: var(--accent); }
+
+        /* Respondent Info */
+        .respondent-section {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: var(--glass);
+            border-radius: var(--radius-sm);
+        }
+        .respondent-section h4 {
+            font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-muted);
+        }
+        .form-row {
+            display: flex; gap: 12px; flex-wrap: wrap;
+        }
+        .form-row .form-field {
+            flex: 1; min-width: 200px;
+        }
+        .form-field label {
+            display: block; font-size: 12px; font-weight: 600;
+            margin-bottom: 6px; color: var(--text-dim);
+        }
+        .form-input {
+            width: 100%; padding: 10px 14px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text); font-size: 14px;
+            transition: border-color 0.2s; outline: none;
+        }
+        .form-input:focus { border-color: var(--accent); }
+
+        /* Button */
+        .btn {
+            display: block; width: 100%; padding: 14px;
+            border-radius: 10px; font-size: 15px; font-weight: 600;
+            cursor: pointer; border: none; transition: all 0.2s;
+            text-align: center;
+        }
+        .btn-accent { background: var(--accent); color: #fff; }
+        .btn-accent:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 4px 20px rgba(230,126,34,0.25); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* States */
+        .spinner {
+            width: 32px; height: 32px; border: 3px solid var(--glass-border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-state { text-align: center; padding: 40px 0; color: var(--text-muted); }
+
+        .success-icon {
+            width: 64px; height: 64px; border-radius: 50%;
+            background: rgba(34,197,94,0.15);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 16px; font-size: 32px; color: var(--green);
+        }
+
+        .error-msg {
+            background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+            color: #f87171; padding: 12px 16px; border-radius: var(--radius-sm);
+            font-size: 14px; margin-bottom: 16px; text-align: center;
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 16px; }
+            .card { padding: 24px; }
+            .star-rating .star { font-size: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="brand">
+        <span class="brand-name">TAIKAI</span>
+    </div>
+    <div class="card" id="feedback-card">
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <div>Loading feedback form...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+(async function() {
+    'use strict';
+
+    const card = document.getElementById('feedback-card');
+    const STAR_LABELS = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+    // Get form ID from URL
+    const params = new URLSearchParams(location.search);
+    const formId = params.get('form');
+
+    if (!formId) {
+        card.innerHTML = `
+            <div class="card-icon">&#9888;&#65039;</div>
+            <div class="card-title">Invalid Link</div>
+            <div class="card-subtitle">This feedback link is invalid or missing a form ID. Please use the link from your email.</div>
+        `;
+        return;
+    }
+
+    // Fetch form
+    let form;
+    try {
+        const res = await fetch('/api/feedback/' + encodeURIComponent(formId));
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Form not found');
+        }
+        const data = await res.json();
+        form = data.form;
+    } catch (err) {
+        card.innerHTML = `
+            <div class="card-icon">&#9888;&#65039;</div>
+            <div class="card-title">Form Not Available</div>
+            <div class="card-subtitle">${esc(err.message)}</div>
+        `;
+        return;
+    }
+
+    // Track answers
+    const answers = {};
+
+    // Render form
+    function renderForm() {
+        const questions = form.questions || [];
+        let questionsHtml = '';
+
+        for (const q of questions) {
+            const reqLabel = q.required ? '<div class="question-required">Required</div>' : '';
+
+            if (q.type === 'rating') {
+                const stars = [1, 2, 3, 4, 5].map(n =>
+                    `<span class="star" data-qid="${esc(q.id)}" data-value="${n}">&#9733;</span>`
+                ).join('');
+
+                questionsHtml += `
+                    <div class="question-block">
+                        <div class="question-text">${esc(q.text)}</div>
+                        ${reqLabel}
+                        <div class="star-rating" data-qid="${esc(q.id)}">
+                            ${stars}
+                        </div>
+                        <div class="star-label" id="star-label-${esc(q.id)}"></div>
+                    </div>
+                `;
+            } else {
+                questionsHtml += `
+                    <div class="question-block">
+                        <div class="question-text">${esc(q.text)}</div>
+                        ${reqLabel}
+                        <textarea class="feedback-textarea" data-qid="${esc(q.id)}" placeholder="Type your response here..."></textarea>
+                    </div>
+                `;
+            }
+        }
+
+        card.innerHTML = `
+            <div class="card-icon">&#128221;</div>
+            <div class="card-title">${esc(form.tournament_name)}</div>
+            <div class="card-subtitle">We'd love to hear your feedback about this event. Your responses help us improve.</div>
+
+            <div id="error-box" style="display:none;" class="error-msg"></div>
+
+            <div id="questions-container">
+                ${questionsHtml}
+            </div>
+
+            <div class="respondent-section">
+                <h4>Your Information (Optional)</h4>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="resp-name">Name</label>
+                        <input type="text" id="resp-name" class="form-input" placeholder="Your name">
+                    </div>
+                    <div class="form-field">
+                        <label for="resp-email">Email</label>
+                        <input type="email" id="resp-email" class="form-input" placeholder="your@email.com">
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-accent" id="submit-btn">Submit Feedback</button>
+        `;
+
+        // Wire up star ratings
+        card.querySelectorAll('.star-rating').forEach(container => {
+            const qid = container.dataset.qid;
+            const stars = container.querySelectorAll('.star');
+            const label = document.getElementById('star-label-' + qid);
+
+            function setRating(value) {
+                answers[qid] = { questionId: qid, rating: value };
+                stars.forEach(s => {
+                    const v = parseInt(s.dataset.value);
+                    s.classList.toggle('active', v <= value);
+                });
+                if (label) label.textContent = STAR_LABELS[value] || '';
+            }
+
+            stars.forEach(star => {
+                star.addEventListener('click', () => {
+                    setRating(parseInt(star.dataset.value));
+                });
+                star.addEventListener('mouseenter', () => {
+                    const v = parseInt(star.dataset.value);
+                    stars.forEach(s => {
+                        s.style.color = parseInt(s.dataset.value) <= v ? 'var(--star-color)' : '';
+                    });
+                    if (label) label.textContent = STAR_LABELS[v] || '';
+                });
+            });
+
+            container.addEventListener('mouseleave', () => {
+                const current = answers[qid]?.rating || 0;
+                stars.forEach(s => {
+                    s.style.color = '';
+                    s.classList.toggle('active', parseInt(s.dataset.value) <= current);
+                });
+                if (label) label.textContent = current ? STAR_LABELS[current] : '';
+            });
+        });
+
+        // Wire up text areas
+        card.querySelectorAll('.feedback-textarea').forEach(ta => {
+            const qid = ta.dataset.qid;
+            ta.addEventListener('input', () => {
+                answers[qid] = { questionId: qid, text: ta.value };
+            });
+        });
+
+        // Submit button
+        document.getElementById('submit-btn').addEventListener('click', submitFeedback);
+    }
+
+    async function submitFeedback() {
+        const btn = document.getElementById('submit-btn');
+        const errorBox = document.getElementById('error-box');
+        errorBox.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+
+        const answersArray = Object.values(answers);
+        const respondent_name = document.getElementById('resp-name')?.value?.trim() || '';
+        const respondent_email = document.getElementById('resp-email')?.value?.trim() || '';
+
+        try {
+            const res = await fetch('/api/feedback/' + encodeURIComponent(formId) + '/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    answers: answersArray,
+                    respondent_name,
+                    respondent_email,
+                }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to submit feedback');
+            }
+
+            // Show success
+            card.innerHTML = `
+                <div class="success-icon">&#10003;</div>
+                <div class="card-title">Thank You!</div>
+                <div class="card-subtitle">Your feedback for ${esc(form.tournament_name)} has been submitted successfully. We appreciate you taking the time to share your thoughts.</div>
+            `;
+        } catch (err) {
+            errorBox.textContent = err.message;
+            errorBox.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Submit Feedback';
+        }
+    }
+
+    renderForm();
+})();
+</script>
+</body>
+</html>

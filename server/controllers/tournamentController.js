@@ -154,7 +154,7 @@ async function createTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, timezone,
     } = req.body;
 
     // If slug provided, validate uniqueness
@@ -170,7 +170,7 @@ async function createTournament(req, res, next) {
       createdBy: req.user.id,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, timezone,
     });
     res.status(201).json({ tournament });
   } catch (err) {
@@ -197,7 +197,7 @@ async function updateTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes, registrationSettings,
+      sanctioningBody, collectTshirtSizes, registrationSettings, timezone,
     } = req.body;
 
     const updates = {};
@@ -218,6 +218,7 @@ async function updateTournament(req, res, next) {
     if (registrationDeadline !== undefined) updates.registration_deadline = registrationDeadline;
     if (sanctioningBody !== undefined) updates.sanctioning_body = sanctioningBody;
     if (collectTshirtSizes !== undefined) updates.collect_tshirt_sizes = collectTshirtSizes;
+    if (timezone !== undefined) updates.timezone = timezone;
     if (registrationSettings !== undefined) {
       // Validate structure
       if (typeof registrationSettings !== 'object' || registrationSettings === null) {

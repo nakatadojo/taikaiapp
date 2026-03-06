@@ -66,6 +66,10 @@ app.use('/api/tournaments', require('./routes/certificates'));
 app.use('/api/tournaments', require('./routes/teams'));
 app.use('/api/tournaments', require('./routes/medicalIncidents'));
 app.use('/api/tournaments', require('./routes/sponsors'));
+app.use('/api/feedback', require('./routes/feedback'));
+app.use('/api/tournaments', require('./routes/feedback').tournamentRouter);
+app.use('/api/tournaments', require('./routes/judgeAnalytics'));
+app.use('/api/admin', require('./routes/judgeAnalyticsAdmin'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
@@ -87,7 +91,7 @@ app.use(express.static(CLIENT_DIR));
 
 // Route aliases
 app.get('/admin', (req, res) => {
-  res.sendFile('index.html', sendOpts);
+  res.sendFile('admin.html', sendOpts);
 });
 app.get('/register', (req, res) => {
   res.sendFile('register.html', sendOpts);
@@ -109,6 +113,9 @@ app.get('/waiver', (req, res) => {
 });
 app.get('/staff', (req, res) => {
   res.sendFile('staff.html', sendOpts);
+});
+app.get('/feedback', (req, res) => {
+  res.sendFile('feedback.html', sendOpts);
 });
 
 // Tournament Builder Wizard

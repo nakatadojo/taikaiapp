@@ -399,6 +399,26 @@ async function _syncTeamsToServer() {
     }
 }
 
+async function _syncJudgeVotesToServer() {
+    if (!currentTournamentId) return;
+    const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+    if (judgeVoteLog.length === 0) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-votes/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ votes: judgeVoteLog }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Clear the log after successful sync
+        localStorage.setItem(_scopedKey('judgeVoteLog'), '[]');
+        console.log('[Judge Analytics] Synced', judgeVoteLog.length, 'votes to server');
+    } catch (err) {
+        console.warn('[Judge Analytics] Sync failed:', err.message);
+        // Don't clear — will retry on next debounce
+    }
+}
+
 async function _loadTeamsFromServer() {
     if (!currentTournamentId) return;
     try {
@@ -1109,6 +1129,12 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         }
         if (view === 'settings-sponsors') {
             loadSponsorsView();
+        }
+        if (view === 'settings-feedback') {
+            loadFeedbackView();
+        }
+        if (view === 'judge-analytics') {
+            loadJudgeAnalyticsView();
         }
     });
 });
@@ -12332,6 +12358,14 @@ window.openKataFlagsTVDisplay = openKataFlagsTVDisplay;
 function kataFlagsVote(judgeIndex, corner) {
     kataFlagsJudgeVotes[judgeIndex] = corner;
 
+    // Track vote timestamps for decision speed analytics
+    if (!window._kataFlagsVoteTimestamps) window._kataFlagsVoteTimestamps = {};
+    if (corner) {
+        window._kataFlagsVoteTimestamps[judgeIndex] = Date.now();
+    } else {
+        delete window._kataFlagsVoteTimestamps[judgeIndex];
+    }
+
     // Update UI - use the stored scoreboard config
     const voteDisplay = document.getElementById(`judge-${judgeIndex}-vote`);
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
@@ -12430,6 +12464,7 @@ function updateKataFlagsTVDisplay() {
 
 function kataFlagsResetVotes() {
     kataFlagsJudgeVotes.fill(null);
+    window._kataFlagsVoteTimestamps = {}; // reset vote timestamps for analytics
 
     // Reset UI
     kataFlagsJudgeVotes.forEach((_, i) => {
@@ -12617,6 +12652,57 @@ function kataFlagsDeclareWinner() {
         winNote: `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`
     });
     localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+
+    // ── Judge Vote Analytics Logging ──────────────────────────────────────
+    // Store each judge's vote for analytics (does NOT block the UI flow)
+    try {
+        const majorityVote = corner1Votes > corner2Votes ? 'corner1' : 'corner2';
+        const voteTimestamps = window._kataFlagsVoteTimestamps || {};
+        const tsValues = Object.values(voteTimestamps);
+        const firstVoteTs = tsValues.length > 0 ? Math.min(...tsValues) : null;
+        const lastVoteTs = tsValues.length > 0 ? Math.max(...tsValues) : null;
+        // Approximate decision speed: time spread between first and last judge vote
+        const voteDurationSeconds = (firstVoteTs && lastVoteTs && lastVoteTs > firstVoteTs)
+            ? Math.round((lastVoteTs - firstVoteTs) / 100) / 10
+            : null;
+
+        const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+
+        for (let ji = 0; ji < kataFlagsJudgeVotes.length; ji++) {
+            const judgeVote = kataFlagsJudgeVotes[ji];
+            if (!judgeVote) continue; // skip judges who didn't vote
+
+            // Determine the competitor's dojo for the corner this judge voted for
+            let competitorDojo = null;
+            if (judgeVote === 'corner1' && kataFlagsCurrentMatch?.redCorner) {
+                competitorDojo = kataFlagsCurrentMatch.redCorner.club || null;
+            } else if (judgeVote === 'corner2' && kataFlagsCurrentMatch?.blueCorner) {
+                competitorDojo = kataFlagsCurrentMatch.blueCorner.club || null;
+            }
+
+            judgeVoteLog.push({
+                matchId: window.currentMatchId || match.id,
+                divisionName: kataFlagsDivisionName || null,
+                judgeName: `Judge ${ji + 1}`,
+                judgeIndex: ji,
+                vote: judgeVote,
+                majorityVote: majorityVote,
+                votedWithMajority: judgeVote === majorityVote,
+                voteDurationSeconds: voteDurationSeconds,
+                competitorDojo: competitorDojo,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        localStorage.setItem(_scopedKey('judgeVoteLog'), JSON.stringify(judgeVoteLog));
+        window._kataFlagsVoteTimestamps = {}; // reset for next match
+
+        // Debounced sync to server
+        _debouncedSync('judgeVotes', _syncJudgeVotesToServer, 3000);
+    } catch (analyticsErr) {
+        console.warn('[Judge Analytics] Failed to log votes:', analyticsErr);
+    }
+    // ── End Judge Vote Analytics Logging ──────────────────────────────────
 
     // Show winner message with Next Match / Division Complete button
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
@@ -18923,6 +19009,93 @@ function exportMedicalIncidentsCSV() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// JUDGE PERFORMANCE ANALYTICS VIEW
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function loadJudgeAnalyticsView() {
+    if (!currentTournamentId) return;
+
+    const loading = document.getElementById('judge-analytics-loading');
+    const empty = document.getElementById('judge-analytics-empty');
+    const content = document.getElementById('judge-analytics-content');
+
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-analytics`, { credentials: 'include' });
+        if (!res.ok) {
+            // If 403 or 404, show empty state gracefully
+            if (res.status === 403 || res.status === 404) {
+                if (loading) loading.style.display = 'none';
+                if (empty) empty.style.display = 'block';
+                return;
+            }
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (loading) loading.style.display = 'none';
+
+        if (!data.judges || data.judges.length === 0) {
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+
+        if (content) content.style.display = 'block';
+
+        // Populate summary cards
+        document.getElementById('ja-total-matches').textContent = data.summary.totalMatches || 0;
+        document.getElementById('ja-total-votes').textContent = data.summary.totalVotes || 0;
+
+        const overallEl = document.getElementById('ja-overall-consistency');
+        const overallVal = data.summary.overallConsistency || 0;
+        overallEl.textContent = overallVal + '%';
+        overallEl.style.color = _jaConsistencyColor(overallVal);
+
+        // Populate per-judge table
+        const tbody = document.getElementById('ja-judges-tbody');
+        tbody.innerHTML = data.judges.map(j => {
+            const consistency = parseFloat(j.consistency_rate) || 0;
+            const consistencyColor = _jaConsistencyColor(consistency);
+            const avgTime = j.avg_vote_duration != null ? parseFloat(j.avg_vote_duration).toFixed(1) + 's' : '--';
+
+            let biasHtml = '--';
+            if (j.biasFlags && j.biasFlags.length > 0) {
+                biasHtml = j.biasFlags.map(b =>
+                    `<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(239,68,68,0.15);color:#ef4444;margin:2px;" title="Voted for ${escHtml(b.dojo)} ${b.rate}% of the time (${b.votesForDojo}/${b.matchesWithDojo} matches)">${escHtml(b.dojo)} (${b.rate}%)</span>`
+                ).join(' ');
+            }
+
+            return `<tr>
+                <td style="font-weight:600;">${escHtml(j.judge_name)}</td>
+                <td>${j.total_votes}</td>
+                <td>
+                    <span style="font-weight:700;color:${consistencyColor};">${consistency}%</span>
+                    <span style="font-size:11px;color:var(--text-muted);margin-left:4px;">(${j.votes_with_majority}/${j.total_votes})</span>
+                </td>
+                <td>${avgTime}</td>
+                <td>${biasHtml}</td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        if (loading) loading.style.display = 'none';
+        if (empty) {
+            empty.style.display = 'block';
+            empty.querySelector('p').textContent = 'Failed to load analytics: ' + err.message;
+        }
+        console.error('[Judge Analytics] Load failed:', err);
+    }
+}
+
+function _jaConsistencyColor(pct) {
+    if (pct >= 80) return '#22c55e'; // green
+    if (pct >= 60) return '#eab308'; // yellow
+    return '#ef4444'; // red
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SPONSORS & VENDORS MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -19179,3 +19352,299 @@ window.openTVDisplay = function() {
         window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ══ POST-TOURNAMENT FEEDBACK ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+
+let feedbackFormData = null;
+let feedbackQuestions = [];
+
+const DEFAULT_FEEDBACK_QUESTIONS = [
+    { id: 'q1', text: 'How would you rate the overall event organization?', type: 'rating', required: true },
+    { id: 'q2', text: 'How would you rate the judging quality?', type: 'rating', required: true },
+    { id: 'q3', text: 'How would you rate the venue and facilities?', type: 'rating', required: true },
+    { id: 'q4', text: 'How likely are you to participate in future events?', type: 'rating', required: true },
+    { id: 'q5', text: 'Any additional comments or suggestions?', type: 'text', required: false },
+];
+
+async function loadFeedbackView() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            feedbackFormData = data.form;
+        } else {
+            feedbackFormData = null;
+        }
+    } catch (err) {
+        console.error('Failed to load feedback form:', err);
+        feedbackFormData = null;
+    }
+
+    if (feedbackFormData) {
+        feedbackQuestions = feedbackFormData.questions || [];
+        document.getElementById('feedback-enabled').checked = feedbackFormData.enabled || false;
+        document.getElementById('feedback-delay-hours').value = feedbackFormData.delay_hours ?? 24;
+        document.getElementById('feedback-recipients').value = feedbackFormData.recipients || 'competitors';
+
+        // Show feedback link
+        const linkBox = document.getElementById('feedback-form-link-box');
+        const linkInput = document.getElementById('feedback-form-link');
+        if (linkBox && linkInput) {
+            const baseUrl = window.location.origin;
+            linkInput.value = `${baseUrl}/feedback?form=${feedbackFormData.id}`;
+            linkBox.style.display = 'block';
+        }
+    } else {
+        // Pre-populate with defaults
+        feedbackQuestions = JSON.parse(JSON.stringify(DEFAULT_FEEDBACK_QUESTIONS));
+        document.getElementById('feedback-enabled').checked = false;
+        document.getElementById('feedback-delay-hours').value = 24;
+        document.getElementById('feedback-recipients').value = 'competitors';
+        const linkBox = document.getElementById('feedback-form-link-box');
+        if (linkBox) linkBox.style.display = 'none';
+    }
+
+    renderFeedbackQuestions();
+    loadFeedbackStats();
+}
+
+function renderFeedbackQuestions() {
+    const container = document.getElementById('feedback-questions-list');
+
+    if (!feedbackQuestions.length) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No questions added. Click "Add Question" to get started.</p>';
+        return;
+    }
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+    feedbackQuestions.forEach((q, idx) => {
+        const typeLabel = q.type === 'rating' ? 'Star Rating (1-5)' : 'Text Response';
+        const reqLabel = q.required ? '<span style="color: var(--accent); font-size: 11px; font-weight: 600;">REQUIRED</span>' : '';
+        html += `
+        <div class="glass-card" style="padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                        <strong style="font-size: 14px;">Q${idx + 1}.</strong>
+                        <span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.06); color: var(--text-muted);">${escHtml(typeLabel)}</span>
+                        ${reqLabel}
+                    </div>
+                    <div style="font-size: 14px; color: var(--text-primary);">${escHtml(q.text)}</div>
+                </div>
+                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                    <button class="btn btn-secondary btn-sm" onclick="editFeedbackQuestion(${idx})" title="Edit" style="padding: 6px 10px;"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
+                    ${idx > 0 ? `<button class="btn btn-secondary btn-sm" onclick="moveFeedbackQuestion(${idx}, -1)" title="Move up" style="padding: 6px 10px;">&#9650;</button>` : ''}
+                    ${idx < feedbackQuestions.length - 1 ? `<button class="btn btn-secondary btn-sm" onclick="moveFeedbackQuestion(${idx}, 1)" title="Move down" style="padding: 6px 10px;">&#9660;</button>` : ''}
+                    <button class="btn btn-secondary btn-sm" onclick="removeFeedbackQuestion(${idx})" title="Remove" style="padding: 6px 10px; color: var(--danger, #e74c3c);">&#10005;</button>
+                </div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function addFeedbackQuestion() {
+    const id = 'q_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const text = prompt('Enter the question text:');
+    if (!text || !text.trim()) return;
+
+    const typeInput = prompt('Question type: "rating" (star rating 1-5) or "text" (free text)?', 'rating');
+    const type = (typeInput || '').trim().toLowerCase() === 'text' ? 'text' : 'rating';
+
+    const reqInput = prompt('Is this question required? (yes/no)', 'yes');
+    const required = (reqInput || '').trim().toLowerCase() !== 'no';
+
+    feedbackQuestions.push({ id, text: text.trim(), type, required });
+    renderFeedbackQuestions();
+}
+
+function editFeedbackQuestion(idx) {
+    const q = feedbackQuestions[idx];
+    if (!q) return;
+
+    const text = prompt('Edit question text:', q.text);
+    if (text === null) return;
+    if (!text.trim()) {
+        alert('Question text cannot be empty.');
+        return;
+    }
+
+    const typeInput = prompt('Question type: "rating" or "text"?', q.type);
+    const type = (typeInput || '').trim().toLowerCase() === 'text' ? 'text' : 'rating';
+
+    const reqInput = prompt('Is this question required? (yes/no)', q.required ? 'yes' : 'no');
+    const required = (reqInput || '').trim().toLowerCase() !== 'no';
+
+    feedbackQuestions[idx] = { ...q, text: text.trim(), type, required };
+    renderFeedbackQuestions();
+}
+
+function removeFeedbackQuestion(idx) {
+    if (!confirm('Remove this question?')) return;
+    feedbackQuestions.splice(idx, 1);
+    renderFeedbackQuestions();
+}
+
+function moveFeedbackQuestion(idx, direction) {
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= feedbackQuestions.length) return;
+    const temp = feedbackQuestions[idx];
+    feedbackQuestions[idx] = feedbackQuestions[newIdx];
+    feedbackQuestions[newIdx] = temp;
+    renderFeedbackQuestions();
+}
+
+async function saveFeedbackForm() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    const statusEl = document.getElementById('feedback-save-status');
+    statusEl.textContent = 'Saving...';
+    statusEl.style.color = 'var(--text-muted)';
+
+    const payload = {
+        questions: feedbackQuestions,
+        recipients: document.getElementById('feedback-recipients').value,
+        delay_hours: parseInt(document.getElementById('feedback-delay-hours').value) || 24,
+        enabled: document.getElementById('feedback-enabled').checked,
+    };
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to save');
+        }
+        const data = await res.json();
+        feedbackFormData = data.form;
+
+        // Update the feedback link
+        const linkBox = document.getElementById('feedback-form-link-box');
+        const linkInput = document.getElementById('feedback-form-link');
+        if (linkBox && linkInput && feedbackFormData) {
+            const baseUrl = window.location.origin;
+            linkInput.value = `${baseUrl}/feedback?form=${feedbackFormData.id}`;
+            linkBox.style.display = 'block';
+        }
+
+        statusEl.textContent = 'Saved successfully.';
+        statusEl.style.color = 'var(--green, #22c55e)';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+
+        loadFeedbackStats();
+    } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.style.color = '#e74c3c';
+    }
+}
+
+function copyFeedbackLink() {
+    const input = document.getElementById('feedback-form-link');
+    if (!input) return;
+    navigator.clipboard.writeText(input.value).then(() => {
+        if (typeof showToast === 'function') showToast('Link copied!');
+    }).catch(() => {
+        input.select();
+        document.execCommand('copy');
+    });
+}
+
+async function loadFeedbackStats() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    const container = document.getElementById('feedback-stats-container');
+
+    if (!feedbackFormData) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Save and enable the form to view responses.</p>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form/stats`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load stats');
+        const data = await res.json();
+        const stats = data.stats;
+
+        if (!stats || stats.totalResponses === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No responses yet.</p>';
+            return;
+        }
+
+        let html = `<div style="margin-bottom: 16px; font-size: 15px; font-weight: 600;">${stats.totalResponses} Response${stats.totalResponses !== 1 ? 's' : ''}</div>`;
+        html += '<div style="display: flex; flex-direction: column; gap: 16px;">';
+
+        for (const qs of stats.questionStats) {
+            html += '<div style="padding: 12px 16px; background: var(--glass); border-radius: 10px;">';
+            html += `<div style="font-size: 14px; font-weight: 600; margin-bottom: 6px;">${escHtml(qs.text)}</div>`;
+
+            if (qs.type === 'rating' && qs.averageRating != null) {
+                const pct = (qs.averageRating / 5) * 100;
+                const fullStars = Math.floor(qs.averageRating);
+                const starsHtml = renderStarsHtml(qs.averageRating);
+                html += `<div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">`;
+                html += `<div style="font-size: 24px; font-weight: 700; color: #f59e0b;">${qs.averageRating.toFixed(1)}</div>`;
+                html += `<div style="font-size: 18px; letter-spacing: 2px;">${starsHtml}</div>`;
+                html += `<div style="font-size: 12px; color: var(--text-muted);">${qs.totalAnswers} rating${qs.totalAnswers !== 1 ? 's' : ''}</div>`;
+                html += `</div>`;
+                // Rating bar
+                html += `<div style="margin-top: 8px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">`;
+                html += `<div style="height: 100%; width: ${pct}%; background: #f59e0b; border-radius: 3px;"></div>`;
+                html += `</div>`;
+            } else if (qs.type === 'text' && qs.textResponses && qs.textResponses.length > 0) {
+                html += `<div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">${qs.totalAnswers} text response${qs.totalAnswers !== 1 ? 's' : ''}</div>`;
+                const maxShow = 5;
+                const shown = qs.textResponses.slice(0, maxShow);
+                for (const t of shown) {
+                    html += `<div style="padding: 8px 12px; margin-bottom: 4px; background: var(--bg-secondary); border-radius: 8px; font-size: 13px; color: var(--text-muted); line-height: 1.5;">${escHtml(t)}</div>`;
+                }
+                if (qs.textResponses.length > maxShow) {
+                    html += `<div style="font-size: 12px; color: var(--text-dim);">... and ${qs.textResponses.length - maxShow} more</div>`;
+                }
+            } else {
+                html += `<div style="font-size: 13px; color: var(--text-dim);">No responses for this question.</div>`;
+            }
+
+            html += '</div>';
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load feedback stats:', err);
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Failed to load stats.</p>';
+    }
+}
+
+function renderStarsHtml(rating) {
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+        if (i <= Math.floor(rating)) {
+            html += '<span style="color: #f59e0b;">&#9733;</span>';
+        } else if (i - rating < 1 && i - rating > 0) {
+            html += '<span style="color: #f59e0b;">&#9733;</span>';
+        } else {
+            html += '<span style="color: rgba(255,255,255,0.15);">&#9733;</span>';
+        }
+    }
+    return html;
+}
+
+function exportFeedbackCSV() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+    window.open(`/api/tournaments/${tid}/feedback-form/export.csv`, '_blank');
+}
