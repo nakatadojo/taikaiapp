@@ -1213,7 +1213,7 @@ function clearPhoto() {
  *
  * WORKFLOW:
  * 1. Click "Add Competitor" button
- * 2. showCompetitorForm() - Opens form, loads clubs and events
+ * 2. showCompetitorForm() - Opens form, loads dojos and events
  * 3. User enters competitor info including Date of Birth
  * 4. calculateAge() shows real-time age preview (registration vs event)
  * 5. User selects one or more events to register for
@@ -1224,8 +1224,8 @@ function clearPhoto() {
  * - Date of Birth instead of age (stores DOB, calculates age dynamically)
  * - Multi-event registration (checkboxes for multiple events)
  * - Real-time age preview (shows age at registration AND event date)
- * - Club selection with "Add New Club" option
- * - Club logo upload when adding new club
+ * - Dojo selection with "Add New Dojo" option
+ * - Dojo logo upload when adding new dojo
  * - Photo upload with preview
  * - Event pricing display
  *
@@ -1261,21 +1261,21 @@ function clearPhoto() {
  * - Events stored as array of IDs: [1, 3, 5]
  * - Display shows event names in table
  *
- * CLUB INTEGRATION:
+ * DOJO INTEGRATION:
  * - loadClubDropdown() loads from clubs table
- * - "+ Add New Club" option appears at bottom
+ * - "+ Add New Dojo" option appears at bottom
  * - When selected, shows:
- *   - New club name input
- *   - Club logo upload (optional)
- * - New club auto-saved when competitor registered
- * - Club logo cached in competitor.clubLogo
+ *   - New dojo name input
+ *   - Dojo logo upload (optional)
+ * - New dojo auto-saved when competitor registered
+ * - Dojo logo cached in competitor.clubLogo
  *
  * ✅ FEATURES:
  * 1. ✅ DOB-based age calculation (replaces static age)
  * 2. ✅ Multi-event registration with pricing
  * 3. ✅ Real-time age preview in form
  * 4. ✅ Dynamic age display in table (respects tournament setting)
- * 5. ✅ Club management integration
+ * 5. ✅ Dojo management integration
  * 6. ✅ Photo upload with preview
  * 7. ✅ Legacy support for old data
  *
@@ -1741,7 +1741,7 @@ function loadClubDropdown() {
     // Combine and get unique, sorted list
     const allClubNames = [...new Set([...clubTableNames, ...competitorClubNames])].sort();
 
-    clubSelect.innerHTML = '<option value="">Select Club</option>';
+    clubSelect.innerHTML = '<option value="">Select Dojo</option>';
 
     allClubNames.forEach(clubName => {
         const option = document.createElement('option');
@@ -1750,10 +1750,10 @@ function loadClubDropdown() {
         clubSelect.appendChild(option);
     });
 
-    // Add "New Club" option
+    // Add "New Dojo" option
     const newOption = document.createElement('option');
     newOption.value = '__new__';
-    newOption.textContent = '+ Add New Club';
+    newOption.textContent = '+ Add New Dojo';
     clubSelect.appendChild(newOption);
 }
 
@@ -2903,10 +2903,10 @@ function generateTestCompetitors() {
     ];
 
     const clubPool = [
-        'Rising Sun Karate', 'Midwest Martial Arts Academy', 'Heartland Dojo',
-        'Sakura Karate Club', 'Iron Fist Martial Arts', 'Pacific Coast Karate',
+        'Rising Sun Karate', 'Midwest Martial Arts Dojo', 'Heartland Dojo',
+        'Sakura Karate Dojo', 'Iron Fist Martial Arts', 'Pacific Coast Karate',
         'Dragon Spirit Dojo', 'Mountain View Karate', 'Thunder Bay Martial Arts',
-        'Golden Tiger Academy'
+        'Golden Tiger Dojo'
     ];
 
     const defaultRanks = ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', '1st Dan', '2nd Dan', '3rd Dan'];
@@ -3359,7 +3359,7 @@ function generateTestCompetitors() {
     const teamMsg = teamCount > 0 ? ` (${teamCount} teams)` : '';
 
     showMessage(
-        `✓ Generated ${competitorsToCreate.length} test competitors${teamMsg} across ${Object.keys(perEventCount).length} events and ${clubNames.length} clubs. ${failCount > 0 ? `(${failCount} assignment failures)` : ''}`,
+        `✓ Generated ${competitorsToCreate.length} test competitors${teamMsg} across ${Object.keys(perEventCount).length} events and ${clubNames.length} dojos. ${failCount > 0 ? `(${failCount} assignment failures)` : ''}`,
         'success'
     );
 }
@@ -3419,7 +3419,7 @@ function showClubForm() {
 
     // Update form title
     const formTitle = document.querySelector('#club-form-container h3');
-    if (formTitle) formTitle.textContent = 'Club Registration';
+    if (formTitle) formTitle.textContent = 'Dojo Registration';
 }
 
 window.editClub = function(id) {
@@ -3427,7 +3427,7 @@ window.editClub = function(id) {
     const club = clubs.find(c => c.id === id);
 
     if (!club) {
-        showMessage('Club not found', 'error');
+        showMessage('Dojo not found', 'error');
         return;
     }
 
@@ -3453,7 +3453,7 @@ window.editClub = function(id) {
     // Show form and update title
     document.getElementById('club-form-container').classList.remove('hidden');
     const formTitle = document.querySelector('#club-form-container h3');
-    if (formTitle) formTitle.textContent = 'Edit Club';
+    if (formTitle) formTitle.textContent = 'Edit Dojo';
 };
 
 function hideClubForm() {
@@ -3502,7 +3502,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
     const existingClub = clubs.find(c => c.name.toLowerCase() === clubName.toLowerCase() && c.id !== editingClubId);
 
     if (existingClub) {
-        showMessage('A club with this name already exists', 'error');
+        showMessage('A dojo with this name already exists', 'error');
         return;
     }
 
@@ -3510,7 +3510,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         // Edit mode - update existing club
         const clubIndex = clubs.findIndex(c => c.id === editingClubId);
         if (clubIndex === -1) {
-            showMessage('Club not found', 'error');
+            showMessage('Dojo not found', 'error');
             return;
         }
 
@@ -3541,7 +3541,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
             }
         }
 
-        showMessage('Club updated successfully!');
+        showMessage('Dojo updated successfully!');
     } else {
         // Add mode - create new club
         const club = {
@@ -3552,7 +3552,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         };
 
         db.add('clubs', club);
-        showMessage('Club added successfully!');
+        showMessage('Dojo added successfully!');
     }
 
     hideClubForm();
@@ -3606,7 +3606,7 @@ function loadClubs(skipSync = false) {
     tbody.innerHTML = '';
 
     if (clubs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No clubs registered yet. Click "Add Club" to get started.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No dojos registered yet. Click "Add Dojo" to get started.</td></tr>';
         return;
     }
 
@@ -3647,14 +3647,14 @@ function deleteClub(id) {
 
     let confirmMsg = `Are you sure you want to delete "${club.name}"?`;
     if (memberCount > 0) {
-        confirmMsg += `\n\nWarning: This club has ${memberCount} registered competitor(s). They will still show the club name but the club logo will be removed.`;
+        confirmMsg += `\n\nWarning: This dojo has ${memberCount} registered competitor(s). They will still show the dojo name but the dojo logo will be removed.`;
     }
 
     if (confirm(confirmMsg)) {
         db.delete('clubs', id);
         loadClubs();
         loadClubDropdown();
-        showMessage('Club deleted successfully!');
+        showMessage('Dojo deleted successfully!');
     }
 }
 
@@ -3663,11 +3663,11 @@ function clearAllClubs() {
     const competitors = db.load('competitors');
     const totalMembers = competitors.length;
 
-    if (confirm(`⚠️ WARNING: This will delete ALL ${clubs.length} clubs!\n\n${totalMembers} competitors are registered. Their club names will remain but club logos will be removed.\n\nAre you sure?`)) {
+    if (confirm(`⚠️ WARNING: This will delete ALL ${clubs.length} dojos!\n\n${totalMembers} competitors are registered. Their dojo names will remain but dojo logos will be removed.\n\nAre you sure?`)) {
         db.clear('clubs');
         loadClubs();
         loadClubDropdown();
-        showMessage('All clubs deleted!');
+        showMessage('All dojos deleted!');
     }
 }
 
@@ -3780,14 +3780,14 @@ function deleteInstructor(id) {
 }
 
 function clearAllInstructors() {
-    if (confirm('⚠️ WARNING: This will delete ALL instructors and their clubs permanently!\n\nAre you absolutely sure you want to continue?')) {
+    if (confirm('⚠️ WARNING: This will delete ALL instructors and their dojos permanently!\n\nAre you absolutely sure you want to continue?')) {
         if (confirm('This action CANNOT be undone! Click OK to confirm deletion of all instructors.')) {
             db.clear('instructors');
             db.clear('clubs');
             loadInstructors();
             loadClubDropdown();
             loadDashboard();
-            showMessage('All instructors and clubs have been deleted!');
+            showMessage('All instructors and dojos have been deleted!');
         }
     }
 }
@@ -3829,7 +3829,7 @@ function updateClubSelects() {
         if (!select) return; // Skip if element doesn't exist
 
         const currentValue = select.value;
-        select.innerHTML = '<option value="">Select Club</option>';
+        select.innerHTML = '<option value="">Select Dojo</option>';
         clubs.forEach(club => {
             const option = document.createElement('option');
             option.value = club.name;
@@ -6127,7 +6127,7 @@ function loadDivisions() {
                             <th>Gender</th>
                             <th>Weight</th>
                             <th>Rank</th>
-                            <th>Club</th>
+                            <th>Dojo</th>
                             <th>Country</th>
                         </tr>
                     </thead>
@@ -6162,7 +6162,7 @@ function exportDivisions() {
         return;
     }
 
-    let csvContent = 'Event,Division,Name,Age,Gender,Weight,Rank,Club,Country\n';
+    let csvContent = 'Event,Division,Name,Age,Gender,Weight,Rank,Dojo,Country\n';
     let totalCompetitors = 0;
 
     Object.keys(divisions).forEach(eventId => {
@@ -8701,7 +8701,7 @@ function renderRankingListBracket(container, bracket) {
     html += '<thead><tr style="border-bottom: 2px solid var(--glass-border);">';
     html += '<th style="text-align: center; padding: 10px; width: 50px;">#</th>';
     html += '<th style="text-align: left; padding: 10px;">Competitor</th>';
-    html += '<th style="text-align: left; padding: 10px;">Club</th>';
+    html += '<th style="text-align: left; padding: 10px;">Dojo</th>';
     html += '<th style="text-align: center; padding: 10px; width: 100px;">Score</th>';
     html += '<th style="text-align: center; padding: 10px; width: 100px;">Status</th>';
     html += '</tr></thead><tbody>';
@@ -11840,7 +11840,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                                 ${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight || 'N/A'}kg | ${operatorRedCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorRedCompetitor.clubLogo ? `<img src="${operatorRedCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
-                                    <span>${operatorRedCompetitor.club || 'No Club'}</span>
+                                    <span>${operatorRedCompetitor.club || 'No Dojo'}</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -11884,7 +11884,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                                 ${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight || 'N/A'}kg | ${operatorBlueCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorBlueCompetitor.clubLogo ? `<img src="${operatorBlueCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
-                                    <span>${operatorBlueCompetitor.club || 'No Club'}</span>
+                                    <span>${operatorBlueCompetitor.club || 'No Dojo'}</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -12152,7 +12152,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner1TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor1.firstName} ${competitor1.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner1TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Club'}
+                        ${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Dojo'}
                     </div>
                     <div id="corner1-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner1TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner1TextColor}; opacity: 0.7;">Flags</div>
@@ -12169,7 +12169,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner2TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor2.firstName} ${competitor2.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner2TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Club'}
+                        ${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Dojo'}
                     </div>
                     <div id="corner2-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner2TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner2TextColor}; opacity: 0.7;">Flags</div>
@@ -12376,7 +12376,7 @@ function updateKataFlagsTVDisplay() {
 
         // Corner 1
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Club'}`,
+        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -12386,7 +12386,7 @@ function updateKataFlagsTVDisplay() {
 
         // Corner 2
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Club'}`,
+        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -12630,7 +12630,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
 
         // Keep current competitors and flag counts
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Club'}`,
+        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -12639,7 +12639,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         corner1Color: corner1Color,
 
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Club'}`,
+        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -16603,7 +16603,7 @@ const TAG_LABELS = {
     division: '{{division}} - Division Name',
     tournament: '{{tournament}} - Tournament Name',
     date: '{{date}} - Tournament Date',
-    club: '{{club}} - Club Name'
+    club: '{{club}} - Dojo Name'
 };
 
 function loadMergeTagEditors() {
@@ -17546,7 +17546,7 @@ function copyPublicSiteUrl() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ACADEMY VIEW — Coach dashboard for managing academy, members, registrations
+// DOJO VIEW — Coach dashboard for managing dojo, members, registrations
 // ═══════════════════════════════════════════════════════════════════════════
 
 let currentAcademy = null;
@@ -17642,14 +17642,14 @@ async function handleCreateAcademy(e) {
 
         const data = await res.json();
         if (!res.ok) {
-            showToast(data.error || 'Failed to create academy', 'error');
+            showToast(data.error || 'Failed to create dojo', 'error');
             return;
         }
 
         sessionStorage.setItem('academyPromptDismissed', '1');
         loadAcademyView();
     } catch (err) {
-        showToast('Error creating academy: ' + err.message, 'error');
+        showToast('Error creating dojo: ' + err.message, 'error');
     }
 }
 
@@ -17718,7 +17718,7 @@ async function handleEditAcademy() {
 
         const data = await res.json();
         if (!res.ok) {
-            showToast(data.error || 'Failed to update academy', 'error');
+            showToast(data.error || 'Failed to update dojo', 'error');
             return;
         }
 
@@ -17726,7 +17726,7 @@ async function handleEditAcademy() {
         renderAcademyProfile();
         hideEditAcademyForm();
     } catch (err) {
-        showToast('Error updating academy: ' + err.message, 'error');
+        showToast('Error updating dojo: ' + err.message, 'error');
     }
 }
 
@@ -17877,7 +17877,7 @@ async function handleRegisterAssistant(e) {
 }
 
 async function handleRemoveMember(userId) {
-    if (!confirm('Remove this member from your academy?')) return;
+    if (!confirm('Remove this member from your dojo?')) return;
 
     try {
         const res = await fetch(`/api/academies/${currentAcademy.id}/members/${userId}`, {

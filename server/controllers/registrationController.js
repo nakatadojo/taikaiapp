@@ -131,14 +131,14 @@ async function registerInstructor(req, res, next) {
 
 /**
  * POST /api/registrations/club
- * Public club registration.
+ * Public dojo registration.
  */
 async function registerClub(req, res, next) {
   try {
     const { name, country, city, email, tournamentId } = req.body;
 
     if (!name) {
-      return res.status(400).json({ error: 'Club name is required' });
+      return res.status(400).json({ error: 'Dojo name is required' });
     }
 
     const registration = await registrationQueries.createClubRegistration({
@@ -147,7 +147,7 @@ async function registerClub(req, res, next) {
     });
 
     res.status(201).json({
-      message: 'Club registration submitted successfully',
+      message: 'Dojo registration submitted successfully',
       registration: { id: registration.id },
     });
   } catch (err) {

@@ -107,7 +107,7 @@ async function exportRegistrantsCSV(req, res, next) {
     const registrants = await fetchRegistrants(tournament.id);
 
     const headers = [
-      'Name', 'Email', 'Academy', 'Belt', 'Experience', 'Gender',
+      'Name', 'Email', 'Dojo', 'Belt', 'Experience', 'Gender',
       'Date of Birth', 'T-Shirt Size', 'Events', 'Amount Paid',
       'Payment Status', 'Status', 'Registered',
     ];
@@ -206,7 +206,7 @@ async function exportRegistrantsPDF(req, res, next) {
       { header: '#',       width: 30 },
       { header: 'Name',    width: 120 },
       { header: 'Email',   width: 140 },
-      { header: 'Academy', width: 100 },
+      { header: 'Dojo', width: 100 },
       { header: 'Belt',    width: 60 },
       { header: 'Events',  width: 160 },
       { header: 'Paid',    width: 55 },
@@ -308,7 +308,7 @@ async function exportResultsCSV(req, res, next) {
     const results = await ResultsQueries.getByTournament(tournament.id);
 
     const headers = [
-      'Event', 'Division', 'Place', 'Name', 'Club', 'Score', 'Status',
+      'Event', 'Division', 'Place', 'Name', 'Dojo', 'Score', 'Status',
     ];
 
     const rows = [];
@@ -451,7 +451,7 @@ async function exportResultsPDF(req, res, next) {
         doc.text('Place', tableLeft, doc.y, { width: colWidths.place });
         const headerY = doc.y - 10;
         doc.text('Name', tableLeft + colWidths.place, headerY, { width: colWidths.name });
-        doc.text('Club', tableLeft + colWidths.place + colWidths.name, headerY, { width: colWidths.club });
+        doc.text('Dojo', tableLeft + colWidths.place + colWidths.name, headerY, { width: colWidths.club });
         doc.text('Score', tableLeft + colWidths.place + colWidths.name + colWidths.club, headerY, { width: colWidths.score });
         doc.moveDown(0.2);
 
@@ -519,7 +519,7 @@ async function exportCheckinCSV(req, res, next) {
     const competitors = await CheckinQueries.getByTournament(tournament.id);
 
     const headers = [
-      'Name', 'Academy', 'Events', 'Checked In', 'Check-in Time',
+      'Name', 'Dojo', 'Events', 'Checked In', 'Check-in Time',
       'Mat Called', 'Mat Call Time',
     ];
 

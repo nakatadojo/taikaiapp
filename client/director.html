@@ -1877,7 +1877,7 @@
             <div class="registrants-stats" id="registrants-stats"></div>
 
             <div class="registrants-filters">
-                <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or academy..." oninput="filterRegistrants()">
+                <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or dojo..." oninput="filterRegistrants()">
                 <select class="registrants-filter-select" id="registrants-event-filter" onchange="filterRegistrants()">
                     <option value="">All Events</option>
                 </select>
@@ -1907,7 +1907,7 @@
                             <th>#</th>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Academy</th>
+                            <th>Dojo</th>
                             <th>Belt</th>
                             <th>Events</th>
                             <th>Paid</th>
@@ -3529,7 +3529,7 @@
                 return;
             }
 
-            const headers = ['Name', 'Email', 'Academy', 'Belt', 'Experience', 'Gender', 'DOB', 'Events', 'Amount Paid', 'Status', 'Registered'];
+            const headers = ['Name', 'Email', 'Dojo', 'Belt', 'Experience', 'Gender', 'DOB', 'Events', 'Amount Paid', 'Status', 'Registered'];
             const rows = currentRegistrants.map(reg => {
                 const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim();
                 const events = (reg.events || []).filter(e => e.eventName).map(e => e.eventName).join('; ');

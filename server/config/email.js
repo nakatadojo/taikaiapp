@@ -80,7 +80,7 @@ async function sendAccountSetupEmail(email, token, coachName, academyName) {
   if (!resend) {
     console.log('\n📧 ACCOUNT SETUP EMAIL (dev mode)');
     console.log(`   To: ${email}`);
-    console.log(`   Coach: ${coachName}, Academy: ${academyName}`);
+    console.log(`   Coach: ${coachName}, Dojo: ${academyName}`);
     console.log(`   Link: ${setupUrl}\n`);
     return;
   }
@@ -109,7 +109,7 @@ async function sendAssistantCoachInviteEmail(email, token, academyName) {
   if (!resend) {
     console.log('\n📧 ASSISTANT COACH INVITE EMAIL (dev mode)');
     console.log(`   To: ${email}`);
-    console.log(`   Academy: ${academyName}`);
+    console.log(`   Dojo: ${academyName}`);
     console.log(`   Link: ${setupUrl}\n`);
     return;
   }
@@ -189,7 +189,7 @@ async function sendMembershipRequestEmail(coachEmail, applicantName, academyName
   if (!resend) {
     console.log('\n📧 MEMBERSHIP REQUEST EMAIL (dev mode)');
     console.log(`   To: ${coachEmail}`);
-    console.log(`   Applicant: ${applicantName}, Academy: ${academyName}\n`);
+    console.log(`   Applicant: ${applicantName}, Dojo: ${academyName}\n`);
     return;
   }
 

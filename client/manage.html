@@ -376,7 +376,7 @@
                 <div class="nav-group">
                     <div class="nav-group-label">Tournament</div>
                     <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
-                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Clubs</button>
+                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
                     <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
@@ -385,8 +385,8 @@
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
                 </div>
                 <div class="nav-group" id="academy-nav-group" style="display:none">
-                    <div class="nav-group-label">Academy</div>
-                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Academy</button>
+                    <div class="nav-group-label">Dojo</div>
+                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Dojo</button>
                 </div>
                 <div class="nav-group" id="settings-nav-group">
                     <div class="nav-group-label">Admin</div>
@@ -541,8 +541,8 @@
                         <div class="workflow-step">
                             <div class="step-number">1</div>
                             <div class="step-content">
-                                <h4>Register Instructors & Clubs</h4>
-                                <p>Add instructors with club logos first</p>
+                                <h4>Register Instructors & Dojos</h4>
+                                <p>Add instructors with dojo logos first</p>
                                 <button class="btn btn-secondary btn-small" onclick="navigateTo('instructors')">Go to Instructors</button>
                             </div>
                         </div>
@@ -670,23 +670,23 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="club">Club *</label>
+                                <label for="club">Dojo *</label>
                                 <select id="club" required onchange="handleClubSelection()">
-                                    <option value="">Select Club</option>
+                                    <option value="">Select Dojo</option>
                                 </select>
                             </div>
                             <div class="form-group" id="new-club-name-group" style="display: none;">
-                                <label for="new-club-name">New Club Name *</label>
-                                <input type="text" id="new-club-name" placeholder="Enter club name">
+                                <label for="new-club-name">New Dojo Name *</label>
+                                <input type="text" id="new-club-name" placeholder="Enter dojo name">
                             </div>
                             <div class="form-group" id="new-club-logo-group" style="display: none;">
-                                <label for="new-club-logo">Club Logo (optional)</label>
+                                <label for="new-club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="new-club-logo" accept="image/*">
                                 <div id="new-club-logo-preview" class="photo-preview hidden">
-                                    <img id="new-club-logo-preview-img" alt="Club Logo">
+                                    <img id="new-club-logo-preview-img" alt="Dojo Logo">
                                     <button type="button" class="btn btn-small btn-danger" onclick="clearNewClubLogo()">Remove</button>
                                 </div>
-                                <p class="hint">Upload your club's logo for identification</p>
+                                <p class="hint">Upload your dojo's logo for identification</p>
                             </div>
                             <div class="form-group">
                                 <label for="photo">Competitor Photo (optional)</label>
@@ -772,7 +772,7 @@
                                 <th>Gender</th>
                                 <th>Weight</th>
                                 <th>Rank</th>
-                                <th>Club</th>
+                                <th>Dojo</th>
                                 <th>Events</th>
                                 <th>Total Due</th>
                                 <th>Payment</th>
@@ -786,26 +786,26 @@
 
             <!-- Clubs View -->
             <section id="clubs-view" class="view">
-                <h2>Clubs</h2>
+                <h2>Dojos</h2>
                 <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                    <button class="btn btn-primary" onclick="showClubForm()">+ Add Club</button>
-                    <button class="btn btn-danger btn-small" onclick="clearAllClubs()">🗑️ Clear All Clubs</button>
+                    <button class="btn btn-primary" onclick="showClubForm()">+ Add Dojo</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllClubs()">🗑️ Clear All Dojos</button>
                 </div>
 
                 <div id="club-form-container" class="glass-panel hidden">
-                    <h3>Club Registration</h3>
+                    <h3>Dojo Registration</h3>
                     <form id="club-form">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label for="club-name">Club Name *</label>
-                                <input type="text" id="club-name" required placeholder="Enter club name">
+                                <label for="club-name">Dojo Name *</label>
+                                <input type="text" id="club-name" required placeholder="Enter dojo name">
                             </div>
                             <div class="form-group">
                                 <label for="club-country">Country</label>
                                 <input type="text" id="club-country" placeholder="e.g., USA, Japan">
                             </div>
                             <div class="form-group">
-                                <label for="club-logo">Club Logo (optional)</label>
+                                <label for="club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="club-logo" accept="image/*">
                                 <div id="club-logo-preview" class="photo-preview hidden">
                                     <img id="club-logo-preview-img" alt="Logo Preview">
@@ -814,19 +814,19 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Save Club</button>
+                            <button type="submit" class="btn btn-primary">Save Dojo</button>
                             <button type="button" class="btn btn-secondary" onclick="hideClubForm()">Cancel</button>
                         </div>
                     </form>
                 </div>
 
                 <div class="table-container">
-                    <input type="text" id="club-search" placeholder="Search clubs..." onkeyup="filterClubs()">
+                    <input type="text" id="club-search" placeholder="Search dojos..." onkeyup="filterClubs()">
                     <table id="clubs-table">
                         <thead>
                             <tr>
                                 <th>Logo</th>
-                                <th>Club Name</th>
+                                <th>Dojo Name</th>
                                 <th>Country</th>
                                 <th>Members</th>
                                 <th>Actions</th>
@@ -872,7 +872,7 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="instructorClub">Club Name *</label>
+                                <label for="instructorClub">Dojo Name *</label>
                                 <input type="text" id="instructorClub" required>
                             </div>
                             <div class="form-group">
@@ -884,7 +884,7 @@
                                 <input type="tel" id="instructorPhone">
                             </div>
                             <div class="form-group">
-                                <label for="instructor-club-logo">Club Logo (optional)</label>
+                                <label for="instructor-club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="instructor-club-logo" accept="image/*">
                                 <div id="instructor-club-logo-preview" class="photo-preview hidden">
                                     <img id="instructor-club-logo-preview-img" alt="Preview">
@@ -906,7 +906,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Rank</th>
-                                <th>Club</th>
+                                <th>Dojo</th>
                                 <th>Email</th>
                                 <th>Phone</th>
                                 <th>Actions</th>
@@ -1353,7 +1353,7 @@
                                         <option value="rank">Seeded by Rank (Higher ranks first)</option>
                                         <option value="age">Seeded by Age (Younger first)</option>
                                         <option value="country">Seeded by Country (Separate countries)</option>
-                                        <option value="club">Seeded by Club (Separate clubs)</option>
+                                        <option value="club">Seeded by Dojo (Separate dojos)</option>
                                     </select>
                                 </div>
 
@@ -1620,7 +1620,7 @@
                             <div class="form-group">
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="show-club-logo" checked>
-                                    Show Club Logo (Small Circle)
+                                    Show Dojo Logo (Small Circle)
                                 </label>
                             </div>
                             <div class="form-group">
@@ -1938,18 +1938,18 @@
                 </div>
             </section>
 
-            <!-- ═══ Academy View ═══ -->
+            <!-- ═══ Dojo View ═══ -->
             <section id="academy-view" class="view">
-                <!-- Setup Panel (shown when no academy exists) -->
+                <!-- Setup Panel (shown when no dojo exists) -->
                 <div id="academy-setup-panel" class="academy-setup hidden">
                     <div class="glass-panel" style="max-width: 600px; margin: 80px auto;">
-                        <h2>Set Up Your Academy</h2>
-                        <p class="hint" style="margin-bottom: 24px;">Create your academy to manage your team, register competitors, and track tournament participation.</p>
+                        <h2>Set Up Your Dojo</h2>
+                        <p class="hint" style="margin-bottom: 24px;">Create your dojo to manage your team, register competitors, and track tournament participation.</p>
                         <form id="academy-setup-form" onsubmit="handleCreateAcademy(event)">
                             <div class="form-grid" style="grid-template-columns: 1fr;">
                                 <div class="form-group">
-                                    <label>Academy Name <span class="required">*</span></label>
-                                    <input type="text" id="setup-academy-name" required placeholder="e.g. Tiger Martial Arts Academy">
+                                    <label>Dojo Name <span class="required">*</span></label>
+                                    <input type="text" id="setup-academy-name" required placeholder="e.g. Tiger Martial Arts Dojo">
                                 </div>
                                 <div class="form-group">
                                     <label>Address</label>
@@ -1970,13 +1970,13 @@
                                     <input type="url" id="setup-academy-website" placeholder="https://...">
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Create Academy</button>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Create Dojo</button>
                         </form>
                         <button class="btn btn-ghost" style="width: 100%; margin-top: 8px;" onclick="document.querySelector('[data-view=dashboard]').click()">Skip for Now</button>
                     </div>
                 </div>
 
-                <!-- Dashboard (shown when academy exists) -->
+                <!-- Dashboard (shown when dojo exists) -->
                 <div id="academy-dashboard" class="hidden">
                     <!-- Profile Card -->
                     <div class="glass-panel academy-profile-card" id="academy-profile-card">
@@ -2005,7 +2005,7 @@
                         <div id="academy-edit-form" class="hidden" style="margin-top: 16px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
                             <div class="form-grid" style="grid-template-columns: 1fr;">
                                 <div class="form-group">
-                                    <label>Academy Name</label>
+                                    <label>Dojo Name</label>
                                     <input type="text" id="edit-academy-name">
                                 </div>
                                 <div class="form-group">
@@ -2060,7 +2060,7 @@
                             <!-- Register Competitor -->
                             <div class="glass-panel">
                                 <h3>Register Competitor / Student</h3>
-                                <p class="hint" style="margin-bottom: 16px;">Creates an account for this student and adds them to your academy.</p>
+                                <p class="hint" style="margin-bottom: 16px;">Creates an account for this student and adds them to your dojo.</p>
                                 <form id="register-competitor-form" onsubmit="handleRegisterCompetitor(event)">
                                     <div class="form-group">
                                         <label>First Name <span class="required">*</span></label>
