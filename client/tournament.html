@@ -501,6 +501,27 @@
         color: var(--text-muted);
         margin-bottom: 20px;
     }
+    .cta-countdown {
+        text-align: center;
+        margin-bottom: 20px;
+        padding: 16px 0;
+        border-top: 1px solid var(--glass-border);
+        border-bottom: 1px solid var(--glass-border);
+    }
+    .cta-countdown-value {
+        font-size: 36px;
+        font-weight: 900;
+        color: var(--accent);
+        line-height: 1;
+    }
+    .cta-countdown-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 4px;
+    }
     .cta-price-info {
         display: flex;
         justify-content: center;
@@ -1195,6 +1216,23 @@
             noteHtml = '<div class="cta-note">This tournament has already taken place.</div>';
         }
 
+        // Days left countdown
+        let countdownHtml = '';
+        if (t.date && status.key !== 'completed') {
+            const tournamentDate = safeDate(t.date);
+            if (tournamentDate) {
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const daysLeft = Math.max(0, Math.ceil((tournamentDate - today) / (1000 * 60 * 60 * 24)));
+                countdownHtml = `
+                    <div class="cta-countdown">
+                        <div class="cta-countdown-value">${daysLeft}</div>
+                        <div class="cta-countdown-label">day${daysLeft !== 1 ? 's' : ''} left</div>
+                    </div>
+                `;
+            }
+        }
+
         let priceHtml = '';
         if (basePrice > 0) {
             priceHtml = `
@@ -1216,6 +1254,7 @@
         card.innerHTML = `
             <div class="cta-title">${status.key === 'open' ? 'Join This Tournament' : (status.key === 'closed' ? 'Registration' : 'Tournament Over')}</div>
             <div class="cta-subtitle">${status.key === 'open' ? 'Secure your spot today' : (status.key === 'closed' ? 'Not currently accepting registrations' : 'Thank you for participating')}</div>
+            ${countdownHtml}
             ${priceHtml}
             ${buttonHtml}
             ${noteHtml}
@@ -1300,10 +1339,10 @@
     window.selectRole = function(role) {
         const tournamentId = getTournamentId();
 
-        // Competitor / Parent → redirect to existing payment flow (handles its own auth)
+        // Competitor / Parent → redirect to registration flow (skips info, goes straight to dashboard/auth)
         if (role === 'competitor' || role === 'parent') {
             closeRoleOverlay();
-            window.location.href = `/register.html#info?tournamentId=${tournamentId}`;
+            window.location.href = `/register.html#dashboard?tournamentId=${tournamentId}`;
             return;
         }
 
