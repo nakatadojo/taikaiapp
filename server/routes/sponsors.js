@@ -8,7 +8,7 @@ const router = express.Router();
 // ── Public endpoint (no auth) ──────────────────────────────────────────────
 router.get('/:id/sponsors/public', sponsorController.getPublicSponsors);
 
-// ── Director endpoints (auth + event_director) ─────────────────────────────
+// ── Director endpoints (auth + tournament owner) ─────────────────────────────
 
 // Reorder must come before /:sponsorId to avoid treating "reorder" as a UUID
 router.put('/:id/sponsors/reorder',

@@ -146,7 +146,7 @@ async function getMyTournaments(req, res, next) {
 
 /**
  * POST /api/tournaments
- * Create a tournament (event_director or admin).
+ * Create a tournament (tournament owner or admin).
  */
 async function createTournament(req, res, next) {
   try {

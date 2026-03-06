@@ -41,7 +41,7 @@ async function signup(req, res, next) {
     const { email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName } = req.body;
 
     // Validate account type if provided
-    const validAccountTypes = ['competitor', 'guardian', 'both', 'event_director'];
+    const validAccountTypes = ['competitor', 'guardian', 'both'];
     const acctType = accountType && validAccountTypes.includes(accountType) ? accountType : null;
 
     // If accountType includes competitor, validate 18+ age
@@ -99,9 +99,7 @@ async function signup(req, res, next) {
 
     // Assign roles based on accountType (if provided for backward compat)
     let selectedRoles = [];
-    if (acctType === 'event_director') {
-      selectedRoles = ['event_director'];
-    } else if (acctType === 'competitor') {
+    if (acctType === 'competitor') {
       selectedRoles = ['competitor'];
     } else if (acctType === 'guardian') {
       selectedRoles = ['competitor'];

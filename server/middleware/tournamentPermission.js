@@ -7,7 +7,7 @@ const pool = require('../db/pool');
  * Usage: requireTournamentPermission('operate_scoreboard')
  *
  * Checks:
- * 1. User is the tournament creator (event_director) — always allowed
+ * 1. User is the tournament creator (tournament owner) — always allowed
  * 2. User has an approved tournament_members record with a staff_role_definition
  *    that includes the required permission
  *

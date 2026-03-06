@@ -13,7 +13,7 @@ router.post('/:formId/respond', feedbackController.submitResponse);
 
 module.exports = router;
 
-// ── Tournament-scoped routes (auth + event_director) ────────────────────────
+// ── Tournament-scoped routes (auth + tournament owner) ────────────────────────
 // These use /api/tournaments/:id/feedback-form — mounted on /api/tournaments
 
 const tournamentRouter = express.Router();

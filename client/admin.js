@@ -1,12 +1,13 @@
 /**
  * admin.js — Taikai Super Admin Portal
  *
- * Lean admin dashboard for managing event directors, payments, credit packages,
- * discount codes, tournaments overview, and templates.
+ * Admin dashboard for managing users, dojos, tournaments, payments,
+ * credit packages, discount codes, and templates.
  */
 
 // ── State ───────────────────────────────────────────────────────────────────
-let allDirectors = [];
+let allUsers = [];
+let allDojos = [];
 let allTournaments = [];
 let allDiscounts = [];
 let allPackages = [];
@@ -190,7 +191,8 @@ function switchView(view) {
   // Load data for the view
   switch (view) {
     case 'dashboard': loadDashboard(); break;
-    case 'directors': loadDirectors(); break;
+    case 'users': loadUsers(); break;
+    case 'dojos': loadDojos(); break;
     case 'tournaments': loadTournaments(); break;
     case 'payments': loadPayments(); break;
     case 'discounts': loadDiscounts(); break;
@@ -222,25 +224,25 @@ async function loadDashboard() {
     const data = await apiFetch('/api/super-admin/stats');
     const s = data.stats;
 
-    document.getElementById('stat-directors').textContent = s.total_directors || 0;
+    document.getElementById('stat-users').textContent = s.total_users || 0;
+    document.getElementById('stat-dojos').textContent = s.total_dojos || 0;
     document.getElementById('stat-active-tournaments').textContent = s.active_tournaments || 0;
-    document.getElementById('stat-total-tournaments').textContent = s.total_tournaments || 0;
     document.getElementById('stat-registrations').textContent = s.total_registrations || 0;
 
-    // Recent directors
-    const dirList = document.getElementById('recent-directors-list');
-    if (data.recentDirectors?.length) {
-      dirList.innerHTML = data.recentDirectors.map(d => `
+    // Recent users
+    const userList = document.getElementById('recent-users-list');
+    if (data.recentUsers?.length) {
+      userList.innerHTML = data.recentUsers.map(u => `
         <div class="recent-item">
           <div class="recent-item-info">
-            <strong>${d.first_name} ${d.last_name}</strong>
-            ${d.organization_name ? `<span class="hint">${d.organization_name}</span>` : ''}
+            <strong>${u.first_name || ''} ${u.last_name || ''}</strong>
+            <span class="hint">${u.email}</span>
           </div>
-          <span class="hint">${formatDate(d.created_at)}</span>
+          <span class="hint">${formatDate(u.created_at)}</span>
         </div>
       `).join('');
     } else {
-      dirList.innerHTML = '<p class="hint">No directors yet.</p>';
+      userList.innerHTML = '<p class="hint">No users yet.</p>';
     }
 
     // Recent tournaments
@@ -263,42 +265,44 @@ async function loadDashboard() {
   }
 }
 
-// ── Directors ───────────────────────────────────────────────────────────────
+// ── Users ───────────────────────────────────────────────────────────────────
 
-async function loadDirectors() {
+async function loadUsers() {
   try {
-    const data = await apiFetch('/api/super-admin/directors');
-    allDirectors = data.directors || [];
-    renderDirectors(allDirectors);
+    const data = await apiFetch('/api/super-admin/users');
+    allUsers = data.users || [];
+    renderUsers(allUsers);
   } catch (err) {
-    console.error('Directors load error:', err);
+    console.error('Users load error:', err);
   }
 }
 
-function renderDirectors(directors) {
-  const tbody = document.getElementById('directors-tbody');
-  const empty = document.getElementById('directors-empty');
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  const empty = document.getElementById('users-empty');
 
-  if (!directors.length) {
+  if (!users.length) {
     tbody.innerHTML = '';
     empty.style.display = '';
     return;
   }
   empty.style.display = 'none';
 
-  tbody.innerHTML = directors.map(d => `
+  tbody.innerHTML = users.map(u => `
     <tr>
-      <td><strong>${d.first_name} ${d.last_name}</strong></td>
-      <td>${d.organization_name || '—'}</td>
-      <td>${d.email}</td>
-      <td>${d.credit_balance || 0}</td>
-      <td>${d.tournament_count}</td>
-      <td>${formatDate(d.created_at)}</td>
+      <td><strong>${u.first_name || ''} ${u.last_name || ''}</strong></td>
+      <td>${u.email}</td>
+      <td>${u.dojo_name || '—'}</td>
+      <td>${u.tournament_count}</td>
+      <td>${formatDate(u.created_at)}</td>
       <td class="actions-cell">
-        <button class="btn btn-ghost btn-xs" onclick="showGrantCreditsForDirector('${d.id}', '${d.first_name} ${d.last_name}')" title="Grant Credits">
+        <button class="btn btn-ghost btn-xs" onclick="viewUserDetail('${u.id}')" title="View Details">
+          <i data-lucide="eye"></i>
+        </button>
+        <button class="btn btn-ghost btn-xs" onclick="showGrantCreditsForUser('${u.id}')" title="Grant Credits">
           <i data-lucide="coins"></i>
         </button>
-        <button class="btn btn-ghost btn-xs" onclick="impersonateDirector('${d.id}')" title="Login as Director">
+        <button class="btn btn-ghost btn-xs" onclick="impersonateUser('${u.id}')" title="Login as User">
           <i data-lucide="log-in"></i>
         </button>
       </td>
@@ -308,48 +312,153 @@ function renderDirectors(directors) {
   lucide.createIcons();
 }
 
-function filterDirectors() {
-  const q = document.getElementById('directors-search').value.toLowerCase();
-  const filtered = allDirectors.filter(d =>
-    `${d.first_name} ${d.last_name} ${d.email} ${d.organization_name || ''}`.toLowerCase().includes(q)
+function filterUsers() {
+  const q = document.getElementById('users-search').value.toLowerCase();
+  const filtered = allUsers.filter(u =>
+    `${u.first_name || ''} ${u.last_name || ''} ${u.email} ${u.dojo_name || ''}`.toLowerCase().includes(q)
   );
-  renderDirectors(filtered);
+  renderUsers(filtered);
 }
 
-async function impersonateDirector(userId) {
-  if (!confirm('This will log you in as this director. Continue?')) return;
+async function viewUserDetail(userId) {
+  const panel = document.getElementById('user-detail-panel');
+  const content = document.getElementById('user-detail-content');
+  const nameEl = document.getElementById('user-detail-name');
+
+  panel.classList.remove('hidden');
+  content.innerHTML = '<p class="hint">Loading...</p>';
+
+  try {
+    const data = await apiFetch(`/api/super-admin/users/${userId}`);
+    const u = data.user;
+    nameEl.textContent = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User Detail';
+
+    let html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div><span class="hint">Email:</span> ${u.email}</div>
+        <div><span class="hint">Verified:</span> ${u.emailVerified ? '✓ Yes' : '✗ No'}</div>
+        <div><span class="hint">Credits:</span> ${u.creditBalance || 0}</div>
+        <div><span class="hint">Joined:</span> ${formatDate(u.createdAt)}</div>
+      </div>
+    `;
+
+    // Tournaments owned
+    if (data.tournaments?.length) {
+      html += `<h4 style="margin:16px 0 8px;">Tournaments Owned (${data.tournaments.length})</h4>`;
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Status</th><th>Competitors</th><th>Created</th></tr></thead><tbody>';
+      data.tournaments.forEach(t => {
+        html += `<tr><td>${t.name}</td><td>${statusBadge(t.status)}</td><td>${t.competitor_count || 0}</td><td>${formatDate(t.created_at)}</td></tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+
+    // Dojos owned
+    if (data.dojos?.length) {
+      html += `<h4 style="margin:16px 0 8px;">Dojos Owned (${data.dojos.length})</h4>`;
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Location</th><th>Members</th></tr></thead><tbody>';
+      data.dojos.forEach(d => {
+        html += `<tr><td>${d.name}</td><td>${[d.city, d.state].filter(Boolean).join(', ') || '—'}</td><td>${d.member_count}</td></tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+
+    // Tournament memberships
+    if (data.memberships?.length) {
+      html += `<h4 style="margin:16px 0 8px;">Tournament Memberships (${data.memberships.length})</h4>`;
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Tournament</th><th>Role</th><th>Status</th><th>Applied</th></tr></thead><tbody>';
+      data.memberships.forEach(m => {
+        const role = m.staff_role ? `${m.role} (${m.staff_role})` : m.role;
+        html += `<tr><td>${m.tournament_name}</td><td>${role}</td><td>${statusBadge(m.status)}</td><td>${formatDate(m.applied_at)}</td></tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (!data.tournaments?.length && !data.dojos?.length && !data.memberships?.length) {
+      html += '<p class="hint" style="margin-top:12px;">No tournaments, dojos, or memberships found for this user.</p>';
+    }
+
+    content.innerHTML = html;
+  } catch (err) {
+    content.innerHTML = `<p class="hint">Failed to load user details: ${esc(err.error || err.message || 'Unknown error')}</p>`;
+  }
+}
+
+async function impersonateUser(userId) {
+  if (!confirm('This will log you in as this user. Continue?')) return;
   try {
     const data = await apiFetch(`/api/super-admin/impersonate/${userId}`, { method: 'POST' });
-    window.location.href = data.redirectUrl || '/director.html';
+    window.location.href = data.redirectUrl || '/';
   } catch (err) {
     alert('Failed to impersonate: ' + (err.error || err.message));
   }
 }
 
+// ── Dojos ───────────────────────────────────────────────────────────────────
+
+async function loadDojos() {
+  try {
+    const data = await apiFetch('/api/super-admin/dojos');
+    allDojos = data.dojos || [];
+    renderDojos(allDojos);
+  } catch (err) {
+    console.error('Dojos load error:', err);
+  }
+}
+
+function renderDojos(dojos) {
+  const tbody = document.getElementById('dojos-tbody');
+  const empty = document.getElementById('dojos-empty');
+
+  if (!dojos.length) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = dojos.map(d => `
+    <tr>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.owner_first_name || ''} ${d.owner_last_name || ''} ${d.owner_email ? `<span class="hint">(${d.owner_email})</span>` : ''}</td>
+      <td>${[d.city, d.state].filter(Boolean).join(', ') || '—'}</td>
+      <td>${d.member_count}</td>
+      <td>${formatDate(d.created_at)}</td>
+    </tr>
+  `).join('');
+}
+
+function filterDojos() {
+  const q = document.getElementById('dojos-search').value.toLowerCase();
+  const filtered = allDojos.filter(d =>
+    `${d.name} ${d.owner_first_name || ''} ${d.owner_last_name || ''} ${d.owner_email || ''} ${d.city || ''} ${d.state || ''}`.toLowerCase().includes(q)
+  );
+  renderDojos(filtered);
+}
+
 // ── Grant Credits ───────────────────────────────────────────────────────────
 
 function showGrantCreditsModal() {
-  document.getElementById('grant-director-select').innerHTML =
-    '<option value="">Select a director...</option>' +
-    allDirectors.map(d => `<option value="${d.id}">${d.first_name} ${d.last_name} (${d.email})</option>`).join('');
+  document.getElementById('grant-user-select').innerHTML =
+    '<option value="">Select a user...</option>' +
+    allUsers.map(u => `<option value="${u.id}">${u.first_name || ''} ${u.last_name || ''} (${u.email})</option>`).join('');
   document.getElementById('grant-amount').value = '';
   document.getElementById('grant-description').value = '';
   document.getElementById('grant-status').textContent = '';
   showEl('grant-credits-modal');
 }
 
-function showGrantCreditsForDirector(id, name) {
+function showGrantCreditsForUser(id) {
   showGrantCreditsModal();
-  document.getElementById('grant-director-select').value = id;
+  document.getElementById('grant-user-select').value = id;
 }
 
 async function handleGrantCredits(e) {
   e.preventDefault();
-  const userId = document.getElementById('grant-director-select').value;
+  const userId = document.getElementById('grant-user-select').value;
   const amount = parseInt(document.getElementById('grant-amount').value);
   const description = document.getElementById('grant-description').value;
 
-  if (!userId) { showFormStatus('grant-status', 'Please select a director', 'error'); return; }
+  if (!userId) { showFormStatus('grant-status', 'Please select a user', 'error'); return; }
 
   try {
     const data = await apiFetch('/api/super-admin/credits/grant', {
@@ -357,7 +466,7 @@ async function handleGrantCredits(e) {
       body: JSON.stringify({ userId, amount, description }),
     });
     showFormStatus('grant-status', `✓ ${data.message}. New balance: ${data.newBalance}`, 'success');
-    setTimeout(() => { closeModal('grant-credits-modal'); loadDirectors(); loadPayments(); }, 1500);
+    setTimeout(() => { closeModal('grant-credits-modal'); loadUsers(); loadPayments(); }, 1500);
   } catch (err) {
     showFormStatus('grant-status', err.error || 'Failed to grant credits', 'error');
   }

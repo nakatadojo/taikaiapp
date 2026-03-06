@@ -6,7 +6,7 @@ const certificateController = require('../controllers/certificateController');
 
 const router = express.Router();
 
-// All certificate routes require auth + event_director role.
+// All certificate routes require auth + tournament owner role.
 // Tournament ownership is verified inside each controller function.
 
 // ── Template Upload ─────────────────────────────────────────────────────────

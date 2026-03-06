@@ -82,19 +82,10 @@ async function sendEmail(to, subject, html) {
 // ── Convenience wrappers ─────────────────────────────────────────────────────
 
 /**
- * Send verification / welcome email to a new user.
- * For event directors this uses the directorWelcome template;
- * for everyone else it uses a simple verification email.
+ * Send verification email to a new user.
  */
 async function sendVerificationEmail(email, token, opts = {}) {
   const verifyUrl = `${APP_URL()}/api/auth/verify-email?token=${token}`;
-
-  if (opts.accountType === 'event_director') {
-    const html = templates.directorWelcome({ verifyUrl, organizationName: opts.organizationName });
-    return sendEmail(email, 'Welcome to Taikai — Verify Your Email', html);
-  }
-
-  // Default verification email (competitors / guardians / coaches)
   const html = templates.directorWelcome.verificationOnly({ verifyUrl });
   return sendEmail(email, 'Verify your Taikai account', html);
 }

@@ -185,13 +185,12 @@
         const nav = document.getElementById('navbar-actions');
         if (!user) { nav.innerHTML = ''; return; }
         const roles = user.roles || [];
-        const isDirector = roles.includes('event_director');
         const isAdmin = roles.includes('admin') || roles.includes('super_admin');
 
         let links = '';
         if (isAdmin) {
             links += `<a href="/admin.html" class="nav-link">Admin</a>`;
-        } else if (isDirector) {
+        } else {
             links += `<a href="/director.html" class="nav-link">Dashboard</a>`;
         }
         links += `<a href="/my-events.html" class="nav-link">My Events</a>`;

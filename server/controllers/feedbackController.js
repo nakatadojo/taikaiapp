@@ -194,7 +194,7 @@ async function submitResponse(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/feedback-form/responses
- * Get all responses for a tournament's feedback form (auth + event_director).
+ * Get all responses for a tournament's feedback form (auth + tournament owner).
  */
 async function getResponses(req, res, next) {
   try {
@@ -215,7 +215,7 @@ async function getResponses(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/feedback-form/stats
- * Get aggregated stats for a tournament's feedback form (auth + event_director).
+ * Get aggregated stats for a tournament's feedback form (auth + tournament owner).
  */
 async function getStats(req, res, next) {
   try {
@@ -236,7 +236,7 @@ async function getStats(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/feedback-form/export.csv
- * Export feedback responses as CSV (auth + event_director).
+ * Export feedback responses as CSV (auth + tournament owner).
  */
 async function exportResponses(req, res, next) {
   try {

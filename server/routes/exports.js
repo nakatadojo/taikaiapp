@@ -5,7 +5,7 @@ const exportController = require('../controllers/exportController');
 
 const router = express.Router();
 
-// All export routes require auth + event_director role.
+// All export routes require auth + tournament owner role.
 // Tournament ownership is verified inside each controller function.
 
 // ── Registrants ─────────────────────────────────────────────────────────────

@@ -68,9 +68,13 @@
                 </button>
 
                 <div class="nav-section-label">Management</div>
-                <button class="nav-item" data-view="directors" onclick="switchView('directors')">
+                <button class="nav-item" data-view="users" onclick="switchView('users')">
                     <i data-lucide="users"></i>
-                    <span>Event Directors</span>
+                    <span>Users</span>
+                </button>
+                <button class="nav-item" data-view="dojos" onclick="switchView('dojos')">
+                    <i data-lucide="home"></i>
+                    <span>Dojos</span>
                 </button>
                 <button class="nav-item" data-view="tournaments" onclick="switchView('tournaments')">
                     <i data-lucide="trophy"></i>
@@ -125,16 +129,16 @@
                     </div>
                     <div class="admin-stats-grid" id="stats-grid">
                         <div class="stat-card">
-                            <div class="stat-label">Total Directors</div>
-                            <div class="stat-value" id="stat-directors">—</div>
+                            <div class="stat-label">Total Users</div>
+                            <div class="stat-value" id="stat-users">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Total Dojos</div>
+                            <div class="stat-value" id="stat-dojos">—</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">Active Tournaments</div>
                             <div class="stat-value" id="stat-active-tournaments">—</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Total Tournaments</div>
-                            <div class="stat-value" id="stat-total-tournaments">—</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">Total Registrations</div>
@@ -144,8 +148,8 @@
 
                     <div class="admin-two-col">
                         <div class="glass-panel">
-                            <h3>Recent Directors</h3>
-                            <div id="recent-directors-list"><p class="hint">Loading...</p></div>
+                            <h3>Recent Users</h3>
+                            <div id="recent-users-list"><p class="hint">Loading...</p></div>
                         </div>
                         <div class="glass-panel">
                             <h3>Recent Tournaments</h3>
@@ -154,32 +158,67 @@
                     </div>
                 </section>
 
-                <!-- ═══ DIRECTORS VIEW ═══ -->
-                <section id="directors-view" class="admin-view hidden">
+                <!-- ═══ USERS VIEW ═══ -->
+                <section id="users-view" class="admin-view hidden">
                     <div class="view-header">
-                        <h2>Event Directors</h2>
+                        <h2>Users</h2>
                         <div class="view-actions">
-                            <input type="text" class="search-input" id="directors-search" placeholder="Search directors..." oninput="filterDirectors()">
+                            <input type="text" class="search-input" id="users-search" placeholder="Search users..." oninput="filterUsers()">
                         </div>
                     </div>
                     <div class="glass-panel">
                         <div class="table-container">
-                            <table class="data-table" id="directors-table">
+                            <table class="data-table" id="users-table">
                                 <thead>
                                     <tr>
                                         <th>Name</th>
-                                        <th>Organization</th>
                                         <th>Email</th>
-                                        <th>Credits</th>
+                                        <th>Dojo</th>
                                         <th>Tournaments</th>
                                         <th>Joined</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="directors-tbody"></tbody>
+                                <tbody id="users-tbody"></tbody>
                             </table>
                         </div>
-                        <p class="hint" id="directors-empty" style="display:none;">No event directors found.</p>
+                        <p class="hint" id="users-empty" style="display:none;">No users found.</p>
+                    </div>
+
+                    <!-- User detail panel (shown when clicking View) -->
+                    <div class="glass-panel hidden" id="user-detail-panel" style="margin-top:16px;">
+                        <div class="panel-header">
+                            <h3 id="user-detail-name">User Detail</h3>
+                            <button class="btn btn-sm btn-ghost" onclick="hideEl('user-detail-panel')">&times; Close</button>
+                        </div>
+                        <div id="user-detail-content"><p class="hint">Loading...</p></div>
+                    </div>
+                </section>
+
+                <!-- ═══ DOJOS VIEW ═══ -->
+                <section id="dojos-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Dojos</h2>
+                        <div class="view-actions">
+                            <input type="text" class="search-input" id="dojos-search" placeholder="Search dojos..." oninput="filterDojos()">
+                        </div>
+                    </div>
+                    <div class="glass-panel">
+                        <div class="table-container">
+                            <table class="data-table" id="dojos-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Owner</th>
+                                        <th>Location</th>
+                                        <th>Members</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dojos-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p class="hint" id="dojos-empty" style="display:none;">No dojos found.</p>
                     </div>
                 </section>
 
@@ -275,7 +314,7 @@
                                 <thead>
                                     <tr>
                                         <th>Date</th>
-                                        <th>Director</th>
+                                        <th>User</th>
                                         <th>Type</th>
                                         <th>Amount</th>
                                         <th>Balance After</th>
@@ -352,9 +391,9 @@
                                     <p class="hint">Sent to competitors after successful registration payment.</p>
                                 </div>
                                 <div class="template-item">
-                                    <strong>Director Welcome</strong>
+                                    <strong>Account Verification</strong>
                                     <span class="badge badge-active">Active</span>
-                                    <p class="hint">Sent to new event directors upon account verification.</p>
+                                    <p class="hint">Sent to new users upon account creation for email verification.</p>
                                 </div>
                                 <div class="template-item">
                                     <strong>Password Reset</strong>
@@ -467,9 +506,9 @@
             </div>
             <form onsubmit="handleGrantCredits(event)">
                 <div class="form-group">
-                    <label>Director</label>
-                    <select id="grant-director-select" required>
-                        <option value="">Select a director...</option>
+                    <label>User</label>
+                    <select id="grant-user-select" required>
+                        <option value="">Select a user...</option>
                     </select>
                 </div>
                 <div class="form-group">

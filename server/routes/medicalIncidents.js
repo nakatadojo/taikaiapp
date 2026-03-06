@@ -11,14 +11,14 @@ router.post('/:id/medical-incidents',
   controller.logIncident
 );
 
-// GET — list all incidents (auth + event_director; ownership verified in controller)
+// GET — list all incidents (auth + tournament owner; ownership verified in controller)
 router.get('/:id/medical-incidents',
   requireAuth,
   requireTournamentOwner,
   controller.getIncidents
 );
 
-// GET — export incidents as CSV (auth + event_director; ownership verified in controller)
+// GET — export incidents as CSV (auth + tournament owner; ownership verified in controller)
 router.get('/:id/medical-incidents/export.csv',
   requireAuth,
   requireTournamentOwner,

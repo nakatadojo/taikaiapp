@@ -4,7 +4,7 @@ const pool = require('../db/pool');
 /**
  * Middleware that checks if the authenticated user owns the tournament
  * (or is an approved staff member, or is a super_admin).
- * Replaces requireRole('event_director') for tournament-scoped routes.
+ * Replaces requireRole('tournament owner') for tournament-scoped routes.
  *
  * Reads tournament ID from req.params.tournamentId or req.params.id.
  * Attaches req.tournament and req.isTournamentOwner to the request.

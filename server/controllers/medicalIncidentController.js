@@ -69,7 +69,7 @@ async function verifyStaffOrDirector(req, res) {
 
 /**
  * POST /api/tournaments/:id/medical-incidents
- * Log a new medical incident. Requires auth + event_director or approved staff.
+ * Log a new medical incident. Requires auth + tournament owner or approved staff.
  */
 async function logIncident(req, res, next) {
   try {
@@ -113,7 +113,7 @@ async function logIncident(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/medical-incidents
- * List all incidents for a tournament. Requires auth + event_director (ownership).
+ * List all incidents for a tournament. Requires auth + tournament owner (ownership).
  */
 async function getIncidents(req, res, next) {
   try {
@@ -129,7 +129,7 @@ async function getIncidents(req, res, next) {
 
 /**
  * GET /api/tournaments/:id/medical-incidents/export.csv
- * Export all incidents as CSV. Requires auth + event_director (ownership).
+ * Export all incidents as CSV. Requires auth + tournament owner (ownership).
  */
 async function exportIncidents(req, res, next) {
   try {

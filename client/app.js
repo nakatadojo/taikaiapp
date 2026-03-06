@@ -18796,14 +18796,18 @@ window.addEventListener('load', () => {
 
     // Role-based nav visibility for judges/staff (restricted view of manage.html)
     function applyRoleBasedNavVisibility(user) {
-        const isDirector = user.roles.includes('event_director') || user.roles.includes('admin') || user.roles.includes('super_admin');
-        if (isDirector) return; // Directors see everything
+        const isAdmin = user.roles.includes('admin') || user.roles.includes('super_admin');
+        if (isAdmin) return; // Admins see everything
 
         const isJudge = user.roles.includes('judge');
         const isStaff = user.roles.includes('staff');
         const isCoach = user.roles.includes('coach');
+        const isTournamentMember = isJudge || isStaff || isCoach;
 
-        // Tournament-level nav items to hide for non-directors
+        // If user has no tournament-level role, they're the tournament owner — show everything
+        if (!isTournamentMember) return;
+
+        // Tournament-level nav items to hide for non-owners
         let viewsToHide = [];
 
         if (isJudge) {
@@ -18819,8 +18823,7 @@ window.addEventListener('load', () => {
             if (btn) btn.style.display = 'none';
         });
 
-        // Hide entire Settings nav group for non-directors
-        // (Event Types, Scoreboard Setup, Public Site, Certificates, Staff Roles all live under Settings)
+        // Hide entire Settings nav group for non-owners (coaches/judges/staff)
         const settingsGroup = document.getElementById('settings-nav-group');
         if (settingsGroup) settingsGroup.style.display = 'none';
 
@@ -18837,7 +18840,7 @@ window.addEventListener('load', () => {
     Auth.onAuthChange = (user) => {
         const gate = document.getElementById('auth-gate');
         const academyNavGroup = document.getElementById('academy-nav-group');
-        if (user && (user.roles.includes('admin') || user.roles.includes('event_director') || user.roles.includes('coach') || user.roles.includes('judge') || user.roles.includes('staff'))) {
+        if (user) {
             gate.classList.add('hidden');
             updateUserMenu(user);
             startSyncPolling();
@@ -18853,13 +18856,6 @@ window.addEventListener('load', () => {
             } else if (academyNavGroup) {
                 academyNavGroup.style.display = 'none';
             }
-        } else if (user) {
-            // Logged in but no admin/coach/judge role — show message
-            gate.classList.remove('hidden');
-            showAuthError('login', 'Access denied. You need an admin, coach, judge, or staff role to access the dashboard.');
-            updateUserMenu(null);
-            stopSyncPolling();
-            if (academyNavGroup) academyNavGroup.style.display = 'none';
         } else {
             gate.classList.remove('hidden');
             updateUserMenu(null);
