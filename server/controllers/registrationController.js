@@ -316,8 +316,16 @@ async function checkout(req, res, next) {
       }
     }
 
-    const basePrice = parseFloat(tournament.base_event_price) || 75;
-    const addonPrice = parseFloat(tournament.addon_event_price) || 25;
+    // Check for active pricing period — overrides tournament-level defaults
+    const PricingPeriodQueries = require('../db/queries/pricingPeriods');
+    const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
+
+    const basePrice = activePeriod
+      ? parseFloat(activePeriod.base_event_price)
+      : (parseFloat(tournament.base_event_price) || 75);
+    const addonPrice = activePeriod
+      ? parseFloat(activePeriod.addon_event_price)
+      : (parseFloat(tournament.addon_event_price) || 25);
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
 
     // Validate cart and calculate server-side pricing

@@ -53,6 +53,11 @@ app.use('/api/tournament-members', require('./routes/tournamentMembers'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/my', require('./routes/myTournaments'));
 app.use('/api/waivers', require('./routes/waivers'));
+app.use('/api/tournaments', require('./routes/results'));
+app.use('/api/tournaments', require('./routes/publicData'));
+app.use('/api/tournaments', require('./routes/pricingPeriods'));
+app.use('/api/tournaments', require('./routes/staffRoles'));
+app.use('/api/tournaments', require('./routes/checkin'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
@@ -93,6 +98,9 @@ app.get('/coach', (req, res) => {
 });
 app.get('/waiver', (req, res) => {
   res.sendFile('waiver.html', sendOpts);
+});
+app.get('/staff', (req, res) => {
+  res.sendFile('staff.html', sendOpts);
 });
 
 // Tournament Builder Wizard

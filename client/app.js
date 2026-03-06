@@ -17701,14 +17701,55 @@ window.addEventListener('load', () => {
     loadPublicSiteConfig();
     loadScoreboardSettings();
 
+    // Role-based nav visibility for judges/staff (restricted view of manage.html)
+    function applyRoleBasedNavVisibility(user) {
+        const isDirector = user.roles.includes('event_director') || user.roles.includes('admin') || user.roles.includes('super_admin');
+        if (isDirector) return; // Directors see everything
+
+        const isJudge = user.roles.includes('judge');
+        const isStaff = user.roles.includes('staff');
+        const isCoach = user.roles.includes('coach');
+
+        // Views to hide for non-directors
+        const setupViews = ['competitors', 'clubs', 'instructors', 'events'];
+        const adminViews = ['settings', 'public-site'];
+
+        let viewsToHide = [];
+
+        if (isJudge) {
+            // Judges see: Dashboard, Scoreboards, Brackets, Schedule, Results
+            viewsToHide = [...setupViews, ...adminViews, 'scoreboard-configs'];
+        } else if (isStaff) {
+            // Staff sees: Dashboard, Schedule, Results
+            viewsToHide = [...setupViews, ...adminViews, 'scoreboard-configs', 'scoreboards', 'brackets'];
+        } else if (isCoach) {
+            // Coaches handled separately (academy nav shown above)
+            viewsToHide = [...adminViews, 'scoreboard-configs'];
+        }
+
+        viewsToHide.forEach(view => {
+            const btn = document.querySelector(`.nav-btn[data-view="${view}"]`);
+            if (btn) btn.style.display = 'none';
+        });
+
+        // Hide nav group labels for empty groups
+        document.querySelectorAll('.nav-group').forEach(group => {
+            const visibleBtns = [...group.querySelectorAll('.nav-btn')].filter(b => b.style.display !== 'none');
+            if (visibleBtns.length === 0) {
+                group.style.display = 'none';
+            }
+        });
+    }
+
     // Auth initialization
     Auth.onAuthChange = (user) => {
         const gate = document.getElementById('auth-gate');
         const academyNavGroup = document.getElementById('academy-nav-group');
-        if (user && (user.roles.includes('admin') || user.roles.includes('event_director') || user.roles.includes('coach') || user.roles.includes('judge'))) {
+        if (user && (user.roles.includes('admin') || user.roles.includes('event_director') || user.roles.includes('coach') || user.roles.includes('judge') || user.roles.includes('staff'))) {
             gate.classList.add('hidden');
             updateUserMenu(user);
             startSyncPolling();
+            applyRoleBasedNavVisibility(user);
 
             // Show academy nav for coaches
             if (user.roles.includes('coach') && academyNavGroup) {
@@ -17723,7 +17764,7 @@ window.addEventListener('load', () => {
         } else if (user) {
             // Logged in but no admin/coach/judge role — show message
             gate.classList.remove('hidden');
-            showAuthError('login', 'Access denied. You need admin, coach, or judge role to access the dashboard.');
+            showAuthError('login', 'Access denied. You need an admin, coach, judge, or staff role to access the dashboard.');
             updateUserMenu(null);
             stopSyncPolling();
             if (academyNavGroup) academyNavGroup.style.display = 'none';

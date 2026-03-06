@@ -596,6 +596,103 @@
             max-width: 150px;
         }
 
+        /* ===== PRICING PERIODS ===== */
+        .pricing-periods-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .pricing-period-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            position: relative;
+        }
+
+        .pricing-period-card .period-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .pricing-period-card .period-header input {
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .pricing-period-card .period-dates {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .pricing-period-card .period-dates .form-group {
+            flex: 1;
+        }
+
+        .pricing-period-card .period-prices {
+            display: flex;
+            gap: 12px;
+        }
+
+        .pricing-period-card .period-prices .form-group {
+            flex: 1;
+        }
+
+        .pricing-period-remove {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+        }
+
+        .pricing-period-remove:hover {
+            color: #ef4444;
+        }
+
+        .add-period-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--glass);
+            border: 1px dashed var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+
+        .add-period-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .pricing-period-timeline {
+            display: flex;
+            gap: 4px;
+            margin-top: 12px;
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+            background: var(--glass);
+        }
+
+        .pricing-period-timeline .period-bar {
+            height: 100%;
+            border-radius: 3px;
+            min-width: 20px;
+        }
+
         /* ===== REVIEW (Step 5) ===== */
         .review-section {
             margin-bottom: 24px;
@@ -1091,6 +1188,15 @@
             <p class="form-hint">Set to $0 for a free tournament. Individual event prices can be set below.</p>
         </div>
 
+        <div class="pricing-section" id="pricing-periods-section">
+            <h3>Pricing Periods <span style="font-weight:400; font-size:13px; color:var(--text-dim);">(Optional)</span></h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">
+                Create time-based pricing tiers (e.g., Early Bird, Regular, Late). Active periods override the default pricing above.
+            </p>
+            <div id="pricing-periods-list" class="pricing-periods-list"></div>
+            <button type="button" class="add-period-btn" onclick="addPricingPeriod()">+ Add Pricing Period</button>
+        </div>
+
         <div class="pricing-section" id="event-pricing-section" style="display:none;">
             <h3>Per-Event Price Overrides</h3>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
@@ -1247,6 +1353,7 @@ let wizardData = {
     basePrice: 75,
     addonPrice: 25,
     eventPriceOverrides: {},
+    pricingPeriods: [],
 };
 
 const EVENT_TYPE_INFO = {
@@ -1418,6 +1525,24 @@ async function loadExistingTournament() {
         // Populate Step 4 pricing
         $('#t-base-price').value = wizardData.basePrice;
         $('#t-addon-price').value = wizardData.addonPrice;
+
+        // Load pricing periods from server
+        try {
+            const ppRes = await apiFetch(`/api/tournaments/${tournamentId}/pricing-periods`);
+            if (ppRes.periods && ppRes.periods.length > 0) {
+                wizardData.pricingPeriods = ppRes.periods.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    start_date: p.start_date ? p.start_date.split('T')[0] : '',
+                    end_date: p.end_date ? p.end_date.split('T')[0] : '',
+                    base_event_price: parseFloat(p.base_event_price),
+                    addon_event_price: parseFloat(p.addon_event_price),
+                }));
+                renderPricingPeriods();
+            }
+        } catch (e) {
+            console.warn('Could not load pricing periods:', e.message);
+        }
 
         // Load sanctioning body
         if (t.sanctioning_body) {
@@ -1819,6 +1944,13 @@ async function autoSave(step) {
                     body: JSON.stringify({ events }),
                 });
             }
+
+            // Save pricing periods
+            const validPeriods = wizardData.pricingPeriods.filter(p => p.name && p.start_date && p.end_date);
+            await apiFetch(`/api/tournaments/${tournamentId}/pricing-periods/bulk`, {
+                method: 'PUT',
+                body: JSON.stringify({ periods: validPeriods }),
+            });
         }
 
         setSaveStatus('saved', 'All changes saved');
@@ -2065,6 +2197,90 @@ function renderPricingOverrides() {
 }
 
 // ============================================================
+// PRICING PERIODS
+// ============================================================
+function addPricingPeriod() {
+    const period = {
+        id: 'pp_' + Date.now(),
+        name: '',
+        start_date: '',
+        end_date: '',
+        base_event_price: wizardData.basePrice,
+        addon_event_price: wizardData.addonPrice,
+    };
+    wizardData.pricingPeriods.push(period);
+    renderPricingPeriods();
+}
+
+function removePricingPeriod(id) {
+    wizardData.pricingPeriods = wizardData.pricingPeriods.filter(p => p.id !== id);
+    renderPricingPeriods();
+}
+
+function updatePricingPeriod(id, field, value) {
+    const period = wizardData.pricingPeriods.find(p => p.id === id);
+    if (period) {
+        if (field === 'base_event_price' || field === 'addon_event_price') {
+            period[field] = parseFloat(value) || 0;
+        } else {
+            period[field] = value;
+        }
+    }
+}
+
+function renderPricingPeriods() {
+    const container = $('#pricing-periods-list');
+    container.innerHTML = '';
+
+    wizardData.pricingPeriods.forEach((period, idx) => {
+        const card = document.createElement('div');
+        card.className = 'pricing-period-card';
+        card.innerHTML = `
+            <div class="period-header">
+                <input type="text" class="form-input" placeholder="Period name (e.g., Early Bird)"
+                       value="${escapeHtml(period.name)}"
+                       onchange="updatePricingPeriod('${period.id}', 'name', this.value)">
+                <button type="button" class="pricing-period-remove" onclick="removePricingPeriod('${period.id}')"
+                        title="Remove period">&times;</button>
+            </div>
+            <div class="period-dates">
+                <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-input" value="${period.start_date}"
+                           onchange="updatePricingPeriod('${period.id}', 'start_date', this.value)">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-input" value="${period.end_date}"
+                           onchange="updatePricingPeriod('${period.id}', 'end_date', this.value)">
+                </div>
+            </div>
+            <div class="period-prices">
+                <div class="form-group">
+                    <label class="form-label">Base Price</label>
+                    <div class="price-input-group">
+                        <span class="currency">$</span>
+                        <input type="number" class="form-input" min="0" step="0.01"
+                               value="${period.base_event_price}"
+                               onchange="updatePricingPeriod('${period.id}', 'base_event_price', this.value)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Add-on Price</label>
+                    <div class="price-input-group">
+                        <span class="currency">$</span>
+                        <input type="number" class="form-input" min="0" step="0.01"
+                               value="${period.addon_event_price}"
+                               onchange="updatePricingPeriod('${period.id}', 'addon_event_price', this.value)">
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// ============================================================
 // STEP 5: REVIEW
 // ============================================================
 function renderReview() {
@@ -2156,6 +2372,20 @@ function renderReview() {
                     <span class="review-value">$${override.addon.toFixed(2)} (override)</span>
                 `;
             }
+        });
+    }
+
+    // Pricing periods
+    const validPeriods = wizardData.pricingPeriods.filter(p => p.name && p.start_date && p.end_date);
+    if (validPeriods.length > 0) {
+        pricingHtml += `<span class="review-label" style="grid-column: 1/-1; margin-top: 8px; font-weight: 600;">Pricing Periods</span>`;
+        validPeriods.forEach(p => {
+            const start = new Date(p.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const end = new Date(p.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            pricingHtml += `
+                <span class="review-label">${escapeHtml(p.name)}</span>
+                <span class="review-value">${start} – ${end}: $${parseFloat(p.base_event_price).toFixed(2)} / $${parseFloat(p.addon_event_price).toFixed(2)}</span>
+            `;
         });
     }
 

@@ -234,4 +234,17 @@ async function getMembership(req, res, next) {
   }
 }
 
-module.exports = { apply, list, approve, decline, myTournaments, getMembership };
+/**
+ * GET /api/my/staff-dashboard
+ * Get approved staff/judge assignments for the current user.
+ */
+async function staffDashboard(req, res, next) {
+  try {
+    const assignments = await tournamentMemberQueries.getStaffDashboard(req.user.id);
+    res.json({ assignments });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, approve, decline, myTournaments, getMembership, staffDashboard };
