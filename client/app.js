@@ -130,66 +130,78 @@ function generateUniqueId() {
     return newId;
 }
 
+// Active tournament — declared early so scoped-storage helpers can reference it.
+let currentTournamentId = null;
+
+// ── Tournament-Scoped Storage ───────────────────────────────────────────────
+// Keys that should be isolated per tournament to prevent cross-tournament data corruption.
+const _SCOPED_KEYS = new Set([
+    'competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches',
+    'eventTypes', 'divisions', 'matSchedule', 'matScoreboards', 'brackets',
+    'teams', 'results', 'scoreboardConfig', 'scoreboardSettings', 'scoreboardConfigs',
+    'certificateTemplate', 'certificateConfig', 'publicSiteConfig',
+    'scoreboard-state', 'scoreEditLog', 'operatorSidesSwapped',
+]);
+
+// Keys that must remain global (shared across all tournaments)
+// 'tournaments' — the list of all tournaments
+// 'mat-update-trigger' — cross-tab signaling
+// 'scheduleSettings_*' / 'matSchedule_*' — already tournament-scoped
+
+function _scopedKey(key) {
+    if (currentTournamentId && _SCOPED_KEYS.has(key)) {
+        return `t_${currentTournamentId}_${key}`;
+    }
+    return key;
+}
+
 // Database Storage using localStorage
 class Database {
     constructor() {
-        this.init();
+        // Don't init until tournament is selected
     }
 
     init() {
         // Array-based tables
-        if (!localStorage.getItem('competitors')) {
-            localStorage.setItem('competitors', JSON.stringify([]));
+        const arrayTables = ['competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
+        for (const table of arrayTables) {
+            const key = (table === 'tournaments') ? table : _scopedKey(table);
+            if (!localStorage.getItem(key)) {
+                if (table === 'mats') {
+                    localStorage.setItem(key, JSON.stringify([
+                        { id: 1, name: 'Mat 1', active: true },
+                        { id: 2, name: 'Mat 2', active: true }
+                    ]));
+                } else {
+                    localStorage.setItem(key, JSON.stringify([]));
+                }
+            }
         }
-        if (!localStorage.getItem('instructors')) {
-            localStorage.setItem('instructors', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('clubs')) {
-            localStorage.setItem('clubs', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('templates')) {
-            localStorage.setItem('templates', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('mats')) {
-            localStorage.setItem('mats', JSON.stringify([
-                { id: 1, name: 'Mat 1', active: true },
-                { id: 2, name: 'Mat 2', active: true }
-            ]));
-        }
-        if (!localStorage.getItem('matches')) {
-            localStorage.setItem('matches', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('tournaments')) {
-            localStorage.setItem('tournaments', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('eventTypes')) {
-            localStorage.setItem('eventTypes', JSON.stringify([]));
-        }
-
         // Object-based tables
-        if (!localStorage.getItem('divisions')) {
-            localStorage.setItem('divisions', JSON.stringify({}));
-        }
-        if (!localStorage.getItem('matSchedule')) {
-            localStorage.setItem('matSchedule', JSON.stringify({}));
-        }
-        if (!localStorage.getItem('matScoreboards')) {
-            localStorage.setItem('matScoreboards', JSON.stringify({}));
+        const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
+        for (const table of objectTables) {
+            if (!localStorage.getItem(_scopedKey(table))) {
+                localStorage.setItem(_scopedKey(table), JSON.stringify({}));
+            }
         }
     }
 
     save(table, data) {
-        localStorage.setItem(table, JSON.stringify(data));
+        const key = (table === 'tournaments') ? table : _scopedKey(table);
+        localStorage.setItem(key, JSON.stringify(data));
+        // Backward compat: also write to global key for scoreboards/TV displays
+        if (currentTournamentId && (table === 'brackets' || table === 'matSchedule' || table === 'matScoreboards' || table === 'scoreboard-state' || table === 'mats')) {
+            localStorage.setItem(table, JSON.stringify(data));
+        }
     }
 
     load(table) {
-        const data = localStorage.getItem(table);
-        // Object-based tables return {} by default
+        const key = (table === 'tournaments') ? table : _scopedKey(table);
+        const data = localStorage.getItem(key);
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         if (objectTables.includes(table)) {
             return JSON.parse(data || '{}');
         }
-        // Array-based tables return [] by default
         return JSON.parse(data || '[]');
     }
 
@@ -219,18 +231,33 @@ class Database {
     }
 
     clear(table) {
-        // Object-based tables clear to {}
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         if (objectTables.includes(table)) {
             this.save(table, {});
         } else {
-            // Array-based tables clear to []
             this.save(table, []);
         }
     }
 }
 
 const db = new Database();
+
+// One-time migration: move unscoped localStorage data under tournament prefix
+function _migrateUnscopedData() {
+    if (!currentTournamentId) return;
+    const keysToMigrate = [..._SCOPED_KEYS];
+    for (const key of keysToMigrate) {
+        const scopedKey = `t_${currentTournamentId}_${key}`;
+        // Only migrate if scoped key doesn't exist yet but unscoped does
+        if (!localStorage.getItem(scopedKey) && localStorage.getItem(key)) {
+            const data = localStorage.getItem(key);
+            if (data && data !== '[]' && data !== '{}' && data !== 'null') {
+                localStorage.setItem(scopedKey, data);
+                console.log(`[migration] Moved ${key} → ${scopedKey}`);
+            }
+        }
+    }
+}
 
 // Logo error handler
 function handleLogoError(img) {
@@ -244,7 +271,6 @@ function handleLogoError(img) {
 // Current template being edited
 let currentTemplate = null;
 let criteriaCounter = 0;
-let currentTournamentId = null;
 
 // ── Server Sync Helpers ──────────────────────────────────────────────────────
 // Non-blocking debounced sync to persist localStorage data to the server.
@@ -299,7 +325,7 @@ async function _syncScheduleToServer() {
 
 async function _syncBracketsToServer() {
     if (!currentTournamentId) return;
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/sync`, {
@@ -317,7 +343,7 @@ async function _syncBracketsToServer() {
 
 async function _syncDivisionsToServer() {
     if (!currentTournamentId) return;
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const generatedDivisions = {};
     Object.keys(allDivisions).forEach(eventId => {
         if (allDivisions[eventId]?.generated) {
@@ -424,7 +450,7 @@ window.togglePaymentStatus = function(competitorId) {
     const cycle = ['unpaid', 'paid', 'partial', 'waived'];
     const idx = cycle.indexOf(comp.paymentStatus || 'unpaid');
     comp.paymentStatus = cycle[(idx + 1) % cycle.length];
-    localStorage.setItem('competitors', JSON.stringify(competitors));
+    localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
     loadCompetitors(true);
 };
 
@@ -580,8 +606,9 @@ function switchTournament() {
     const select = document.getElementById('active-tournament');
     currentTournamentId = select.value || null;
     if (currentTournamentId) {
+        _migrateUnscopedData();
+        db.init();
         document.getElementById('main-nav').classList.remove('hidden');
-        // Reload all data for the selected tournament
         loadCompetitors();
         loadDashboard();
     } else {
@@ -693,7 +720,7 @@ function migrateLegacyCompetitors() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem('competitors', JSON.stringify(competitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
         console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
     }
 }
@@ -720,7 +747,7 @@ function migrateLegacyPricing() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem('competitors', JSON.stringify(competitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
         console.log(`Migrated pricing data for ${migrated} competitors`);
     }
 }
@@ -1506,7 +1533,7 @@ function verifyTeamCode() {
     }
 
     // Find team by code
-    const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
     const team = teams[teamCode];
 
     if (!team) {
@@ -1750,7 +1777,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
             teamCode = generateTeamCode();
 
             // Create team record
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             teams[teamCode] = {
                 code: teamCode,
                 name: teamName,
@@ -1760,7 +1787,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                 members: [], // Will add competitor ID after creation
                 createdAt: new Date().toISOString()
             };
-            localStorage.setItem('teams', JSON.stringify(teams));
+            localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
 
         } else if (teamOption === 'join') {
             // Joining existing team
@@ -1770,7 +1797,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                 return;
             }
 
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
 
             if (!team) {
@@ -1835,7 +1862,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         };
 
         const updatedCompetitor = allCompetitors[compIndex];
-        localStorage.setItem('competitors', JSON.stringify(allCompetitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(allCompetitors));
 
         // Update competitor data embedded in brackets (they store full objects, not IDs)
         updateCompetitorInBrackets(editingCompetitorId, updatedCompetitor);
@@ -1869,11 +1896,11 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
 
         // Add competitor to team members list
         if (teamCode) {
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
             if (team) {
                 team.members.push(competitorId);
-                localStorage.setItem('teams', JSON.stringify(teams));
+                localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
             }
         }
 
@@ -1913,7 +1940,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
 
 // Update competitor data embedded in all brackets
 function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let changed = false;
 
     // Fields to copy into embedded competitor objects
@@ -2012,7 +2039,7 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
     }
 
     if (changed) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
         console.log(`Updated competitor ${competitorId} in brackets`);
     }
 }
@@ -2193,7 +2220,7 @@ function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, t
     }
 
     // Save updated divisions
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
 }
 
 function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
@@ -2328,7 +2355,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     generateMatchesForBracket(bracket);
 
     // Save bracket
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Check if bracket already exists for this division
     const existingBracketKey = Object.keys(brackets).find(key =>
@@ -2347,7 +2374,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     }
 
     brackets[bracketId] = bracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     console.log(`Bracket generated: ${bracketId}`);
 }
@@ -2493,7 +2520,7 @@ function generateMatchesForBracket(bracket) {
  */
 
 function lockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -2519,7 +2546,7 @@ function lockBracket(bracketId) {
 
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
@@ -2527,7 +2554,7 @@ function lockBracket(bracketId) {
 }
 
 function unlockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -2552,7 +2579,7 @@ function unlockBracket(bracketId) {
 
     bracket.locked = false;
     delete bracket.lockedAt;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
@@ -2561,7 +2588,7 @@ function unlockBracket(bracketId) {
 
 function autoLockBracketOnMatchStart(bracketId) {
     // Called when a match status changes from 'pending' to 'in-progress'
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket || bracket.locked) return;
@@ -2571,7 +2598,7 @@ function autoLockBracketOnMatchStart(bracketId) {
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
     bracket.autoLocked = true; // Flag to indicate it was auto-locked
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 }
 
 function loadCompetitors(skipSync = false) {
@@ -2868,11 +2895,11 @@ function generateTestCompetitors() {
             divisions[eventId].generated = {};
         }
     }
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
     console.log('  Cleared generated divisions');
 
     // Clear brackets for current tournament's events
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketIdsToDelete = [];
     for (const [bracketId, bracket] of Object.entries(brackets)) {
         if (eventIds.includes(bracket.eventId)) {
@@ -2880,11 +2907,11 @@ function generateTestCompetitors() {
         }
     }
     bracketIdsToDelete.forEach(id => delete brackets[id]);
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     console.log(`  Deleted ${bracketIdsToDelete.length} brackets`);
 
     // Clear teams for current tournament's events
-    const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
     const teamCodesToDelete = [];
     for (const [code, team] of Object.entries(teams)) {
         if (eventIds.includes(team.eventId)) {
@@ -2892,7 +2919,7 @@ function generateTestCompetitors() {
         }
     }
     teamCodesToDelete.forEach(code => delete teams[code]);
-    localStorage.setItem('teams', JSON.stringify(teams));
+    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
     console.log(`  Deleted ${teamCodesToDelete.length} teams`);
 
     // ── STEP 2: Ensure 6-8 clubs ──
@@ -3202,7 +3229,7 @@ function generateTestCompetitors() {
     let failCount = 0;
 
     // For team events, we need to create team entries
-    const teamRegistry = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teamRegistry = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
 
     for (const comp of competitorsToCreate) {
         const competitorId = db.add('competitors', comp);
@@ -3236,7 +3263,7 @@ function generateTestCompetitors() {
     }
 
     // Save team registry
-    localStorage.setItem('teams', JSON.stringify(teamRegistry));
+    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamRegistry));
 
     // ── STEP 7: Refresh UI and log summary ──
     syncCompetitorClubsToTable();
@@ -3274,16 +3301,16 @@ function clearAllCompetitors() {
             db.clear('competitors');
 
             // Clear all divisions for current tournament
-            localStorage.setItem('divisions', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify({}));
 
             // Clear mat schedule
-            localStorage.setItem('matSchedule', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify({}));
 
             // Clear matches
             db.clear('matches');
 
             // Clear brackets
-            localStorage.setItem('brackets', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
 
             // Reload views
             loadCompetitors();
@@ -3427,7 +3454,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
             updatedAt: new Date().toISOString()
         };
 
-        localStorage.setItem('clubs', JSON.stringify(clubs));
+        localStorage.setItem(_scopedKey('clubs'), JSON.stringify(clubs));
 
         // If club name changed, update all competitors with this club
         if (oldClubName !== clubName) {
@@ -3440,7 +3467,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
                 }
             });
             if (updatedCount > 0) {
-                localStorage.setItem('competitors', JSON.stringify(competitors));
+                localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
             }
         }
 
@@ -3881,8 +3908,8 @@ if (eventForm) {
         };
 
         // Initialize event types storage if needed
-        if (!localStorage.getItem('eventTypes')) {
-            localStorage.setItem('eventTypes', JSON.stringify([]));
+        if (!localStorage.getItem(_scopedKey('eventTypes'))) {
+            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
         }
 
         db.add('eventTypes', eventType);
@@ -4302,7 +4329,7 @@ function loadScoreboardConfigsDropdown() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getUnifiedScoreboardConfig() {
-    try { return JSON.parse(localStorage.getItem('scoreboardConfig') || 'null'); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null'); } catch { return null; }
 }
 
 // Returns '#ffffff' for dark backgrounds, '#000000' for light backgrounds (like white)
@@ -4372,10 +4399,10 @@ function saveUnifiedScoreboardConfig() {
         },
     };
 
-    localStorage.setItem('scoreboardConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror corner names/colors into legacy scoreboardSettings so legacy paths still work
-    localStorage.setItem('scoreboardSettings', JSON.stringify({
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -4633,10 +4660,10 @@ function autoGenerateScoreboardConfig(sanctioningBody) {
         },
     };
 
-    localStorage.setItem('scoreboardConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror into legacy scoreboardSettings for backward compat
-    localStorage.setItem('scoreboardSettings', JSON.stringify({
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -5595,7 +5622,7 @@ function deleteTemplate(templateId) {
 
     if (confirm(`Are you sure you want to delete the template "${template.name}"?\n\nThis will not affect already generated divisions.`)) {
         eventData.templates = eventData.templates.filter(t => t.id !== templateId);
-        localStorage.setItem('divisions', JSON.stringify(divisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
         loadTemplatesList();
         showMessage('Template deleted successfully!');
     }
@@ -5725,7 +5752,7 @@ function saveDivisionTemplate() {
         divisions[eventId].templates.push(template);
     }
 
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
 
     // Sync templates to server (debounced)
     const syncEventId = eventId;
@@ -5758,7 +5785,7 @@ function generateDivisions() {
     }
 
     // Get the division template for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     console.log('All divisions before generation:', allDivisions);
 
     const eventData = allDivisions[eventId];
@@ -5838,7 +5865,7 @@ function generateDivisions() {
     };
 
     console.log('Saving to localStorage:', allDivisions[eventId]);
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Sync generated divisions to server (debounced)
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
@@ -5934,7 +5961,7 @@ function renderDivisions() {
 function loadDivisions() {
     console.log('=== LOAD DIVISIONS START ===');
 
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     console.log('All divisions from localStorage:', allDivisions);
 
     const container = document.getElementById('divisions-container');
@@ -6175,12 +6202,12 @@ function deleteDivisions() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to show count
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6226,7 +6253,7 @@ function deleteDivisions() {
     // Only delete the generated divisions, preserve criteria/templates
     delete eventData.generated;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Clear the display
     renderDivisions();
@@ -6244,12 +6271,12 @@ function deleteCriteria() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to check if criteria exists
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.criteria || eventData.criteria.length === 0) {
@@ -6297,7 +6324,7 @@ function deleteCriteria() {
     // Delete criteria, preserve generated divisions
     delete eventData.criteria;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Hide the criteria builder if shown
     const builder = document.getElementById('division-builder');
@@ -6392,7 +6419,7 @@ function showBracketGenerator() {
     }
 
     // Load divisions for selected event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6401,7 +6428,7 @@ function showBracketGenerator() {
     }
 
     // Get event type to pre-populate defaults
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
 
     // Populate scoreboard dropdown from unified config
@@ -6555,14 +6582,14 @@ function updateBracketTypeOptions() {
 
 function getTemplateDurationForEvent(eventId) {
     // Check event-level match_duration_seconds first (from DB)
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const evt = eventTypes.find(e => String(e.id) === String(eventId));
     if (evt?.matchDurationSeconds) {
         return evt.matchDurationSeconds;
     }
 
     // Fall back to first template's matchDuration
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (eventData?.templates?.[0]?.matchDuration) {
         return eventData.templates[0].matchDuration;
@@ -6575,7 +6602,7 @@ function getTemplateDurationForEvent(eventId) {
  * Matches the division name against template age groups to find the right duration.
  */
 function getDivisionMatchDuration(divisionName, eventId) {
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (!eventData?.templates) return null;
 
@@ -6650,7 +6677,7 @@ function generateBracketsForAllDivisions() {
     }
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6721,10 +6748,10 @@ function generateBracketsForAllDivisions() {
             bracket.matchDuration = (formDuration ? formDuration * 60 : null) || divisionDuration || eventDuration || null;
 
             // Save bracket
-            const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+            const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
             brackets[bracketId] = bracket;
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             successCount++;
         }
     });
@@ -6820,7 +6847,7 @@ function generateBrackets(event) {
     }
 
     // Get competitors for this division
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     let competitors = [...(eventData.generated[divisionName] || [])];
 
@@ -6874,10 +6901,10 @@ function generateBrackets(event) {
     bracket.matAssignment = matAssignment;
 
     // Save bracket
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
     brackets[bracketId] = bracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     hideBracketGenerator();
     showMessage('Bracket generated successfully!');
@@ -7992,7 +8019,7 @@ function loadBrackets() {
 
     if (!container) return;
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Clean up: Remove any brackets with 0 competitors
     let cleaned = false;
@@ -8006,7 +8033,7 @@ function loadBrackets() {
 
     // Save if we cleaned anything
     if (cleaned) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     }
 
     const eventTypes = db.load('eventTypes');
@@ -8302,7 +8329,7 @@ let bracketEditMode = false;
 let originalBracketState = null;
 
 function viewBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -8399,9 +8426,9 @@ function saveBracketChanges() {
     if (!currentViewingBracket) return;
 
     // Save to localStorage
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     brackets[currentViewingBracket.id] = currentViewingBracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Sync to server (debounced)
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
@@ -9000,7 +9027,7 @@ window.scoreMatch = function(bracketId, matchId) {
     console.log('Bracket ID:', bracketId);
     console.log('Match ID:', matchId);
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     console.log('Available bracket IDs:', Object.keys(brackets));
 
     const bracket = brackets[bracketId];
@@ -9049,7 +9076,7 @@ window.scoreMatch = function(bracketId, matchId) {
     }
 
     // Get scoreboard configuration
-    const scoreboardConfigs = JSON.parse(localStorage.getItem('scoreboardConfigs') || '[]');
+    const scoreboardConfigs = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfigs')) || '[]');
     let scoreboardConfig = null;
     let scoreboardType = 'kumite';
 
@@ -9119,7 +9146,7 @@ function showDivisionTransfer() {
     const currentEventId = currentViewingBracket.eventId;
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[currentEventId];
 
     if (!eventData || !eventData.generated) {
@@ -9128,7 +9155,7 @@ function showDivisionTransfer() {
     }
 
     // Get all brackets to show competitor counts
-    const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Get ALL divisions (not just eligible ones)
     const allDivisionsData = [];
@@ -9385,8 +9412,8 @@ function transferCompetitor(targetDivisionName, eventId) {
         console.log('Event ID:', eventId);
 
         // Get all data
-        const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
-        const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const eventData = allDivisions[eventId];
 
         if (!eventData || !eventData.generated) {
@@ -9417,7 +9444,7 @@ function transferCompetitor(targetDivisionName, eventId) {
 
         // Save divisions
         allDivisions[eventId] = eventData;
-        localStorage.setItem('divisions', JSON.stringify(allDivisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
         console.log('Divisions saved');
 
         // Find target bracket before deleting anything
@@ -9445,7 +9472,7 @@ function transferCompetitor(targetDivisionName, eventId) {
         }
 
         // Save brackets (with deletions)
-        localStorage.setItem('brackets', JSON.stringify(allBrackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(allBrackets));
         console.log('Brackets saved after deletions');
 
         console.log('=== TRANSFER COMPLETE ===');
@@ -9468,10 +9495,10 @@ function transferCompetitor(targetDivisionName, eventId) {
 function deleteBracket(bracketId) {
     if (!confirm('Delete this bracket? This cannot be undone.')) return;
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     delete brackets[bracketId];
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Delete from server (fire-and-forget)
     if (currentTournamentId) {
@@ -9511,7 +9538,7 @@ function deleteBracket(bracketId) {
  */
 
 function deleteAllBrackets() {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketCount = Object.keys(brackets).length;
 
     if (bracketCount === 0) {
@@ -9549,7 +9576,7 @@ function deleteAllBrackets() {
     }
 
     // Delete all brackets
-    localStorage.setItem('brackets', JSON.stringify({}));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
 
     // Sync deletion to server (debounced)
     _debouncedSync('brackets', _syncBracketsToServer, 1000);
@@ -9667,7 +9694,7 @@ function loadMatScheduleData() {
 
     // Migration: check old non-scoped key if no tournament-scoped data exists
     if (!data && currentTournamentId) {
-        const oldData = JSON.parse(localStorage.getItem('matSchedule') || 'null');
+        const oldData = JSON.parse(localStorage.getItem(_scopedKey('matSchedule')) || 'null');
         if (oldData && Object.keys(oldData).length > 0) {
             // Migrate old format to new format under tournament-scoped key
             data = migrateMatScheduleData(oldData);
@@ -9683,7 +9710,7 @@ function saveMatScheduleData(data) {
     const key = getMatScheduleKey();
     localStorage.setItem(key, JSON.stringify(data));
     // Also update the non-scoped key for backward compat with TV displays
-    localStorage.setItem('matSchedule', JSON.stringify(data));
+    localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(data));
     // Sync to server (debounced)
     _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
@@ -9715,7 +9742,7 @@ function migrateMatScheduleData(oldData) {
 // Estimate duration for a division based on its bracket
 function estimateDivisionDuration(divisionName, eventId) {
     const settings = getScheduleSettings();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
     const event = eventTypes.find(e => e.id == eventId);
 
@@ -9770,7 +9797,7 @@ function estimateDivisionDuration(divisionName, eventId) {
 
 // Get progress for a division (completed units / total units)
 function getDivisionProgress(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Find bracket for this division
     let bracket = null;
@@ -9909,7 +9936,7 @@ function loadScheduleGrid() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Clean up empty brackets
     let cleaned = false;
@@ -9920,7 +9947,7 @@ function loadScheduleGrid() {
         }
     });
     if (cleaned) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     }
 
     // Get all divisions that have brackets with competitors (ready to be scheduled)
@@ -10334,8 +10361,8 @@ function loadLiveControlGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -10444,7 +10471,7 @@ function loadQueueManagementGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -10591,10 +10618,10 @@ function handleQueueDragEnd(e) {
 
 // Live control functions
 function pauseMat(matId) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[matId]) {
         matScoreboards[matId].paused = !matScoreboards[matId].paused;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         showMessage(`Mat ${matId} ${matScoreboards[matId].paused ? 'paused' : 'resumed'}`);
         loadLiveControlGrid();
     }
@@ -10621,9 +10648,9 @@ function skipDivision(matId) {
             recalculateScheduleTimes();
 
             // Clear current scoreboard
-            const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+            const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
             delete matScoreboards[matId];
-            localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
             showMessage('Division skipped and moved to end of queue');
             loadLiveControlGrid();
@@ -10692,7 +10719,7 @@ function autoScheduleDivisions() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Get all divisions that have brackets with competitors
     const allDivisionsList = [];
@@ -10808,7 +10835,7 @@ function clearAllSchedules() {
 
 function cleanOrphanScheduleEntries() {
     const schedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Build a set of all valid division names from existing brackets
     const validDivisions = new Set();
@@ -11125,14 +11152,14 @@ let operatorYukoCountBlue = 0;
 
 // Default: AKA (red/corner1) on RIGHT, AO (blue/corner2) on LEFT (matches judge's view from behind ref)
 // When swapped: AKA on LEFT, AO on RIGHT (for operators sitting on the other side)
-let operatorSidesSwapped = localStorage.getItem('operatorSidesSwapped') === 'true';
+let operatorSidesSwapped = localStorage.getItem(_scopedKey('operatorSidesSwapped')) === 'true';
 
 // Toggle operator sides (swap left/right corner panels)
 // Default: AKA (corner1/red) on RIGHT, AO (corner2/blue) on LEFT
 // Swapped: AKA on LEFT, AO on RIGHT
 function toggleOperatorSides() {
     operatorSidesSwapped = !operatorSidesSwapped;
-    localStorage.setItem('operatorSidesSwapped', operatorSidesSwapped);
+    localStorage.setItem(_scopedKey('operatorSidesSwapped'), operatorSidesSwapped);
     // Kumite: 3-column grid [Corner1, Timer, Corner2]
     const grid = document.querySelector('.scoreboard-display');
     if (grid && grid.children.length >= 3) {
@@ -11314,12 +11341,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     currentOperatorEventId = eventId;
 
     // Get event type to determine scoreboard type
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     console.log('Event Type:', eventType);
 
     // Find bracket for this division
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let currentBracket = null;
 
     // Search for bracket matching this division and event
@@ -11458,7 +11485,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     operatorBlueCompetitor = null;
 
     // Get competitors in this division
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     const divisionCompetitors = eventData?.generated?.[divisionName] || [];
 
@@ -11495,7 +11522,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         if (currentMatch && currentMatch.status === 'pending') {
             currentMatch.status = 'in-progress';
             brackets[window.currentBracketId] = currentBracket;
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
         }
     }
 
@@ -11575,7 +11602,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     }
 
     // Get mat name and scoreboard settings
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -11605,7 +11632,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         corner2Color = scoreboardConfig.settings.corner2Color || '#0a84ff';
         console.log('Using legacy named scoreboard config:', { corner1Name, corner1Color, corner2Name, corner2Color });
     } else {
-        const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -11702,7 +11729,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // Show next division from schedule
     if (nextDivision) {
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         const eventName = nextEvent?.name || 'Unknown Event';
 
@@ -11862,7 +11889,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // routing works. Kumite interference is already prevented by activeScoreboardType checks.
 
     // Get mat name early so we can store it globally
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -12003,7 +12030,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
 
     // Store for later use - find bracket ID by matching bracket properties
     window.currentMatchId = currentMatch.id;
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     window.currentBracketId = Object.keys(brackets).find(id => {
         const b = brackets[id];
         return (b.division === bracket.division || b.divisionName === bracket.division) && b.eventId == bracket.eventId;
@@ -12302,7 +12329,7 @@ function updateKataFlagsTVDisplay() {
     };
 
     console.log('State to save:', state);
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
     console.log('State saved to localStorage');
 }
 
@@ -12338,7 +12365,7 @@ function kataFlagsDeclareWinner() {
         return;
     }
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[window.currentBracketId];
 
     if (!bracket) {
@@ -12470,10 +12497,10 @@ function kataFlagsDeclareWinner() {
     }
 
     // Save updated bracket
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Save to results/history
-    const results = JSON.parse(localStorage.getItem('results') || '[]');
+    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
     results.push({
         id: generateUniqueId(),
         timestamp: new Date().toISOString(),
@@ -12487,7 +12514,7 @@ function kataFlagsDeclareWinner() {
         corner2Flags: corner2Votes,
         method: 'Flag Decision'
     });
-    localStorage.setItem('results', JSON.stringify(results));
+    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
 
     // Show winner message with Next Match / Division Complete button
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
@@ -12562,7 +12589,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         }
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function kataFlagsNextMatch() {
@@ -12571,7 +12598,7 @@ function kataFlagsNextMatch() {
     console.log(`[NEXT MATCH] Division: ${kataFlagsDivisionName}, complete: ${divisionComplete}`);
 
     // Debug: dump the full bracket state
-    const debugBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const debugBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     for (const id in debugBrackets) {
         const b = debugBrackets[id];
         if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
@@ -13310,7 +13337,7 @@ function operatorDeclareWinner(corner) {
 
     // Save match result to bracket
     if (window.currentBracketId && window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
 
         if (bracket) {
@@ -13391,7 +13418,7 @@ function operatorDeclareWinner(corner) {
                 }
 
                 // Save updated bracket
-                localStorage.setItem('brackets', JSON.stringify(brackets));
+                localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             }
         }
     }
@@ -13406,7 +13433,7 @@ function operatorDeclareWinner(corner) {
     });
 
     // Show inline winner result on operator side (no full-screen overlay)
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const winnerCornerName = corner === 'red' ? (settings.corner1Name || 'RED') : (settings.corner2Name || 'BLUE');
     const winnerColor = corner === 'red' ? (settings.corner1Custom || '#ff453a') : (settings.corner2Custom || '#0a84ff');
 
@@ -13467,9 +13494,9 @@ function operatorNextAfterWin() {
 
     // Clear winner from audience display (works for all scoreboard types)
     try {
-        const currentState = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem('scoreboard-state', JSON.stringify(currentState));
+        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
     } catch(e) {}
 
     const divisionComplete = checkBracketComplete(currentOperatorDivision, currentOperatorEventId);
@@ -13584,7 +13611,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentKataScoreboardType = scoreboardType;
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -13789,7 +13816,7 @@ function submitKataScores(isFlags) {
         finalScore = total / kataJudgeScores.length;
     }
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let bracketId = null;
 
     for (const id in brackets) {
@@ -13803,7 +13830,7 @@ function submitKataScores(isFlags) {
             performance.averageScore = finalScore;
             performance.completed = true;
 
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             break;
         }
     }
@@ -13871,7 +13898,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     currentOperatorDivision = divisionName;
     currentOperatorEventId = eventId;
 
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -14020,11 +14047,11 @@ let currentRankingListNumJudges = 5;
 function updateRankingListTVDisplay(bracket, status) {
     currentRankingListBracket = bracket;
 
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == currentOperatorEventId);
     const eventName = eventType?.name || 'Kata';
 
@@ -14068,7 +14095,7 @@ function updateRankingListTVDisplay(bracket, status) {
     // Get club logo if available
     let clubLogo = null;
     if (competitor?.club) {
-        const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
+        const clubs = JSON.parse(localStorage.getItem(_scopedKey('clubs')) || '[]');
         const club = clubs.find(c => c.name === competitor.club);
         clubLogo = club?.logo || null;
     }
@@ -14108,7 +14135,7 @@ function updateRankingListTVDisplay(bracket, status) {
         rankings: rankings
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function updateRankingListTotal(numJudges) {
@@ -14164,7 +14191,7 @@ function submitRankingListScore(numJudges) {
     const avgScore = total / count;
 
     // Find the bracket and update the current entry
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let targetBracketId = null;
 
     for (const [bracketId, bracket] of Object.entries(brackets)) {
@@ -14211,7 +14238,7 @@ function submitRankingListScore(numJudges) {
     }
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Sync 'submitted' status to TV (brief hold before transition)
     updateRankingListTVDisplay(bracket, allScored ? 'complete' : 'submitted');
@@ -14361,7 +14388,7 @@ function buildMatchProgressHTML(bracket) {
 }
 
 function checkBracketComplete(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -14432,9 +14459,9 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
 
     // Clear winner from audience display so celebration overlay goes away
     try {
-        const currentState = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem('scoreboard-state', JSON.stringify(currentState));
+        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
     } catch(e) {}
 
     // Mark division completed in schedule
@@ -14451,7 +14478,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     if (!content) return;
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -14487,7 +14514,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     let nextDivHTML = '';
     if (nextDivision) {
         // Check if next division has a bracket
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         let hasBracket = false;
         for (const id in brackets) {
             if ((brackets[id].division === nextDivision.division || brackets[id].divisionName === nextDivision.division) && brackets[id].eventId == nextDivision.eventId) {
@@ -14496,7 +14523,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
             }
         }
 
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
 
         nextDivHTML = `
@@ -14614,7 +14641,7 @@ function cancelAutoAdvance() {
 }
 
 function getDivisionResults(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -14816,7 +14843,7 @@ function updateEditResultsButtonVisibility(bracket) {
 }
 
 function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
-    const edits = JSON.parse(localStorage.getItem('scoreEditLog') || '[]');
+    const edits = JSON.parse(localStorage.getItem(_scopedKey('scoreEditLog')) || '[]');
     edits.push({
         bracketId,
         entryId,
@@ -14827,11 +14854,11 @@ function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
         division: currentOperatorDivision,
         eventId: currentOperatorEventId
     });
-    localStorage.setItem('scoreEditLog', JSON.stringify(edits));
+    localStorage.setItem(_scopedKey('scoreEditLog'), JSON.stringify(edits));
 }
 
 function openEditResultsPanel(matId, divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let bracketId = null;
     let bracket = null;
 
@@ -14931,7 +14958,7 @@ function openEditRankingListPanel(matId, divisionName, eventId, bracketId, brack
 }
 
 function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxScore) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -14993,7 +15020,7 @@ function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxSco
 }
 
 function saveRankingListEdit(entryIndex, bracketId, numJudges) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -15037,7 +15064,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
     scored.forEach((e, idx) => { e.rank = idx + 1; });
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Sync TV display
     if (currentRankingListBracket) {
@@ -15052,7 +15079,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
 
 function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
     const content = document.getElementById('operator-scoreboard-content');
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Name = settings.corner1Name || 'RED';
     const corner2Name = settings.corner2Name || 'BLUE';
 
@@ -15130,7 +15157,7 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
 }
 
 function editKumiteMatch(matchId, bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -15176,7 +15203,7 @@ function editKumiteMatch(matchId, bracketId) {
     const redName = match.redCorner ? `${match.redCorner.firstName} ${match.redCorner.lastName}` : 'Unknown';
     const blueName = match.blueCorner ? `${match.blueCorner.firstName} ${match.blueCorner.lastName}` : 'Unknown';
 
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Color = settings.corner1Custom || '#ff453a';
     const corner2Color = settings.corner2Custom || '#0a84ff';
 
@@ -15228,7 +15255,7 @@ function editKumiteMatch(matchId, bracketId) {
 }
 
 function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -15295,7 +15322,7 @@ function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
     }
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     showMessage(`Match result updated`, 'success');
 
@@ -15331,7 +15358,7 @@ function updateOperatorTVDisplay(winner = null) {
     }
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
@@ -15345,7 +15372,7 @@ function updateOperatorTVDisplay(winner = null) {
         corner1Color = uk.corner1Color || '#ff453a';
         corner2Color = uk.corner2Color || '#0a84ff';
     } else {
-        const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -15355,7 +15382,7 @@ function updateOperatorTVDisplay(winner = null) {
     // Build match info
     let matchInfo = 'Current Match';
     if (window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
         if (bracket) {
             let match = null;
@@ -15384,12 +15411,12 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision = scheduleForNext[currentDivIndex + 1];
 
         // Get event type name for next division
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         nextDivision.eventName = nextEvent?.name || 'Unknown Event';
 
         // Get bracket info for next division
-        const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         for (const bracketId in allBrackets) {
             const b = allBrackets[bracketId];
             if (b.division === nextDivision.division && b.eventId == nextDivision.eventId) {
@@ -15457,7 +15484,7 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision: nextDivision
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function generateMats() {
@@ -15619,7 +15646,7 @@ function loadMatchToScoreboard(matchId) {
         selectMatScoreboard(match.matId);
 
         // Load competitors for this mat
-        const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[match.matId]) {
             matScoreboards[match.matId] = {
                 redId: match.redId,
@@ -15630,7 +15657,7 @@ function loadMatchToScoreboard(matchId) {
                 bluePenalties: 0,
                 timeRemaining: 120
             };
-            localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         }
 
         renderActiveScoreboard();
@@ -15701,7 +15728,7 @@ function renderActiveScoreboard() {
     const container = document.getElementById('active-scoreboard-container');
     if (!container) return;
 
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard] || {
         redId: null,
         blueId: null,
@@ -15822,7 +15849,7 @@ function selectMatCompetitor(corner) {
     const selectId = corner === 'red' ? 'mat-red-select' : 'mat-blue-select';
     const competitorId = parseInt(document.getElementById(selectId).value);
 
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard] = {
             redScore: 0,
@@ -15839,7 +15866,7 @@ function selectMatCompetitor(corner) {
         matScoreboards[currentMatScoreboard].blueId = competitorId || null;
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -15847,7 +15874,7 @@ function selectMatCompetitor(corner) {
 let matTimerIntervals = {};
 
 function addMatScore(corner, points) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     if (corner === 'red') {
@@ -15856,13 +15883,13 @@ function addMatScore(corner, points) {
         matScoreboards[currentMatScoreboard].blueScore += points;
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     document.getElementById(`mat-${corner}-score`).textContent = matScoreboards[currentMatScoreboard][`${corner}Score`];
     updateAllMatDisplays();
 }
 
 function addMatPenalty(corner) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     const mat = matScoreboards[currentMatScoreboard];
@@ -15889,7 +15916,7 @@ function addMatPenalty(corner) {
         alert(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`);
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -15898,11 +15925,11 @@ function startMatTimer() {
     if (matTimerIntervals[currentMatScoreboard]) return;
 
     matTimerIntervals[currentMatScoreboard] = setInterval(() => {
-        const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[currentMatScoreboard]) return;
 
         matScoreboards[currentMatScoreboard].timeRemaining--;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
         const minutes = Math.floor(matScoreboards[currentMatScoreboard].timeRemaining / 60);
         const seconds = matScoreboards[currentMatScoreboard].timeRemaining % 60;
@@ -15926,10 +15953,10 @@ function pauseMatTimer() {
 
 function resetMatTimer() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard].timeRemaining = 120;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         document.getElementById('mat-timer').textContent = '2:00';
         updateAllMatDisplays();
     }
@@ -15937,7 +15964,7 @@ function resetMatTimer() {
 
 function declareMatWinner() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard];
 
     if (!matData) return;
@@ -15947,12 +15974,12 @@ function declareMatWinner() {
 
     // Update display with winner
     matData.winner = winner;
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     updateAllMatDisplays();
 }
 
 function resetMatScoreboard() {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     matScoreboards[currentMatScoreboard] = {
         redId: null,
         blueId: null,
@@ -15962,7 +15989,7 @@ function resetMatScoreboard() {
         bluePenalties: 0,
         timeRemaining: 120
     };
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -16076,13 +16103,13 @@ function saveScoreboardSettings() {
         updatedAt: new Date().toISOString()
     };
 
-    localStorage.setItem('scoreboardSettings', JSON.stringify(settings));
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify(settings));
     showMessage('Scoreboard settings saved successfully!');
 }
 
 // Load scoreboard settings on page load
 function loadScoreboardSettings() {
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
 
     if (document.getElementById('corner1-name')) {
         document.getElementById('corner1-name').value = settings.corner1Name || 'RED';
@@ -16238,7 +16265,7 @@ function openStagingDisplay() {
 function loadSettings() {
     loadSettingsEvents();
 
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (template && template.data) {
         const previewImg = document.getElementById('certificate-preview-img');
         const previewDiv = document.getElementById('certificate-template-preview');
@@ -16296,9 +16323,9 @@ async function deleteEventFromServer(eventId) {
         db.delete('eventTypes', eventId);
 
         // Remove associated divisions
-        const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
         delete allDivisions[eventId];
-        localStorage.setItem('divisions', JSON.stringify(allDivisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
         // Refresh UI
         loadSettingsEvents();
@@ -16331,9 +16358,9 @@ async function deleteTournamentFromServer() {
         }
 
         // Clear localStorage
-        localStorage.removeItem('eventTypes');
-        localStorage.removeItem('divisions');
-        localStorage.removeItem('scoreboardConfig');
+        localStorage.removeItem(_scopedKey('eventTypes'));
+        localStorage.removeItem(_scopedKey('divisions'));
+        localStorage.removeItem(_scopedKey('scoreboardConfig'));
         currentTournamentId = null;
 
         showMessage('Tournament deleted successfully');
@@ -16364,7 +16391,7 @@ function previewCertificateTemplate() {
 }
 
 function clearCertificateTemplate() {
-    localStorage.removeItem('certificateTemplate');
+    localStorage.removeItem(_scopedKey('certificateTemplate'));
     const previewDiv = document.getElementById('certificate-template-preview');
     if (previewDiv) previewDiv.style.display = 'none';
     document.getElementById('merge-tag-config-panel').style.display = 'none';
@@ -16393,7 +16420,7 @@ function saveCertificateTemplate() {
             uploadedAt: new Date().toISOString()
         };
 
-        localStorage.setItem('certificateTemplate', JSON.stringify(template));
+        localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(template));
         showMessage('Certificate template saved successfully!');
 
         // Show merge tag config
@@ -16423,7 +16450,7 @@ const TAG_LABELS = {
 };
 
 function loadMergeTagEditors() {
-    const config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     const tags = config?.tags || DEFAULT_CERTIFICATE_TAGS;
 
     const container = document.getElementById('merge-tag-list');
@@ -16491,7 +16518,7 @@ function getCertificateConfigFromForm() {
 
 function saveCertificateConfig() {
     const config = getCertificateConfigFromForm();
-    localStorage.setItem('certificateConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
     showMessage('Certificate configuration saved!');
 }
 
@@ -16522,7 +16549,7 @@ function previewCertificateWithSampleData() {
 }
 
 function renderCertificateOnCanvas(canvas, data, callback) {
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (!template || !template.data) {
         if (callback) callback(null);
         return;
@@ -16534,7 +16561,7 @@ function renderCertificateOnCanvas(canvas, data, callback) {
     if (formEl) {
         config = getCertificateConfigFromForm();
     } else {
-        config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+        config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     }
     if (!config) config = { tags: DEFAULT_CERTIFICATE_TAGS };
 
@@ -16573,13 +16600,13 @@ function renderCertificateOnCanvas(canvas, data, callback) {
 }
 
 function generateAllCertificates() {
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
         showMessage('Please upload a certificate template first in Settings', 'error');
         return;
     }
 
-    const config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
         showMessage('Please configure merge tag positions in Settings first', 'error');
         return;
@@ -16589,7 +16616,7 @@ function generateAllCertificates() {
     const eventTypes = db.load('eventTypes');
 
     // Get tournament info
-    const publicSiteConfig = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
+    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
@@ -16795,7 +16822,7 @@ function updateTVDisplay() {
         winner: null
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function addScore(corner, points) {
@@ -16903,9 +16930,9 @@ function declareWinner() {
     }
 
     // Update TV display with winner
-    const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+    const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
     state.winner = winnerName;
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 
     alert(`Winner: ${winner}\nRed: ${redScore} | Blue: ${blueScore}`);
 }
@@ -17021,15 +17048,15 @@ if (publicSiteForm) {
                 location: document.getElementById('public-location')?.value || '',
                 description: document.getElementById('public-description')?.value || '',
                 primaryColor: document.getElementById('public-primary-color')?.value || '#0071e3',
-                coverImage: currentPublicCoverData || JSON.parse(localStorage.getItem('publicSiteConfig') || '{}').coverImage || null,
-                logo: currentPublicLogoData || JSON.parse(localStorage.getItem('publicSiteConfig') || '{}').logo || null,
+                coverImage: currentPublicCoverData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').coverImage || null,
+                logo: currentPublicLogoData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').logo || null,
                 footerText: document.getElementById('public-footer-text')?.value || '',
                 showSchedule: document.getElementById('public-show-schedule')?.checked || false,
                 showResults: document.getElementById('public-show-results')?.checked || false,
                 updatedAt: new Date().toISOString()
             };
 
-            localStorage.setItem('publicSiteConfig', JSON.stringify(config));
+            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(config));
             showMessage('Public site configuration saved successfully!');
 
             // Trigger storage event for public.html to update
@@ -17042,7 +17069,7 @@ if (publicSiteForm) {
 }
 
 function loadPublicSiteConfig() {
-    const config = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
 
     const nameInput = document.getElementById('public-tournament-name');
     const dateInput = document.getElementById('public-tournament-date');
@@ -17628,7 +17655,7 @@ async function syncRegistrationsFromServer() {
         });
 
         if (added > 0) {
-            localStorage.setItem('competitors', JSON.stringify(existing));
+            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(existing));
             loadCompetitors();
         }
 

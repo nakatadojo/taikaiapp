@@ -1957,8 +1957,8 @@
                 });
             }
 
-            localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
-            localStorage.setItem('divisions', JSON.stringify(allDivisions));
+            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify(eventTypes));
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
             // Load schedule, divisions, and brackets from server (parallel)
             try {
@@ -1973,7 +1973,7 @@
                     const schedData = await schedResult.value.json();
                     if (schedData.matSchedule && Object.keys(schedData.matSchedule).length > 0) {
                         localStorage.setItem(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
-                        localStorage.setItem('matSchedule', JSON.stringify(schedData.matSchedule));
+                        localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(schedData.matSchedule));
                     }
                     if (schedData.scheduleSettings && Object.keys(schedData.scheduleSettings).length > 0) {
                         localStorage.setItem(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
@@ -1986,13 +1986,13 @@
                 if (divResult.status === 'fulfilled' && divResult.value.ok) {
                     const divData = await divResult.value.json();
                     if (divData.generatedDivisions && Object.keys(divData.generatedDivisions).length > 0) {
-                        const current = JSON.parse(localStorage.getItem('divisions') || '{}');
+                        const current = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
                         Object.keys(divData.generatedDivisions).forEach(evId => {
                             if (!current[evId]) current[evId] = {};
                             current[evId].generated = divData.generatedDivisions[evId].generated;
                             current[evId].updatedAt = divData.generatedDivisions[evId].updatedAt;
                         });
-                        localStorage.setItem('divisions', JSON.stringify(current));
+                        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(current));
                     }
                 }
 
@@ -2000,7 +2000,7 @@
                 if (brkResult.status === 'fulfilled' && brkResult.value.ok) {
                     const brkData = await brkResult.value.json();
                     if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
-                        localStorage.setItem('brackets', JSON.stringify(brkData.brackets));
+                        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brkData.brackets));
                     }
                 }
             } catch (e) {
@@ -2015,7 +2015,7 @@
 
             // Auto-generate scoreboard config from sanctioning body (after switchTournament sets currentTournamentId)
             if (t.sanctioning_body && typeof autoGenerateScoreboardConfig === 'function') {
-                const existing = JSON.parse(localStorage.getItem('scoreboardConfig') || 'null');
+                const existing = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null');
                 if (!existing || String(existing.tournamentId) !== String(t.id)) {
                     autoGenerateScoreboardConfig(t.sanctioning_body);
                 }
@@ -2099,11 +2099,11 @@
 
             try {
                 // Read divisions and brackets from localStorage
-                const divisions = JSON.parse(localStorage.getItem('divisions') || '[]');
-                const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
-                const brackets = JSON.parse(localStorage.getItem('brackets') || '[]');
+                const divisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+                const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+                const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
-                if (!divisions.length && !brackets.length) {
+                if (!Object.keys(divisions).length && !Object.keys(brackets).length) {
                     statusEl.textContent = 'No localStorage data found. Run scoreboards first.';
                     btn.disabled = false;
                     return;
