@@ -35,9 +35,8 @@ router.get('/search',
 // All routes below require authentication
 router.use(requireAuth);
 
-// POST /api/academies — Create academy (coach only)
+// POST /api/academies — Create academy (any authenticated user)
 router.post('/',
-  requireRole('coach', 'admin'),
   [
     body('name').trim().notEmpty().withMessage('Academy name is required'),
   ],

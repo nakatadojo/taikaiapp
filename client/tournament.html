@@ -585,97 +585,163 @@
     }
 
     /* ── Role Selection Overlay ───────────────────────────────────────── */
-    .role-overlay {
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,0.7);
-        backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-        display: flex; align-items: center; justify-content: center;
-        z-index: 1000;
-        opacity: 0; pointer-events: none;
-        transition: opacity 0.3s ease;
+    /* ── Auth Modal ─────────────────────────────────────────────────── */
+    .modal-overlay {
+        display: none; position: fixed; inset: 0; z-index: 1100;
+        background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        align-items: center; justify-content: center;
     }
-    .role-overlay.active { opacity: 1; pointer-events: auto; }
-    .role-panel {
-        position: relative;
-        background: var(--bg-secondary);
-        border: 1px solid var(--glass-border);
-        border-radius: 20px;
-        padding: 36px 32px 32px;
-        max-width: 720px; width: 92%;
-        max-height: 90vh; overflow-y: auto;
+    .modal-overlay.active { display: flex; }
+    .modal {
+        background: var(--bg-secondary); border: 1px solid var(--glass-border);
+        border-radius: var(--radius); padding: 32px; width: 100%; max-width: 420px; margin: 16px;
     }
-    .role-panel-close {
-        position: absolute; top: 14px; right: 18px;
-        background: none; border: none; color: var(--text-dim);
-        font-size: 26px; cursor: pointer; line-height: 1;
-        transition: color 0.2s;
+    .modal-field { margin-bottom: 16px; }
+    .modal-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+    .modal-field input, .modal-field select {
+        width: 100%; padding: 11px 14px; background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: 8px; color: var(--text-primary); font-size: 14px; outline: none; transition: border-color 0.2s;
     }
-    .role-panel-close:hover { color: var(--text-primary); }
-    .role-panel-title {
-        font-size: 22px; font-weight: 700; color: var(--text-primary);
-        text-align: center; margin-bottom: 6px;
+    .modal-field input:focus, .modal-field select:focus { border-color: var(--accent); }
+    .modal-error { color: #ef4444; font-size: 13px; margin-bottom: 12px; display: none; }
+    .modal-success { color: #22c55e; font-size: 13px; margin-bottom: 12px; display: none; }
+    .modal-submit {
+        width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none;
+        border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.2s;
     }
-    .role-panel-subtitle {
-        font-size: 14px; color: var(--text-muted);
-        text-align: center; margin-bottom: 28px;
+    .modal-submit:hover { background: var(--accent-hover); }
+    .modal-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .modal-close {
+        position: absolute; top: 16px; right: 16px; background: none; border: none;
+        color: var(--text-dim); font-size: 24px; cursor: pointer; line-height: 1;
     }
-    .role-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 14px;
-    }
-    .role-card {
-        background: var(--glass);
-        border: 2px solid var(--glass-border);
-        border-radius: var(--radius);
-        padding: 28px 16px 20px;
-        cursor: pointer; text-align: center;
-        transition: all 0.2s; user-select: none;
-    }
-    .role-card:hover {
-        background: var(--glass-hover);
-        border-color: rgba(255,255,255,0.18);
-        transform: translateY(-3px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    }
-    .role-card-icon { font-size: 36px; margin-bottom: 12px; }
-    .role-card-title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
-    .role-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .modal-close:hover { color: var(--text-primary); }
 
-    /* Staff sub-role step */
-    .staff-role-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 10px; margin-bottom: 20px;
+    /* ── Nav Auth Buttons ──────────────────────────────────────────── */
+    .nav-auth-btn {
+        padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s; border: none;
     }
+    .nav-auth-ghost { background: none; color: var(--text-muted); }
+    .nav-auth-ghost:hover { color: var(--text-primary); }
+    .nav-auth-primary { background: var(--accent); color: #fff; }
+    .nav-auth-primary:hover { background: var(--accent-hover); }
+    .nav-user-name {
+        color: var(--text-muted); font-size: 14px; font-weight: 500;
+    }
+
+    /* ── Add Competitor Button ─────────────────────────────────────── */
+    .btn-add-competitor {
+        padding: 10px 20px; background: var(--accent); color: #fff; border: none;
+        border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s;
+    }
+    .btn-add-competitor:hover { background: var(--accent-hover); }
+
+    /* ── Join Tab Grid ─────────────────────────────────────────────── */
+    .join-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;
+    }
+    .join-card {
+        background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: var(--radius); padding: 28px 20px; text-align: center;
+        transition: all 0.2s;
+    }
+    .join-card:hover { background: var(--glass-hover); border-color: rgba(255,255,255,0.15); }
+    .join-card-icon { color: var(--text-muted); margin-bottom: 16px; }
+    .join-card-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+    .join-card-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; }
+    .join-card-btn {
+        display: inline-block; padding: 10px 24px; background: var(--accent); color: #fff;
+        border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s;
+    }
+    .join-card-btn:hover { background: var(--accent-hover); }
+
+    /* ── Registration Modal ────────────────────────────────────────── */
+    .reg-panel {
+        background: var(--bg-secondary); border: 1px solid var(--glass-border);
+        border-radius: var(--radius-lg); padding: 32px; width: 100%; max-width: 640px;
+        max-height: 90vh; overflow-y: auto; margin: 16px;
+    }
+    .reg-step-title { font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+    .reg-step-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
+    .reg-competitor-form {
+        background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    }
+    .reg-competitor-header {
+        display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+    }
+    .reg-competitor-label { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .reg-remove-btn {
+        background: none; border: none; color: var(--text-dim); font-size: 13px;
+        cursor: pointer; transition: color 0.2s;
+    }
+    .reg-remove-btn:hover { color: #ef4444; }
+    .reg-form-row { display: flex; gap: 12px; }
+    .reg-form-row .modal-field { flex: 1; }
+    .reg-add-btn {
+        display: block; width: 100%; padding: 14px; background: var(--glass);
+        border: 2px dashed var(--glass-border); border-radius: var(--radius);
+        color: var(--text-muted); font-size: 14px; font-weight: 500; cursor: pointer;
+        transition: all 0.2s; text-align: center; margin-bottom: 20px;
+    }
+    .reg-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .reg-nav-btns { display: flex; gap: 12px; justify-content: flex-end; }
+    .reg-nav-btn {
+        padding: 12px 28px; border-radius: var(--radius-sm); font-size: 15px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s; border: none;
+    }
+    .reg-nav-btn.primary { background: var(--accent); color: #fff; }
+    .reg-nav-btn.primary:hover { background: var(--accent-hover); }
+    .reg-nav-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .reg-nav-btn.secondary { background: var(--glass); color: var(--text-muted); border: 1px solid var(--glass-border); }
+    .reg-nav-btn.secondary:hover { color: var(--text-primary); }
+
+    /* Event selection */
+    .reg-event-item {
+        display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+        background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+    }
+    .reg-event-item:hover { border-color: rgba(255,255,255,0.15); }
+    .reg-event-item.selected { border-color: var(--accent); background: rgba(220,38,38,0.08); }
+    .reg-event-item input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px; cursor: pointer; }
+    .reg-event-name { font-size: 14px; font-weight: 500; color: var(--text-primary); flex: 1; }
+    .reg-event-price { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .reg-event-division { font-size: 12px; color: var(--text-dim); }
+
+    /* Cart */
+    .reg-cart-item {
+        background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+    }
+    .reg-cart-name { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+    .reg-cart-event { font-size: 13px; color: var(--text-muted); padding: 4px 0; display: flex; justify-content: space-between; }
+    .reg-cart-subtotal { font-size: 14px; font-weight: 600; color: var(--text-primary); text-align: right; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-border); }
+    .reg-cart-total {
+        font-size: 18px; font-weight: 700; color: var(--text-primary); text-align: right;
+        padding: 16px 0; margin-top: 8px; border-top: 2px solid var(--glass-border);
+    }
+    .reg-discount-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .reg-discount-row input { flex: 1; }
+    .reg-discount-row button {
+        padding: 10px 20px; background: var(--glass); border: 1px solid var(--glass-border);
+        border-radius: 8px; color: var(--text-primary); font-size: 14px; font-weight: 500; cursor: pointer;
+    }
+    .reg-waiver-check { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; font-size: 13px; color: var(--text-muted); }
+    .reg-waiver-check input { margin-top: 2px; accent-color: var(--accent); }
+
+    /* Staff sub-role selection */
+    .staff-role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 20px; }
     .staff-role-option {
-        background: var(--glass);
-        border: 2px solid var(--glass-border);
-        border-radius: var(--radius-sm);
-        padding: 14px 12px; cursor: pointer;
-        text-align: center; font-size: 13px; font-weight: 500;
+        background: var(--glass); border: 2px solid var(--glass-border); border-radius: var(--radius-sm);
+        padding: 14px 12px; cursor: pointer; text-align: center; font-size: 13px; font-weight: 500;
         color: var(--text-muted); transition: all 0.2s; user-select: none;
     }
     .staff-role-option:hover { border-color: rgba(255,255,255,0.15); color: var(--text-primary); }
-    .staff-role-option.selected {
-        border-color: var(--accent); color: var(--text-primary);
-        background: rgba(220,38,38,0.08);
-    }
-    .role-continue-btn {
-        display: block; width: 100%; max-width: 240px; margin: 0 auto;
-        padding: 12px 24px; font-size: 15px; font-weight: 600;
-        color: #fff; background: var(--accent);
-        border: none; border-radius: var(--radius-sm);
-        cursor: pointer; transition: all 0.2s;
-    }
-    .role-continue-btn:hover { background: var(--accent-hover); }
-    .role-continue-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    /* Application confirmation */
-    .role-confirm { text-align: center; padding: 32px 16px; }
-    .role-confirm-icon { font-size: 56px; margin-bottom: 16px; color: #22c55e; }
-    .role-confirm-title { font-size: 20px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
-    .role-confirm-text { font-size: 14px; color: var(--text-muted); line-height: 1.7; max-width: 380px; margin: 0 auto; }
+    .staff-role-option.selected { border-color: var(--accent); color: var(--text-primary); background: rgba(220,38,38,0.08); }
 
     /* ── Footer ────────────────────────────────────────────────────────── */
     .footer {
@@ -788,8 +854,10 @@
     <nav class="navbar">
         <div class="navbar-inner">
             <a href="/" class="navbar-brand"><img data-taikai-logo alt="Taikai" style="height:40px;width:auto;"></a>
-            <div class="navbar-links">
+            <div class="navbar-links" id="navbar-actions">
                 <a href="/" class="navbar-link">Back to Directory</a>
+                <button class="nav-auth-btn nav-auth-ghost" onclick="openAuthModal('login')">Log In</button>
+                <button class="nav-auth-btn nav-auth-primary" onclick="openAuthModal('signup')">Sign Up</button>
             </div>
         </div>
     </nav>
@@ -839,6 +907,7 @@
             <div class="tab-bar-inner" id="tab-bar-inner">
                 <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
                 <button class="tab-btn" data-tab="competitors" onclick="switchTab('competitors')" id="tab-btn-competitors" style="display:none;">Competitors</button>
+                <button class="tab-btn" data-tab="join" onclick="switchTab('join')" id="tab-btn-join" style="display:none;">Join</button>
                 <button class="tab-btn" data-tab="divisions" onclick="switchTab('divisions')" id="tab-btn-divisions" style="display:none;">Divisions</button>
                 <button class="tab-btn" data-tab="brackets" onclick="switchTab('brackets')" id="tab-btn-brackets" style="display:none;">Brackets</button>
                 <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" id="tab-btn-schedule" style="display:none;">Schedule</button>
@@ -891,9 +960,46 @@
                 <!-- === COMPETITORS TAB === -->
                 <div class="tab-panel" id="panel-competitors">
                     <div class="section-card">
-                        <div class="section-title">Competitors</div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                            <div class="section-title" style="margin-bottom:0;">Competitors</div>
+                            <button class="btn-add-competitor" id="btn-add-competitor" style="display:none;" onclick="startCompetitorRegistration()">+ Register a Competitor</button>
+                        </div>
                         <input type="text" id="competitor-search" class="tab-search" placeholder="Search competitors..." oninput="filterCompetitors()">
                         <div id="competitors-container"><div class="tab-loading">Loading competitors...</div></div>
+                    </div>
+                </div>
+
+                <!-- === JOIN TAB === -->
+                <div class="tab-panel" id="panel-join">
+                    <div class="section-card">
+                        <div class="section-title">Join This Tournament</div>
+                        <p style="color:var(--text-muted);font-size:14px;margin-bottom:24px;">Choose how you'd like to participate in this tournament.</p>
+                        <div class="join-grid">
+                            <div class="join-card">
+                                <div class="join-card-icon">
+                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                </div>
+                                <div class="join-card-title">Coach</div>
+                                <div class="join-card-desc">Support your athletes at this tournament</div>
+                                <button class="join-card-btn" onclick="startCoachRegistration()">Register as Coach</button>
+                            </div>
+                            <div class="join-card">
+                                <div class="join-card-icon">
+                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                </div>
+                                <div class="join-card-title">Judge</div>
+                                <div class="join-card-desc">Officiate matches and events</div>
+                                <button class="join-card-btn" onclick="startJudgeRegistration()">Register as Judge</button>
+                            </div>
+                            <div class="join-card">
+                                <div class="join-card-icon">
+                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                                </div>
+                                <div class="join-card-title">Staff</div>
+                                <div class="join-card-desc">Volunteer or work the event</div>
+                                <button class="join-card-btn" onclick="startStaffRegistration()">Register as Staff</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1113,13 +1219,6 @@
 
     // ── Render Tournament ──────────────────────────────────────────────
     function renderTournament(t) {
-        // Store tournament ID for role overlay
-        const roleOverlay = document.getElementById('role-overlay');
-        if (roleOverlay) {
-            roleOverlay.dataset.tournamentId = t.id;
-            roleOverlay.dataset.tournamentName = t.name;
-        }
-
         // Page title
         document.title = t.name + ' — Taikai';
 
@@ -1350,7 +1449,7 @@
         let noteHtml = '';
 
         if (status.key === 'open') {
-            buttonHtml = `<button class="btn-register" onclick="openRoleOverlay()">Register Now</button>`;
+            buttonHtml = `<button class="btn-register" onclick="startCompetitorRegistration()">Register Now</button>`;
             if (t.registration_deadline) {
                 const deadlineFormatted = formatShortDate(t.registration_deadline);
                 if (deadlineFormatted) {
@@ -1426,232 +1525,1123 @@
 })();
 </script>
 
-<!-- Role Selection Overlay -->
-<div class="role-overlay" id="role-overlay">
-    <div class="role-panel">
-        <button class="role-panel-close" onclick="closeRoleOverlay()">&times;</button>
-        <div id="role-panel-content"></div>
+<!-- Auth Modal -->
+<div class="modal-overlay" id="auth-modal">
+    <div class="modal" style="position:relative;">
+        <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+        <div class="auth-tabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--glass-border);">
+            <button class="auth-tab active" id="auth-tab-login" onclick="switchAuthTab('login')" style="flex:1;padding:10px;background:none;border:none;color:var(--text-primary);font-size:15px;font-weight:600;cursor:pointer;border-bottom:2px solid var(--accent);">Log In</button>
+            <button class="auth-tab" id="auth-tab-signup" onclick="switchAuthTab('signup')" style="flex:1;padding:10px;background:none;border:none;color:var(--text-muted);font-size:15px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;">Sign Up</button>
+        </div>
+        <!-- LOGIN PANEL -->
+        <div id="auth-panel-login">
+            <div class="modal-error" id="login-error"></div>
+            <form id="login-form" onsubmit="handleLogin(event)">
+                <div class="modal-field">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="modal-field">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Your password" autocomplete="current-password">
+                </div>
+                <button type="submit" class="modal-submit" id="login-submit">Sign In</button>
+            </form>
+            <div style="text-align:center;margin-top:12px;">
+                <button type="button" onclick="showForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;text-decoration:underline;">Forgot password?</button>
+            </div>
+            <div id="forgot-section" style="display:none;">
+                <hr style="border:none;border-top:1px solid var(--glass-border);margin:16px 0;">
+                <div class="modal-error" id="forgot-error"></div>
+                <div class="modal-success" id="forgot-success"></div>
+                <form id="forgot-form" onsubmit="handleForgotPassword(event)">
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Enter your email and we'll send a reset link.</p>
+                    <div class="modal-field">
+                        <label for="forgot-email">Email</label>
+                        <input type="email" id="forgot-email" required placeholder="you@example.com">
+                    </div>
+                    <button type="submit" class="modal-submit" id="forgot-submit">Send Reset Link</button>
+                </form>
+                <div style="text-align:center;margin-top:12px;">
+                    <button type="button" onclick="hideForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
+                </div>
+            </div>
+        </div>
+        <!-- SIGNUP PANEL -->
+        <div id="auth-panel-signup" style="display:none;">
+            <div class="modal-error" id="signup-error"></div>
+            <div class="modal-success" id="signup-success" style="display:none;"></div>
+            <form id="signup-form" onsubmit="handleSignup(event)">
+                <div style="display:flex;gap:10px;">
+                    <div class="modal-field" style="flex:1;">
+                        <label for="signup-first">First Name</label>
+                        <input type="text" id="signup-first" required placeholder="First name" autocomplete="given-name">
+                    </div>
+                    <div class="modal-field" style="flex:1;">
+                        <label for="signup-last">Last Name</label>
+                        <input type="text" id="signup-last" required placeholder="Last name" autocomplete="family-name">
+                    </div>
+                </div>
+                <div class="modal-field">
+                    <label for="signup-email">Email</label>
+                    <input type="email" id="signup-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="modal-field">
+                    <label for="signup-password">Password</label>
+                    <input type="password" id="signup-password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password">
+                </div>
+                <button type="submit" class="modal-submit" id="signup-submit">Create Account</button>
+            </form>
+            <p style="color:var(--text-dim);font-size:12px;text-align:center;margin-top:12px;">By signing up you agree to our Terms of Service.</p>
+        </div>
+        <!-- EMAIL VERIFICATION PROMPT -->
+        <div id="auth-panel-verify" style="display:none;">
+            <div style="text-align:center;padding:20px 0;">
+                <div style="font-size:48px;margin-bottom:16px;">&#9993;</div>
+                <div style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Verify Your Email</div>
+                <p style="color:var(--text-muted);font-size:14px;line-height:1.6;margin-bottom:20px;">We sent a verification link to <strong id="verify-email-display"></strong>. Please check your inbox and click the link to continue.</p>
+                <button class="modal-submit" onclick="checkVerificationAndContinue()" id="verify-check-btn">I've Verified My Email</button>
+                <div style="margin-top:12px;">
+                    <button type="button" onclick="handleResendVerification()" style="background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;text-decoration:underline;">Resend verification email</button>
+                </div>
+                <div class="modal-error" id="verify-error" style="margin-top:12px;"></div>
+                <div class="modal-success" id="verify-success" style="margin-top:12px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Registration Modal (multi-step) -->
+<div class="modal-overlay" id="reg-modal">
+    <div class="reg-panel" style="position:relative;">
+        <button class="modal-close" onclick="closeRegModal()">&times;</button>
+        <div id="reg-modal-content">
+            <!-- Populated by JS: Step 1 (profiles), Step 2 (events), Step 3 (cart/checkout) -->
+        </div>
+    </div>
+</div>
+
+<!-- Coach Registration Modal -->
+<div class="modal-overlay" id="coach-modal">
+    <div class="modal" style="position:relative;">
+        <button class="modal-close" onclick="closeCoachModal()">&times;</button>
+        <div id="coach-modal-content"></div>
+    </div>
+</div>
+
+<!-- Staff Sub-Role Modal -->
+<div class="modal-overlay" id="staff-modal">
+    <div class="modal" style="position:relative;">
+        <button class="modal-close" onclick="closeStaffModal()">&times;</button>
+        <div id="staff-modal-content"></div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal-overlay" id="success-modal">
+    <div class="modal" style="position:relative;">
+        <button class="modal-close" onclick="closeSuccessModal()">&times;</button>
+        <div id="success-modal-content"></div>
     </div>
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-// ROLE SELECTION OVERLAY — Runs outside the IIFE for global access
+// AUTH, REGISTRATION & JOIN — Inline tournament registration system
 // ═══════════════════════════════════════════════════════════════════════
 (function() {
     'use strict';
 
-    // Tournament data is stored on the overlay element for access
-    const overlay = document.getElementById('role-overlay');
-    let selectedStaffRole = null;
-
-    function getTournamentId() {
-        return overlay.dataset.tournamentId || null;
-    }
-
-    function getTournamentName() {
-        return overlay.dataset.tournamentName || 'this tournament';
-    }
-
-    window.openRoleOverlay = function() {
-        showRoleCards();
-        overlay.classList.add('active');
-    };
+    let currentUser = null;
+    let pendingIntent = null; // What to do after successful auth
+    let regState = { competitors: [], step: 1, cart: [], discount: null };
 
     window.closeRoleOverlay = function() {
         overlay.classList.remove('active');
         selectedStaffRole = null;
     };
 
-    function showRoleCards() {
-        const content = document.getElementById('role-panel-content');
-        content.innerHTML = `
-            <div class="role-panel-title">How would you like to participate?</div>
-            <div class="role-panel-subtitle">Choose your role for this tournament</div>
-            <div class="role-grid">
-                <div class="role-card" onclick="selectRole('competitor')">
-                    <div class="role-card-icon">🥋</div>
-                    <div class="role-card-title">Competitor</div>
-                    <div class="role-card-desc">Compete in tournament events</div>
-                </div>
-                <div class="role-card" onclick="selectRole('parent')">
-                    <div class="role-card-icon">👨‍👩‍👧</div>
-                    <div class="role-card-title">Parent / Guardian</div>
-                    <div class="role-card-desc">Register your child to compete</div>
-                </div>
-                <div class="role-card" onclick="selectRole('coach')">
-                    <div class="role-card-icon">🏅</div>
-                    <div class="role-card-title">Coach</div>
-                    <div class="role-card-desc">Support your athletes at the event</div>
-                </div>
-                <div class="role-card" onclick="selectRole('judge')">
-                    <div class="role-card-icon">⚖️</div>
-                    <div class="role-card-title">Judge</div>
-                    <div class="role-card-desc">Officiate matches and events</div>
-                </div>
-                <div class="role-card" onclick="selectRole('staff')">
-                    <div class="role-card-icon">📋</div>
-                    <div class="role-card-title">Staff</div>
-                    <div class="role-card-desc">Volunteer or work the event</div>
-                </div>
-            </div>
-        `;
+    // ── Auth Check ──
+    async function checkAuth() {
+        try {
+            const res = await fetch('/api/auth/me', { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                currentUser = data.user;
+            } else {
+                currentUser = null;
+            }
+        } catch (e) {
+            currentUser = null;
+        }
+        renderNavAuth();
+        updateRegButtons();
     }
 
-    window.selectRole = function(role) {
-        const tournamentId = getTournamentId();
-
-        // Competitor / Parent → redirect to registration flow (skips info, goes straight to dashboard/auth)
-        if (role === 'competitor' || role === 'parent') {
-            closeRoleOverlay();
-            window.location.href = `/register.html#dashboard?tournamentId=${tournamentId}&role=${role}`;
-            return;
+    function renderNavAuth() {
+        const nav = document.getElementById('navbar-actions');
+        if (currentUser) {
+            nav.innerHTML = `
+                <a href="/" class="navbar-link">Directory</a>
+                <span class="nav-user-name">${esc(currentUser.first_name || currentUser.email)}</span>
+                <button class="nav-auth-btn nav-auth-ghost" onclick="handleLogout()">Log Out</button>
+            `;
+        } else {
+            nav.innerHTML = `
+                <a href="/" class="navbar-link">Back to Directory</a>
+                <button class="nav-auth-btn nav-auth-ghost" onclick="openAuthModal('login')">Log In</button>
+                <button class="nav-auth-btn nav-auth-primary" onclick="openAuthModal('signup')">Sign Up</button>
+            `;
         }
+    }
 
-        // Staff → show sub-role selection step first
-        if (role === 'staff') {
-            showStaffSubRoles(tournamentId);
-            return;
+    function updateRegButtons() {
+        // Show "Register a Competitor" button if registration is open
+        const btn = document.getElementById('btn-add-competitor');
+        if (btn && currentTournamentData) {
+            const status = getRegistrationStatus(currentTournamentData);
+            btn.style.display = status === 'open' ? '' : 'none';
         }
+    }
 
-        // Coach / Judge → submit application (with auth check)
-        submitApplication(tournamentId, role, null);
+    function getRegistrationStatus(t) {
+        if (!t.registration_open) return 'closed';
+        const now = new Date();
+        if (t.date) {
+            const d = new Date(t.date.length === 10 ? t.date + 'T23:59:59' : t.date);
+            if (d < now) return 'completed';
+        }
+        if (t.registration_deadline) {
+            const dl = new Date(t.registration_deadline);
+            dl.setHours(23, 59, 59, 999);
+            if (dl < now) return 'closed';
+        }
+        return 'open';
+    }
+
+    // ── Auth Modal ──
+    window.openAuthModal = function(tab, intent) {
+        if (intent) pendingIntent = intent;
+        document.getElementById('auth-modal').classList.add('active');
+        // Reset to login/signup view
+        document.getElementById('auth-panel-verify').style.display = 'none';
+        document.getElementById('auth-panel-login').style.display = tab === 'login' ? 'block' : 'none';
+        document.getElementById('auth-panel-signup').style.display = tab === 'signup' ? 'block' : 'none';
+        switchAuthTab(tab || 'login');
+        if (tab === 'signup') {
+            setTimeout(() => document.getElementById('signup-first').focus(), 100);
+        } else {
+            setTimeout(() => document.getElementById('login-email').focus(), 100);
+        }
     };
 
-    function showStaffSubRoles(tournamentId) {
-        selectedStaffRole = null;
-        const content = document.getElementById('role-panel-content');
-        content.innerHTML = `
-            <div class="role-panel-title">What type of staff role?</div>
-            <div class="role-panel-subtitle">Select your preferred role for the event</div>
-            <div class="staff-role-grid" id="staff-role-grid">
-                <div class="staff-role-option" onclick="pickStaffRole(this, 'Scoreboard Operator')">Scoreboard Operator</div>
-                <div class="staff-role-option" onclick="pickStaffRole(this, 'Check-in')">Check-in</div>
-                <div class="staff-role-option" onclick="pickStaffRole(this, 'Awards')">Awards</div>
-                <div class="staff-role-option" onclick="pickStaffRole(this, 'General Volunteer')">General Volunteer</div>
+    window.closeAuthModal = function() {
+        document.getElementById('auth-modal').classList.remove('active');
+        const el = (id) => document.getElementById(id);
+        el('login-error').style.display = 'none';
+        el('login-form').reset();
+        const se = el('signup-error'); if (se) se.style.display = 'none';
+        const ss = el('signup-success'); if (ss) ss.style.display = 'none';
+        const sf = el('signup-form'); if (sf) sf.reset();
+        el('forgot-section').style.display = 'none';
+    };
+
+    window.switchAuthTab = function(tab) {
+        const loginTab = document.getElementById('auth-tab-login');
+        const signupTab = document.getElementById('auth-tab-signup');
+        if (tab === 'signup') {
+            loginTab.classList.remove('active');
+            loginTab.style.borderBottomColor = 'transparent';
+            loginTab.style.color = 'var(--text-muted)';
+            signupTab.classList.add('active');
+            signupTab.style.borderBottomColor = 'var(--accent)';
+            signupTab.style.color = 'var(--text-primary)';
+            document.getElementById('auth-panel-login').style.display = 'none';
+            document.getElementById('auth-panel-signup').style.display = 'block';
+        } else {
+            signupTab.classList.remove('active');
+            signupTab.style.borderBottomColor = 'transparent';
+            signupTab.style.color = 'var(--text-muted)';
+            loginTab.classList.add('active');
+            loginTab.style.borderBottomColor = 'var(--accent)';
+            loginTab.style.color = 'var(--text-primary)';
+            document.getElementById('auth-panel-signup').style.display = 'none';
+            document.getElementById('auth-panel-login').style.display = 'block';
+        }
+    };
+
+    // ── Signup ──
+    window.handleSignup = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('signup-submit');
+        const errEl = document.getElementById('signup-error');
+        const successEl = document.getElementById('signup-success');
+        errEl.style.display = 'none'; successEl.style.display = 'none';
+        btn.disabled = true; btn.textContent = 'Creating account...';
+        try {
+            const res = await fetch('/api/auth/signup', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({
+                    firstName: document.getElementById('signup-first').value.trim(),
+                    lastName: document.getElementById('signup-last').value.trim(),
+                    email: document.getElementById('signup-email').value.trim(),
+                    password: document.getElementById('signup-password').value,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Signup failed');
+            // Show email verification panel
+            await checkAuth();
+            showVerificationPanel(document.getElementById('signup-email').value.trim());
+        } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Create Account';
+        }
+    };
+
+    function showVerificationPanel(email) {
+        document.getElementById('auth-panel-login').style.display = 'none';
+        document.getElementById('auth-panel-signup').style.display = 'none';
+        document.getElementById('auth-panel-verify').style.display = 'block';
+        document.getElementById('verify-email-display').textContent = email;
+        // Hide tab switcher
+        document.querySelector('.auth-tabs').style.display = 'none';
+    }
+
+    // ── Login ──
+    window.handleLogin = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('login-submit');
+        const errEl = document.getElementById('login-error');
+        errEl.style.display = 'none'; btn.disabled = true; btn.textContent = 'Signing in...';
+        const loginEmail = document.getElementById('login-email').value;
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ email: loginEmail, password: document.getElementById('login-password').value }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                if (data.code === 'EMAIL_NOT_VERIFIED') {
+                    await checkAuth();
+                    showVerificationPanel(loginEmail);
+                    return;
+                }
+                throw new Error(data.error || 'Login failed');
+            }
+            await checkAuth();
+            if (currentUser && !currentUser.email_verified) {
+                showVerificationPanel(loginEmail);
+                return;
+            }
+            closeAuthModal();
+            executePendingIntent();
+        } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Sign In';
+        }
+    };
+
+    window.checkVerificationAndContinue = async function() {
+        const btn = document.getElementById('verify-check-btn');
+        const errEl = document.getElementById('verify-error');
+        const successEl = document.getElementById('verify-success');
+        errEl.style.display = 'none'; successEl.style.display = 'none';
+        btn.disabled = true; btn.textContent = 'Checking...';
+        try {
+            await checkAuth();
+            if (currentUser && currentUser.email_verified) {
+                successEl.textContent = 'Email verified!';
+                successEl.style.display = 'block';
+                setTimeout(() => {
+                    closeAuthModal();
+                    document.querySelector('.auth-tabs').style.display = 'flex';
+                    executePendingIntent();
+                }, 800);
+            } else {
+                errEl.textContent = 'Email not yet verified. Please check your inbox and click the verification link.';
+                errEl.style.display = 'block';
+            }
+        } finally {
+            btn.disabled = false; btn.textContent = "I've Verified My Email";
+        }
+    };
+
+    window.handleResendVerification = async function() {
+        const errEl = document.getElementById('verify-error') || document.getElementById('login-error');
+        const successEl = document.getElementById('verify-success');
+        const email = currentUser ? currentUser.email : (document.getElementById('verify-email-display') || {}).textContent;
+        if (!email) return;
+        try {
+            await fetch('/api/auth/resend-verification', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            if (successEl) { successEl.textContent = 'Verification email resent! Check your inbox.'; successEl.style.display = 'block'; }
+        } catch (err) {
+            if (errEl) { errEl.textContent = 'Failed to resend. Please try again.'; errEl.style.display = 'block'; }
+        }
+    };
+
+    window.showForgotPassword = function() { document.getElementById('forgot-section').style.display = 'block'; };
+    window.hideForgotPassword = function() {
+        document.getElementById('forgot-section').style.display = 'none';
+        document.getElementById('forgot-error').style.display = 'none';
+        document.getElementById('forgot-success').style.display = 'none';
+    };
+    window.handleForgotPassword = async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('forgot-submit');
+        const errEl = document.getElementById('forgot-error');
+        const successEl = document.getElementById('forgot-success');
+        errEl.style.display = 'none'; successEl.style.display = 'none';
+        btn.disabled = true; btn.textContent = 'Sending...';
+        try {
+            const res = await fetch('/api/auth/forgot-password', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: document.getElementById('forgot-email').value }),
+            });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Something went wrong'); }
+            successEl.textContent = 'If an account with that email exists, a reset link has been sent.';
+            successEl.style.display = 'block';
+        } catch (err) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+        finally { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
+    };
+
+    window.handleLogout = async function() {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+        currentUser = null;
+        renderNavAuth();
+        updateRegButtons();
+    };
+
+    function executePendingIntent() {
+        const intent = pendingIntent;
+        pendingIntent = null;
+        if (!intent) return;
+        if (intent === 'competitor-registration') openRegModal();
+        else if (intent === 'coach-registration') doCoachRegistration();
+        else if (intent === 'judge-registration') doJudgeRegistration();
+        else if (intent === 'staff-registration') openStaffModal();
+    }
+
+    // ── Auth gate: ensures logged in + email verified ──
+    function requireAuth(intent) {
+        if (!currentUser) {
+            openAuthModal('login', intent);
+            return false;
+        }
+        if (!currentUser.email_verified) {
+            openAuthModal('login', intent);
+            showVerificationPanel(currentUser.email);
+            return false;
+        }
+        return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // COMPETITOR REGISTRATION
+    // ═══════════════════════════════════════════════════════════════════
+
+    window.startCompetitorRegistration = function() {
+        if (!requireAuth('competitor-registration')) return;
+        openRegModal();
+    };
+
+    function openRegModal() {
+        regState = { competitors: [makeBlankCompetitor()], step: 1, cart: [], discount: null, profiles: [] };
+        renderRegStep1();
+        document.getElementById('reg-modal').classList.add('active');
+    }
+
+    window.closeRegModal = function() {
+        document.getElementById('reg-modal').classList.remove('active');
+    };
+
+    function makeBlankCompetitor() {
+        return { firstName: '', lastName: '', dob: '', gender: '', beltRank: '', experienceLevel: '', weight: '', academyName: '', guardianName: '', guardianEmail: '' };
+    }
+
+    function renderRegStep1() {
+        const content = document.getElementById('reg-modal-content');
+        let html = `
+            <div class="reg-step-title">Register Competitors</div>
+            <div class="reg-step-subtitle">Add competitor details for this tournament</div>
+            <div id="reg-competitors-list">`;
+
+        regState.competitors.forEach((c, i) => {
+            html += renderCompetitorForm(c, i);
+        });
+
+        html += `</div>
+            <button class="reg-add-btn" onclick="addAnotherCompetitor()">+ Add Another Competitor</button>
+            <div class="modal-error" id="reg-step1-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="closeRegModal()">Cancel</button>
+                <button class="reg-nav-btn primary" onclick="submitCompetitorProfiles()" id="reg-continue-btn">Continue to Events</button>
+            </div>`;
+        content.innerHTML = html;
+    }
+
+    function renderCompetitorForm(c, index) {
+        const t = currentTournamentData;
+        const removeBtn = regState.competitors.length > 1
+            ? `<button class="reg-remove-btn" onclick="removeCompetitor(${index})">Remove</button>` : '';
+
+        return `
+        <div class="reg-competitor-form" data-index="${index}">
+            <div class="reg-competitor-header">
+                <div class="reg-competitor-label">Competitor ${index + 1}</div>
+                ${removeBtn}
             </div>
-            <button class="role-continue-btn" id="staff-continue-btn" disabled onclick="submitStaffApplication('${tournamentId}')">Continue</button>
+            <div class="reg-form-row">
+                <div class="modal-field"><label>First Name *</label>
+                    <input type="text" value="${esc(c.firstName)}" onchange="updateCompetitor(${index},'firstName',this.value)" required></div>
+                <div class="modal-field"><label>Last Name *</label>
+                    <input type="text" value="${esc(c.lastName)}" onchange="updateCompetitor(${index},'lastName',this.value)" required></div>
+            </div>
+            <div class="reg-form-row">
+                <div class="modal-field"><label>Date of Birth *</label>
+                    <input type="date" value="${esc(c.dob)}" onchange="updateCompetitor(${index},'dob',this.value);checkMinor(${index})" required></div>
+                <div class="modal-field"><label>Gender *</label>
+                    <select onchange="updateCompetitor(${index},'gender',this.value)">
+                        <option value="">Select...</option>
+                        <option value="male" ${c.gender==='male'?'selected':''}>Male</option>
+                        <option value="female" ${c.gender==='female'?'selected':''}>Female</option>
+                    </select></div>
+            </div>
+            <div id="guardian-fields-${index}" style="display:none;">
+                <div class="reg-form-row">
+                    <div class="modal-field"><label>Parent/Guardian Name *</label>
+                        <input type="text" value="${esc(c.guardianName)}" onchange="updateCompetitor(${index},'guardianName',this.value)"></div>
+                    <div class="modal-field"><label>Parent/Guardian Email *</label>
+                        <input type="email" value="${esc(c.guardianEmail)}" onchange="updateCompetitor(${index},'guardianEmail',this.value)"></div>
+                </div>
+            </div>
+            <div class="reg-form-row">
+                <div class="modal-field"><label>Belt Rank</label>
+                    <select onchange="updateCompetitor(${index},'beltRank',this.value)">
+                        <option value="">Select...</option>
+                        <option value="white" ${c.beltRank==='white'?'selected':''}>White</option>
+                        <option value="yellow" ${c.beltRank==='yellow'?'selected':''}>Yellow</option>
+                        <option value="orange" ${c.beltRank==='orange'?'selected':''}>Orange</option>
+                        <option value="green" ${c.beltRank==='green'?'selected':''}>Green</option>
+                        <option value="blue" ${c.beltRank==='blue'?'selected':''}>Blue</option>
+                        <option value="purple" ${c.beltRank==='purple'?'selected':''}>Purple</option>
+                        <option value="brown" ${c.beltRank==='brown'?'selected':''}>Brown</option>
+                        <option value="black" ${c.beltRank==='black'?'selected':''}>Black</option>
+                    </select></div>
+                <div class="modal-field"><label>Experience Level</label>
+                    <select onchange="updateCompetitor(${index},'experienceLevel',this.value)">
+                        <option value="">Select...</option>
+                        <option value="beginner" ${c.experienceLevel==='beginner'?'selected':''}>Beginner</option>
+                        <option value="novice" ${c.experienceLevel==='novice'?'selected':''}>Novice</option>
+                        <option value="intermediate" ${c.experienceLevel==='intermediate'?'selected':''}>Intermediate</option>
+                        <option value="advanced" ${c.experienceLevel==='advanced'?'selected':''}>Advanced</option>
+                    </select></div>
+            </div>
+            <div class="reg-form-row">
+                <div class="modal-field"><label>Weight (lbs)</label>
+                    <input type="number" step="0.1" value="${c.weight}" onchange="updateCompetitor(${index},'weight',this.value)"></div>
+                <div class="modal-field"><label>Dojo / Academy</label>
+                    <input type="text" value="${esc(c.academyName)}" onchange="updateCompetitor(${index},'academyName',this.value)" placeholder="Start typing..."></div>
+            </div>
+        </div>`;
+    }
+
+    window.updateCompetitor = function(index, field, value) {
+        regState.competitors[index][field] = value;
+    };
+
+    window.checkMinor = function(index) {
+        const dob = regState.competitors[index].dob;
+        const guardianEl = document.getElementById('guardian-fields-' + index);
+        if (!dob || !guardianEl) return;
+        const t = currentTournamentData;
+        const tournDate = t && t.date ? new Date(t.date.length === 10 ? t.date + 'T12:00:00' : t.date) : new Date();
+        const birthDate = new Date(dob + 'T12:00:00');
+        let age = tournDate.getFullYear() - birthDate.getFullYear();
+        const m = tournDate.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && tournDate.getDate() < birthDate.getDate())) age--;
+        guardianEl.style.display = age < 18 ? 'block' : 'none';
+    };
+
+    window.addAnotherCompetitor = function() {
+        regState.competitors.push(makeBlankCompetitor());
+        renderRegStep1();
+    };
+
+    window.removeCompetitor = function(index) {
+        regState.competitors.splice(index, 1);
+        renderRegStep1();
+    };
+
+    window.submitCompetitorProfiles = async function() {
+        const errEl = document.getElementById('reg-step1-error');
+        errEl.style.display = 'none';
+        const btn = document.getElementById('reg-continue-btn');
+
+        // Validate
+        for (let i = 0; i < regState.competitors.length; i++) {
+            const c = regState.competitors[i];
+            if (!c.firstName || !c.lastName || !c.dob || !c.gender) {
+                errEl.textContent = `Please fill in all required fields for Competitor ${i + 1}.`;
+                errEl.style.display = 'block';
+                return;
+            }
+        }
+
+        btn.disabled = true; btn.textContent = 'Saving profiles...';
+
+        try {
+            regState.profiles = [];
+            for (const c of regState.competitors) {
+                const res = await fetch('/api/profiles', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({
+                        firstName: c.firstName, lastName: c.lastName,
+                        dateOfBirth: c.dob, gender: c.gender,
+                        beltRank: c.beltRank || undefined,
+                        experienceLevel: c.experienceLevel || undefined,
+                        weight: c.weight ? parseFloat(c.weight) : undefined,
+                        academyName: c.academyName || undefined,
+                        guardianEmail: c.guardianEmail || undefined,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to create profile');
+                regState.profiles.push(data.profile || data);
+            }
+            renderRegStep2();
+        } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Continue to Events';
+        }
+    };
+
+    // ── Step 2: Event Selection ──
+    function renderRegStep2() {
+        const t = currentTournamentData;
+        const events = t.events || [];
+        const content = document.getElementById('reg-modal-content');
+
+        // Initialize selections
+        regState.eventSelections = regState.profiles.map(() => new Set());
+
+        // Get pricing
+        let basePrice = parseFloat(t.base_event_price) || 0;
+        let addonPrice = parseFloat(t.addon_event_price) || 0;
+        regState.basePrice = basePrice;
+        regState.addonPrice = addonPrice;
+
+        let html = `
+            <div class="reg-step-title">Select Events</div>
+            <div class="reg-step-subtitle">Choose events for each competitor</div>`;
+
+        regState.profiles.forEach((profile, pi) => {
+            const age = calcAge(profile.date_of_birth, t.date);
+            const eligible = events.filter(ev => isEligible(ev, profile, age));
+
+            html += `<div style="margin-bottom:24px;">
+                <div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">${esc(profile.first_name)} ${esc(profile.last_name)}</div>`;
+
+            if (eligible.length === 0) {
+                html += `<div style="color:var(--text-dim);font-size:13px;">No eligible events found for this competitor.</div>`;
+            } else {
+                eligible.forEach(ev => {
+                    html += `
+                    <label class="reg-event-item" onclick="toggleEvent(${pi}, '${ev.id}', this)">
+                        <input type="checkbox" data-profile="${pi}" data-event="${ev.id}">
+                        <div style="flex:1;">
+                            <div class="reg-event-name">${esc(ev.name)}</div>
+                            ${ev.division ? `<div class="reg-event-division">${esc(ev.division)}</div>` : ''}
+                        </div>
+                        <div class="reg-event-price" data-event-id="${ev.id}"></div>
+                    </label>`;
+                });
+            }
+            html += '</div>';
+        });
+
+        html += `
+            <div class="modal-error" id="reg-step2-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="renderRegStep1()">Back</button>
+                <button class="reg-nav-btn primary" onclick="goToCart()" id="reg-cart-btn">Continue to Cart</button>
+            </div>`;
+        content.innerHTML = html;
+        updateEventPrices();
+    }
+
+    function calcAge(dob, tournDate) {
+        const birth = new Date(dob);
+        const td = tournDate ? new Date(tournDate.length === 10 ? tournDate + 'T12:00:00' : tournDate) : new Date();
+        let age = td.getFullYear() - birth.getFullYear();
+        const m = td.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && td.getDate() < birth.getDate())) age--;
+        return age;
+    }
+
+    function isEligible(ev, profile, age) {
+        if (ev.gender && ev.gender !== 'all' && ev.gender !== profile.gender) return false;
+        if (ev.age_min && age < ev.age_min) return false;
+        if (ev.age_max && age > ev.age_max) return false;
+        return true;
+    }
+
+    window.toggleEvent = function(profileIndex, eventId, el) {
+        const set = regState.eventSelections[profileIndex];
+        if (set.has(eventId)) { set.delete(eventId); el.classList.remove('selected'); }
+        else { set.add(eventId); el.classList.add('selected'); }
+        updateEventPrices();
+    };
+
+    function updateEventPrices() {
+        regState.profiles.forEach((_, pi) => {
+            const selected = [...regState.eventSelections[pi]];
+            selected.forEach((evId, idx) => {
+                const priceEl = document.querySelector(`.reg-event-item input[data-profile="${pi}"][data-event="${evId}"]`);
+                if (priceEl) {
+                    const item = priceEl.closest('.reg-event-item');
+                    const display = item.querySelector('.reg-event-price');
+                    if (display) {
+                        const price = idx === 0 ? regState.basePrice : regState.addonPrice;
+                        display.textContent = price > 0 ? '$' + price.toFixed(2) : 'Free';
+                    }
+                }
+            });
+        });
+    }
+
+    // ── Step 3: Cart & Checkout ──
+    window.goToCart = function() {
+        const errEl = document.getElementById('reg-step2-error');
+        errEl.style.display = 'none';
+        // Check at least one event selected per competitor
+        let hasEvents = false;
+        regState.profiles.forEach((_, pi) => {
+            if (regState.eventSelections[pi].size > 0) hasEvents = true;
+        });
+        if (!hasEvents) {
+            errEl.textContent = 'Please select at least one event for at least one competitor.';
+            errEl.style.display = 'block';
+            return;
+        }
+        renderRegStep3();
+    };
+
+    function renderRegStep3() {
+        const t = currentTournamentData;
+        const events = t.events || [];
+        const content = document.getElementById('reg-modal-content');
+        let grandTotal = 0;
+
+        let html = `
+            <div class="reg-step-title">Review & Checkout</div>
+            <div class="reg-step-subtitle">Review your registration and proceed to payment</div>`;
+
+        regState.cart = [];
+        regState.profiles.forEach((profile, pi) => {
+            const selectedIds = [...regState.eventSelections[pi]];
+            if (selectedIds.length === 0) return;
+
+            let subtotal = 0;
+            const cartEvents = selectedIds.map((evId, idx) => {
+                const ev = events.find(e => e.id === evId);
+                const price = idx === 0 ? regState.basePrice : regState.addonPrice;
+                subtotal += price;
+                return { eventId: evId, name: ev ? ev.name : 'Unknown', division: ev ? ev.division : '', price };
+            });
+
+            regState.cart.push({ profileId: profile.id, profileName: `${profile.first_name} ${profile.last_name}`, events: cartEvents });
+            grandTotal += subtotal;
+
+            html += `<div class="reg-cart-item">
+                <div class="reg-cart-name">${esc(profile.first_name)} ${esc(profile.last_name)}</div>`;
+            cartEvents.forEach(ce => {
+                html += `<div class="reg-cart-event"><span>${esc(ce.name)}</span><span>$${ce.price.toFixed(2)}</span></div>`;
+            });
+            html += `<div class="reg-cart-subtotal">Subtotal: $${subtotal.toFixed(2)}</div></div>`;
+        });
+
+        regState.grandTotal = grandTotal;
+
+        html += `
+            <div class="reg-discount-row">
+                <input type="text" id="reg-discount-code" class="modal-field" placeholder="Discount code" style="margin:0;">
+                <button onclick="applyDiscount()">Apply</button>
+            </div>
+            <div id="reg-discount-msg" style="font-size:13px;margin-bottom:12px;"></div>
+            <div class="reg-cart-total" id="reg-total">Total: $${grandTotal.toFixed(2)}</div>
+            <div class="reg-waiver-check">
+                <input type="checkbox" id="reg-waiver" onchange="document.getElementById('reg-pay-btn').disabled = !this.checked;">
+                <span>I acknowledge the tournament waiver and agree to the terms and conditions for all registered competitors.</span>
+            </div>
+            <div class="modal-error" id="reg-step3-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="renderRegStep2()">Back</button>
+                <button class="reg-nav-btn primary" onclick="handleCheckout()" id="reg-pay-btn" disabled>${grandTotal > 0 ? 'Pay Now' : 'Complete Registration'}</button>
+            </div>`;
+        content.innerHTML = html;
+    }
+
+    window.applyDiscount = async function() {
+        const code = document.getElementById('reg-discount-code').value.trim();
+        const msgEl = document.getElementById('reg-discount-msg');
+        if (!code) return;
+        try {
+            const res = await fetch('/api/registrations/validate-discount', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ tournamentId: currentTournamentData.id, code }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Invalid code');
+            regState.discount = data;
+            let discountAmount = 0;
+            if (data.type === 'percentage') discountAmount = regState.grandTotal * (data.value / 100);
+            else discountAmount = Math.min(data.value, regState.grandTotal);
+            const finalTotal = Math.max(0, regState.grandTotal - discountAmount);
+            msgEl.style.color = '#22c55e';
+            msgEl.textContent = `Discount applied: -$${discountAmount.toFixed(2)}`;
+            document.getElementById('reg-total').textContent = `Total: $${finalTotal.toFixed(2)}`;
+            document.getElementById('reg-pay-btn').textContent = finalTotal > 0 ? 'Pay Now' : 'Complete Registration';
+        } catch (err) {
+            msgEl.style.color = '#ef4444';
+            msgEl.textContent = err.message;
+            regState.discount = null;
+        }
+    };
+
+    window.handleCheckout = async function() {
+        const errEl = document.getElementById('reg-step3-error');
+        errEl.style.display = 'none';
+        const btn = document.getElementById('reg-pay-btn');
+        btn.disabled = true; btn.textContent = 'Processing...';
+
+        const competitors = regState.cart.map(item => ({
+            profileId: item.profileId,
+            events: item.events.map(e => ({ eventId: e.eventId })),
+        }));
+
+        try {
+            const body = {
+                tournamentId: currentTournamentData.id,
+                competitors,
+            };
+            if (regState.discount) body.discountCode = document.getElementById('reg-discount-code').value.trim();
+
+            const res = await fetch('/api/registrations/checkout', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Checkout failed');
+
+            if (data.checkoutUrl) {
+                // Stripe redirect
+                window.location.href = data.checkoutUrl;
+            } else {
+                // Free registration — already confirmed
+                closeRegModal();
+                showSuccessModal(data);
+            }
+        } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+            btn.disabled = false; btn.textContent = 'Pay Now';
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // COACH / JUDGE / STAFF REGISTRATION (Join Tab)
+    // ═══════════════════════════════════════════════════════════════════
+
+    window.startCoachRegistration = function() {
+        if (!requireAuth('coach-registration')) return;
+        doCoachRegistration();
+    };
+
+    function doCoachRegistration() {
+        const content = document.getElementById('coach-modal-content');
+        content.innerHTML = `
+            <div class="reg-step-title">Register as Coach</div>
+            <div class="reg-step-subtitle">Support your athletes at ${esc(currentTournamentData.name)}</div>
+            <div class="modal-field">
+                <label>Dojo / Academy Name *</label>
+                <input type="text" id="coach-dojo-name" placeholder="Enter your dojo name or search existing..." oninput="searchDojos(this.value)">
+                <div id="dojo-suggestions" style="margin-top:4px;"></div>
+            </div>
+            <div id="dojo-create-fields" style="display:none;">
+                <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Creating a new dojo — you'll be able to manage its profile later.</p>
+                <div class="modal-field">
+                    <label>City</label>
+                    <input type="text" id="coach-dojo-city" placeholder="City (optional)">
+                </div>
+                <div class="modal-field">
+                    <label>State</label>
+                    <input type="text" id="coach-dojo-state" placeholder="State (optional)">
+                </div>
+            </div>
+            <div class="modal-error" id="coach-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="closeCoachModal()">Cancel</button>
+                <button class="reg-nav-btn primary" onclick="submitCoachRegistration()" id="coach-submit-btn">Submit Application</button>
+            </div>
         `;
+        document.getElementById('coach-modal').classList.add('active');
+    }
+
+    let selectedAcademyId = null;
+
+    window.searchDojos = async function(q) {
+        selectedAcademyId = null;
+        const sugEl = document.getElementById('dojo-suggestions');
+        const createFields = document.getElementById('dojo-create-fields');
+        if (q.length < 2) { sugEl.innerHTML = ''; createFields.style.display = 'none'; return; }
+        try {
+            const res = await fetch(`/api/academies/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+            if (!res.ok) return;
+            const data = await res.json();
+            const academies = data.academies || data || [];
+            if (academies.length === 0) {
+                sugEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">No matches found. A new dojo will be created.</div>';
+                createFields.style.display = 'block';
+            } else {
+                sugEl.innerHTML = academies.slice(0, 5).map(a =>
+                    `<div style="padding:8px 12px;background:var(--glass);border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:13px;color:var(--text-primary);" onclick="selectDojo('${a.id}','${esc(a.name)}')">${esc(a.name)}${a.city ? ' — ' + esc(a.city) : ''}</div>`
+                ).join('');
+                createFields.style.display = 'none';
+            }
+        } catch (e) { /* ignore */ }
+    };
+
+    window.selectDojo = function(id, name) {
+        selectedAcademyId = id;
+        document.getElementById('coach-dojo-name').value = name;
+        document.getElementById('dojo-suggestions').innerHTML = `<div style="font-size:12px;color:#22c55e;padding:4px 0;">Selected: ${name}</div>`;
+        document.getElementById('dojo-create-fields').style.display = 'none';
+    };
+
+    window.submitCoachRegistration = async function() {
+        const errEl = document.getElementById('coach-error');
+        errEl.style.display = 'none';
+        const btn = document.getElementById('coach-submit-btn');
+        const dojoName = document.getElementById('coach-dojo-name').value.trim();
+
+        if (!dojoName) {
+            errEl.textContent = 'Please enter your dojo name.'; errEl.style.display = 'block'; return;
+        }
+
+        btn.disabled = true; btn.textContent = 'Submitting...';
+
+        try {
+            // Create dojo if new
+            if (!selectedAcademyId) {
+                const dojoRes = await fetch('/api/academies', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({
+                        name: dojoName,
+                        city: document.getElementById('coach-dojo-city').value.trim() || undefined,
+                        state: document.getElementById('coach-dojo-state').value.trim() || undefined,
+                    }),
+                });
+                const dojoData = await dojoRes.json();
+                if (!dojoRes.ok) throw new Error(dojoData.error || 'Failed to create dojo');
+                selectedAcademyId = dojoData.academy ? dojoData.academy.id : dojoData.id;
+            }
+
+            // Submit tournament member application
+            const res = await fetch('/api/tournament-members', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ tournamentId: currentTournamentData.id, role: 'coach' }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to submit application');
+
+            closeCoachModal();
+            showSuccessModal({ type: 'application', role: 'Coach', tournamentName: currentTournamentData.name });
+        } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Submit Application';
+        }
+    };
+
+    window.closeCoachModal = function() { document.getElementById('coach-modal').classList.remove('active'); };
+
+    // ── Judge ──
+    window.startJudgeRegistration = function() {
+        if (!requireAuth('judge-registration')) return;
+        doJudgeRegistration();
+    };
+
+    async function doJudgeRegistration() {
+        try {
+            const res = await fetch('/api/tournament-members', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ tournamentId: currentTournamentData.id, role: 'judge' }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to submit application');
+            showSuccessModal({ type: 'application', role: 'Judge', tournamentName: currentTournamentData.name });
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    // ── Staff ──
+    window.startStaffRegistration = function() {
+        if (!requireAuth('staff-registration')) return;
+        openStaffModal();
+    };
+
+    let selectedStaffRole = null;
+
+    function openStaffModal() {
+        selectedStaffRole = null;
+        const content = document.getElementById('staff-modal-content');
+        content.innerHTML = `
+            <div class="reg-step-title">Register as Staff</div>
+            <div class="reg-step-subtitle">Select your preferred role for ${esc(currentTournamentData.name)}</div>
+            <div class="staff-role-grid">
+                <div class="staff-role-option" onclick="pickStaffRole(this,'Scoreboard Operator')">Scoreboard Operator</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this,'Check-in')">Check-in</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this,'Awards')">Awards</div>
+                <div class="staff-role-option" onclick="pickStaffRole(this,'General Volunteer')">General Volunteer</div>
+            </div>
+            <div class="modal-error" id="staff-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="closeStaffModal()">Cancel</button>
+                <button class="reg-nav-btn primary" onclick="submitStaffRegistration()" id="staff-submit-btn" disabled>Submit Application</button>
+            </div>
+        `;
+        document.getElementById('staff-modal').classList.add('active');
     }
 
     window.pickStaffRole = function(el, role) {
         selectedStaffRole = role;
         document.querySelectorAll('.staff-role-option').forEach(o => o.classList.remove('selected'));
         el.classList.add('selected');
-        document.getElementById('staff-continue-btn').disabled = false;
+        document.getElementById('staff-submit-btn').disabled = false;
     };
 
-    window.submitStaffApplication = function(tournamentId) {
+    window.submitStaffRegistration = async function() {
         if (!selectedStaffRole) return;
-        submitApplication(tournamentId, 'staff', selectedStaffRole);
-    };
-
-    async function submitApplication(tournamentId, role, staffRole) {
-        // Check if user is logged in
-        let isLoggedIn = false;
-        try {
-            const authRes = await fetch('/api/auth/me', { credentials: 'include' });
-            isLoggedIn = authRes.ok;
-        } catch (e) {
-            // Not logged in
-        }
-
-        if (!isLoggedIn) {
-            // Store intent in sessionStorage, redirect to login/signup
-            sessionStorage.setItem('pendingRoleApplication', JSON.stringify({
-                tournamentId, role, staffRole,
-            }));
-            closeRoleOverlay();
-            // Redirect to register page which has login/signup capability
-            window.location.href = `/register.html#info?tournamentId=${tournamentId}&pendingRole=${role}`;
-            return;
-        }
-
-        // User is logged in — submit application
-        const content = document.getElementById('role-panel-content');
-        content.innerHTML = `
-            <div class="role-confirm">
-                <div style="font-size:32px;margin-bottom:12px;">⏳</div>
-                <div class="role-confirm-title">Submitting application...</div>
-            </div>
-        `;
-
+        const errEl = document.getElementById('staff-error');
+        errEl.style.display = 'none';
+        const btn = document.getElementById('staff-submit-btn');
+        btn.disabled = true; btn.textContent = 'Submitting...';
         try {
             const res = await fetch('/api/tournament-members', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ tournamentId, role, staffRole }),
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ tournamentId: currentTournamentData.id, role: 'staff', staffRole: selectedStaffRole }),
             });
             const data = await res.json();
-
-            if (!res.ok) {
-                content.innerHTML = `
-                    <div class="role-confirm">
-                        <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
-                        <div class="role-confirm-title">${data.error || 'Failed to submit application'}</div>
-                        <div class="role-confirm-text">Please try again or contact the tournament organizer.</div>
-                        <button class="role-continue-btn" style="margin-top:24px;" onclick="showRoleCards()">Try Again</button>
-                    </div>
-                `;
-                return;
-            }
-
-            // Success!
-            const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent / Guardian' };
-            const roleLabel = roleLabels[role] || role;
-            const tName = getTournamentName();
-
-            content.innerHTML = `
-                <div class="role-confirm">
-                    <div class="role-confirm-icon">✓</div>
-                    <div class="role-confirm-title">Application Submitted</div>
-                    <div class="role-confirm-text">
-                        Your application to serve as <strong>${roleLabel}</strong>
-                        for <strong>${tName}</strong> has been submitted.<br><br>
-                        The tournament director will review your application and you'll be notified by email.
-                    </div>
-                    <button class="role-continue-btn" style="margin-top:28px;" onclick="closeRoleOverlay()">Done</button>
-                </div>
-            `;
-
-            // Clear any stored intent
-            sessionStorage.removeItem('pendingRoleApplication');
-
+            if (!res.ok) throw new Error(data.error || 'Failed to submit application');
+            closeStaffModal();
+            showSuccessModal({ type: 'application', role: 'Staff (' + selectedStaffRole + ')', tournamentName: currentTournamentData.name });
         } catch (err) {
+            errEl.textContent = err.message; errEl.style.display = 'block';
+            btn.disabled = false; btn.textContent = 'Submit Application';
+        }
+    };
+
+    window.closeStaffModal = function() { document.getElementById('staff-modal').classList.remove('active'); };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SUCCESS MODAL
+    // ═══════════════════════════════════════════════════════════════════
+
+    function showSuccessModal(data) {
+        const content = document.getElementById('success-modal-content');
+        if (data && data.type === 'application') {
             content.innerHTML = `
-                <div class="role-confirm">
-                    <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
-                    <div class="role-confirm-title">Network Error</div>
-                    <div class="role-confirm-text">Please check your connection and try again.</div>
-                    <button class="role-continue-btn" style="margin-top:24px;" onclick="showRoleCards()">Try Again</button>
-                </div>
-            `;
+                <div style="text-align:center;padding:24px 0;">
+                    <div style="font-size:56px;margin-bottom:16px;color:#22c55e;">&#10003;</div>
+                    <div style="font-size:20px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">Application Submitted</div>
+                    <p style="color:var(--text-muted);font-size:14px;line-height:1.7;max-width:380px;margin:0 auto;">
+                        Your application to serve as <strong>${esc(data.role)}</strong>
+                        for <strong>${esc(data.tournamentName)}</strong> has been submitted.<br><br>
+                        The tournament director will review your application and you'll be notified by email.
+                    </p>
+                    <button class="modal-submit" style="margin-top:24px;max-width:200px;" onclick="closeSuccessModal()">Done</button>
+                </div>`;
+        } else {
+            content.innerHTML = `
+                <div style="text-align:center;padding:24px 0;">
+                    <div style="font-size:56px;margin-bottom:16px;color:#22c55e;">&#10003;</div>
+                    <div style="font-size:20px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">Registration Confirmed!</div>
+                    <p style="color:var(--text-muted);font-size:14px;line-height:1.7;">
+                        Your competitors have been registered for <strong>${esc(currentTournamentData.name)}</strong>.<br>
+                        You'll receive a confirmation email shortly.
+                    </p>
+                    <button class="modal-submit" style="margin-top:24px;max-width:200px;" onclick="closeSuccessModal()">Done</button>
+                </div>`;
+        }
+        document.getElementById('success-modal').classList.add('active');
+        // Reload competitors tab
+        tabsLoaded['competitors'] = false;
+        if (document.querySelector('.tab-btn.active[data-tab="competitors"]')) {
+            loadCompetitorsTab(currentTournamentData.id);
         }
     }
 
-    // On page load, check if there's a pending application from a login redirect
-    window.addEventListener('DOMContentLoaded', async () => {
-        const pending = sessionStorage.getItem('pendingRoleApplication');
-        if (pending) {
-            try {
-                const { tournamentId, role, staffRole } = JSON.parse(pending);
-                // Check if user is now logged in
-                const authRes = await fetch('/api/auth/me', { credentials: 'include' });
-                if (authRes.ok) {
-                    // Auto-submit the pending application
-                    sessionStorage.removeItem('pendingRoleApplication');
-                    // Small delay to let the page render
-                    setTimeout(() => {
-                        openRoleOverlay();
-                        submitApplication(tournamentId, role, staffRole);
-                    }, 500);
-                }
-            } catch (e) {
-                sessionStorage.removeItem('pendingRoleApplication');
+    window.closeSuccessModal = function() { document.getElementById('success-modal').classList.remove('active'); };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STRIPE RETURN HANDLING
+    // ═══════════════════════════════════════════════════════════════════
+
+    async function handleStripeReturn() {
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session_id');
+        if (!sessionId) return;
+
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+
+        try {
+            const res = await fetch('/api/registrations/confirm', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ sessionId }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showSuccessModal(data);
             }
+        } catch (err) {
+            // Silently handle — user can check their registrations
+        }
+    }
+
+    // ── Init ──
+    // Close modals on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+                // Reset auth tabs visibility
+                const tabs = document.querySelector('.auth-tabs');
+                if (tabs) tabs.style.display = 'flex';
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+            const tabs = document.querySelector('.auth-tabs');
+            if (tabs) tabs.style.display = 'flex';
         }
     });
+
+    // Check auth on page load
+    checkAuth();
+
+    // Handle Stripe return
+    handleStripeReturn();
 })();
 
 // ── Tab System ──────────────────────────────────────────────────────
@@ -1663,11 +2653,10 @@ function setupTabs(t) {
     const vis = t.section_visibility || {};
 
     // Show tab buttons based on visibility
-    const tabs = ['competitors', 'divisions', 'brackets', 'schedule', 'results'];
+    const tabs = ['competitors', 'join', 'divisions', 'brackets', 'schedule', 'results'];
     for (const tab of tabs) {
         const btn = document.getElementById('tab-btn-' + tab);
         if (!btn) continue;
-        // Show tab if visibility is true or not set (default to showing competitors/divisions)
         const show = vis[tab] !== false;
         btn.style.display = show ? '' : 'none';
         if (!show) {
@@ -1678,6 +2667,13 @@ function setupTabs(t) {
     // Always show competitors and divisions tabs (they have data from events/registrations)
     document.getElementById('tab-btn-competitors').style.display = '';
     document.getElementById('tab-btn-divisions').style.display = '';
+
+    // Show Join tab when registration is open
+    const joinBtn = document.getElementById('tab-btn-join');
+    if (joinBtn) {
+        const regStatus = t.registration_open ? 'open' : 'closed';
+        joinBtn.style.display = regStatus === 'open' ? '' : 'none';
+    }
 
     // Show results tab only if we have published results
     loadPublicResults(t.id);
