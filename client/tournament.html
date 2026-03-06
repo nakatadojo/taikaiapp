@@ -2668,7 +2668,7 @@ function setupTabs(t) {
 
     // Show registration buttons when registration is open
     const regOpen = t.registration_open;
-    ['btn-register-coach', 'btn-register-judge', 'btn-register-staff'].forEach(id => {
+    ['btn-add-competitor', 'btn-register-coach', 'btn-register-judge', 'btn-register-staff'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = regOpen ? '' : 'none';
     });
