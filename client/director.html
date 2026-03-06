@@ -1985,6 +1985,7 @@
 
     <!-- ===== AUTH SCRIPT ===== -->
     <script src="/auth.js"></script>
+    <script src="/toast.js"></script>
 
     <!-- ===== APPLICATION SCRIPT ===== -->
     <script>
@@ -2018,21 +2019,6 @@
                 return data;
             });
         }
-
-        // ============================================================
-        // TOAST NOTIFICATIONS
-        // ============================================================
-        function showToast(message, type = 'info') {
-            const container = $('#toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(() => {
-                if (toast.parentNode) toast.remove();
-            }, 3600);
-        }
-        window.showToast = showToast;
 
         // ============================================================
         // ROUTING

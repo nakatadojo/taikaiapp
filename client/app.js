@@ -1920,7 +1920,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                     `Competitor registered successfully!\n\nTeam Code: ${teamCode}\n\nShare this code with your ${eventTypes.find(e => e.teamSize > 1)?.teamSize - 1} teammate(s) so they can join "${teamName}".`,
                     'success'
                 );
-                alert(`✓ Team Created Successfully!\n\nTeam Name: ${teamName}\nTeam Code: ${teamCode}\n\nShare this code with your teammates so they can join!`);
+                showToast(`Team created! Code: ${teamCode} — share with teammates`, 'success');
             } else {
                 showMessage(`Successfully joined team "${teamName}"!`, 'success');
             }
@@ -3857,7 +3857,7 @@ function handleDefaultEventChange() {
         const existingDefault = eventTypes.find(et => et.isDefault);
 
         if (existingDefault) {
-            alert(`Note: "${existingDefault.name}" is currently the default event. Saving this event as default will replace it.`);
+            showToast(`Note: "${existingDefault.name}" is currently the default event. Saving this event as default will replace it.`, 'warning');
         }
     }
 }
@@ -5333,7 +5333,7 @@ function loadDivisionPreset() {
     selector.value = '';
 
     // Show success message
-    alert(`✓ Loaded preset: ${preset.name}\n\nYou can now customize the criteria as needed before saving.`);
+    showToast(`Loaded preset: ${preset.name} — customize as needed before saving`, 'success');
 }
 
 // Global variable to track current template being edited
@@ -5396,7 +5396,7 @@ function validateDivisionSizes(divisions, template) {
             '• Using presets (WKF/AAU) for standard categories'
         ].join('\n');
 
-        alert(warningMessage);
+        showToast(`Division size warnings: ${warnings.length} issue(s). ${viableDivisions}/${totalDivisions} viable. Consider combining small divisions.`, 'warning', 6000);
     } else if (viableDivisions > 0) {
         showMessage(`✓ ${viableDivisions} viable division${viableDivisions !== 1 ? 's' : ''} generated successfully!`, 'success');
     }
@@ -11426,7 +11426,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     if (isIndividualScoring || isKataFlagsWithKataStructure) {
         // Route to Kata scoreboard for individual scoring or kata-flags with kata structure
         if (!currentBracket) {
-            alert('No bracket found for this division. Please generate a bracket first.');
+            showToast('No bracket found for this division. Please generate a bracket first.', 'error');
             return;
         }
         console.log('Routing to KATA scoreboard');
@@ -12220,14 +12220,14 @@ function openKataFlagsTVDisplay() {
     console.log('openKataFlagsTVDisplay called, kataFlagsMatId:', kataFlagsMatId);
     if (!kataFlagsMatId) {
         console.error('Cannot open TV display - kataFlagsMatId is not set');
-        alert('Error: Mat ID not set. Please close and reopen the operator.');
+        showToast('Error: Mat ID not set. Please close and reopen the operator.', 'error');
         return;
     }
     const windowName = `TVDisplay_Mat${kataFlagsMatId}`;
     console.log('Opening TV display window:', windowName);
     const newWindow = window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
     if (!newWindow) {
-        alert('Failed to open TV display. Please allow popups for this site.');
+        showToast('Failed to open TV display. Please allow popups for this site.', 'error');
     }
 }
 
@@ -12361,7 +12361,7 @@ function kataFlagsDeclareWinner() {
 
     if (totalVotes === 0) {
         window._kataFlagsDeclaring = false;
-        alert('No votes recorded! Judges must vote before declaring a winner.');
+        showToast('No votes recorded! Judges must vote before declaring a winner.', 'error');
         return;
     }
 
@@ -12370,7 +12370,7 @@ function kataFlagsDeclareWinner() {
 
     if (!bracket) {
         window._kataFlagsDeclaring = false;
-        alert('Error: Bracket not found. Please reload the operator.');
+        showToast('Error: Bracket not found. Please reload the operator.', 'error');
         console.error('Bracket ID not found:', window.currentBracketId);
         return;
     }
@@ -12396,7 +12396,7 @@ function kataFlagsDeclareWinner() {
 
     if (!match) {
         window._kataFlagsDeclaring = false;
-        alert('Error: Match not found in bracket.');
+        showToast('Error: Match not found in bracket.', 'error');
         console.error('Match ID not found:', window.currentMatchId);
         return;
     }
@@ -12409,7 +12409,7 @@ function kataFlagsDeclareWinner() {
         winner = match.blueCorner;
     } else {
         window._kataFlagsDeclaring = false;
-        alert('Tie! Judges must break the tie.');
+        showToast('Tie! Judges must break the tie.', 'warning');
         return;
     }
 
@@ -13626,7 +13626,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
 
     // Check if bracket has kata structure (rounds array)
     if (!bracket.rounds || !Array.isArray(bracket.rounds)) {
-        alert(`❌ Bracket Structure Mismatch\n\nThis division's bracket was generated as "${bracket.type}" which does not have the expected kata round structure.\n\nPlease:\n1. Go to the Brackets tab\n2. Delete the existing bracket\n3. Generate a new bracket with the correct type for this event`);
+        showToast(`Bracket structure mismatch: generated as "${bracket.type}". Delete and regenerate with correct type.`, 'error', 6000);
         return;
     }
 
@@ -13634,7 +13634,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentKataRound = bracket.rounds.find(r => r.performances.some(p => !p.completed)) || bracket.rounds[0];
 
     if (!currentKataRound) {
-        alert('No rounds found in this Kata bracket.');
+        showToast('No rounds found in this Kata bracket.', 'error');
         return;
     }
 
@@ -15913,7 +15913,7 @@ function addMatPenalty(corner) {
     } else if (penaltyCount === 3) {
         if (opponentCorner === 'red') { mat.redScore += 2; } else { mat.blueScore += 2; }
     } else if (penaltyCount >= 4) {
-        alert(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`);
+        showToast(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`, 'error', 5000);
     }
 
     localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
@@ -15939,7 +15939,7 @@ function startMatTimer() {
 
         if (matScoreboards[currentMatScoreboard].timeRemaining <= 0) {
             pauseMatTimer();
-            alert('Time is up!');
+            showToast('Time is up!', 'warning');
         }
     }, 1000);
 }
@@ -15970,7 +15970,7 @@ function declareMatWinner() {
     if (!matData) return;
 
     const winner = matData.redScore > matData.blueScore ? 'Red Corner' : matData.blueScore > matData.redScore ? 'Blue Corner' : 'Draw';
-    alert(`Winner: ${winner}\nRed: ${matData.redScore} | Blue: ${matData.blueScore}`);
+    showToast(`Winner: ${winner} | Red: ${matData.redScore} - Blue: ${matData.blueScore}`, 'success', 5000);
 
     // Update display with winner
     matData.winner = winner;
@@ -16841,7 +16841,7 @@ function addScore(corner, points) {
     if (scoreboardType === 'wkf' && Math.abs(redScore - blueScore) >= 8) {
         pauseTimer();
         setTimeout(() => {
-            alert(`${redScore > blueScore ? 'Red' : 'Blue'} corner wins by 8-point difference!`);
+            showToast(`${redScore > blueScore ? 'Red' : 'Blue'} corner wins by 8-point difference!`, 'success', 5000);
         }, 100);
     }
 }
@@ -16869,7 +16869,7 @@ function addPenalty(corner) {
     } else if (penaltyCount >= 4) {
         pauseTimer();
         setTimeout(() => {
-            alert(`${corner.charAt(0).toUpperCase() + corner.slice(1)} corner is disqualified! (Hansoku - 4th penalty)`);
+            showToast(`${corner.charAt(0).toUpperCase() + corner.slice(1)} corner is disqualified! (Hansoku - 4th penalty)`, 'error', 5000);
         }, 100);
     }
 
@@ -16886,7 +16886,7 @@ function startTimer() {
         if (timeRemaining <= 0) {
             pauseTimer();
             setTimeout(() => {
-                alert('Time is up!');
+                showToast('Time is up!', 'warning');
             }, 100);
         }
     }, 1000);
@@ -16934,7 +16934,7 @@ function declareWinner() {
     state.winner = winnerName;
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 
-    alert(`Winner: ${winner}\nRed: ${redScore} | Blue: ${blueScore}`);
+    showToast(`Winner: ${winner} | Red: ${redScore} - Blue: ${blueScore}`, 'success', 5000);
 }
 
 function resetScoreboard() {
@@ -17237,14 +17237,14 @@ async function handleCreateAcademy(e) {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to create academy');
+            showToast(data.error || 'Failed to create academy', 'error');
             return;
         }
 
         sessionStorage.setItem('academyPromptDismissed', '1');
         loadAcademyView();
     } catch (err) {
-        alert('Error creating academy: ' + err.message);
+        showToast('Error creating academy: ' + err.message, 'error');
     }
 }
 
@@ -17254,7 +17254,7 @@ async function handleLogoUpload(event) {
 
     // Validate size (2MB max)
     if (file.size > 2 * 1024 * 1024) {
-        alert('Logo must be under 2MB');
+        showToast('Logo must be under 2MB', 'error');
         return;
     }
 
@@ -17270,14 +17270,14 @@ async function handleLogoUpload(event) {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to upload logo');
+            showToast(data.error || 'Failed to upload logo', 'error');
             return;
         }
 
         currentAcademy = data.academy;
         renderAcademyProfile();
     } catch (err) {
-        alert('Error uploading logo: ' + err.message);
+        showToast('Error uploading logo: ' + err.message, 'error');
     }
 }
 
@@ -17313,7 +17313,7 @@ async function handleEditAcademy() {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to update academy');
+            showToast(data.error || 'Failed to update academy', 'error');
             return;
         }
 
@@ -17321,7 +17321,7 @@ async function handleEditAcademy() {
         renderAcademyProfile();
         hideEditAcademyForm();
     } catch (err) {
-        alert('Error updating academy: ' + err.message);
+        showToast('Error updating academy: ' + err.message, 'error');
     }
 }
 
@@ -17482,13 +17482,13 @@ async function handleRemoveMember(userId) {
 
         if (!res.ok) {
             const data = await res.json();
-            alert(data.error || 'Failed to remove member');
+            showToast(data.error || 'Failed to remove member', 'error');
             return;
         }
 
         loadAcademyView();
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -17579,14 +17579,14 @@ async function handleReviewRequest(requestId, action) {
 
         if (!res.ok) {
             const data = await res.json();
-            alert(data.error || 'Failed to review request');
+            showToast(data.error || 'Failed to review request', 'error');
             return;
         }
 
         loadMembershipRequests();
         if (action === 'approve') loadAcademyView(); // Refresh roster too
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
