@@ -638,25 +638,17 @@
     }
     .btn-add-competitor:hover { background: var(--accent-hover); }
 
-    /* ── Join Tab Grid ─────────────────────────────────────────────── */
-    .join-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;
+    /* ── Member Row (coaches/judges/staff lists) ─────────────────── */
+    .member-row {
+        display: flex; align-items: center; gap: 12px; padding: 12px 0;
+        border-bottom: 1px solid var(--glass-border);
     }
-    .join-card {
-        background: var(--glass); border: 1px solid var(--glass-border);
-        border-radius: var(--radius); padding: 28px 20px; text-align: center;
-        transition: all 0.2s;
+    .member-row:last-child { border-bottom: none; }
+    .member-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+    .member-role-badge {
+        font-size: 11px; font-weight: 600; padding: 2px 10px; border-radius: 6px;
+        background: rgba(255,255,255,0.06); color: var(--text-muted);
     }
-    .join-card:hover { background: var(--glass-hover); border-color: rgba(255,255,255,0.15); }
-    .join-card-icon { color: var(--text-muted); margin-bottom: 16px; }
-    .join-card-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-    .join-card-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; }
-    .join-card-btn {
-        display: inline-block; padding: 10px 24px; background: var(--accent); color: #fff;
-        border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
-        cursor: pointer; transition: all 0.2s;
-    }
-    .join-card-btn:hover { background: var(--accent-hover); }
 
     /* ── Registration Modal ────────────────────────────────────────── */
     .reg-panel {
@@ -907,7 +899,9 @@
             <div class="tab-bar-inner" id="tab-bar-inner">
                 <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
                 <button class="tab-btn" data-tab="competitors" onclick="switchTab('competitors')" id="tab-btn-competitors" style="display:none;">Competitors</button>
-                <button class="tab-btn" data-tab="join" onclick="switchTab('join')" id="tab-btn-join" style="display:none;">Join</button>
+                <button class="tab-btn" data-tab="coaches" onclick="switchTab('coaches')" id="tab-btn-coaches" style="display:none;">Coaches</button>
+                <button class="tab-btn" data-tab="judges" onclick="switchTab('judges')" id="tab-btn-judges" style="display:none;">Judges</button>
+                <button class="tab-btn" data-tab="staff" onclick="switchTab('staff')" id="tab-btn-staff" style="display:none;">Staff</button>
                 <button class="tab-btn" data-tab="divisions" onclick="switchTab('divisions')" id="tab-btn-divisions" style="display:none;">Divisions</button>
                 <button class="tab-btn" data-tab="brackets" onclick="switchTab('brackets')" id="tab-btn-brackets" style="display:none;">Brackets</button>
                 <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" id="tab-btn-schedule" style="display:none;">Schedule</button>
@@ -969,37 +963,36 @@
                     </div>
                 </div>
 
-                <!-- === JOIN TAB === -->
-                <div class="tab-panel" id="panel-join">
+                <!-- === COACHES TAB === -->
+                <div class="tab-panel" id="panel-coaches">
                     <div class="section-card">
-                        <div class="section-title">Join This Tournament</div>
-                        <p style="color:var(--text-muted);font-size:14px;margin-bottom:24px;">Choose how you'd like to participate in this tournament.</p>
-                        <div class="join-grid">
-                            <div class="join-card">
-                                <div class="join-card-icon">
-                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                </div>
-                                <div class="join-card-title">Coach</div>
-                                <div class="join-card-desc">Support your athletes at this tournament</div>
-                                <button class="join-card-btn" onclick="startCoachRegistration()">Register as Coach</button>
-                            </div>
-                            <div class="join-card">
-                                <div class="join-card-icon">
-                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                                </div>
-                                <div class="join-card-title">Judge</div>
-                                <div class="join-card-desc">Officiate matches and events</div>
-                                <button class="join-card-btn" onclick="startJudgeRegistration()">Register as Judge</button>
-                            </div>
-                            <div class="join-card">
-                                <div class="join-card-icon">
-                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-                                </div>
-                                <div class="join-card-title">Staff</div>
-                                <div class="join-card-desc">Volunteer or work the event</div>
-                                <button class="join-card-btn" onclick="startStaffRegistration()">Register as Staff</button>
-                            </div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                            <div class="section-title" style="margin-bottom:0;">Coaches</div>
+                            <button class="btn-add-competitor" id="btn-register-coach" style="display:none;" onclick="startCoachRegistration()">Register as Coach</button>
                         </div>
+                        <div id="coaches-container"><div class="tab-loading">Loading coaches...</div></div>
+                    </div>
+                </div>
+
+                <!-- === JUDGES TAB === -->
+                <div class="tab-panel" id="panel-judges">
+                    <div class="section-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                            <div class="section-title" style="margin-bottom:0;">Judges</div>
+                            <button class="btn-add-competitor" id="btn-register-judge" style="display:none;" onclick="startJudgeRegistration()">Register as Judge</button>
+                        </div>
+                        <div id="judges-container"><div class="tab-loading">Loading judges...</div></div>
+                    </div>
+                </div>
+
+                <!-- === STAFF TAB === -->
+                <div class="tab-panel" id="panel-staff">
+                    <div class="section-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                            <div class="section-title" style="margin-bottom:0;">Staff</div>
+                            <button class="btn-add-competitor" id="btn-register-staff" style="display:none;" onclick="startStaffRegistration()">Register as Staff</button>
+                        </div>
+                        <div id="staff-container"><div class="tab-loading">Loading staff...</div></div>
                     </div>
                 </div>
 
@@ -2653,7 +2646,7 @@ function setupTabs(t) {
     const vis = t.section_visibility || {};
 
     // Show tab buttons based on visibility
-    const tabs = ['competitors', 'join', 'divisions', 'brackets', 'schedule', 'results'];
+    const tabs = ['competitors', 'coaches', 'judges', 'staff', 'divisions', 'brackets', 'schedule', 'results'];
     for (const tab of tabs) {
         const btn = document.getElementById('tab-btn-' + tab);
         if (!btn) continue;
@@ -2664,16 +2657,21 @@ function setupTabs(t) {
         }
     }
 
-    // Always show competitors and divisions tabs (they have data from events/registrations)
+    // Always show competitors and divisions tabs
     document.getElementById('tab-btn-competitors').style.display = '';
     document.getElementById('tab-btn-divisions').style.display = '';
 
-    // Show Join tab when registration is open
-    const joinBtn = document.getElementById('tab-btn-join');
-    if (joinBtn) {
-        const regStatus = t.registration_open ? 'open' : 'closed';
-        joinBtn.style.display = regStatus === 'open' ? '' : 'none';
-    }
+    // Always show coaches, judges, staff tabs
+    document.getElementById('tab-btn-coaches').style.display = '';
+    document.getElementById('tab-btn-judges').style.display = '';
+    document.getElementById('tab-btn-staff').style.display = '';
+
+    // Show registration buttons when registration is open
+    const regOpen = t.registration_open;
+    ['btn-register-coach', 'btn-register-judge', 'btn-register-staff'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = regOpen ? '' : 'none';
+    });
 
     // Show results tab only if we have published results
     loadPublicResults(t.id);
@@ -2729,6 +2727,9 @@ async function loadTabContent(tabName, tournamentId) {
         case 'divisions': return loadDivisionsTab(tournamentId);
         case 'brackets': return loadBracketsTab(tournamentId);
         case 'schedule': return loadScheduleTab(tournamentId);
+        case 'coaches': return loadMembersTab(tournamentId, 'coach', 'coaches-container');
+        case 'judges': return loadMembersTab(tournamentId, 'judge', 'judges-container');
+        case 'staff': return loadMembersTab(tournamentId, 'staff', 'staff-container');
         case 'results': return loadPublicResults(tournamentId);
         case 'sponsors': return loadSponsorsTab(tournamentId);
         default:
@@ -2783,6 +2784,34 @@ function filterCompetitors() {
         (c.academy_name || '').toLowerCase().includes(q)
     );
     renderCompetitors(filtered);
+}
+
+// ── Coaches / Judges / Staff Tabs ────────────────────────────────────
+async function loadMembersTab(tournamentId, role, containerId) {
+    const container = document.getElementById(containerId);
+    try {
+        const res = await fetch(`/api/tournament-members/${tournamentId}/public`);
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        const members = (data.members || []).filter(m => m.role === role);
+
+        if (members.length === 0) {
+            const roleLabel = role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff';
+            container.innerHTML = `<div class="tab-empty">No ${roleLabel} registered yet.</div>`;
+            return;
+        }
+
+        container.innerHTML = members.map(m => {
+            const badge = m.staff_role ? `<span class="member-role-badge">${esc(m.staff_role)}</span>` : '';
+            return `<div class="member-row">
+                <div class="member-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
+                ${badge}
+            </div>`;
+        }).join('');
+    } catch (err) {
+        const roleLabel = role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff';
+        container.innerHTML = `<div class="tab-empty">Unable to load ${roleLabel}.</div>`;
+    }
 }
 
 // ── Divisions Tab ───────────────────────────────────────────────────

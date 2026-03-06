@@ -239,4 +239,25 @@ async function staffDashboard(req, res, next) {
   }
 }
 
-module.exports = { apply, list, approve, decline, myTournaments, getMembership, staffDashboard };
+/**
+ * GET /api/tournament-members/:tournamentId/public
+ * Public list of approved members (coaches, judges, staff).
+ */
+async function listPublic(req, res, next) {
+  try {
+    const members = await tournamentMemberQueries.getByTournament(req.params.tournamentId, { status: 'approved' });
+    // Only return public-safe fields
+    const publicMembers = members.map(m => ({
+      id: m.id,
+      first_name: m.first_name,
+      last_name: m.last_name,
+      role: m.role,
+      staff_role: m.staff_role,
+    }));
+    res.json({ members: publicMembers });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, staffDashboard };

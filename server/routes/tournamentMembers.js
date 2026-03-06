@@ -19,7 +19,12 @@ router.post('/',
   controller.apply
 );
 
-// GET /api/tournament-members/:tournamentId — List members for a tournament
+// GET /api/tournament-members/:tournamentId/public — Public list of approved members
+router.get('/:tournamentId/public',
+  controller.listPublic
+);
+
+// GET /api/tournament-members/:tournamentId — List members for a tournament (admin)
 router.get('/:tournamentId',
   requireAuth,
   requireTournamentOwner,
