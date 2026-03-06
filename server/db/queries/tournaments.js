@@ -236,7 +236,8 @@ async function update(tournamentId, updates) {
     'base_event_price', 'addon_event_price',
     'slug', 'description', 'city', 'state', 'venue_name', 'venue_address',
     'published', 'organization_name', 'contact_email', 'registration_deadline',
-    'cover_image_url', 'sanctioning_body',
+    'cover_image_url', 'sanctioning_body', 'collect_tshirt_sizes',
+    'registration_settings',
   ];
   const fields = [];
   const values = [];

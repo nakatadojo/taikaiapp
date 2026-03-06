@@ -97,26 +97,27 @@ async function signup(req, res, next) {
       );
     }
 
-    // Assign roles based on accountType
-    let selectedRoles;
+    // Assign roles based on accountType (if provided for backward compat)
+    let selectedRoles = [];
     if (acctType === 'event_director') {
       selectedRoles = ['event_director'];
     } else if (acctType === 'competitor') {
       selectedRoles = ['competitor'];
     } else if (acctType === 'guardian') {
-      selectedRoles = ['competitor']; // Guardians still get competitor role for system access
+      selectedRoles = ['competitor'];
     } else if (acctType === 'both') {
       selectedRoles = ['competitor'];
-    } else {
-      // Fallback: use provided roles or default
+    } else if (roles && Array.isArray(roles) && roles.length > 0) {
       const validRoles = ['competitor', 'coach', 'judge', 'assistant_coach'];
-      selectedRoles = (roles || ['competitor']).filter(r => validRoles.includes(r));
-      if (selectedRoles.length === 0) selectedRoles.push('competitor');
+      selectedRoles = roles.filter(r => validRoles.includes(r));
     }
-    await roleQueries.addRoles(user.id, selectedRoles);
+    // Only assign roles if any were determined (new flow defers role to selectRole endpoint)
+    if (selectedRoles.length > 0) {
+      await roleQueries.addRoles(user.id, selectedRoles);
+    }
 
-    // Auto-create self-profile for competitors
-    if (acctType === 'competitor' || acctType === 'both') {
+    // Auto-create self-profile for competitors (backward compat when accountType provided)
+    if ((acctType === 'competitor' || acctType === 'both') && dateOfBirth) {
       try {
         await profileQueries.create({
           userId: user.id,
@@ -131,7 +132,7 @@ async function signup(req, res, next) {
       }
     }
 
-    // Send verification email (director-specific template for event directors)
+    // Send verification email
     try {
       await sendVerificationEmail(email, verificationToken, {
         accountType: acctType,
@@ -140,6 +141,9 @@ async function signup(req, res, next) {
     } catch (emailErr) {
       console.error('Verification email failed:', emailErr.message);
     }
+
+    // Set auth cookie so user can proceed to role selection immediately
+    const payload = setAuthCookie(res, user, selectedRoles);
 
     res.status(201).json({
       message: 'Account created. Please check your email to verify your address.',
@@ -150,6 +154,7 @@ async function signup(req, res, next) {
         lastName: user.last_name,
         roles: selectedRoles,
         accountType: acctType,
+        profileCompleted: false,
       },
     });
   } catch (err) {
@@ -173,9 +178,9 @@ async function verifyEmail(req, res, next) {
       return res.status(400).json({ error: 'Invalid or expired verification token' });
     }
 
-    // Redirect to login page with success flag
+    // Redirect to landing page with success flag
     const appUrl = process.env.APP_URL || '';
-    res.redirect(`${appUrl}/public.html?verified=1`);
+    res.redirect(`${appUrl}/?verified=1`);
   } catch (err) {
     next(err);
   }
@@ -201,14 +206,6 @@ async function login(req, res, next) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Check email verification
-    if (!user.email_verified) {
-      return res.status(403).json({
-        error: 'Please verify your email address before logging in',
-        code: 'EMAIL_NOT_VERIFIED',
-      });
-    }
-
     // Load roles
     const roles = await roleQueries.getRolesForUser(user.id);
 
@@ -229,6 +226,170 @@ async function login(req, res, next) {
         accountType: user.account_type,
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
+        profileCompleted: user.profile_completed || false,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/auth/select-role
+ * Sets the user's role after account creation (new multi-step signup flow).
+ */
+async function selectRole(req, res, next) {
+  try {
+    const { role } = req.body;
+    const validRoles = ['competitor', 'parent', 'coach', 'judge', 'staff'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be one of: competitor, parent, coach, judge, staff' });
+    }
+
+    const userId = req.user.id;
+
+    // Map frontend role to system role and account_type
+    let systemRole;
+    let accountType;
+
+    switch (role) {
+      case 'competitor':
+        systemRole = 'competitor';
+        accountType = 'competitor';
+        break;
+      case 'parent':
+        systemRole = 'competitor'; // Parents get competitor role for system access
+        accountType = 'guardian';
+        break;
+      case 'coach':
+        systemRole = 'coach';
+        accountType = null;
+        break;
+      case 'judge':
+        systemRole = 'judge';
+        accountType = null;
+        break;
+      case 'staff':
+        systemRole = 'staff';
+        accountType = null;
+        break;
+    }
+
+    // Add role (idempotent via ON CONFLICT DO NOTHING)
+    await roleQueries.addRole(userId, systemRole);
+
+    // Set account_type
+    if (accountType) {
+      await pool.query('UPDATE users SET account_type = $1, updated_at = NOW() WHERE id = $2', [accountType, userId]);
+    }
+
+    // Reload roles for cookie refresh
+    const roles = await roleQueries.getRolesForUser(userId);
+    const user = await userQueries.findById(userId);
+    setAuthCookie(res, user, roles);
+
+    res.json({
+      message: 'Role selected successfully',
+      role,
+      user: {
+        id: user.id,
+        email: user.email,
+        roles,
+        accountType: accountType || user.account_type,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PUT /api/auth/complete-profile
+ * Completes the user's profile after role selection (new multi-step signup flow).
+ */
+async function completeProfile(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const {
+      phone, dateOfBirth, gender,
+      addressLine1, addressCity, addressState, addressZip,
+      isCertified, certificationBody, certificationClass,
+    } = req.body;
+
+    const user = await userQueries.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const roles = await roleQueries.getRolesForUser(userId);
+    const accountType = user.account_type;
+
+    // Build update map
+    const updates = { profile_completed: true };
+    if (phone !== undefined) updates.phone = phone;
+
+    // Competitor-specific: validate 18+ and create self-profile
+    if (accountType === 'competitor') {
+      if (dateOfBirth) {
+        const dob = new Date(typeof dateOfBirth === 'string' && dateOfBirth.length === 10 ? dateOfBirth + 'T12:00:00' : dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const monthDiff = today.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
+        if (age < 18) {
+          return res.status(400).json({
+            error: 'Competitors must be 18 or older. If you are a minor, a parent or guardian should register on your behalf.',
+          });
+        }
+        updates.date_of_birth = dateOfBirth;
+      }
+
+      // Create self-profile for competitors
+      try {
+        await profileQueries.create({
+          userId,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          dateOfBirth: dateOfBirth || '2000-01-01',
+          gender: gender || 'male',
+          isSelf: true,
+        });
+      } catch (profileErr) {
+        if (!profileErr.message.includes('duplicate')) {
+          console.warn('Failed to create self-profile:', profileErr.message);
+        }
+      }
+    }
+
+    // Parent-specific: save address
+    if (accountType === 'guardian') {
+      if (addressLine1) updates.address_line1 = addressLine1;
+      if (addressCity) updates.address_city = addressCity;
+      if (addressState) updates.address_state = addressState;
+      if (addressZip) updates.address_zip = addressZip;
+    }
+
+    // Judge-specific: save certification info
+    if (roles.includes('judge')) {
+      if (isCertified !== undefined) updates.is_certified = isCertified;
+      if (certificationBody) updates.certification_body = certificationBody;
+      if (certificationClass) updates.certification_class = certificationClass;
+    }
+
+    const updatedUser = await userQueries.updateProfile(userId, updates);
+
+    // Refresh auth cookie
+    setAuthCookie(res, updatedUser, roles);
+
+    res.json({
+      message: 'Profile completed successfully',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.first_name,
+        lastName: updatedUser.last_name,
+        phone: updatedUser.phone,
+        roles,
+        profileCompleted: true,
+        accountType: updatedUser.account_type,
       },
     });
   } catch (err) {
@@ -319,6 +480,14 @@ async function getMe(req, res, next) {
         accountType: user.account_type,
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
+        profileCompleted: user.profile_completed || false,
+        addressLine1: user.address_line1 || '',
+        addressCity: user.address_city || '',
+        addressState: user.address_state || '',
+        addressZip: user.address_zip || '',
+        isCertified: user.is_certified || false,
+        certificationBody: user.certification_body || '',
+        certificationClass: user.certification_class || '',
         settings: user.settings || {},
       },
     };
@@ -595,6 +764,8 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  selectRole,
+  completeProfile,
   forgotPassword,
   resetPassword,
   resendVerification,

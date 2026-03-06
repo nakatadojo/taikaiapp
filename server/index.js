@@ -9,6 +9,10 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Client directory (Express 5 / send 1.2+ requires root option for sendFile)
+const CLIENT_DIR = path.join(__dirname, '..', 'client');
+const sendOpts = { root: CLIENT_DIR };
+
 // Security headers (CSP disabled — scoreboards use inline React/Babel from CDN)
 app.use(helmet({
   contentSecurityPolicy: false
@@ -39,6 +43,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/academies', require('./routes/academies'));
 app.use('/api/tournaments', require('./routes/tournaments'));
 app.use('/api/profiles', require('./routes/profiles'));
+app.use('/api/profiles', require('./routes/documents'));
 app.use('/api/registrations', require('./routes/registrations'));
 app.use('/api/guardians', require('./routes/guardians'));
 app.use('/api/credits', require('./routes/credits'));
@@ -48,6 +53,14 @@ app.use('/api/tournament-members', require('./routes/tournamentMembers'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/my', require('./routes/myTournaments'));
 app.use('/api/waivers', require('./routes/waivers'));
+app.use('/api/tournaments', require('./routes/results'));
+app.use('/api/tournaments', require('./routes/publicData'));
+app.use('/api/tournaments', require('./routes/pricingPeriods'));
+app.use('/api/tournaments', require('./routes/staffRoles'));
+app.use('/api/tournaments', require('./routes/checkin'));
+app.use('/api/tournaments', require('./routes/schedule'));
+app.use('/api/tournaments', require('./routes/divisions'));
+app.use('/api/tournaments', require('./routes/brackets'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
@@ -56,51 +69,59 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Landing page — root URL serves the tournament directory
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'landing.html'));
+  res.sendFile('landing.html', sendOpts);
+});
+
+// Block old public page — redirect to landing page (file kept but not routable)
+app.get('/public.html', (req, res) => {
+  res.redirect('/');
 });
 
 // Serve client files (HTML, JS, CSS, images)
-app.use(express.static(path.join(__dirname, '..', 'client')));
+app.use(express.static(CLIENT_DIR));
 
 // Route aliases
 app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'index.html'));
+  res.sendFile('index.html', sendOpts);
 });
 app.get('/register', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'register.html'));
+  res.sendFile('register.html', sendOpts);
 });
 app.get('/director', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'director.html'));
+  res.sendFile('director.html', sendOpts);
 });
 app.get('/my-events', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'my-events.html'));
+  res.sendFile('my-events.html', sendOpts);
 });
 app.get('/badge', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'badge.html'));
+  res.sendFile('badge.html', sendOpts);
 });
 app.get('/coach', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'coach.html'));
+  res.sendFile('coach.html', sendOpts);
 });
 app.get('/waiver', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'waiver.html'));
+  res.sendFile('waiver.html', sendOpts);
+});
+app.get('/staff', (req, res) => {
+  res.sendFile('staff.html', sendOpts);
 });
 
 // Tournament Builder Wizard
 app.get('/director/tournaments/new', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'wizard.html'));
+  res.sendFile('wizard.html', sendOpts);
 });
 app.get('/director/tournaments/:id/wizard', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'wizard.html'));
+  res.sendFile('wizard.html', sendOpts);
 });
 
 // Tournament Management (divisions, brackets, scoring, scoreboards)
 app.get('/director/tournaments/:id/manage', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'manage.html'));
+  res.sendFile('manage.html', sendOpts);
 });
 
 // /tournaments/:slug — Serve public tournament page
 app.get('/tournaments/:slug', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'tournament.html'));
+  res.sendFile('tournament.html', sendOpts);
 });
 
 // ── Error Handler ───────────────────────────────────────────────────────────

@@ -1,0 +1,23 @@
+const express = require('express');
+const { requireAuth } = require('../middleware/auth');
+const { requireRole } = require('../middleware/roles');
+const c = require('../controllers/scheduleController');
+
+const router = express.Router();
+
+router.get('/:id/schedule',
+  requireAuth, requireRole('event_director', 'admin', 'super_admin'),
+  c.getSchedule
+);
+
+router.post('/:id/schedule/sync',
+  requireAuth, requireRole('event_director', 'admin', 'super_admin'),
+  c.syncSchedule
+);
+
+router.put('/:id/schedule/publish',
+  requireAuth, requireRole('event_director', 'admin', 'super_admin'),
+  c.setSchedulePublished
+);
+
+module.exports = router;

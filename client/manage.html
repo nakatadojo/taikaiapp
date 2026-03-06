@@ -8,6 +8,32 @@
     <link rel="stylesheet" href="/styles.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="/taikai-logo.js"></script>
+    <style>
+    /* Awards Dashboard */
+    .awards-tab { background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; font-size:14px; font-weight:600; border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .awards-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .awards-tab:hover { color:var(--text); }
+    .awards-count { display:inline-block; background:var(--surface); padding:1px 8px; border-radius:10px; font-size:11px; margin-left:4px; }
+    .awards-empty { text-align:center; padding:40px 20px; color:var(--text-muted); }
+    .awards-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; }
+    .awards-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px; }
+    .awards-card-title { font-weight:600; font-size:15px; }
+    .awards-card-event { font-size:12px; color:var(--text-muted); }
+    .awards-card-placements { display:flex; gap:16px; margin:8px 0; flex-wrap:wrap; }
+    .awards-placement { display:flex; align-items:center; gap:6px; font-size:13px; }
+    .awards-placement .medal { font-size:16px; }
+    .awards-card-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .awards-badge { display:inline-block; padding:2px 10px; border-radius:8px; font-size:11px; font-weight:600; }
+    .awards-badge.pending { background:var(--warning); color:#000; }
+    .awards-badge.published { background:var(--success); color:#fff; }
+
+    /* Sync indicator */
+    .sync-indicator { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted, #888); padding:4px 0; }
+    .sync-dot { width:8px; height:8px; border-radius:50%; background:var(--success, #22c55e); }
+    .sync-dot--syncing { background:var(--warning, #eab308); animation:sync-pulse 1s infinite; }
+    .sync-dot--error { background:var(--red, #ef4444); }
+    @keyframes sync-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    </style>
 </head>
 <body>
     <!-- ===== AUTH GATE (login/signup overlay) ===== -->
@@ -110,6 +136,10 @@
                     </select>
                     <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
                 </div>
+                <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
+                    <span class="sync-dot"></span>
+                    <span class="sync-label">Saved</span>
+                </span>
             </div>
 
             <nav id="main-nav" class="hidden">
@@ -1148,9 +1178,12 @@
                                 <option value="">All Events</option>
                             </select>
                         </div>
-                        <div style="display: flex; gap: 12px;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <button class="btn btn-danger" onclick="deleteAllBrackets()">Delete All Brackets</button>
                             <button class="btn btn-primary" onclick="showBracketGenerator()">+ Generate New Bracket</button>
+                            <button class="btn" id="brackets-publish-btn" onclick="toggleBracketsPublished()" style="background:var(--accent);color:#fff;">
+                                <span id="brackets-publish-label">Publish All Brackets</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1310,12 +1343,15 @@
                                 <h3 style="margin: 0 0 8px 0;">Dynamic Timeline</h3>
                                 <p class="hint" style="margin: 0;">Drag divisions from the left to mat columns on the right. Times are calculated automatically.</p>
                             </div>
-                            <div style="display: flex; gap: 8px;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
                                     ⚡ Auto-Schedule All
                                 </button>
                                 <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">
                                     🗑️ Clear All Schedules
+                                </button>
+                                <button class="btn btn-small" id="schedule-publish-btn" onclick="toggleSchedulePublished()" style="background:var(--accent);color:#fff;">
+                                    <span id="schedule-publish-label">Publish Schedule</span>
                                 </button>
                             </div>
                         </div>
@@ -1421,14 +1457,52 @@
                 <div id="mat-scoreboards-container"></div>
             </section>
 
-            <!-- Results View -->
+            <!-- Awards & Results View -->
             <section id="results-view" class="view">
-                <h2>Results & Certificates</h2>
+                <h2>Awards & Results</h2>
 
-                <div class="glass-panel">
-                    <h3>Division Results</h3>
+                <!-- Sync bar -->
+                <div class="glass-panel" style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="syncResultsToServer()" id="btn-sync-results">Sync Results from Scoreboard</button>
+                    <span id="sync-status" style="color:var(--text-muted);font-size:13px;"></span>
+                    <div style="margin-left:auto;display:flex;gap:8px;">
+                        <button class="btn btn-sm" onclick="bulkPublishResults()" id="btn-publish-all" style="background:var(--success);color:#fff;">Publish All</button>
+                        <button class="btn btn-sm" onclick="bulkUnpublishResults()" id="btn-unpublish-all" style="background:var(--text-muted);color:#fff;">Unpublish All</button>
+                    </div>
+                </div>
+
+                <!-- Awards tabs -->
+                <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border);">
+                    <button class="awards-tab active" data-awards-tab="pending" onclick="switchAwardsTab('pending')">
+                        Pending Awards <span id="pending-count" class="awards-count">0</span>
+                    </button>
+                    <button class="awards-tab" data-awards-tab="published" onclick="switchAwardsTab('published')">
+                        Published <span id="published-count" class="awards-count">0</span>
+                    </button>
+                </div>
+
+                <!-- Pending tab -->
+                <div id="awards-pending-tab" class="awards-tab-content">
+                    <div id="pending-results-container"></div>
+                    <div id="pending-empty" class="awards-empty" style="display:none;">
+                        <p>No pending awards. Sync results from the scoreboard to get started.</p>
+                    </div>
+                </div>
+
+                <!-- Published tab -->
+                <div id="awards-published-tab" class="awards-tab-content" style="display:none;">
+                    <div id="published-results-container"></div>
+                    <div id="published-empty" class="awards-empty" style="display:none;">
+                        <p>No published results yet.</p>
+                    </div>
+                </div>
+
+                <!-- Legacy results (for certificate generation from localStorage) -->
+                <div class="glass-panel" style="margin-top:24px;">
+                    <h3>Certificates</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Generate certificates from localStorage bracket data.</p>
                     <div id="results-container"></div>
-                    <button class="btn btn-primary" onclick="generateAllCertificates()" style="margin-top: 16px;">Generate All Certificates</button>
+                    <button class="btn btn-primary" onclick="generateAllCertificates()" style="margin-top:12px;">Generate All Certificates</button>
                 </div>
             </section>
 
@@ -1441,6 +1515,29 @@
                     <p class="hint">Manage the event types for this tournament. Deleting an event will also remove its divisions and brackets.</p>
                     <div id="settings-events-list" style="margin-top: 12px;">
                         <p class="hint">No events loaded.</p>
+                    </div>
+                </div>
+
+                <div class="glass-panel" id="staff-roles-panel">
+                    <h3>Staff Roles & Permissions</h3>
+                    <p class="hint">Define custom roles for staff members with specific permissions. Assign roles to approved tournament members.</p>
+
+                    <div id="staff-roles-list" style="margin-top: 12px;"></div>
+
+                    <div style="margin-top: 16px; padding: 16px; background: var(--glass); border: 1px dashed var(--glass-border); border-radius: 8px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px;">Create New Role</h4>
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <input type="text" id="new-role-name" class="form-input" placeholder="Role name (e.g., Head Judge)" style="flex: 1;">
+                        </div>
+                        <div id="new-role-permissions" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
+                        <button class="btn btn-primary btn-sm" onclick="createStaffRole()">Create Role</button>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px;">Member Role Assignments</h4>
+                        <div id="staff-member-assignments" style="font-size: 13px; color: var(--text-secondary);">
+                            <p class="hint">No approved staff members yet.</p>
+                        </div>
                     </div>
                 </div>
 
@@ -1537,34 +1634,41 @@
                             <input type="text" id="public-footer-text" placeholder="© 2024 Tournament Name. All rights reserved.">
                         </div>
 
-                        <h4 style="margin-top: 20px;">Visibility Settings</h4>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="public-show-schedule">
-                                    Show Schedule to Public
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="public-show-results">
-                                    Show Results to Public
-                                </label>
-                            </div>
-                        </div>
-
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Save Configuration</button>
-                            <button type="button" class="btn btn-secondary" onclick="openPublicSite()">📺 Preview Public Site</button>
+                            <button type="button" class="btn btn-secondary" onclick="openPublicSite()">Preview Public Site</button>
                         </div>
                     </form>
                 </div>
 
+                <!-- Section Visibility -->
+                <div class="glass-panel">
+                    <h3>Landing Page Sections</h3>
+                    <p class="hint" style="margin-bottom:16px;">Control which tabs are visible on your tournament's public page.</p>
+                    <div id="visibility-toggles" style="display:grid;gap:10px;">
+                        <label class="checkbox-label"><input type="checkbox" id="vis-competitors" checked onchange="saveVisibility()"> Competitors list</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-divisions" checked onchange="saveVisibility()"> Divisions</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-brackets" onchange="saveVisibility()"> Brackets</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-schedule" onchange="saveVisibility()"> Schedule</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-hide-count" onchange="saveVisibility()"> Hide competitor count from hero</label>
+                    </div>
+                    <p class="hint" style="margin-top:8px;">Results are controlled by the Awards workflow — publish from the Results tab.</p>
+                </div>
+
+                <!-- Custom Tabs -->
+                <div class="glass-panel">
+                    <h3>Custom Tabs</h3>
+                    <p class="hint" style="margin-bottom:16px;">Add informational tabs (e.g., Hotel Deals, Tournament Rules, Parking Info).</p>
+                    <div id="custom-tabs-list"></div>
+                    <button class="btn btn-secondary" onclick="addCustomTabRow()" style="margin-top:12px;">+ Add Custom Tab</button>
+                </div>
+
+                <!-- Share -->
                 <div class="glass-panel">
                     <h3>Share Public Site</h3>
                     <p class="hint">Share this link with competitors and spectators:</p>
                     <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px;">
-                        <input type="text" id="public-site-url" readonly value="public.html" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary);">
+                        <input type="text" id="public-site-url" readonly value="" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary);">
                         <button class="btn btn-secondary" onclick="copyPublicSiteUrl()">Copy Link</button>
                     </div>
                 </div>
@@ -1856,6 +1960,53 @@
             localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
             localStorage.setItem('divisions', JSON.stringify(allDivisions));
 
+            // Load schedule, divisions, and brackets from server (parallel)
+            try {
+                const [schedResult, divResult, brkResult] = await Promise.allSettled([
+                    fetch(`/api/tournaments/${tournamentId}/schedule`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/divisions`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/brackets`, { credentials: 'include' }),
+                ]);
+
+                // Seed schedule from server
+                if (schedResult.status === 'fulfilled' && schedResult.value.ok) {
+                    const schedData = await schedResult.value.json();
+                    if (schedData.matSchedule && Object.keys(schedData.matSchedule).length > 0) {
+                        localStorage.setItem(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
+                        localStorage.setItem('matSchedule', JSON.stringify(schedData.matSchedule));
+                    }
+                    if (schedData.scheduleSettings && Object.keys(schedData.scheduleSettings).length > 0) {
+                        localStorage.setItem(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
+                    }
+                    // Track published state for UI
+                    window._schedulePublished = schedData.published || false;
+                }
+
+                // Merge generated divisions from server
+                if (divResult.status === 'fulfilled' && divResult.value.ok) {
+                    const divData = await divResult.value.json();
+                    if (divData.generatedDivisions && Object.keys(divData.generatedDivisions).length > 0) {
+                        const current = JSON.parse(localStorage.getItem('divisions') || '{}');
+                        Object.keys(divData.generatedDivisions).forEach(evId => {
+                            if (!current[evId]) current[evId] = {};
+                            current[evId].generated = divData.generatedDivisions[evId].generated;
+                            current[evId].updatedAt = divData.generatedDivisions[evId].updatedAt;
+                        });
+                        localStorage.setItem('divisions', JSON.stringify(current));
+                    }
+                }
+
+                // Seed brackets from server
+                if (brkResult.status === 'fulfilled' && brkResult.value.ok) {
+                    const brkData = await brkResult.value.json();
+                    if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
+                        localStorage.setItem('brackets', JSON.stringify(brkData.brackets));
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not load server data:', e.message);
+            }
+
             // Reload the tournament selector and auto-select
             loadTournamentSelector();
             const select = document.getElementById('active-tournament');
@@ -1875,6 +2026,632 @@
             }
         } catch (err) {
             console.error('Failed to auto-load tournament:', err);
+        }
+        // Update publish button labels after load
+        if (window._schedulePublished) {
+            const lbl = document.getElementById('schedule-publish-label');
+            if (lbl) lbl.textContent = 'Unpublish Schedule';
+        }
+    })();
+
+    // ── Publish toggle functions ─────────────────────────────────────
+    window._schedulePublished = window._schedulePublished || false;
+    window._bracketsPublished = false;
+
+    window.toggleSchedulePublished = async function() {
+        if (!currentTournamentId) return;
+        window._schedulePublished = !window._schedulePublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule/publish`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._schedulePublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('schedule-publish-label').textContent =
+                window._schedulePublished ? 'Unpublish Schedule' : 'Publish Schedule';
+            showMessage(window._schedulePublished ? 'Schedule published to public page' : 'Schedule unpublished');
+        } catch (err) {
+            window._schedulePublished = !window._schedulePublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
+
+    window.toggleBracketsPublished = async function() {
+        if (!currentTournamentId) return;
+        window._bracketsPublished = !window._bracketsPublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/publish-all`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._bracketsPublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('brackets-publish-label').textContent =
+                window._bracketsPublished ? 'Unpublish All Brackets' : 'Publish All Brackets';
+            showMessage(window._bracketsPublished ? 'All brackets published to public page' : 'All brackets unpublished');
+        } catch (err) {
+            window._bracketsPublished = !window._bracketsPublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
+    </script>
+
+    <!-- Awards Dashboard Logic -->
+    <script>
+    (function() {
+        let awardsResults = [];
+        let awardsCounts = { pending: 0, published: 0 };
+
+        // ── Tab switching ──────────────────────────────────────────────
+        window.switchAwardsTab = function(tab) {
+            document.querySelectorAll('.awards-tab').forEach(t => t.classList.toggle('active', t.dataset.awardsTab === tab));
+            document.getElementById('awards-pending-tab').style.display = tab === 'pending' ? '' : 'none';
+            document.getElementById('awards-published-tab').style.display = tab === 'published' ? '' : 'none';
+        };
+
+        // ── Sync localStorage results to server ───────────────────────
+        window.syncResultsToServer = async function() {
+            const statusEl = document.getElementById('sync-status');
+            const btn = document.getElementById('btn-sync-results');
+            btn.disabled = true;
+            statusEl.textContent = 'Syncing...';
+
+            try {
+                // Read divisions and brackets from localStorage
+                const divisions = JSON.parse(localStorage.getItem('divisions') || '[]');
+                const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+                const brackets = JSON.parse(localStorage.getItem('brackets') || '[]');
+
+                if (!divisions.length && !brackets.length) {
+                    statusEl.textContent = 'No localStorage data found. Run scoreboards first.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Extract results from completed brackets
+                const syncData = [];
+                for (const bracket of brackets) {
+                    if (!bracket.matches || !bracket.matches.length) continue;
+                    // Check if bracket has any completed matches
+                    const completed = bracket.matches.filter(m => m.status === 'completed' || m.winner);
+                    if (!completed.length) continue;
+
+                    // Find event name
+                    const event = eventTypes.find(e => String(e.id) === String(bracket.eventId));
+                    const eventName = event ? event.name : 'Unknown Event';
+
+                    // Extract placements using getDivisionResults if available
+                    let placements = [];
+                    if (typeof getDivisionResults === 'function') {
+                        try {
+                            placements = getDivisionResults(bracket.divisionName, bracket.eventId);
+                        } catch (e) {
+                            console.warn('getDivisionResults failed for', bracket.divisionName, e);
+                        }
+                    }
+
+                    // Fallback: extract from bracket matches directly
+                    if (!placements || !placements.length) {
+                        placements = extractPlacementsFromBracket(bracket);
+                    }
+
+                    if (placements.length) {
+                        syncData.push({
+                            eventName,
+                            divisionName: bracket.divisionName || bracket.division || 'Unknown Division',
+                            results: placements,
+                        });
+                    }
+                }
+
+                if (!syncData.length) {
+                    statusEl.textContent = 'No completed results found in brackets.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+                if (!tid) {
+                    statusEl.textContent = 'No tournament selected.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                const res = await fetch(`/api/tournaments/${tid}/results/sync`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ divisions: syncData }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Sync failed');
+
+                statusEl.textContent = data.message || 'Synced successfully';
+                loadAwardsDashboard();
+            } catch (err) {
+                console.error('Sync error:', err);
+                statusEl.textContent = 'Error: ' + err.message;
+            }
+            btn.disabled = false;
+        };
+
+        // Fallback placement extraction from bracket data
+        function extractPlacementsFromBracket(bracket) {
+            const placements = [];
+            const matches = bracket.matches || [];
+            // Find the final match (no match references it as a source)
+            const matchIds = new Set(matches.map(m => m.id || m.matchNumber));
+            let finalMatch = null;
+            for (const m of matches) {
+                if (m.round === 'final' || m.round === 'Final' || m.isFinal) {
+                    finalMatch = m;
+                    break;
+                }
+            }
+            if (!finalMatch) {
+                // Last match by round number
+                finalMatch = matches.reduce((best, m) => (!best || (m.round || 0) > (best.round || 0)) ? m : best, null);
+            }
+            if (finalMatch && finalMatch.winner) {
+                placements.push({ rank: 1, name: finalMatch.winner.name || finalMatch.winner, club: finalMatch.winner.club || '' });
+                const loser = finalMatch.competitor1 === finalMatch.winner ? finalMatch.competitor2 : finalMatch.competitor1;
+                if (loser) {
+                    placements.push({ rank: 2, name: typeof loser === 'object' ? loser.name : loser, club: typeof loser === 'object' ? loser.club || '' : '' });
+                }
+            }
+            return placements;
+        }
+
+        // ── Load Awards Dashboard from server ─────────────────────────
+        window.loadAwardsDashboard = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results`, { credentials: 'include' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+                awardsResults = data.results || [];
+                awardsCounts = data.counts || { pending: 0, published: 0 };
+
+                document.getElementById('pending-count').textContent = awardsCounts.pending;
+                document.getElementById('published-count').textContent = awardsCounts.published;
+
+                renderAwardsCards('pending');
+                renderAwardsCards('published');
+            } catch (err) {
+                console.error('Load awards error:', err);
+            }
+        };
+
+        function renderAwardsCards(status) {
+            const filtered = awardsResults.filter(r => r.status === status);
+            const container = document.getElementById(status === 'pending' ? 'pending-results-container' : 'published-results-container');
+            const empty = document.getElementById(status === 'pending' ? 'pending-empty' : 'published-empty');
+
+            if (!filtered.length) {
+                container.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            empty.style.display = 'none';
+
+            container.innerHTML = filtered.map(r => {
+                const results = Array.isArray(r.results_data) ? r.results_data : [];
+                const medals = ['🥇', '🥈', '🥉'];
+                const placementsHtml = results.slice(0, 3).map((p, i) =>
+                    `<div class="awards-placement"><span class="medal">${medals[i] || ''}</span> ${escapeHtml(p.name || 'TBD')}${p.club ? ` <span style="color:var(--text-muted)">(${escapeHtml(p.club)})</span>` : ''}</div>`
+                ).join('');
+
+                const actions = status === 'pending'
+                    ? `<button class="btn btn-sm" style="background:var(--success);color:#fff;" onclick="publishDivisionResult('${r.id}')">Publish</button>
+                       <button class="btn btn-sm" onclick="printDivisionCertificate('${escapeHtml(r.division_name)}')">Print Certificates</button>`
+                    : `<button class="btn btn-sm" style="background:var(--text-muted);color:#fff;" onclick="unpublishDivisionResult('${r.id}')">Unpublish</button>`;
+
+                return `<div class="awards-card">
+                    <div class="awards-card-header">
+                        <div>
+                            <span class="awards-card-title">${escapeHtml(r.division_name)}</span>
+                            <span class="awards-card-event">${escapeHtml(r.event_name)}</span>
+                        </div>
+                        <span class="awards-badge ${status}">${status === 'pending' ? 'Pending' : 'Published'}</span>
+                    </div>
+                    <div class="awards-card-placements">${placementsHtml || '<span style="color:var(--text-muted)">No placements</span>'}</div>
+                    <div class="awards-card-actions">${actions}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ── Publish / Unpublish actions ───────────────────────────────
+        window.publishDivisionResult = async function(resultId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/${resultId}/publish`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Publish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed to publish: ' + err.message); }
+        };
+
+        window.unpublishDivisionResult = async function(resultId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/${resultId}/unpublish`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Unpublish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed to unpublish: ' + err.message); }
+        };
+
+        window.bulkPublishResults = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/publish-all`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Bulk publish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed: ' + err.message); }
+        };
+
+        window.bulkUnpublishResults = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/unpublish-all`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Bulk unpublish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed: ' + err.message); }
+        };
+
+        window.printDivisionCertificate = function(divisionName) {
+            // Delegate to existing certificate system in app.js
+            if (typeof printCertificatesForDivision === 'function') {
+                printCertificatesForDivision(divisionName);
+            } else {
+                alert('Certificate printing not available. Use the Certificates section below.');
+            }
+        };
+
+        // ── Hook into view switching ──────────────────────────────────
+        const origShowView = window.showView;
+        window.showView = function(viewName) {
+            if (typeof origShowView === 'function') origShowView(viewName);
+            if (viewName === 'results') {
+                loadAwardsDashboard();
+            }
+            if (viewName === 'public-site') {
+                loadVisibilitySettings();
+                loadCustomTabsList();
+                updatePublicSiteUrl();
+            }
+            if (viewName === 'settings') {
+                loadStaffRoles();
+            }
+        };
+    })();
+
+    // ── Section Visibility ────────────────────────────────────────────
+    (function() {
+        window.loadVisibilitySettings = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}`, { credentials: 'include' });
+                const data = await res.json();
+                const vis = (data.tournament || data).section_visibility || {};
+                document.getElementById('vis-competitors').checked = vis.competitors !== false;
+                document.getElementById('vis-divisions').checked = vis.divisions !== false;
+                document.getElementById('vis-brackets').checked = !!vis.brackets;
+                document.getElementById('vis-schedule').checked = !!vis.schedule;
+                document.getElementById('vis-hide-count').checked = !!vis.hideCompetitorCount;
+            } catch (err) {
+                console.error('Failed to load visibility:', err);
+            }
+        };
+
+        window.saveVisibility = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            const visibility = {
+                competitors: document.getElementById('vis-competitors').checked,
+                divisions: document.getElementById('vis-divisions').checked,
+                brackets: document.getElementById('vis-brackets').checked,
+                schedule: document.getElementById('vis-schedule').checked,
+                hideCompetitorCount: document.getElementById('vis-hide-count').checked,
+            };
+            try {
+                await fetch(`/api/tournaments/${tid}/section-visibility`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ visibility }),
+                });
+            } catch (err) {
+                console.error('Failed to save visibility:', err);
+            }
+        };
+
+        // ── Custom Tabs Management ────────────────────────────────────
+        let customTabsData = [];
+
+        window.loadCustomTabsList = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/custom-tabs`, { credentials: 'include' });
+                const data = await res.json();
+                customTabsData = data.tabs || [];
+                renderCustomTabsList();
+            } catch (err) {
+                console.error('Failed to load custom tabs:', err);
+            }
+        };
+
+        function renderCustomTabsList() {
+            const container = document.getElementById('custom-tabs-list');
+            if (!customTabsData.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No custom tabs yet.</p>';
+                return;
+            }
+            container.innerHTML = customTabsData.map((tab, i) => `
+                <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <input type="text" value="${tab.tab_name.replace(/"/g, '&quot;')}"
+                               onchange="updateCustomTabField('${tab.id}', 'tabName', this.value)"
+                               style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);"
+                               placeholder="Tab name">
+                        <label style="font-size:12px;white-space:nowrap;">
+                            <input type="checkbox" ${tab.visible ? 'checked' : ''} onchange="updateCustomTabField('${tab.id}', 'visible', this.checked)"> Visible
+                        </label>
+                        <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:11px;" onclick="deleteCustomTab('${tab.id}')">Delete</button>
+                    </div>
+                    <textarea rows="3" placeholder="Tab content (HTML supported)..."
+                              onchange="updateCustomTabField('${tab.id}', 'contentHtml', this.value)"
+                              style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;resize:vertical;">${tab.content_html.replace(/</g, '&lt;')}</textarea>
+                </div>
+            `).join('');
+        }
+
+        window.addCustomTabRow = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/custom-tabs`, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tabName: 'New Tab', tabOrder: customTabsData.length }),
+                });
+                if (res.ok) loadCustomTabsList();
+            } catch (err) { console.error(err); }
+        };
+
+        window.updateCustomTabField = async function(tabId, field, value) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                await fetch(`/api/tournaments/${tid}/custom-tabs/${tabId}`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value }),
+                });
+            } catch (err) { console.error(err); }
+        };
+
+        window.deleteCustomTab = async function(tabId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid || !confirm('Delete this tab?')) return;
+            try {
+                await fetch(`/api/tournaments/${tid}/custom-tabs/${tabId}`, {
+                    method: 'DELETE', credentials: 'include',
+                });
+                loadCustomTabsList();
+            } catch (err) { console.error(err); }
+        };
+
+        window.updatePublicSiteUrl = function() {
+            const slugEl = document.getElementById('public-site-url');
+            if (slugEl && typeof currentTournamentId !== 'undefined') {
+                // Try to find slug from loaded tournament data
+                const select = document.getElementById('active-tournament');
+                if (select && select.selectedOptions[0]) {
+                    const name = select.selectedOptions[0].textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                    slugEl.value = window.location.origin + '/tournaments/' + name;
+                }
+            }
+        };
+    })();
+    </script>
+
+    <!-- Staff Roles Management -->
+    <script>
+    (function() {
+        const PERMISSION_LABELS = {
+            view_schedule: 'View Schedule',
+            operate_scoreboard: 'Operate Scoreboard',
+            view_results: 'View Results',
+            print_certificates: 'Print Certificates',
+            publish_awards: 'Publish Awards',
+            manage_checkin: 'Manage Check-in',
+        };
+
+        let staffRoles = [];
+        let staffMembers = [];
+        let availablePermissions = [];
+
+        window.loadStaffRoles = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const [rolesRes, membersRes] = await Promise.all([
+                    fetch(`/api/tournaments/${tid}/staff-roles`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tid}/members-with-roles`, { credentials: 'include' }),
+                ]);
+
+                if (rolesRes.ok) {
+                    const data = await rolesRes.json();
+                    staffRoles = data.roles || [];
+                    availablePermissions = data.availablePermissions || Object.keys(PERMISSION_LABELS);
+                }
+
+                if (membersRes.ok) {
+                    const data = await membersRes.json();
+                    staffMembers = data.members || [];
+                }
+            } catch (err) {
+                console.warn('Could not load staff roles:', err.message);
+            }
+
+            renderStaffRoles();
+            renderNewRolePermissions();
+            renderMemberAssignments();
+        };
+
+        function renderStaffRoles() {
+            const container = document.getElementById('staff-roles-list');
+            if (!container) return;
+
+            if (staffRoles.length === 0) {
+                container.innerHTML = '<p class="hint">No custom roles defined yet.</p>';
+                return;
+            }
+
+            container.innerHTML = staffRoles.map(role => {
+                const perms = (role.permissions || []).map(p => PERMISSION_LABELS[p] || p).join(', ');
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; margin-bottom: 8px;">
+                        <div>
+                            <strong style="font-size: 14px;">${escapeHtml(role.role_name)}</strong>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${perms || 'No permissions'}</div>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="deleteStaffRole('${role.id}')" style="font-size: 12px; padding: 4px 10px;">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderNewRolePermissions() {
+            const container = document.getElementById('new-role-permissions');
+            if (!container) return;
+
+            container.innerHTML = availablePermissions.map(p => `
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; background: var(--glass); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--glass-border);">
+                    <input type="checkbox" class="new-role-perm" value="${p}">
+                    ${PERMISSION_LABELS[p] || p}
+                </label>
+            `).join('');
+        }
+
+        function renderMemberAssignments() {
+            const container = document.getElementById('staff-member-assignments');
+            if (!container) return;
+
+            const approvedStaff = staffMembers.filter(m => m.status === 'approved' && m.role === 'staff');
+            if (approvedStaff.length === 0) {
+                container.innerHTML = '<p class="hint">No approved staff members yet. Staff can apply from the tournament page.</p>';
+                return;
+            }
+
+            container.innerHTML = approvedStaff.map(member => {
+                const options = staffRoles.map(r =>
+                    `<option value="${r.id}" ${member.role_definition_id === r.id ? 'selected' : ''}>${escapeHtml(r.role_name)}</option>`
+                ).join('');
+
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--glass-border);">
+                        <span>${escapeHtml(member.first_name || '')} ${escapeHtml(member.last_name || '')}</span>
+                        <select style="padding: 4px 8px; border-radius: 4px; background: var(--glass); border: 1px solid var(--glass-border); color: var(--text-primary); font-size: 13px;"
+                                onchange="assignStaffRole('${member.id}', this.value)">
+                            <option value="">No role assigned</option>
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.createStaffRole = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            const name = document.getElementById('new-role-name').value.trim();
+            if (!name) { alert('Please enter a role name'); return; }
+
+            const perms = [...document.querySelectorAll('.new-role-perm:checked')].map(el => el.value);
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/staff-roles`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_name: name, permissions: perms }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to create role');
+                }
+
+                document.getElementById('new-role-name').value = '';
+                document.querySelectorAll('.new-role-perm:checked').forEach(el => el.checked = false);
+                loadStaffRoles();
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        window.deleteStaffRole = async function(roleId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            if (!confirm('Delete this role? Members assigned to it will lose their role assignment.')) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/staff-roles/${roleId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Failed to delete role');
+                loadStaffRoles();
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        window.assignStaffRole = async function(memberId, roleDefId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/members/${memberId}/assign-role`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_definition_id: roleDefId || null }),
+                });
+                if (!res.ok) throw new Error('Failed to assign role');
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
         }
     })();
     </script>

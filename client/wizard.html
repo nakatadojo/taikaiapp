@@ -480,6 +480,95 @@
             border-top: 1px solid var(--glass-border);
         }
 
+        /* ===== REGISTRATION SETTINGS (Step 1 subsection) ===== */
+        .reg-settings-section {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--glass-border);
+        }
+        .reg-settings-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text);
+        }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .toggle-row label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .custom-docs-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .custom-doc-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+        }
+        .custom-doc-row .doc-fields {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .custom-doc-row .doc-fields input,
+        .custom-doc-row .doc-fields textarea {
+            width: 100%;
+        }
+        .custom-doc-row textarea {
+            min-height: 48px;
+            resize: vertical;
+        }
+        .custom-doc-row .doc-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: center;
+        }
+        .btn-remove-doc {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .btn-remove-doc:hover { background: rgba(231,76,60,0.15); }
+        .btn-add-doc {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--glass);
+            border: 1px dashed var(--glass-border);
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+        .btn-add-doc:hover {
+            border-color: var(--accent);
+            color: var(--text);
+            background: var(--glass-hover);
+        }
+
         /* ===== PRICING (Step 4) ===== */
         .pricing-section {
             margin-bottom: 24px;
@@ -505,6 +594,103 @@
 
         .price-input-group .form-input {
             max-width: 150px;
+        }
+
+        /* ===== PRICING PERIODS ===== */
+        .pricing-periods-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .pricing-period-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            position: relative;
+        }
+
+        .pricing-period-card .period-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .pricing-period-card .period-header input {
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .pricing-period-card .period-dates {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .pricing-period-card .period-dates .form-group {
+            flex: 1;
+        }
+
+        .pricing-period-card .period-prices {
+            display: flex;
+            gap: 12px;
+        }
+
+        .pricing-period-card .period-prices .form-group {
+            flex: 1;
+        }
+
+        .pricing-period-remove {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+        }
+
+        .pricing-period-remove:hover {
+            color: #ef4444;
+        }
+
+        .add-period-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--glass);
+            border: 1px dashed var(--glass-border);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+
+        .add-period-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .pricing-period-timeline {
+            display: flex;
+            gap: 4px;
+            margin-top: 12px;
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+            background: var(--glass);
+        }
+
+        .pricing-period-timeline .period-bar {
+            height: 100%;
+            border-radius: 3px;
+            min-width: 20px;
         }
 
         /* ===== REVIEW (Step 5) ===== */
@@ -863,6 +1049,40 @@
             </label>
             <p class="form-hint">Ask competitors for their t-shirt size during registration.</p>
         </div>
+
+        <!-- Registration Requirements -->
+        <div class="reg-settings-section">
+            <h3>Registration Requirements</h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                Configure what competitors must provide during registration.
+            </p>
+
+            <div class="toggle-row">
+                <label>
+                    <input type="checkbox" id="t-photo-required" style="accent-color:var(--accent);width:18px;height:18px;">
+                    <span class="form-label" style="margin:0;">Require Competitor Photo</span>
+                </label>
+            </div>
+            <div id="photo-message-group" class="form-group" style="display:none; margin-left: 28px; margin-bottom: 16px;">
+                <label class="form-label" for="t-photo-message">Photo Instructions</label>
+                <input type="text" class="form-input" id="t-photo-message" placeholder="e.g., Head-and-shoulders photo for ID badge">
+            </div>
+
+            <div class="toggle-row">
+                <label>
+                    <input type="checkbox" id="t-weight-required" style="accent-color:var(--accent);width:18px;height:18px;">
+                    <span class="form-label" style="margin:0;">Require Weight Disclosure</span>
+                </label>
+            </div>
+            <p class="form-hint" style="margin-left: 28px; margin-bottom: 16px;">Competitors must enter their weight during registration (for kumite weigh-in events).</p>
+
+            <div style="margin-top: 16px;">
+                <span class="form-label">Custom Document Requirements</span>
+                <p class="form-hint" style="margin-bottom: 8px;">Request additional documents from competitors (e.g., insurance waiver, medical clearance).</p>
+                <div id="custom-docs-list" class="custom-docs-list"></div>
+                <button type="button" class="btn-add-doc" onclick="addCustomDoc()">+ Add Document Requirement</button>
+            </div>
+        </div>
     </div>
 
     <!-- ============================================================ -->
@@ -968,6 +1188,15 @@
             <p class="form-hint">Set to $0 for a free tournament. Individual event prices can be set below.</p>
         </div>
 
+        <div class="pricing-section" id="pricing-periods-section">
+            <h3>Pricing Periods <span style="font-weight:400; font-size:13px; color:var(--text-dim);">(Optional)</span></h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">
+                Create time-based pricing tiers (e.g., Early Bird, Regular, Late). Active periods override the default pricing above.
+            </p>
+            <div id="pricing-periods-list" class="pricing-periods-list"></div>
+            <button type="button" class="add-period-btn" onclick="addPricingPeriod()">+ Add Pricing Period</button>
+        </div>
+
         <div class="pricing-section" id="event-pricing-section" style="display:none;">
             <h3>Per-Event Price Overrides</h3>
             <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
@@ -1008,6 +1237,14 @@
                 <span class="edit-link" onclick="goToStep(4)">Edit</span>
             </h3>
             <div class="review-grid" id="review-pricing"></div>
+        </div>
+
+        <div class="review-section card" id="review-registration-section" style="display:none;">
+            <h3>
+                Registration Requirements
+                <span class="edit-link" onclick="goToStep(1)">Edit</span>
+            </h3>
+            <div class="review-grid" id="review-registration"></div>
         </div>
 
         <div style="text-align:center; margin-top: 32px;">
@@ -1101,6 +1338,13 @@ let wizardData = {
     contactEmail: '',
     coverFile: null,
     coverImageUrl: '',
+    // Registration settings
+    registrationSettings: {
+        photoRequired: false,
+        photoMessage: '',
+        weightRequired: false,
+        customDocuments: [],
+    },
     // Step 2: Event types
     eventTypes: [],
     // Step 3: Division Rules
@@ -1109,6 +1353,7 @@ let wizardData = {
     basePrice: 75,
     addonPrice: 25,
     eventPriceOverrides: {},
+    pricingPeriods: [],
 };
 
 const EVENT_TYPE_INFO = {
@@ -1212,6 +1457,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Photo required toggle — show/hide message field
+    $('#t-photo-required').addEventListener('change', function() {
+        $('#photo-message-group').style.display = this.checked ? 'block' : 'none';
+    });
+
     updateStepIndicator();
     updateNavButtons();
 });
@@ -1237,6 +1487,20 @@ async function loadExistingTournament() {
         $('#t-collect-tshirts').checked = t.collect_tshirt_sizes || false;
         wizardData.collectTshirtSizes = t.collect_tshirt_sizes || false;
 
+        // Registration settings
+        const regSettings = t.registration_settings || {};
+        wizardData.registrationSettings = {
+            photoRequired: regSettings.photoRequired || false,
+            photoMessage: regSettings.photoMessage || '',
+            weightRequired: regSettings.weightRequired || false,
+            customDocuments: regSettings.customDocuments || [],
+        };
+        $('#t-photo-required').checked = wizardData.registrationSettings.photoRequired;
+        $('#t-photo-message').value = wizardData.registrationSettings.photoMessage;
+        $('#photo-message-group').style.display = wizardData.registrationSettings.photoRequired ? 'block' : 'none';
+        $('#t-weight-required').checked = wizardData.registrationSettings.weightRequired;
+        renderCustomDocs(wizardData.registrationSettings.customDocuments);
+
         if (t.cover_image_url) {
             $('#t-cover-preview').src = t.cover_image_url;
             $('#t-cover-preview').classList.add('visible');
@@ -1261,6 +1525,24 @@ async function loadExistingTournament() {
         // Populate Step 4 pricing
         $('#t-base-price').value = wizardData.basePrice;
         $('#t-addon-price').value = wizardData.addonPrice;
+
+        // Load pricing periods from server
+        try {
+            const ppRes = await apiFetch(`/api/tournaments/${tournamentId}/pricing-periods`);
+            if (ppRes.periods && ppRes.periods.length > 0) {
+                wizardData.pricingPeriods = ppRes.periods.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    start_date: p.start_date ? p.start_date.split('T')[0] : '',
+                    end_date: p.end_date ? p.end_date.split('T')[0] : '',
+                    base_event_price: parseFloat(p.base_event_price),
+                    addon_event_price: parseFloat(p.addon_event_price),
+                }));
+                renderPricingPeriods();
+            }
+        } catch (e) {
+            console.warn('Could not load pricing periods:', e.message);
+        }
 
         // Load sanctioning body
         if (t.sanctioning_body) {
@@ -1446,6 +1728,14 @@ function collectStepData(step) {
         wizardData.description = $('#t-description').value.trim();
         wizardData.contactEmail = $('#t-contact-email').value.trim();
         wizardData.collectTshirtSizes = $('#t-collect-tshirts').checked;
+
+        // Registration settings
+        wizardData.registrationSettings = {
+            photoRequired: $('#t-photo-required').checked,
+            photoMessage: $('#t-photo-message').value.trim(),
+            weightRequired: $('#t-weight-required').checked,
+            customDocuments: collectCustomDocs(),
+        };
     }
 
     if (step === 2) {
@@ -1567,6 +1857,7 @@ async function autoSave(step) {
                 registrationDeadline: wizardData.deadline || undefined,
                 organizationName: wizardData.organization || undefined,
                 collectTshirtSizes: wizardData.collectTshirtSizes || false,
+                registrationSettings: wizardData.registrationSettings,
             };
 
             if (tournamentId) {
@@ -1653,6 +1944,13 @@ async function autoSave(step) {
                     body: JSON.stringify({ events }),
                 });
             }
+
+            // Save pricing periods
+            const validPeriods = wizardData.pricingPeriods.filter(p => p.name && p.start_date && p.end_date);
+            await apiFetch(`/api/tournaments/${tournamentId}/pricing-periods/bulk`, {
+                method: 'PUT',
+                body: JSON.stringify({ periods: validPeriods }),
+            });
         }
 
         setSaveStatus('saved', 'All changes saved');
@@ -1690,6 +1988,7 @@ async function saveDraft() {
             registrationDeadline: wizardData.deadline || undefined,
             organizationName: wizardData.organization || undefined,
             collectTshirtSizes: wizardData.collectTshirtSizes || false,
+            registrationSettings: wizardData.registrationSettings,
             baseEventPrice: wizardData.basePrice,
             addonEventPrice: wizardData.addonPrice,
             published: false,
@@ -1770,6 +2069,67 @@ function toggleEventType(card) {
 }
 
 // ============================================================
+// REGISTRATION SETTINGS — Custom Documents Builder
+// ============================================================
+let docIdCounter = 0;
+
+function addCustomDoc(doc = null) {
+    const list = $('#custom-docs-list');
+    const id = docIdCounter++;
+    const row = document.createElement('div');
+    row.className = 'custom-doc-row';
+    row.dataset.docId = id;
+    row.innerHTML = `
+        <div class="doc-fields">
+            <input type="text" class="form-input" placeholder="Document name (e.g., Medical Clearance)"
+                   value="${doc ? escapeHtml(doc.name || '') : ''}">
+            <textarea class="form-textarea" placeholder="Instructions for the competitor...">${doc ? escapeHtml(doc.instruction || '') : ''}</textarea>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-muted);">
+                <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px;"
+                       ${doc && doc.required ? 'checked' : ''}>
+                Required
+            </label>
+        </div>
+        <div class="doc-actions">
+            <button type="button" class="btn-remove-doc" onclick="removeCustomDoc(this)" title="Remove">&times;</button>
+        </div>
+    `;
+    list.appendChild(row);
+}
+
+function removeCustomDoc(btn) {
+    btn.closest('.custom-doc-row').remove();
+}
+
+function collectCustomDocs() {
+    const rows = $$('.custom-doc-row');
+    const docs = [];
+    rows.forEach(row => {
+        const inputs = row.querySelectorAll('input[type="text"]');
+        const textarea = row.querySelector('textarea');
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        const name = inputs[0]?.value?.trim();
+        if (name) {
+            docs.push({
+                id: row.dataset.docId,
+                name,
+                instruction: textarea?.value?.trim() || '',
+                required: checkbox?.checked || false,
+            });
+        }
+    });
+    return docs;
+}
+
+function renderCustomDocs(docs) {
+    const list = $('#custom-docs-list');
+    list.innerHTML = '';
+    if (docs && docs.length > 0) {
+        docs.forEach(doc => addCustomDoc(doc));
+    }
+}
+
+// ============================================================
 // STEP 3: DIVISION PRESET SELECTION
 // ============================================================
 function selectPreset(preset) {
@@ -1833,6 +2193,90 @@ function renderPricingOverrides() {
             </div>
         `;
         container.appendChild(row);
+    });
+}
+
+// ============================================================
+// PRICING PERIODS
+// ============================================================
+function addPricingPeriod() {
+    const period = {
+        id: 'pp_' + Date.now(),
+        name: '',
+        start_date: '',
+        end_date: '',
+        base_event_price: wizardData.basePrice,
+        addon_event_price: wizardData.addonPrice,
+    };
+    wizardData.pricingPeriods.push(period);
+    renderPricingPeriods();
+}
+
+function removePricingPeriod(id) {
+    wizardData.pricingPeriods = wizardData.pricingPeriods.filter(p => p.id !== id);
+    renderPricingPeriods();
+}
+
+function updatePricingPeriod(id, field, value) {
+    const period = wizardData.pricingPeriods.find(p => p.id === id);
+    if (period) {
+        if (field === 'base_event_price' || field === 'addon_event_price') {
+            period[field] = parseFloat(value) || 0;
+        } else {
+            period[field] = value;
+        }
+    }
+}
+
+function renderPricingPeriods() {
+    const container = $('#pricing-periods-list');
+    container.innerHTML = '';
+
+    wizardData.pricingPeriods.forEach((period, idx) => {
+        const card = document.createElement('div');
+        card.className = 'pricing-period-card';
+        card.innerHTML = `
+            <div class="period-header">
+                <input type="text" class="form-input" placeholder="Period name (e.g., Early Bird)"
+                       value="${escapeHtml(period.name)}"
+                       onchange="updatePricingPeriod('${period.id}', 'name', this.value)">
+                <button type="button" class="pricing-period-remove" onclick="removePricingPeriod('${period.id}')"
+                        title="Remove period">&times;</button>
+            </div>
+            <div class="period-dates">
+                <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-input" value="${period.start_date}"
+                           onchange="updatePricingPeriod('${period.id}', 'start_date', this.value)">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-input" value="${period.end_date}"
+                           onchange="updatePricingPeriod('${period.id}', 'end_date', this.value)">
+                </div>
+            </div>
+            <div class="period-prices">
+                <div class="form-group">
+                    <label class="form-label">Base Price</label>
+                    <div class="price-input-group">
+                        <span class="currency">$</span>
+                        <input type="number" class="form-input" min="0" step="0.01"
+                               value="${period.base_event_price}"
+                               onchange="updatePricingPeriod('${period.id}', 'base_event_price', this.value)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Add-on Price</label>
+                    <div class="price-input-group">
+                        <span class="currency">$</span>
+                        <input type="number" class="form-input" min="0" step="0.01"
+                               value="${period.addon_event_price}"
+                               onchange="updatePricingPeriod('${period.id}', 'addon_event_price', this.value)">
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
     });
 }
 
@@ -1931,7 +2375,51 @@ function renderReview() {
         });
     }
 
+    // Pricing periods
+    const validPeriods = wizardData.pricingPeriods.filter(p => p.name && p.start_date && p.end_date);
+    if (validPeriods.length > 0) {
+        pricingHtml += `<span class="review-label" style="grid-column: 1/-1; margin-top: 8px; font-weight: 600;">Pricing Periods</span>`;
+        validPeriods.forEach(p => {
+            const start = new Date(p.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const end = new Date(p.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            pricingHtml += `
+                <span class="review-label">${escapeHtml(p.name)}</span>
+                <span class="review-value">${start} – ${end}: $${parseFloat(p.base_event_price).toFixed(2)} / $${parseFloat(p.addon_event_price).toFixed(2)}</span>
+            `;
+        });
+    }
+
     pricingEl.innerHTML = pricingHtml;
+
+    // Registration Requirements
+    const reg = wizardData.registrationSettings;
+    const hasRegSettings = reg.photoRequired || reg.weightRequired || (reg.customDocuments && reg.customDocuments.length > 0);
+    const regSection = $('#review-registration-section');
+    const regEl = $('#review-registration');
+
+    if (hasRegSettings) {
+        regSection.style.display = 'block';
+        let regHtml = '';
+        if (reg.photoRequired) {
+            regHtml += `<span class="review-label">Photo Required</span>
+                        <span class="review-value">Yes${reg.photoMessage ? ' — ' + escapeHtml(reg.photoMessage) : ''}</span>`;
+        }
+        if (reg.weightRequired) {
+            regHtml += `<span class="review-label">Weight Disclosure</span>
+                        <span class="review-value">Required</span>`;
+        }
+        if (reg.customDocuments && reg.customDocuments.length > 0) {
+            regHtml += `<span class="review-label">Custom Documents</span>
+                        <span class="review-value">${reg.customDocuments.length} document${reg.customDocuments.length !== 1 ? 's' : ''}</span>`;
+            reg.customDocuments.forEach(doc => {
+                regHtml += `<span class="review-label" style="padding-left:16px;">${escapeHtml(doc.name)}</span>
+                            <span class="review-value">${doc.required ? 'Required' : 'Optional'}</span>`;
+            });
+        }
+        regEl.innerHTML = regHtml;
+    } else {
+        regSection.style.display = 'none';
+    }
 }
 
 // ============================================================

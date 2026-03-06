@@ -16,6 +16,11 @@ router.get('/directory', tournamentController.getDirectory);
 // GET /api/tournaments/slug/:slug — Get tournament by slug (public page)
 router.get('/slug/:slug', tournamentController.getTournamentBySlug);
 
+// GET /api/tournaments/:id/registration-settings — Public registration requirements
+router.get('/:id/registration-settings',
+  require('../controllers/documentController').getRegistrationSettings
+);
+
 // GET /api/tournaments — List all tournaments (legacy)
 router.get('/', tournamentController.getTournaments);
 

@@ -9,6 +9,7 @@ const creditQueries = require('../db/queries/credits');
 const pool = require('../db/pool');
 const { sendGuardianConfirmationEmail } = require('../config/email');
 const { sendRegistrationConfirmationEmail } = require('../email');
+const { assignDivision } = require('../services/divisionAssignment');
 
 /**
  * POST /api/registrations/competitor
@@ -315,8 +316,16 @@ async function checkout(req, res, next) {
       }
     }
 
-    const basePrice = parseFloat(tournament.base_event_price) || 75;
-    const addonPrice = parseFloat(tournament.addon_event_price) || 25;
+    // Check for active pricing period — overrides tournament-level defaults
+    const PricingPeriodQueries = require('../db/queries/pricingPeriods');
+    const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
+
+    const basePrice = activePeriod
+      ? parseFloat(activePeriod.base_event_price)
+      : (parseFloat(tournament.base_event_price) || 75);
+    const addonPrice = activePeriod
+      ? parseFloat(activePeriod.addon_event_price)
+      : (parseFloat(tournament.addon_event_price) || 25);
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
 
     // Validate cart and calculate server-side pricing
@@ -353,6 +362,28 @@ async function checkout(req, res, next) {
           return res.status(400).json({
             error: `${profile.first_name} ${profile.last_name} is already registered for ${event.name}`,
           });
+        }
+
+        // Event prerequisite check
+        if (event.prerequisite_event_id) {
+          const prereqSelected = comp.events.some(e => e.eventId === event.prerequisite_event_id);
+          if (!prereqSelected) {
+            const prereqReg = await pool.query(
+              `SELECT re.id FROM registration_events re
+               JOIN registrations r ON r.id = re.registration_id
+               WHERE r.tournament_id = $1 AND r.profile_id = $2 AND re.event_id = $3
+                 AND r.status != 'cancelled'`,
+              [tournamentId, comp.profileId, event.prerequisite_event_id]
+            );
+            if (prereqReg.rows.length === 0) {
+              const prereqEvent = eventMap.get(event.prerequisite_event_id);
+              const prereqName = prereqEvent ? prereqEvent.name : 'the prerequisite event';
+              return res.status(400).json({
+                error: `${event.name} requires registration in ${prereqName} first.`,
+                code: 'PREREQUISITE_MISSING',
+              });
+            }
+          }
         }
 
         // Sold-out capacity check
@@ -780,15 +811,45 @@ async function createRegistrationsFromCart(
       const registration = regResult.rows[0];
       registrationIds.push(registration.id);
 
-      // Create registration events
+      // Load profile for division assignment
+      const profile = await client.query(
+        'SELECT * FROM competitor_profiles WHERE id = $1',
+        [comp.profileId]
+      );
+
+      // Load tournament date for age calculation
+      const tournamentRow = await client.query(
+        'SELECT date FROM tournaments WHERE id = $1',
+        [tournamentId]
+      );
+      const tournamentDate = tournamentRow.rows[0]?.date;
+
+      // Create registration events with auto-division assignment
       for (let i = 0; i < comp.events.length; i++) {
         const evt = comp.events[i];
+
+        // Try auto-division assignment
+        let divisionName = null;
+        if (profile.rows[0]) {
+          const eventRow = await client.query(
+            'SELECT criteria_templates, is_event_type FROM tournament_events WHERE id = $1',
+            [evt.eventId]
+          );
+          const eventData = eventRow.rows[0];
+          if (eventData?.is_event_type && eventData?.criteria_templates) {
+            const templates = typeof eventData.criteria_templates === 'string'
+              ? JSON.parse(eventData.criteria_templates)
+              : eventData.criteria_templates;
+            divisionName = assignDivision(profile.rows[0], templates, tournamentDate);
+          }
+        }
+
         await client.query(
           `INSERT INTO registration_events
-            (registration_id, event_id, is_primary, price, selection_order)
-           VALUES ($1, $2, $3, $4, $5)
+            (registration_id, event_id, is_primary, price, selection_order, assigned_division)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (registration_id, event_id) DO NOTHING`,
-          [registration.id, evt.eventId, evt.isPrimary, evt.price, i]
+          [registration.id, evt.eventId, evt.isPrimary, evt.price, i, divisionName]
         );
       }
     }
