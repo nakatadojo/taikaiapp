@@ -1342,7 +1342,7 @@
         // Competitor / Parent → redirect to registration flow (skips info, goes straight to dashboard/auth)
         if (role === 'competitor' || role === 'parent') {
             closeRoleOverlay();
-            window.location.href = `/register.html#dashboard?tournamentId=${tournamentId}`;
+            window.location.href = `/register.html#dashboard?tournamentId=${tournamentId}&role=${role}`;
             return;
         }
 

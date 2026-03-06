@@ -1523,6 +1523,7 @@
     const state = {
         tournamentId: null,
         tournament: null,
+        selectedRole: null,  // 'competitor' or 'parent' — from role overlay
         profiles: [],
         editingProfileId: null,
         // Event selection: keyed by profileId
@@ -1537,18 +1538,25 @@
         },
     };
 
-    // Parse tournamentId from initial URL hash (before any navigation rewrites it)
-    (function parseInitialTournamentId() {
+    // Parse tournamentId and role from initial URL hash (before any navigation rewrites it)
+    (function parseInitialParams() {
         const hash = location.hash || '';
         if (hash.includes('?')) {
             const hp = new URLSearchParams(hash.split('?')[1]);
             const tid = hp.get('tournamentId') || hp.get('tournament') || hp.get('t');
             if (tid) state.tournamentId = tid;
+            const role = hp.get('role');
+            if (role) state.selectedRole = role;
         }
         if (!state.tournamentId) {
             const sp = new URLSearchParams(location.search);
             const tid = sp.get('tournamentId') || sp.get('tournament') || sp.get('t');
             if (tid) state.tournamentId = tid;
+        }
+        if (!state.selectedRole) {
+            const sp = new URLSearchParams(location.search);
+            const role = sp.get('role');
+            if (role) state.selectedRole = role;
         }
     })();
 
@@ -1904,24 +1912,44 @@
         const user = Auth.currentUser;
         const actionsEl = document.getElementById('dash-actions');
         const container = document.getElementById('profiles-container');
+        const isParent = state.selectedRole === 'parent';
+        const emailVerified = user?.emailVerified || user?.email_verified;
 
         // Check if user has created their own profile
         const hasSelfProfile = state.profiles.some(p => p.isSelf || p.userId === (user?._id || user?.id));
 
-        // If no self-profile, show mandatory profile-first step
+        // Step 1: If no self-profile, show mandatory profile-first step
         if (!hasSelfProfile) {
             actionsEl.innerHTML = '';
+            const title = isParent ? 'Create Your Parent Profile' : 'Create Your Profile';
+            const text = isParent
+                ? 'Before adding your child as a competitor, please create your parent/guardian profile first.'
+                : 'Please set up your profile to get started with registration.';
+            const btnLabel = isParent ? 'Create Parent Profile' : 'Create My Profile';
             container.innerHTML = `
                 <div class="empty-state">
-                    <div class="empty-state-icon">👤</div>
-                    <div class="empty-state-title">Create Your Profile</div>
-                    <div class="empty-state-text">Before registering competitors, please set up your own profile first.</div>
-                    <button class="btn-accent" style="margin-top:16px;" onclick="addSelfProfile()">Create My Profile</button>
+                    <div class="empty-state-icon">${isParent ? '👨‍👩‍👧' : '👤'}</div>
+                    <div class="empty-state-title">${title}</div>
+                    <div class="empty-state-text">${text}</div>
+                    <button class="btn-accent" style="margin-top:16px;" onclick="addSelfProfile()">${btnLabel}</button>
                 </div>`;
             return;
         }
 
-        // Actions — self-profile exists, allow adding competitors
+        // Step 2: If parent role and email not verified, prompt verification before adding competitors
+        if (isParent && !emailVerified) {
+            actionsEl.innerHTML = '';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📧</div>
+                    <div class="empty-state-title">Verify Your Email</div>
+                    <div class="empty-state-text">Please check your inbox and verify your email address before adding competitors. This helps us keep accounts secure.</div>
+                    <button class="btn-ghost" style="margin-top:16px;" onclick="window.location.reload()">I've Verified — Refresh</button>
+                </div>`;
+            return;
+        }
+
+        // Actions — self-profile exists (and verified if parent), allow adding competitors
         let actionsHTML = '';
         actionsHTML += `<button class="btn-ghost btn-sm" onclick="addChildProfile()">+ Add a Competitor</button>`;
         if (state.cart.items.length > 0) {
@@ -1970,10 +1998,11 @@
     window.addSelfProfile = function() {
         state.editingProfileId = null;
         const user = Auth.currentUser;
+        const isParent = state.selectedRole === 'parent';
         // Pre-fill with user data
         navigate('profile');
         setTimeout(() => {
-            document.getElementById('profile-form-title').textContent = 'Register Myself';
+            document.getElementById('profile-form-title').textContent = isParent ? 'Parent / Guardian Profile' : 'Register Myself';
             if (user) {
                 document.getElementById('pf-firstName').value = user.firstName || '';
                 document.getElementById('pf-lastName').value = user.lastName || '';
