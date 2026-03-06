@@ -457,13 +457,84 @@
         background: var(--bg-secondary);
         border: 1px solid var(--glass-border);
         border-radius: var(--radius-lg);
-        padding: 36px 32px;
-        max-width: 440px;
+        padding: 0;
+        max-width: 780px;
         width: 100%;
-        max-height: 90vh;
-        overflow-y: auto;
         box-shadow: 0 24px 64px rgba(0,0,0,0.5);
         z-index: 1;
+        display: flex;
+        overflow: hidden;
+    }
+    .auth-card-left {
+        flex: 1;
+        padding: 36px 32px;
+        min-width: 0;
+        overflow-y: auto;
+    }
+    /* Compact form when panel is visible */
+    .auth-card.has-panel .auth-card-left {
+        padding: 24px 28px;
+    }
+    .auth-card.has-panel .auth-tabs {
+        margin-bottom: 16px;
+    }
+    .auth-card.has-panel .auth-form .form-group {
+        margin-bottom: 0;
+    }
+    .auth-card.has-panel .auth-form .form-group label {
+        margin-bottom: 4px; font-size: 12px;
+    }
+    .auth-card.has-panel .auth-form .form-group input,
+    .auth-card.has-panel .auth-form .form-group select {
+        padding: 10px 12px; font-size: 14px;
+    }
+    .auth-card.has-panel .mb-16 { margin-bottom: 10px; }
+    .auth-card.has-panel .mb-24 { margin-bottom: 14px; }
+    .auth-card.has-panel .form-grid { gap: 10px; }
+    .auth-card.has-panel .btn-accent { padding: 11px 16px; font-size: 14px; }
+    .auth-card.has-panel #signup-gender-group { margin-bottom: 14px !important; }
+    .auth-card-right {
+        width: 280px;
+        flex-shrink: 0;
+        background: linear-gradient(135deg, rgba(220,38,38,0.08) 0%, rgba(220,38,38,0.03) 100%);
+        border-left: 1px solid var(--glass-border);
+        border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+        padding: 36px 28px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .auth-card-right.hidden { display: none; }
+    .auth-card:not(.has-panel) { max-width: 440px; }
+    .auth-card:not(.has-panel) .auth-card-left { padding: 36px 32px; }
+    .auth-role-icon {
+        width: 56px; height: 56px; border-radius: 14px;
+        background: rgba(220,38,38,0.12);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 28px; margin-bottom: 16px;
+    }
+    .auth-role-title {
+        font-size: 18px; font-weight: 700; margin-bottom: 6px;
+        color: var(--text-primary);
+    }
+    .auth-role-subtitle {
+        font-size: 13px; color: var(--text-secondary);
+        margin-bottom: 20px; line-height: 1.5;
+    }
+    .auth-features {
+        list-style: none; padding: 0; margin: 0;
+        display: flex; flex-direction: column; gap: 12px;
+    }
+    .auth-features li {
+        display: flex; align-items: flex-start; gap: 10px;
+        font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+    }
+    .auth-feature-icon {
+        width: 22px; height: 22px; border-radius: 6px;
+        background: rgba(34,197,94,0.12); color: #22c55e;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 700; flex-shrink: 0;
+        margin-top: 1px;
     }
     .auth-close {
         position: absolute;
@@ -1070,8 +1141,34 @@
         .auth-card {
             border-radius: var(--radius-lg) var(--radius-lg) 0 0;
             max-height: 90vh;
-            padding: 28px 20px;
+            max-width: 100%;
+            flex-direction: column;
+            overflow-y: auto;
         }
+        .auth-card-left { padding: 28px 20px; }
+        .auth-card-right {
+            order: -1;
+            width: 100%;
+            border-left: none;
+            border-bottom: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            padding: 20px 20px 16px;
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+        }
+        .auth-card-right .auth-role-icon { width: 40px; height: 40px; font-size: 20px; margin-bottom: 0; border-radius: 10px; }
+        .auth-card-right .auth-role-title { font-size: 16px; margin-bottom: 0; flex: 1; }
+        .auth-card-right .auth-role-subtitle { display: none; }
+        .auth-card-right .auth-features {
+            width: 100%;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+        }
+        .auth-card-right .auth-features li { font-size: 12px; gap: 6px; }
+        .auth-card-right .auth-feature-icon { width: 16px; height: 16px; font-size: 9px; border-radius: 4px; }
         .info-hero {
             padding: 48px 16px 40px;
         }
@@ -1432,7 +1529,8 @@
      ════════════════════════════════════════════════════════════════════════ -->
 <div class="auth-modal" id="auth-modal">
     <div class="auth-overlay" onclick="closeAuthModal()"></div>
-    <div class="auth-card">
+    <div class="auth-card" id="auth-card">
+        <div class="auth-card-left">
         <button class="auth-close" onclick="closeAuthModal()">&times;</button>
 
         <div class="auth-tabs">
@@ -1480,17 +1578,19 @@
                 <label for="signup-password">Password *</label>
                 <input type="password" id="signup-password" required placeholder="Min 8 chars, upper + lower + digit" minlength="8">
             </div>
-            <div class="form-group mb-16">
-                <label for="signup-dob">Date of Birth *</label>
-                <input type="date" id="signup-dob" required>
-            </div>
-            <div class="form-group mb-24" id="signup-gender-group">
-                <label for="signup-gender">Gender *</label>
-                <select id="signup-gender" required>
-                    <option value="">Select gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                </select>
+            <div class="form-grid mb-16" id="signup-dob-gender-row">
+                <div class="form-group">
+                    <label for="signup-dob">Date of Birth *</label>
+                    <input type="date" id="signup-dob" required>
+                </div>
+                <div class="form-group" id="signup-gender-group">
+                    <label for="signup-gender">Gender *</label>
+                    <select id="signup-gender" required>
+                        <option value="">Select gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
             </div>
 
             <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
@@ -1509,6 +1609,20 @@
             <button type="submit" class="btn-accent btn-block" id="forgot-submit-btn">Send Reset Link</button>
             <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
         </form>
+        </div><!-- .auth-card-left -->
+
+        <div class="auth-card-right hidden" id="auth-role-panel">
+            <div class="auth-role-icon" id="auth-role-icon">👨‍👧</div>
+            <div class="auth-role-title" id="auth-role-title">Parent Account</div>
+            <div class="auth-role-subtitle" id="auth-role-subtitle">Create an account to manage your child's tournament participation.</div>
+            <ul class="auth-features" id="auth-role-features">
+                <li><span class="auth-feature-icon">✓</span> Register your children for tournaments</li>
+                <li><span class="auth-feature-icon">✓</span> Manage competitor profiles</li>
+                <li><span class="auth-feature-icon">✓</span> Sign participation waivers</li>
+                <li><span class="auth-feature-icon">✓</span> Track registrations and event details</li>
+                <li><span class="auth-feature-icon">✓</span> View digital competitor badges</li>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -1653,6 +1767,43 @@
     window.openAuthModal = function() {
         document.getElementById('auth-modal').classList.add('open');
         switchAuthTab('signup');
+
+        // Show role info panel for parent/coach roles
+        var card = document.getElementById('auth-card');
+        var panel = document.getElementById('auth-role-panel');
+        var role = state.selectedRole;
+
+        if (role === 'parent' || role === 'coach') {
+            panel.classList.remove('hidden');
+            card.classList.add('has-panel');
+            // Update panel content per role
+            var icon = document.getElementById('auth-role-icon');
+            var title = document.getElementById('auth-role-title');
+            var subtitle = document.getElementById('auth-role-subtitle');
+            var features = document.getElementById('auth-role-features');
+            if (role === 'coach') {
+                icon.textContent = '🥋';
+                title.textContent = 'Coach Account';
+                subtitle.textContent = 'Create an account to register your team for tournaments.';
+                features.innerHTML = '<li><span class="auth-feature-icon">✓</span> Register competitors on behalf of parents</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Manage competitor profiles and events</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Send waivers to parents for signing</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Track waiver and registration status</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Access the Coach Dashboard</li>';
+            } else {
+                icon.textContent = '👨‍👧';
+                title.textContent = 'Parent Account';
+                subtitle.textContent = 'Create an account to manage your child\'s tournament participation.';
+                features.innerHTML = '<li><span class="auth-feature-icon">✓</span> Register your children for tournaments</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Manage competitor profiles</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Sign participation waivers</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> Track registrations and event details</li>'
+                    + '<li><span class="auth-feature-icon">✓</span> View digital competitor badges</li>';
+            }
+        } else {
+            panel.classList.add('hidden');
+            card.classList.remove('has-panel');
+        }
     };
 
     window.closeAuthModal = function() {
