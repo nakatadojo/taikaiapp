@@ -199,7 +199,7 @@ async function updateTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, registrationSettings,
     } = req.body;
 
     const updates = {};
@@ -220,6 +220,13 @@ async function updateTournament(req, res, next) {
     if (registrationDeadline !== undefined) updates.registration_deadline = registrationDeadline;
     if (sanctioningBody !== undefined) updates.sanctioning_body = sanctioningBody;
     if (collectTshirtSizes !== undefined) updates.collect_tshirt_sizes = collectTshirtSizes;
+    if (registrationSettings !== undefined) {
+      // Validate structure
+      if (typeof registrationSettings !== 'object' || registrationSettings === null) {
+        return res.status(400).json({ error: 'registrationSettings must be an object' });
+      }
+      updates.registration_settings = JSON.stringify(registrationSettings);
+    }
 
     // Handle slug update with uniqueness check
     if (slug !== undefined) {
