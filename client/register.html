@@ -1818,10 +1818,10 @@
             if (kumiteCount > 0) {
                 statsHTML += `<div class="info-stat"><div class="info-stat-value">${kumiteCount}</div><div class="info-stat-label">Kumite</div></div>`;
             }
-            if (t.registrationDeadline || t.registration_deadline) {
-                const rawDl = t.registrationDeadline || t.registration_deadline;
-                const dl = new Date(typeof rawDl === 'string' && rawDl.length === 10 ? rawDl + 'T23:59:59' : rawDl);
-                const daysLeft = Math.max(0, Math.ceil((dl - new Date()) / (1000 * 60 * 60 * 24)));
+            if (t.date || t.startDate) {
+                const rawTd = t.date || t.startDate;
+                const td = new Date(typeof rawTd === 'string' && rawTd.length === 10 ? rawTd + 'T12:00:00' : rawTd);
+                const daysLeft = Math.max(0, Math.ceil((td - new Date()) / (1000 * 60 * 60 * 24)));
                 statsHTML += `<div class="info-stat"><div class="info-stat-value">${daysLeft}</div><div class="info-stat-label">Days Left</div></div>`;
             }
             statsEl.innerHTML = statsHTML;
