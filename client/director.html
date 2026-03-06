@@ -490,6 +490,53 @@
             background: var(--glass-hover);
         }
 
+        /* ── Export Dropdown ── */
+        .export-dropdown-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .export-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 180px;
+            background: rgba(25,25,35,0.98);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            z-index: 100;
+            overflow: hidden;
+        }
+        .export-dropdown-wrap.open .export-dropdown-menu {
+            display: block;
+        }
+        .export-dropdown-menu a,
+        .export-dropdown-menu button {
+            display: block;
+            width: 100%;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            font-family: var(--font);
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+        .export-dropdown-menu a:hover,
+        .export-dropdown-menu button:hover {
+            background: rgba(255,255,255,0.06);
+        }
+        .export-dropdown-divider {
+            height: 1px;
+            background: var(--glass-border);
+            margin: 4px 0;
+        }
+
         /* ===== MAIN CONTENT ===== */
         .main-content {
             position: relative;
@@ -1794,7 +1841,15 @@
                     <p style="color:var(--text-muted);font-size:14px;margin-top:4px;" id="registrants-subtitle"></p>
                 </div>
                 <div style="display:flex;gap:12px;align-items:center;">
-                    <button class="registrants-export-btn" onclick="exportRegistrantsCSV()">&#128196; Export CSV</button>
+                    <div class="export-dropdown-wrap" id="registrants-export-dropdown">
+                        <button class="registrants-export-btn" onclick="toggleExportDropdown('registrants-export-dropdown')">&#128196; Export &#9662;</button>
+                        <div class="export-dropdown-menu">
+                            <a href="#" onclick="serverExport('registrants.csv'); return false;">CSV (Server)</a>
+                            <a href="#" onclick="serverExport('registrants.pdf'); return false;">PDF (Server)</a>
+                            <div class="export-dropdown-divider"></div>
+                            <button onclick="exportRegistrantsCSV()">CSV (Client-side)</button>
+                        </div>
+                    </div>
                     <button class="registrants-back" onclick="navigateTo('dashboard')">&larr; Back to Dashboard</button>
                 </div>
             </div>
@@ -3437,6 +3492,42 @@
             a.click();
             URL.revokeObjectURL(url);
             showToast('CSV downloaded', 'success');
+        };
+
+        // ============================================================
+        // EXPORT DROPDOWN + SERVER EXPORTS
+        // ============================================================
+
+        window.toggleExportDropdown = function(dropdownId) {
+            const wrap = document.getElementById(dropdownId);
+            if (!wrap) return;
+            wrap.classList.toggle('open');
+        };
+
+        // Close any open export dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            document.querySelectorAll('.export-dropdown-wrap.open').forEach(wrap => {
+                if (!wrap.contains(e.target)) {
+                    wrap.classList.remove('open');
+                }
+            });
+        });
+
+        /**
+         * Trigger a server-side export download.
+         * @param {string} type - e.g. 'registrants.csv', 'registrants.pdf', 'results.csv', 'results.pdf', 'checkin.csv'
+         */
+        window.serverExport = function(type) {
+            if (!currentTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+            // Close any open dropdown
+            document.querySelectorAll('.export-dropdown-wrap.open').forEach(w => w.classList.remove('open'));
+
+            // Navigate to the export endpoint (cookie-based auth will authenticate)
+            const url = `/api/tournaments/${currentTournamentId}/export/${type}`;
+            window.open(url, '_blank');
         };
 
         // ============================================================

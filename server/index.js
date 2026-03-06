@@ -61,6 +61,7 @@ app.use('/api/tournaments', require('./routes/checkin'));
 app.use('/api/tournaments', require('./routes/schedule'));
 app.use('/api/tournaments', require('./routes/divisions'));
 app.use('/api/tournaments', require('./routes/brackets'));
+app.use('/api/tournaments', require('./routes/exports'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
