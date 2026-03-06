@@ -172,6 +172,21 @@
         .status-checked-in { background: rgba(34,197,94,0.15); color: var(--green); }
         .status-on-mat { background: rgba(249,115,22,0.15); color: var(--orange); }
         .status-missing { background: rgba(255,255,255,0.05); color: var(--text-dim); }
+        .status-not-arrived {
+            background: rgba(239,68,68,0.12); color: var(--red); font-weight: 700;
+            animation: pulse-not-arrived 2s ease-in-out infinite;
+        }
+        @keyframes pulse-not-arrived {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .competitor-row.not-arrived-row {
+            border-color: rgba(239,68,68,0.2);
+            background: rgba(239,68,68,0.04);
+        }
+        .next-match-info {
+            font-size: 10px; color: var(--orange); margin-top: 2px; font-weight: 500;
+        }
         .competitor-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
         .btn-green { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
@@ -503,15 +518,24 @@
                         <button class="btn btn-sm btn-ghost" onclick="undoCheckin('${c.registration_id}')">Undo</button>
                     `;
                 } else {
-                    statusBadge = '<span class="competitor-status status-missing">Not Checked In</span>';
+                    statusBadge = '<span class="competitor-status status-not-arrived">Not Yet Arrived</span>';
                     actionButtons = `<button class="btn btn-sm btn-green" onclick="checkinCompetitor('${c.registration_id}')">Check In</button>`;
                 }
 
+                const isNotArrived = !c.checkin_id && !c.mat_called_at;
+                const rowClass = isNotArrived ? 'competitor-row not-arrived-row' : 'competitor-row';
+
+                // Show next scheduled match time if available (for not-yet-arrived competitors)
+                const nextMatchInfo = isNotArrived && c.next_match_time
+                    ? `<div class="next-match-info">Next match: ${new Date(c.next_match_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>`
+                    : '';
+
                 return `
-                    <div class="competitor-row">
+                    <div class="${rowClass}">
                         <div class="competitor-info">
                             <div class="competitor-name">${name}</div>
                             <div class="competitor-detail">${academy}${events ? ' &middot; ' + esc(events) : ''}</div>
+                            ${nextMatchInfo}
                         </div>
                         ${statusBadge}
                         <div class="competitor-actions">${actionButtons}</div>

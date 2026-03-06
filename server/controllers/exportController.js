@@ -308,7 +308,7 @@ async function exportResultsCSV(req, res, next) {
     const results = await ResultsQueries.getByTournament(tournament.id);
 
     const headers = [
-      'Event', 'Division', 'Place', 'Name', 'Dojo', 'Score', 'Status',
+      'Event', 'Division', 'Place', 'Name', 'Dojo', 'Score', 'Win Method', 'Win Note', 'Status',
     ];
 
     const rows = [];
@@ -326,6 +326,8 @@ async function exportResultsCSV(req, res, next) {
             entry.name || '',
             entry.club || '',
             entry.score != null ? String(entry.score) : '',
+            entry.winMethod || '',
+            entry.winNote || '',
             result.status || '',
           ]);
         });
@@ -334,14 +336,14 @@ async function exportResultsCSV(req, res, next) {
         rows.push([
           result.event_name || '',
           result.division_name || '',
-          '', '', '', '',
+          '', '', '', '', '', '',
           result.status || '',
         ]);
       }
     }
 
     if (rows.length === 0) {
-      const csv = buildCSV(headers, [['No results found', '', '', '', '', '', '']]);
+      const csv = buildCSV(headers, [['No results found', '', '', '', '', '', '', '', '']]);
       const filename = `results-${tournament.id}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -442,7 +444,7 @@ async function exportResultsPDF(req, res, next) {
         }
 
         // Results table
-        const colWidths = { place: 40, name: 200, club: 150, score: 80 };
+        const colWidths = { place: 35, name: 160, club: 120, score: 60, winMethod: 95 };
         const tableLeft = doc.x;
         const rowHeight = 16;
 
@@ -453,10 +455,11 @@ async function exportResultsPDF(req, res, next) {
         doc.text('Name', tableLeft + colWidths.place, headerY, { width: colWidths.name });
         doc.text('Dojo', tableLeft + colWidths.place + colWidths.name, headerY, { width: colWidths.club });
         doc.text('Score', tableLeft + colWidths.place + colWidths.name + colWidths.club, headerY, { width: colWidths.score });
+        doc.text('Win Method', tableLeft + colWidths.place + colWidths.name + colWidths.club + colWidths.score, headerY, { width: colWidths.winMethod });
         doc.moveDown(0.2);
 
         const lineY = doc.y;
-        const totalWidth = colWidths.place + colWidths.name + colWidths.club + colWidths.score;
+        const totalWidth = colWidths.place + colWidths.name + colWidths.club + colWidths.score + colWidths.winMethod;
         doc.moveTo(tableLeft, lineY).lineTo(tableLeft + totalWidth, lineY).stroke('#cccccc');
         doc.moveDown(0.2);
 
@@ -470,6 +473,7 @@ async function exportResultsPDF(req, res, next) {
 
           const rowY = doc.y;
           const place = entry.rank != null ? String(entry.rank) : (entry.place != null ? String(entry.place) : '');
+          const winMethodStr = entry.winMethod ? (entry.winMethod + (entry.winNote ? ': ' + entry.winNote : '')) : '';
           doc.text(place, tableLeft, rowY, { width: colWidths.place });
           doc.text(entry.name || '', tableLeft + colWidths.place, rowY, { width: colWidths.name });
           doc.text(entry.club || '', tableLeft + colWidths.place + colWidths.name, rowY, { width: colWidths.club });
@@ -479,6 +483,7 @@ async function exportResultsPDF(req, res, next) {
             rowY,
             { width: colWidths.score }
           );
+          doc.text(winMethodStr, tableLeft + colWidths.place + colWidths.name + colWidths.club + colWidths.score, rowY, { width: colWidths.winMethod });
           doc.y = rowY + rowHeight;
         }
 

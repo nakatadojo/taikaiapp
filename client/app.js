@@ -11908,6 +11908,10 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                     <button class="btn btn-primary" onclick="operatorDeclareWinner('blue')" style="background: ${corner2Color}; color: ${corner2TextColor}; border: 1px solid ${corner2TextColor}33; font-size: clamp(11px, 1.2vw, 14px); padding: clamp(6px, 0.8vh, 10px) 12px; order: ${operatorSidesSwapped ? 3 : 1};">${corner2Name} Wins</button>
                     <button class="btn btn-secondary" onclick="operatorResetMatch()" style="font-size: clamp(11px, 1.2vw, 14px); padding: clamp(6px, 0.8vh, 10px) 12px; order: 2;">Reset</button>
                 </div>
+                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                    <button class="btn btn-secondary" onclick="operatorMarkAbsent('red')" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 1 : 3};">${corner1Name} Absent</button>
+                    <button class="btn btn-secondary" onclick="operatorMarkAbsent('blue')" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 3 : 1};">${corner2Name} Absent</button>
+                </div>
             </div>
 
             ${nextMatchHTML}
@@ -12208,11 +12212,15 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             <div class="glass-panel" style="text-align: center; flex-shrink: 0;">
                 <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center;">
                     <button class="btn btn-primary kata-flags-declare-winner-btn" style="font-size: clamp(13px, 1.4vw, 16px); padding: clamp(6px, 1vh, 12px) 16px;">
-                        ✓ Declare Winner
+                        Declare Winner
                     </button>
                     <button class="btn btn-secondary kata-flags-reset-votes-btn" style="font-size: 12px; padding: 6px 12px;">
                         Reset Votes
                     </button>
+                </div>
+                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                    <button class="btn btn-secondary kata-flags-mark-absent-btn" data-absent-corner="corner1" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 1 : 2};">${corner1Name} Absent</button>
+                    <button class="btn btn-secondary kata-flags-mark-absent-btn" data-absent-corner="corner2" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 2 : 1};">${corner2Name} Absent</button>
                 </div>
                 <div id="kata-flags-result" style="margin-top: 6px; font-size: 13px; color: var(--text-secondary);"></div>
             </div>
@@ -12270,6 +12278,17 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             e.stopPropagation();
             console.log('>>> Reset votes clicked');
             kataFlagsResetVotes();
+            return;
+        }
+
+        // Handle Mark Absent button
+        const absentBtn = e.target.closest('.kata-flags-mark-absent-btn');
+        if (absentBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const absentCorner = absentBtn.dataset.absentCorner;
+            console.log('>>> Mark absent clicked for', absentCorner);
+            kataFlagsMarkAbsent(absentCorner);
             return;
         }
 
@@ -12494,6 +12513,11 @@ function kataFlagsDeclareWinner() {
     match.status = 'completed';
     match.corner1Flags = corner1Votes;
     match.corner2Flags = corner2Votes;
+    match.winMethod = 'decision';
+    match.winNote = `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`;
+
+    // Log win method to score edit log
+    logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `decision: Flag decision (${corner1Votes}-${corner2Votes})`);
 
     // Advance winner to next round
     if (bracket.type === 'single-elimination') {
@@ -12588,7 +12612,9 @@ function kataFlagsDeclareWinner() {
         scoreboardType: 'kata-flags',
         corner1Flags: corner1Votes,
         corner2Flags: corner2Votes,
-        method: 'Flag Decision'
+        method: 'Flag Decision',
+        winMethod: 'decision',
+        winNote: `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`
     });
     localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
 
@@ -12850,7 +12876,7 @@ function checkAutoWin(org, rules) {
             operatorPauseTimer();
             setTimeout(() => {
                 if (confirm(`${pointLead}-point lead reached!\n\n${winner.toUpperCase()} leads ${operatorRedScore} - ${operatorBlueScore}.\n\nDeclare ${winner.toUpperCase()} as winner?`)) {
-                    operatorDeclareWinner(winner);
+                    operatorDeclareWinner(winner, { winMethod: 'points', winNote: `${pointLead}-point lead` });
                 }
             }, 100);
         }
@@ -12866,7 +12892,7 @@ function checkAutoWin(org, rules) {
                         operatorPauseTimer();
                         setTimeout(() => {
                             showMessage(`SUDDEN DEATH — ${winner.toUpperCase()} wins!`);
-                            operatorDeclareWinner(winner);
+                            operatorDeclareWinner(winner, { winMethod: 'points', winNote: 'Sudden death' });
                         }, 100);
                     }
                     return;
@@ -12884,14 +12910,14 @@ function checkAutoWin(org, rules) {
                 const reason = operatorWazaariCountRed >= 2 ? 'AWASETE IPPON' : 'IPPON';
                 setTimeout(() => {
                     showMessage(`${reason}! RED wins!`);
-                    operatorDeclareWinner('red');
+                    operatorDeclareWinner('red', { winMethod: 'ippon', winNote: reason });
                 }, 100);
             } else if (blueWins && !redWins) {
                 operatorPauseTimer();
                 const reason = operatorWazaariCountBlue >= 2 ? 'AWASETE IPPON' : 'IPPON';
                 setTimeout(() => {
                     showMessage(`${reason}! BLUE wins!`);
-                    operatorDeclareWinner('blue');
+                    operatorDeclareWinner('blue', { winMethod: 'ippon', winNote: reason });
                 }, 100);
             }
         } else if (operatorMatchFormat === 'shobu-sanbon') {
@@ -12900,13 +12926,13 @@ function checkAutoWin(org, rules) {
                 operatorPauseTimer();
                 setTimeout(() => {
                     showMessage('SANBON! RED wins!');
-                    operatorDeclareWinner('red');
+                    operatorDeclareWinner('red', { winMethod: 'ippon', winNote: 'SANBON (3 points)' });
                 }, 100);
             } else if (operatorBlueScore >= 3.0) {
                 operatorPauseTimer();
                 setTimeout(() => {
                     showMessage('SANBON! BLUE wins!');
-                    operatorDeclareWinner('blue');
+                    operatorDeclareWinner('blue', { winMethod: 'ippon', winNote: 'SANBON (3 points)' });
                 }, 100);
             }
         }
@@ -12971,7 +12997,7 @@ function operatorAddPenalty(corner, trackName) {
     if (trackName === 'shikkaku') {
         const message = `${corner.toUpperCase()} disqualified from ENTIRE TOURNAMENT (SHIKKAKU)`;
         if (confirm(`${message}\n\nDeclare ${opponentCorner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(opponentCorner);
+            operatorDeclareWinner(opponentCorner, { winMethod: 'hansoku', winNote: 'SHIKKAKU - Tournament disqualification', withdrawalType: 'disqualified' });
         }
         return;
     }
@@ -13019,7 +13045,7 @@ function operatorAddPenalty(corner, trackName) {
         operatorPauseTimer();
         const message = `${corner.toUpperCase()} disqualified — ${trackDef.name} reached ${newLevelName.toUpperCase()}`;
         if (confirm(`${message}\n\nDeclare ${opponentCorner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(opponentCorner);
+            operatorDeclareWinner(opponentCorner, { winMethod: 'hansoku', winNote: `${trackDef.name} - ${newLevelName.toUpperCase()}`, withdrawalType: 'disqualified' });
             return;
         }
     }
@@ -13141,7 +13167,7 @@ function handleTimeUp(org, rules) {
         const redDisplay = rules.scoring.isDecimal ? operatorRedScore.toFixed(1) : operatorRedScore;
         const blueDisplay = rules.scoring.isDecimal ? operatorBlueScore.toFixed(1) : operatorBlueScore;
         if (confirm(`Time up! ${winner.toUpperCase()} leads ${redDisplay} - ${blueDisplay}.\n\nDeclare ${winner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(winner);
+            operatorDeclareWinner(winner, { winMethod: 'points', winNote: 'Time up - score lead' });
         }
         return;
     }
@@ -13150,7 +13176,7 @@ function handleTimeUp(org, rules) {
     if (org === 'wkf' && rules.winConditions.senshu && operatorSenshu) {
         // Senshu holder wins on tie
         if (confirm(`Tied ${operatorRedScore} - ${operatorBlueScore}.\n\nSENSHU goes to ${operatorSenshu.toUpperCase()}.\n\nDeclare ${operatorSenshu.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(operatorSenshu);
+            operatorDeclareWinner(operatorSenshu, { winMethod: 'decision', winNote: 'SENSHU advantage' });
         }
         return;
     }
@@ -13309,12 +13335,12 @@ function showHanteiModal() {
         const panel = document.getElementById('timeup-decision-panel');
         if (panel) panel.remove();
         showMessage(`HANTEI: ${c1Name} wins by judges' decision!`);
-        operatorDeclareWinner('red');
+        operatorDeclareWinner('red', { winMethod: 'decision', winNote: 'HANTEI - Judges decision' });
     } else if (choice === '2') {
         const panel = document.getElementById('timeup-decision-panel');
         if (panel) panel.remove();
         showMessage(`HANTEI: ${c2Name} wins by judges' decision!`);
-        operatorDeclareWinner('blue');
+        operatorDeclareWinner('blue', { winMethod: 'decision', winNote: 'HANTEI - Judges decision' });
     }
 }
 
@@ -13393,7 +13419,62 @@ function operatorResetMatch() {
     updateOperatorTVDisplay();
 }
 
-function operatorDeclareWinner(corner) {
+/**
+ * Show a win-method selection modal. Returns a Promise that resolves to
+ * { winMethod, winNote } or null if the user cancels.
+ */
+function showWinMethodModal(winnerName, cornerLabel) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Declare <strong>${cornerLabel}</strong> corner (<strong>${winnerName}</strong>) as the WINNER?
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Win Method</label>
+                    <select id="win-method-select" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="points">Points (Score Lead)</option>
+                        <option value="decision">Decision (Hantei / Judge)</option>
+                        <option value="ippon">Ippon</option>
+                        <option value="hansoku">Hansoku (Disqualification)</option>
+                        <option value="withdrawal">Withdrawal</option>
+                        <option value="default_win">Default Win (No-Show / BYE)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Note (optional)</label>
+                    <input id="win-method-note" type="text" placeholder="e.g. excessive contact, out of bounds" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="win-method-cancel">Cancel</button>
+                    <button class="confirm-btn confirm-ok" id="win-method-confirm">Confirm Winner</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+
+        overlay.querySelector('#win-method-cancel').onclick = () => cleanup(null);
+        overlay.querySelector('#win-method-confirm').onclick = () => {
+            const winMethod = overlay.querySelector('#win-method-select').value;
+            const winNote = overlay.querySelector('#win-method-note').value.trim();
+            cleanup({ winMethod, winNote });
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#win-method-confirm').focus(), 50);
+    });
+}
+
+/**
+ * Declare a winner for kumite match.
+ * @param {string} corner - 'red' or 'blue'
+ * @param {object} [winMethodOverride] - Optional { winMethod, winNote, withdrawalType } to skip the modal
+ */
+async function operatorDeclareWinner(corner, winMethodOverride) {
     const winner = corner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
     const loser = corner === 'red' ? operatorBlueCompetitor : operatorRedCompetitor;
 
@@ -13402,11 +13483,23 @@ function operatorDeclareWinner(corner) {
         return;
     }
 
-    // Safety confirmation to prevent accidental winner declaration
-    const winnerName = `${winner.firstName} ${winner.lastName}`;
-    const cornerLabel = corner === 'red' ? 'RED' : 'BLUE';
-    if (!confirm(`Declare ${cornerLabel} corner (${winnerName}) as the WINNER?\n\nThis action will record the match result.`)) {
-        return;
+    let winMethod = 'points';
+    let winNote = '';
+    let withdrawalType = null;
+
+    if (winMethodOverride) {
+        // Auto-called path (ippon, DQ, no-show, etc.) — skip modal
+        winMethod = winMethodOverride.winMethod || 'points';
+        winNote = winMethodOverride.winNote || '';
+        withdrawalType = winMethodOverride.withdrawalType || null;
+    } else {
+        // Manual call — show win method modal
+        const winnerName = `${winner.firstName} ${winner.lastName}`;
+        const cornerLabel = corner === 'red' ? 'RED' : 'BLUE';
+        const result = await showWinMethodModal(winnerName, cornerLabel);
+        if (!result) return; // User cancelled
+        winMethod = result.winMethod;
+        winNote = result.winNote;
     }
 
     operatorPauseTimer();
@@ -13443,6 +13536,12 @@ function operatorDeclareWinner(corner) {
                 match.score1 = corner === 'red' ? operatorRedScore : operatorBlueScore;
                 match.score2 = corner === 'red' ? operatorBlueScore : operatorRedScore;
                 match.status = 'completed';
+                match.winMethod = winMethod;
+                match.winNote = winNote || '';
+                if (withdrawalType) match.withdrawalType = withdrawalType;
+
+                // Log win method to score edit log
+                logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `${winMethod}${winNote ? ': ' + winNote : ''}`);
 
                 // Advance winner to next round
                 if (bracket.type === 'single-elimination') {
@@ -13559,6 +13658,302 @@ function operatorDeclareWinner(corner) {
 
     // Store the interval so operatorNextAfterWin can clear it
     window._winnerCountdownInterval = countdownInterval;
+}
+
+/**
+ * Mark a competitor as absent (no-show / withdrew / medical / disqualified).
+ * Shows a modal to select withdrawal type, then auto-declares the opponent as winner.
+ * @param {string} absentCorner - 'red' or 'blue' — the corner that is absent
+ */
+async function operatorMarkAbsent(absentCorner) {
+    const absentCompetitor = absentCorner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
+    const opponentCorner = absentCorner === 'red' ? 'blue' : 'red';
+    const opponentCompetitor = opponentCorner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
+
+    if (!absentCompetitor) {
+        showMessage('No competitor loaded for this corner', 'error');
+        return;
+    }
+    if (!opponentCompetitor) {
+        showMessage('No opponent loaded — cannot declare a default winner', 'error');
+        return;
+    }
+
+    const absentName = `${absentCompetitor.firstName} ${absentCompetitor.lastName}`;
+    const opponentName = `${opponentCompetitor.firstName} ${opponentCompetitor.lastName}`;
+
+    // Show withdrawal type modal
+    const result = await new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Mark <strong>${absentName}</strong> as absent?
+                </p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    <strong>${opponentName}</strong> will be declared the winner by default.
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Reason</label>
+                    <select id="absent-type-select" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="no_show">No-Show (Did not arrive)</option>
+                        <option value="withdrew">Withdrew (Pulled out)</option>
+                        <option value="medical">Medical (Injury / Illness)</option>
+                        <option value="disqualified">Disqualified</option>
+                    </select>
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="absent-cancel">Cancel</button>
+                    <button class="confirm-btn confirm-ok confirm-danger" id="absent-confirm">Mark Absent</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#absent-cancel').onclick = () => cleanup(null);
+        overlay.querySelector('#absent-confirm').onclick = () => {
+            const withdrawalType = overlay.querySelector('#absent-type-select').value;
+            cleanup(withdrawalType);
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#absent-confirm').focus(), 50);
+    });
+
+    if (!result) return; // User cancelled
+
+    const withdrawalLabels = {
+        no_show: 'Opponent no-show',
+        withdrew: 'Opponent withdrew',
+        medical: 'Opponent medical withdrawal',
+        disqualified: 'Opponent disqualified'
+    };
+
+    // Declare the opponent as winner with default_win method
+    operatorDeclareWinner(opponentCorner, {
+        winMethod: 'default_win',
+        winNote: withdrawalLabels[result] || 'Opponent absent',
+        withdrawalType: result
+    });
+}
+
+/**
+ * Mark a competitor as absent in kata-flags head-to-head.
+ * @param {string} absentCorner - 'corner1' (red) or 'corner2' (blue)
+ */
+async function kataFlagsMarkAbsent(absentCorner) {
+    const match = kataFlagsCurrentMatch;
+    if (!match) {
+        showToast('No current match loaded', 'error');
+        return;
+    }
+
+    const absentCompetitor = absentCorner === 'corner1' ? match.redCorner : match.blueCorner;
+    const opponentCompetitor = absentCorner === 'corner1' ? match.blueCorner : match.redCorner;
+
+    if (!absentCompetitor || !opponentCompetitor) {
+        showToast('Both competitors must be loaded', 'error');
+        return;
+    }
+
+    const absentName = `${absentCompetitor.firstName} ${absentCompetitor.lastName}`;
+    const opponentName = `${opponentCompetitor.firstName} ${opponentCompetitor.lastName}`;
+
+    // Show withdrawal type modal
+    const withdrawalType = await new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Mark <strong>${absentName}</strong> as absent?
+                </p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    <strong>${opponentName}</strong> will be declared the winner by default.
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Reason</label>
+                    <select id="absent-type-select-kf" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="no_show">No-Show (Did not arrive)</option>
+                        <option value="withdrew">Withdrew (Pulled out)</option>
+                        <option value="medical">Medical (Injury / Illness)</option>
+                        <option value="disqualified">Disqualified</option>
+                    </select>
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="absent-cancel-kf">Cancel</button>
+                    <button class="confirm-btn confirm-ok confirm-danger" id="absent-confirm-kf">Mark Absent</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#absent-cancel-kf').onclick = () => cleanup(null);
+        overlay.querySelector('#absent-confirm-kf').onclick = () => {
+            cleanup(overlay.querySelector('#absent-type-select-kf').value);
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#absent-confirm-kf').focus(), 50);
+    });
+
+    if (!withdrawalType) return; // User cancelled
+
+    const withdrawalLabels = {
+        no_show: 'Opponent no-show',
+        withdrew: 'Opponent withdrew',
+        medical: 'Opponent medical withdrawal',
+        disqualified: 'Opponent disqualified'
+    };
+
+    // Guard: if match is already completed, don't re-process
+    if (match.status === 'completed') {
+        showToast('Match already completed', 'error');
+        return;
+    }
+
+    // Update match data
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const bracket = brackets[window.currentBracketId];
+    if (!bracket) {
+        showToast('Bracket not found', 'error');
+        return;
+    }
+
+    // Find the match in all arrays
+    const allBracketMatches = [
+        ...(bracket.matches || []),
+        ...(bracket.winners || []),
+        ...(bracket.losers || []),
+        ...(bracket.repechageA || []),
+        ...(bracket.repechageB || [])
+    ];
+    if (bracket.finals) allBracketMatches.push(bracket.finals);
+    if (bracket.reset) allBracketMatches.push(bracket.reset);
+    const bracketMatch = allBracketMatches.find(m => m.id === window.currentMatchId);
+
+    if (!bracketMatch) {
+        showToast('Match not found in bracket', 'error');
+        return;
+    }
+
+    const winner = opponentCompetitor;
+    const loser = absentCompetitor;
+
+    bracketMatch.winner = winner;
+    bracketMatch.status = 'completed';
+    bracketMatch.winMethod = 'default_win';
+    bracketMatch.winNote = withdrawalLabels[withdrawalType] || 'Opponent absent';
+    bracketMatch.withdrawalType = withdrawalType;
+    bracketMatch.corner1Flags = 0;
+    bracketMatch.corner2Flags = 0;
+
+    // Log to score edit log
+    logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `default_win: ${withdrawalLabels[withdrawalType]} (${absentName})`);
+
+    // Advance winner (reuse existing bracket advancement logic)
+    if (bracket.type === 'single-elimination') {
+        const matchPool = bracket.matches || [];
+        let advanceMatch = bracketMatch;
+        let advanceWinner = winner;
+
+        while (true) {
+            const nextRound = advanceMatch.round + 1;
+            const nextPosition = Math.floor(advanceMatch.position / 2);
+            const nextMatch = matchPool.find(m => m.round === nextRound && m.position === nextPosition);
+            if (!nextMatch) break;
+
+            // Guard duplicate
+            const winnerId = advanceWinner.id || `${advanceWinner.firstName}_${advanceWinner.lastName}`;
+            const redId = nextMatch.redCorner ? (nextMatch.redCorner.id || `${nextMatch.redCorner.firstName}_${nextMatch.redCorner.lastName}`) : null;
+            const blueId = nextMatch.blueCorner ? (nextMatch.blueCorner.id || `${nextMatch.blueCorner.firstName}_${nextMatch.blueCorner.lastName}`) : null;
+            if (winnerId === redId || winnerId === blueId) break;
+
+            if (advanceMatch.position % 2 === 0) {
+                if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
+                else if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
+                else break;
+            } else {
+                if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
+                else if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
+                else break;
+            }
+
+            // BYE cascade
+            if (nextMatch.redCorner && !nextMatch.blueCorner) {
+                const blueFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2 + 1);
+                if (blueFeeder && (blueFeeder.status === 'empty' || blueFeeder.status === 'bye')) {
+                    nextMatch.status = 'bye';
+                    nextMatch.winner = nextMatch.redCorner;
+                    nextMatch.score1 = 'BYE';
+                    advanceMatch = nextMatch;
+                    advanceWinner = nextMatch.redCorner;
+                    continue;
+                }
+            } else if (!nextMatch.redCorner && nextMatch.blueCorner) {
+                const redFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2);
+                if (redFeeder && (redFeeder.status === 'empty' || redFeeder.status === 'bye')) {
+                    nextMatch.status = 'bye';
+                    nextMatch.winner = nextMatch.blueCorner;
+                    nextMatch.score2 = 'BYE';
+                    advanceMatch = nextMatch;
+                    advanceWinner = nextMatch.blueCorner;
+                    continue;
+                }
+            }
+            break;
+        }
+    } else if (bracket.type === 'double-elimination') {
+        handleDoubleElimWinnerDeclaration(bracket, bracketMatch, winner, loser);
+    } else if (bracket.type === 'repechage') {
+        handleRepechageWinnerDeclaration(bracket, bracketMatch, winner, loser);
+    }
+
+    // Save updated bracket
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+
+    // Save to results/history
+    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
+    results.push({
+        id: generateUniqueId(),
+        timestamp: new Date().toISOString(),
+        matId: kataFlagsMatId,
+        division: kataFlagsDivisionName,
+        eventId: kataFlagsEventId,
+        winner: winner,
+        loser: loser,
+        scoreboardType: 'kata-flags',
+        method: 'Default Win',
+        winMethod: 'default_win',
+        winNote: withdrawalLabels[withdrawalType] || 'Opponent absent',
+        withdrawalType: withdrawalType
+    });
+    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+
+    // Show winner result
+    const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
+    const corner2Name = kataFlagsScoreboardConfig?.settings?.corner2Name || 'Blue';
+    const winnerCorner = absentCorner === 'corner1' ? corner2Name : corner1Name;
+
+    document.getElementById('kata-flags-result').innerHTML = `
+        <div style="background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e; border-radius: 12px; padding: 20px; margin-top: 20px;">
+            <div style="font-size: 24px; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
+                WINNER: ${winner.firstName} ${winner.lastName}
+            </div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
+                ${winnerCorner} Corner wins by default (${withdrawalLabels[withdrawalType]})
+            </div>
+            <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
+                ${checkBracketComplete(kataFlagsDivisionName, kataFlagsEventId) ? 'View Results' : 'Next Match'}
+            </button>
+        </div>
+    `;
+
+    // Allow future declarations
+    window._kataFlagsDeclaring = false;
 }
 
 function operatorNextAfterWin() {
@@ -14739,7 +15134,7 @@ function getDivisionResults(divisionName, eventId) {
                     .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
                 if (finalMatch && finalMatch.winner) {
                     const loser = finalMatch.redCorner?.id === finalMatch.winner.id ? finalMatch.blueCorner : finalMatch.redCorner;
-                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1 });
+                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1, winMethod: finalMatch.winMethod || '', winNote: finalMatch.winNote || '' });
                     if (loser) results.push({ name: `${loser.firstName} ${loser.lastName}`, club: loser.club || '', rank: 2 });
 
                     // 3rd place: losers of semi-finals
@@ -14762,7 +15157,7 @@ function getDivisionResults(divisionName, eventId) {
 
                 if (finalMatch && finalMatch.winner) {
                     const loser = finalMatch.redCorner?.id === finalMatch.winner.id ? finalMatch.blueCorner : finalMatch.redCorner;
-                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1 });
+                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1, winMethod: finalMatch.winMethod || '', winNote: finalMatch.winNote || '' });
                     if (loser) results.push({ name: `${loser.firstName} ${loser.lastName}`, club: loser.club || '', rank: 2 });
                 }
 
@@ -14790,8 +15185,11 @@ function getDivisionResults(divisionName, eventId) {
                     runnerUp = bracket.finals.redCorner?.id === bracket.finals.winner.id ? bracket.finals.blueCorner : bracket.finals.redCorner;
                 }
 
+                // Determine the decisive match for win method
+                const decisiveMatch = (bracket.reset && bracket.reset.winner) ? bracket.reset : bracket.finals;
+
                 if (champion) {
-                    results.push({ name: `${champion.firstName} ${champion.lastName}`, club: champion.club || '', rank: 1 });
+                    results.push({ name: `${champion.firstName} ${champion.lastName}`, club: champion.club || '', rank: 1, winMethod: decisiveMatch?.winMethod || '', winNote: decisiveMatch?.winNote || '' });
                 }
                 if (runnerUp) {
                     results.push({ name: `${runnerUp.firstName} ${runnerUp.lastName}`, club: runnerUp.club || '', rank: 2 });
@@ -14853,10 +15251,12 @@ function loadResults() {
                     <div>
                         ${results.map((result, idx) => {
                             const medalEmoji = result.rank <= 3 ? ['&#x1F947;','&#x1F948;','&#x1F949;'][result.rank - 1] || `#${result.rank}` : `#${result.rank}`;
+                            const winMethodLabel = result.winMethod ? { points: 'Points', decision: 'Decision', hansoku: 'Hansoku', withdrawal: 'Withdrawal', default_win: 'Default Win', ippon: 'Ippon' }[result.winMethod] || result.winMethod : '';
+                            const winMethodHTML = winMethodLabel ? `<span style="font-size: 10px; background: var(--bg-secondary); padding: 1px 6px; border-radius: 4px; color: var(--text-secondary); margin-left: 6px;">${winMethodLabel}${result.winNote ? ': ' + result.winNote : ''}</span>` : '';
                             return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
                                 <span style="width: 40px; text-align: center; font-size: 18px;">${medalEmoji}</span>
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600;">${result.name}</div>
+                                    <div style="font-weight: 600;">${result.name}${winMethodHTML}</div>
                                     ${result.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${result.club}</div>` : ''}
                                 </div>
                                 ${result.score !== undefined ? `<div style="font-weight: 700;">${typeof result.score === 'number' ? result.score.toFixed(2) : result.score}</div>` : ''}
