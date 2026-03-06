@@ -1432,12 +1432,12 @@
         <button class="auth-close" onclick="closeAuthModal()">&times;</button>
 
         <div class="auth-tabs">
-            <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Login</button>
-            <button class="auth-tab" data-tab="signup" onclick="switchAuthTab('signup')">Sign Up</button>
+            <button class="auth-tab" data-tab="login" onclick="switchAuthTab('login')">Login</button>
+            <button class="auth-tab active" data-tab="signup" onclick="switchAuthTab('signup')">Sign Up</button>
         </div>
 
         <!-- ── LOGIN FORM ──────────────────────────────────────────────── -->
-        <form id="auth-login-form" class="auth-form active reg-form" onsubmit="handleLogin(event)">
+        <form id="auth-login-form" class="auth-form reg-form" onsubmit="handleLogin(event)">
             <div id="login-error" class="msg-error msg-hidden"></div>
 
             <div class="form-group mb-16">
@@ -1453,7 +1453,7 @@
         </form>
 
         <!-- ── SIGNUP FORM ─────────────────────────────────────────────── -->
-        <form id="auth-signup-form" class="auth-form reg-form" onsubmit="handleSignup(event)">
+        <form id="auth-signup-form" class="auth-form active reg-form" onsubmit="handleSignup(event)">
             <div id="signup-error" class="msg-error msg-hidden"></div>
             <div id="signup-success" class="msg-success msg-hidden"></div>
 
@@ -1490,6 +1490,7 @@
             </div>
 
             <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
+            <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;">Already have an account? <span style="text-decoration:underline;">Sign in</span></button>
         </form>
 
         <!-- ── FORGOT PASSWORD FORM ──────────────────────────────────── -->
@@ -1636,7 +1637,7 @@
        ══════════════════════════════════════════════════════════════════════ */
     window.openAuthModal = function() {
         document.getElementById('auth-modal').classList.add('open');
-        switchAuthTab('login');
+        switchAuthTab('signup');
     };
 
     window.closeAuthModal = function() {
@@ -1904,15 +1905,24 @@
         const actionsEl = document.getElementById('dash-actions');
         const container = document.getElementById('profiles-container');
 
-        // Actions
-        let actionsHTML = '';
-        const roles = user?.roles || [];
-        const isCompetitor = roles.includes('competitor');
+        // Check if user has created their own profile
         const hasSelfProfile = state.profiles.some(p => p.isSelf || p.userId === (user?._id || user?.id));
 
-        if ((isCompetitor) && !hasSelfProfile) {
-            actionsHTML += `<button class="btn-accent btn-sm" onclick="addSelfProfile()">Register Myself</button>`;
+        // If no self-profile, show mandatory profile-first step
+        if (!hasSelfProfile) {
+            actionsEl.innerHTML = '';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">👤</div>
+                    <div class="empty-state-title">Create Your Profile</div>
+                    <div class="empty-state-text">Before registering competitors, please set up your own profile first.</div>
+                    <button class="btn-accent" style="margin-top:16px;" onclick="addSelfProfile()">Create My Profile</button>
+                </div>`;
+            return;
         }
+
+        // Actions — self-profile exists, allow adding competitors
+        let actionsHTML = '';
         actionsHTML += `<button class="btn-ghost btn-sm" onclick="addChildProfile()">+ Add a Competitor</button>`;
         if (state.cart.items.length > 0) {
             const totalEvents = state.cart.items.reduce((sum, item) => sum + item.events.length, 0);
@@ -1926,7 +1936,7 @@
                 <div class="empty-state">
                     <div class="empty-state-icon">&#x1F94B;</div>
                     <div class="empty-state-title">No Competitors Yet</div>
-                    <div class="empty-state-text">Add yourself or a competitor to get started with event registration.</div>
+                    <div class="empty-state-text">Add a competitor to get started with event registration.</div>
                 </div>`;
             return;
         }
