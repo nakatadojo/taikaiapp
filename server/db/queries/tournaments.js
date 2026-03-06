@@ -514,6 +514,135 @@ async function getEventRegistrationCount(eventId) {
   return parseInt(result.rows[0].count);
 }
 
+/**
+ * Clone a tournament with its events, pricing periods, and staff role definitions.
+ * Does NOT copy registrations, results, brackets, check-in data, or tournament_members.
+ */
+async function cloneTournament(tournamentId, createdBy) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch the source tournament
+    const srcResult = await client.query(
+      'SELECT * FROM tournaments WHERE id = $1',
+      [tournamentId]
+    );
+    const src = srcResult.rows[0];
+    if (!src) {
+      throw new Error('Tournament not found');
+    }
+
+    // 2. Generate a unique slug for the clone
+    const cloneName = `${src.name} (Copy)`;
+    const baseSlug = generateSlug(src.slug + '-copy-' + Date.now());
+    let cloneSlug = baseSlug;
+    let counter = 1;
+    while (true) {
+      const existing = await client.query(
+        'SELECT id FROM tournaments WHERE slug = $1',
+        [cloneSlug]
+      );
+      if (existing.rows.length === 0) break;
+      counter++;
+      cloneSlug = `${baseSlug}-${counter}`;
+    }
+
+    // 3. Insert the cloned tournament
+    const cloneResult = await client.query(
+      `INSERT INTO tournaments
+        (name, date, location, registration_open, base_event_price, addon_event_price,
+         created_by, slug, description, city, state, venue_name, venue_address,
+         published, organization_name, contact_email, registration_deadline, cover_image_url,
+         sanctioning_body, collect_tshirt_sizes, registration_settings)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+               $14, $15, $16, $17, $18, $19, $20, $21)
+       RETURNING *`,
+      [
+        cloneName,
+        src.date,
+        src.location,
+        false, // registration closed on clone
+        src.base_event_price,
+        src.addon_event_price,
+        createdBy,
+        cloneSlug,
+        src.description,
+        src.city,
+        src.state,
+        src.venue_name,
+        src.venue_address,
+        false, // always unpublished
+        src.organization_name,
+        src.contact_email,
+        src.registration_deadline,
+        src.cover_image_url,
+        src.sanctioning_body,
+        src.collect_tshirt_sizes,
+        src.registration_settings,
+      ]
+    );
+    const cloned = cloneResult.rows[0];
+
+    // 4. Clone tournament events
+    const eventsResult = await client.query(
+      'SELECT * FROM tournament_events WHERE tournament_id = $1',
+      [tournamentId]
+    );
+    for (const evt of eventsResult.rows) {
+      await client.query(
+        `INSERT INTO tournament_events
+          (tournament_id, name, event_type, division, gender,
+           age_min, age_max, rank_min, rank_max,
+           price_override, addon_price_override, max_competitors,
+           criteria_templates, is_event_type, match_duration_seconds)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [
+          cloned.id, evt.name, evt.event_type, evt.division, evt.gender,
+          evt.age_min, evt.age_max, evt.rank_min, evt.rank_max,
+          evt.price_override, evt.addon_price_override, evt.max_competitors,
+          evt.criteria_templates, evt.is_event_type, evt.match_duration_seconds,
+        ]
+      );
+    }
+
+    // 5. Clone pricing periods
+    const pricingResult = await client.query(
+      'SELECT * FROM pricing_periods WHERE tournament_id = $1 ORDER BY display_order',
+      [tournamentId]
+    );
+    for (const pp of pricingResult.rows) {
+      await client.query(
+        `INSERT INTO pricing_periods
+          (tournament_id, name, start_date, end_date, base_event_price, addon_event_price, display_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [cloned.id, pp.name, pp.start_date, pp.end_date, pp.base_event_price, pp.addon_event_price, pp.display_order]
+      );
+    }
+
+    // 6. Clone staff role definitions
+    const rolesResult = await client.query(
+      'SELECT * FROM staff_role_definitions WHERE tournament_id = $1',
+      [tournamentId]
+    );
+    for (const role of rolesResult.rows) {
+      await client.query(
+        `INSERT INTO staff_role_definitions (tournament_id, role_name, permissions)
+         VALUES ($1, $2, $3)`,
+        [cloned.id, role.role_name, role.permissions]
+      );
+    }
+
+    await client.query('COMMIT');
+    return cloned;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   generateSlug,
   generateUniqueSlug,
@@ -534,4 +663,5 @@ module.exports = {
   syncEvents,
   getEligibleEvents,
   getEventRegistrationCount,
+  cloneTournament,
 };

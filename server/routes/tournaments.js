@@ -117,6 +117,13 @@ router.put('/:id/publish',
   tournamentController.publishTournament
 );
 
+// POST /api/tournaments/:id/clone — Clone a tournament
+router.post('/:id/clone',
+  requireAuth,
+  requireRole('event_director'),
+  tournamentController.cloneTournament
+);
+
 // POST /api/tournaments/:id/cover-image — Upload cover image
 router.post('/:id/cover-image',
   requireAuth,

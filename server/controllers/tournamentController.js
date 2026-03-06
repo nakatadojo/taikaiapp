@@ -598,6 +598,28 @@ async function getDirectorStats(req, res, next) {
   } catch (err) { next(err); }
 }
 
+/**
+ * POST /api/tournaments/:id/clone
+ * Clone a tournament (must own the original).
+ */
+async function cloneTournament(req, res, next) {
+  try {
+    // Check ownership of the source tournament
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
+    }
+
+    const cloned = await tournamentQueries.cloneTournament(req.params.id, req.user.id);
+    res.status(201).json({ tournament: cloned });
+  } catch (err) {
+    if (err.message === 'Tournament not found') {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -616,4 +638,5 @@ module.exports = {
   deleteEvent,
   syncEvents,
   getRegistrants,
+  cloneTournament,
 };
