@@ -473,6 +473,26 @@
             border: 1px solid rgba(243,156,18,0.2);
             color: var(--warning);
         }
+        .reg-status-refunded {
+            background: rgba(255,140,0,0.1);
+            border: 1px solid rgba(255,140,0,0.25);
+            color: #ff8c00;
+        }
+        .reg-status-disputed {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #ef4444;
+        }
+        .reg-status-waived {
+            background: rgba(100,116,139,0.1);
+            border: 1px solid rgba(100,116,139,0.2);
+            color: var(--text-muted);
+        }
+        .reg-status-partial {
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #3b82f6;
+        }
 
         .registrants-export-btn {
             background: var(--glass);
@@ -1860,6 +1880,15 @@
                 <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or academy..." oninput="filterRegistrants()">
                 <select class="registrants-filter-select" id="registrants-event-filter" onchange="filterRegistrants()">
                     <option value="">All Events</option>
+                </select>
+                <select class="registrants-filter-select" id="registrants-payment-filter" onchange="filterRegistrants()">
+                    <option value="">All Statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="waived">Waived</option>
+                    <option value="refunded">Refunded</option>
+                    <option value="disputed">Disputed</option>
                 </select>
             </div>
 
@@ -3435,7 +3464,15 @@
 
                 const paid = parseFloat(reg.amount_paid || 0);
                 const payStatus = (reg.payment_status || 'unpaid').toLowerCase();
-                const statusClass = payStatus === 'paid' ? 'reg-status-paid' : 'reg-status-unpaid';
+                const statusClassMap = {
+                    paid: 'reg-status-paid',
+                    unpaid: 'reg-status-unpaid',
+                    partial: 'reg-status-partial',
+                    waived: 'reg-status-waived',
+                    refunded: 'reg-status-refunded',
+                    disputed: 'reg-status-disputed',
+                };
+                const statusClass = statusClassMap[payStatus] || 'reg-status-unpaid';
 
                 row.innerHTML = `
                     <td style="color:var(--text-dim);">${i + 1}</td>
@@ -3455,6 +3492,7 @@
         window.filterRegistrants = function() {
             const search = ($('#registrants-search').value || '').toLowerCase();
             const eventFilter = $('#registrants-event-filter').value;
+            const paymentFilter = ($('#registrants-payment-filter').value || '').toLowerCase();
 
             const filtered = currentRegistrants.filter(reg => {
                 // Text search
@@ -3471,6 +3509,12 @@
                 if (eventFilter) {
                     const hasEvent = (reg.events || []).some(e => e.eventName === eventFilter);
                     if (!hasEvent) return false;
+                }
+
+                // Payment status filter
+                if (paymentFilter) {
+                    const regStatus = (reg.payment_status || 'unpaid').toLowerCase();
+                    if (regStatus !== paymentFilter) return false;
                 }
 
                 return true;
