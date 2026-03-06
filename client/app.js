@@ -381,6 +381,45 @@ async function _syncTemplateToServer(eventId, templates) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
+async function _syncTeamsToServer() {
+    if (!currentTournamentId) return;
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teams }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _loadTeamsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return; // silently skip if server not available
+        const data = await res.json();
+        if (data.teams && Object.keys(data.teams).length > 0) {
+            const localTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            // Only overwrite if local is empty (server is source of truth for initial load)
+            if (Object.keys(localTeams).length === 0) {
+                localStorage.setItem(_scopedKey('teams'), JSON.stringify(data.teams));
+                console.log(`[sync] Loaded ${Object.keys(data.teams).length} team(s) from server`);
+            }
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load teams from server:', err.message);
+    }
+}
+
 // Ordered rank list for grouped belt-range matching (WKF/AAU)
 const RANK_ORDER = [
     'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
@@ -611,6 +650,7 @@ function switchTournament() {
         document.getElementById('main-nav').classList.remove('hidden');
         loadCompetitors();
         loadDashboard();
+        _loadTeamsFromServer();
     } else {
         document.getElementById('main-nav').classList.add('hidden');
     }
@@ -1788,6 +1828,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                 createdAt: new Date().toISOString()
             };
             localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+            _debouncedSync('teams', _syncTeamsToServer, 2000);
 
         } else if (teamOption === 'join') {
             // Joining existing team
@@ -1901,6 +1942,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
             if (team) {
                 team.members.push(competitorId);
                 localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+                _debouncedSync('teams', _syncTeamsToServer, 2000);
             }
         }
 
@@ -2920,6 +2962,7 @@ function generateTestCompetitors() {
     }
     teamCodesToDelete.forEach(code => delete teams[code]);
     localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+    _debouncedSync('teams', _syncTeamsToServer, 2000);
     console.log(`  Deleted ${teamCodesToDelete.length} teams`);
 
     // ── STEP 2: Ensure 6-8 clubs ──
@@ -3264,6 +3307,7 @@ function generateTestCompetitors() {
 
     // Save team registry
     localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamRegistry));
+    _debouncedSync('teams', _syncTeamsToServer, 2000);
 
     // ── STEP 7: Refresh UI and log summary ──
     syncCompetitorClubsToTable();
