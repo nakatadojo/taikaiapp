@@ -1500,9 +1500,12 @@
                 <!-- Legacy results (for certificate generation from localStorage) -->
                 <div class="glass-panel" style="margin-top:24px;">
                     <h3>Certificates</h3>
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Generate certificates from localStorage bracket data.</p>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Generate certificates from localStorage bracket data or download a batch PDF from the server.</p>
                     <div id="results-container"></div>
-                    <button class="btn btn-primary" onclick="generateAllCertificates()" style="margin-top:12px;">Generate All Certificates</button>
+                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="generateAllCertificates()">Generate All Certificates</button>
+                        <button class="btn btn-secondary" onclick="downloadBatchCertificatePDF()">Download All Certificates (PDF)</button>
+                    </div>
                 </div>
             </section>
 
@@ -1560,15 +1563,21 @@
                             <button class="btn btn-secondary btn-sm" onclick="clearCertificateTemplate()">Remove Template</button>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveCertificateTemplate()" style="margin-top: 12px;">Save Template</button>
+                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="saveCertificateTemplate()">Save Template</button>
+                        <button class="btn btn-secondary" onclick="syncCertificateTemplateToServer()">Sync to Server</button>
+                        <button class="btn btn-secondary" onclick="loadCertificateTemplateFromServer()">Load from Server</button>
+                    </div>
+                    <div id="cert-sync-status" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
                 </div>
 
                 <div class="glass-panel" id="merge-tag-config-panel" style="display: none;">
                     <h3>Merge Tag Positioning</h3>
                     <p class="hint">Configure which tags appear on the certificate and their position (X/Y as % of image), font size, color, and alignment.</p>
                     <div id="merge-tag-list" style="margin-top: 16px;"></div>
-                    <div style="margin-top: 16px; display: flex; gap: 8px;">
+                    <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="btn btn-primary" onclick="saveCertificateConfig()">Save Configuration</button>
+                        <button class="btn btn-secondary" onclick="saveCertificateConfigToServer()">Save Config to Server</button>
                         <button class="btn btn-secondary" onclick="previewCertificateWithSampleData()">Preview with Sample Data</button>
                     </div>
                 </div>

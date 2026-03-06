@@ -16682,6 +16682,254 @@ function generateAllCertificates() {
     generateNext();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CERTIFICATE SERVER SYNC
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Upload the current certificate template (from file input) to the server.
+ */
+async function syncCertificateTemplateToServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const fileInput = document.getElementById('settings-certificate-template');
+    const statusEl = document.getElementById('cert-sync-status');
+
+    // Check for a file in the file input first
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+        const formData = new FormData();
+        formData.append('template', fileInput.files[0]);
+
+        try {
+            if (statusEl) statusEl.textContent = 'Uploading template to server...';
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            // Also sync the config if available
+            await syncCertificateConfigToServerSilent();
+
+            if (statusEl) statusEl.textContent = 'Template synced to server successfully.';
+            showMessage('Certificate template synced to server!');
+        } catch (err) {
+            if (statusEl) statusEl.textContent = 'Sync failed: ' + err.message;
+            showMessage('Failed to sync template: ' + err.message, 'error');
+        }
+        return;
+    }
+
+    // Fallback: try to upload from localStorage base64 data
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    if (!template || !template.data) {
+        showMessage('No certificate template to sync. Please select or save a template first.', 'error');
+        return;
+    }
+
+    // Convert base64 data URL back to a Blob for upload
+    try {
+        if (statusEl) statusEl.textContent = 'Uploading template to server...';
+
+        const dataUrlParts = template.data.split(',');
+        const mimeMatch = dataUrlParts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const byteString = atob(dataUrlParts[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mime });
+
+        const formData = new FormData();
+        const ext = mime.split('/')[1] || 'png';
+        formData.append('template', blob, template.fileName || `template.${ext}`);
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Upload failed');
+        }
+
+        // Also sync the config
+        await syncCertificateConfigToServerSilent();
+
+        if (statusEl) statusEl.textContent = 'Template synced to server successfully.';
+        showMessage('Certificate template synced to server!');
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'Sync failed: ' + err.message;
+        showMessage('Failed to sync template: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Save the current merge-tag config to the server (silently, used as part of template sync).
+ */
+async function syncCertificateConfigToServerSilent() {
+    if (!currentTournamentId) return;
+
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    if (!config) return;
+
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/certificate-template/config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+    } catch (err) {
+        console.warn('Could not sync certificate config:', err.message);
+    }
+}
+
+/**
+ * Save the certificate merge-tag config to the server (with user feedback).
+ */
+async function saveCertificateConfigToServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const config = getCertificateConfigFromForm();
+    // Also save locally
+    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template/config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Save failed');
+        }
+
+        showMessage('Certificate configuration saved to server!');
+    } catch (err) {
+        showMessage('Failed to save config to server: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Load the certificate template and config from the server into localStorage.
+ */
+async function loadCertificateTemplateFromServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const statusEl = document.getElementById('cert-sync-status');
+
+    try {
+        if (statusEl) statusEl.textContent = 'Loading template from server...';
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Load failed');
+        }
+
+        const { template } = await res.json();
+        if (!template) {
+            if (statusEl) statusEl.textContent = 'No template found on server.';
+            showMessage('No certificate template found on server for this tournament.', 'info');
+            return;
+        }
+
+        // Save template data to localStorage
+        if (template.template_data) {
+            const templateObj = {
+                fileName: 'server-template.png',
+                fileType: 'image/png',
+                data: template.template_data,
+                uploadedAt: template.updated_at || new Date().toISOString(),
+            };
+            localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(templateObj));
+
+            // Update preview
+            const previewImg = document.getElementById('certificate-preview-img');
+            const previewDiv = document.getElementById('certificate-template-preview');
+            if (previewImg && previewDiv) {
+                previewImg.src = template.template_data;
+                previewDiv.style.display = 'block';
+            }
+        }
+
+        // Save merge tag config to localStorage
+        if (template.merge_tag_config && Object.keys(template.merge_tag_config).length > 0) {
+            localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(template.merge_tag_config));
+            document.getElementById('merge-tag-config-panel').style.display = 'block';
+            loadMergeTagEditors();
+        }
+
+        if (statusEl) statusEl.textContent = 'Template loaded from server.';
+        showMessage('Certificate template loaded from server!');
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'Load failed: ' + err.message;
+        showMessage('Failed to load template: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Download a batch PDF of all certificates from the server.
+ */
+async function downloadBatchCertificatePDF() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    showMessage('Generating batch certificate PDF...', 'info');
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificates/batch.pdf`, {
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'PDF generation failed');
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `certificates-${currentTournamentId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showMessage('Batch certificate PDF downloaded!');
+    } catch (err) {
+        showMessage('Failed to generate PDF: ' + err.message, 'error');
+    }
+}
+
 // Scoreboard (keeping old single scoreboard for compatibility)
 let redScore = 0;
 let blueScore = 0;
