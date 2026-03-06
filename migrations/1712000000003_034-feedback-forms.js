@@ -21,12 +21,12 @@ exports.up = (pgm) => {
     questions: {
       type: 'jsonb',
       notNull: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
     recipients: {
       type: 'varchar(50)',
       notNull: true,
-      default: "'competitors'",
+      default: pgm.func("'competitors'"),
     },
     delay_hours: {
       type: 'integer',
@@ -84,7 +84,7 @@ exports.up = (pgm) => {
     answers: {
       type: 'jsonb',
       notNull: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
     created_at: {
       type: 'timestamptz',
