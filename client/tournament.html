@@ -1824,7 +1824,7 @@
                 throw new Error(data.error || 'Login failed');
             }
             await checkAuth();
-            if (currentUser && !currentUser.email_verified) {
+            if (currentUser && !currentUser.emailVerified) {
                 showVerificationPanel(loginEmail);
                 return;
             }
@@ -1845,7 +1845,7 @@
         btn.disabled = true; btn.textContent = 'Checking...';
         try {
             await checkAuth();
-            if (currentUser && currentUser.email_verified) {
+            if (currentUser && currentUser.emailVerified) {
                 successEl.textContent = 'Email verified!';
                 successEl.style.display = 'block';
                 setTimeout(() => {
@@ -1926,7 +1926,7 @@
             openAuthModal('login', intent);
             return false;
         }
-        if (!currentUser.email_verified) {
+        if (!currentUser.emailVerified) {
             openAuthModal('login', intent);
             showVerificationPanel(currentUser.email);
             return false;
