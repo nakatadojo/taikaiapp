@@ -252,10 +252,40 @@ function _migrateUnscopedData() {
         if (!localStorage.getItem(scopedKey) && localStorage.getItem(key)) {
             const data = localStorage.getItem(key);
             if (data && data !== '[]' && data !== '{}' && data !== 'null') {
-                localStorage.setItem(scopedKey, data);
-                console.log(`[migration] Moved ${key} → ${scopedKey}`);
+                try {
+                    localStorage.setItem(scopedKey, data);
+                    console.log(`[migration] Moved ${key} → ${scopedKey}`);
+                } catch (e) {
+                    // Quota exceeded — try to free space by removing old unscoped keys
+                    console.warn(`[migration] Quota exceeded migrating ${key}, cleaning up stale data...`);
+                    _cleanupLocalStorage();
+                    try {
+                        localStorage.setItem(scopedKey, data);
+                    } catch (e2) {
+                        console.warn(`[migration] Still cannot migrate ${key}, skipping`);
+                    }
+                }
             }
         }
+    }
+}
+
+// Clean up stale/orphaned localStorage data to free space
+function _cleanupLocalStorage() {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        // Remove unscoped copies of scoped keys (old pre-migration data)
+        if (_SCOPED_KEYS.has(key)) {
+            keysToRemove.push(key);
+        }
+    }
+    for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+    }
+    if (keysToRemove.length > 0) {
+        console.log(`[cleanup] Removed ${keysToRemove.length} stale unscoped keys`);
     }
 }
 
@@ -3597,7 +3627,7 @@ function syncCompetitorClubsToTable() {
     const clubs = db.load('clubs');
     const competitors = db.load('competitors');
 
-    console.log('Syncing clubs - Competitors:', competitors.length, 'Existing clubs:', clubs.length);
+    if (competitors.length === 0) return; // Nothing to sync
 
     const existingClubNames = clubs.map(c => c.name.toLowerCase());
     let addedCount = 0;
