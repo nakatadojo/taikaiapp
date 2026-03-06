@@ -110,6 +110,7 @@
         .badge-judge { background: rgba(168,85,247,0.15); color: #c084fc; }
         .badge-staff { background: rgba(251,191,36,0.15); color: #fbbf24; }
         .badge-parent { background: rgba(236,72,153,0.15); color: #f472b6; }
+        .badge-director { background: rgba(220,38,38,0.15); color: #f87171; }
         .badge-pending { background: rgba(251,191,36,0.15); color: #fbbf24; }
         .badge-approved { background: rgba(34,197,94,0.15); color: #4ade80; }
         .badge-declined { background: rgba(239,68,68,0.15); color: #f87171; }
@@ -178,14 +179,11 @@
             return;
         }
         const roles = user.roles || [];
-        const isDirector = roles.includes('event_director');
         const isAdmin = roles.includes('admin') || roles.includes('super_admin');
 
         let links = '';
         if (isAdmin) {
             links += `<a href="/admin.html" class="nav-link">Admin</a>`;
-        } else if (isDirector) {
-            links += `<a href="/director.html" class="nav-link">Dashboard</a>`;
         }
         links += `<a href="/my-events.html" class="nav-link active">My Events</a>`;
 
@@ -200,14 +198,16 @@
         const container = document.getElementById('event-list');
 
         try {
-            // Fetch both sources in parallel
-            const [regRes, memberRes] = await Promise.all([
+            // Fetch all three sources in parallel
+            const [regRes, memberRes, ownedRes] = await Promise.all([
                 fetch('/api/registrations/my', { credentials: 'include' }),
                 fetch('/api/my/tournaments', { credentials: 'include' }),
+                fetch('/api/tournaments/director/mine', { credentials: 'include' }),
             ]);
 
             const registrations = regRes.ok ? (await regRes.json()).registrations || [] : [];
             const memberships = memberRes.ok ? (await memberRes.json()).memberships || [] : [];
+            const ownedTournaments = ownedRes.ok ? (await ownedRes.json()).tournaments || [] : [];
 
             // Normalize into unified event items
             const items = [];
@@ -242,6 +242,20 @@
                     status: m.status,
                     appliedAt: m.applied_at,
                     memberId: m.id,
+                });
+            }
+
+            // Owned tournaments (director)
+            for (const t of ownedTournaments) {
+                items.push({
+                    tournamentId: t.id,
+                    tournamentName: t.name,
+                    tournamentDate: t.date,
+                    tournamentLocation: t.location || '',
+                    tournamentSlug: t.slug || '',
+                    role: 'director',
+                    status: t.status || 'active',
+                    competitorCount: t.competitor_count || 0,
                 });
             }
 
@@ -296,6 +310,9 @@
         if (item.role === 'competitor' && item.profileName) {
             details = `<span>${esc(item.profileName)}</span>`;
         }
+        if (item.role === 'director' && item.competitorCount !== undefined) {
+            details = `<span>${item.competitorCount} competitor${item.competitorCount !== 1 ? 's' : ''}</span>`;
+        }
 
         // Event list for competitor registrations
         let eventsList = '';
@@ -311,7 +328,13 @@
 
         // Actions
         let actions = '';
-        if (item.memberId && item.status === 'approved' && ['coach', 'judge', 'staff'].includes(item.role)) {
+        if (item.role === 'director') {
+            actions = `
+                <div class="event-card-actions">
+                    <a href="/director/tournaments/${item.tournamentId}/manage" class="btn-sm btn-accent" style="text-decoration:none;">Manage</a>
+                </div>
+            `;
+        } else if (item.memberId && item.status === 'approved' && ['coach', 'judge', 'staff'].includes(item.role)) {
             actions = `
                 <div class="event-card-actions">
                     <button class="btn-sm btn-accent" onclick="window.open('/badge.html?memberId=${item.memberId}', '_blank')">Print Badge</button>
@@ -365,7 +388,7 @@
     function getRoleLabel(role) {
         const labels = {
             competitor: 'Competitor', coach: 'Coach', judge: 'Judge',
-            staff: 'Staff', parent: 'Parent',
+            staff: 'Staff', parent: 'Parent', director: 'Director',
         };
         return labels[role] || role;
     }
