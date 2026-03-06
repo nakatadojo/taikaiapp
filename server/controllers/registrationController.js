@@ -521,6 +521,21 @@ async function checkout(req, res, next) {
         console.warn('Failed to send confirmation email:', emailErr.message);
       }
 
+      // If coach registration, create waivers for competitors with guardian emails
+      try {
+        const coachMembership = await pool.query(
+          `SELECT id FROM tournament_members
+           WHERE user_id = $1 AND tournament_id = $2 AND role = 'coach' AND status = 'approved'`,
+          [req.user.id, tournamentId]
+        );
+        if (coachMembership.rows.length > 0 && freeRegIds && freeRegIds.length > 0) {
+          const { createWaiversForRegistration } = require('./waiverController');
+          await createWaiversForRegistration(freeRegIds, req.user.id, tournamentId);
+        }
+      } catch (waiverErr) {
+        console.warn('Waiver creation failed:', waiverErr.message);
+      }
+
       return res.json({
         status: 'completed',
         message: 'Registration confirmed (free with discount)',
@@ -623,6 +638,21 @@ async function confirmPayment(req, res, next) {
         );
       } catch (emailErr) {
         console.warn('Failed to send confirmation email:', emailErr.message);
+      }
+
+      // If coach registration, create waivers for competitors with guardian emails
+      try {
+        const coachMembership = await pool.query(
+          `SELECT id FROM tournament_members
+           WHERE user_id = $1 AND tournament_id = $2 AND role = 'coach' AND status = 'approved'`,
+          [userId, tournamentId]
+        );
+        if (coachMembership.rows.length > 0 && registrationIds && registrationIds.length > 0) {
+          const { createWaiversForRegistration } = require('./waiverController');
+          await createWaiversForRegistration(registrationIds, userId, tournamentId);
+        }
+      } catch (waiverErr) {
+        console.warn('Waiver creation failed:', waiverErr.message);
       }
 
       res.json({

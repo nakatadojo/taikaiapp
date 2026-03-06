@@ -860,6 +860,11 @@
                 } else if (isDirector) {
                     links += `<a href="/director.html" class="nav-link">Dashboard</a>`;
                 }
+                // Coach Dashboard link for coaches
+                const isCoach = roles.includes('coach');
+                if (isCoach) {
+                    links += `<a href="/coach.html" class="nav-link">Coach</a>`;
+                }
                 // My Events link for ALL logged-in users
                 links += `<a href="/my-events.html" class="nav-link">My Events</a>`;
 

@@ -24,6 +24,7 @@ router.post('/',
     body('weight').optional().isFloat({ min: 0 }).withMessage('Weight must be a positive number'),
     body('academyName').optional().trim(),
     body('isSelf').optional().isBoolean(),
+    body('guardianEmail').optional().isEmail().withMessage('Valid guardian email is required'),
   ],
   validate,
   profileController.createProfile

@@ -1300,6 +1300,10 @@
                             <input type="text" id="pf-academy" placeholder="Start typing..." autocomplete="off">
                             <div class="academy-dropdown" id="pf-academy-dropdown"></div>
                         </div>
+                        <div class="form-group" id="guardian-email-group" style="display:none;">
+                            <label for="pf-guardianEmail">Parent/Guardian Email *</label>
+                            <input type="email" id="pf-guardianEmail" placeholder="parent@example.com">
+                        </div>
                     </div>
                 </div>
 
@@ -1397,7 +1401,7 @@
 
             <div class="success-summary" id="success-summary"></div>
 
-            <div class="flex gap-12" style="justify-content:center;flex-wrap:wrap;">
+            <div class="flex gap-12" style="justify-content:center;flex-wrap:wrap;" id="success-actions">
                 <button class="btn-accent" onclick="navigate('registrations')">View My Registrations</button>
                 <button class="btn-ghost" onclick="navigate('info')">Back to Tournament</button>
             </div>
@@ -1523,7 +1527,8 @@
     const state = {
         tournamentId: null,
         tournament: null,
-        selectedRole: null,  // 'competitor' or 'parent' — from role overlay
+        selectedRole: null,  // 'competitor', 'parent', or 'coach' — from role overlay
+        isCoachMode: false,  // true when role=coach
         profiles: [],
         editingProfileId: null,
         // Event selection: keyed by profileId
@@ -1558,6 +1563,8 @@
             const role = sp.get('role');
             if (role) state.selectedRole = role;
         }
+        // Detect coach mode
+        state.isCoachMode = state.selectedRole === 'coach';
     })();
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -1891,6 +1898,7 @@
             academyName: p.academy_name || p.academyName || '',
             isSelf: p.is_self ?? p.isSelf ?? false,
             userId: p.user_id || p.userId || '',
+            guardianEmail: p.guardian_email || p.guardianEmail || '',
         };
     }
 
@@ -1914,6 +1922,63 @@
         const container = document.getElementById('profiles-container');
         const isParent = state.selectedRole === 'parent';
         const emailVerified = user?.emailVerified || user?.email_verified;
+
+        // ── Coach mode: skip self-profile, show competitor list directly ──
+        if (state.isCoachMode) {
+            // Update section title
+            const sectionTitle = document.querySelector('#panel-dashboard .reg-section-title');
+            const sectionSub = document.querySelector('#panel-dashboard .reg-section-sub');
+            if (sectionTitle) sectionTitle.textContent = 'Register Competitors';
+            if (sectionSub) sectionSub.textContent = 'Add the competitors you want to register for this tournament.';
+
+            // Actions bar
+            let actionsHTML = `<button class="btn-ghost btn-sm" onclick="addChildProfile()">+ Add Competitor</button>`;
+            if (state.cart.items.length > 0) {
+                const totalEvents = state.cart.items.reduce((sum, item) => sum + item.events.length, 0);
+                actionsHTML += `<button class="btn-accent btn-sm" onclick="navigate('cart')" style="margin-left:auto;">Cart (${totalEvents})</button>`;
+            }
+            actionsEl.innerHTML = actionsHTML;
+
+            // Filter to non-self profiles only (competitors added by coach)
+            const competitorProfiles = state.profiles.filter(p => !(p.isSelf));
+
+            if (competitorProfiles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏅</div>
+                        <div class="empty-state-title">No Competitors Added</div>
+                        <div class="empty-state-text">Add competitors to register them for this tournament. You'll need each competitor's info and their parent/guardian email.</div>
+                    </div>`;
+                return;
+            }
+
+            let html = '<div class="profile-grid">';
+            for (const p of competitorProfiles) {
+                const age = p.dateOfBirth ? calcAge(p.dateOfBirth) : '';
+                const beltColor = getBeltColor(p.beltRank || p.rank);
+                const guardianEmail = p.guardian_email || p.guardianEmail || '';
+
+                html += `
+                <div class="profile-card">
+                    <div class="profile-name">${esc(p.firstName)} ${esc(p.lastName)}</div>
+                    <div class="profile-details">
+                        ${age ? `<span class="profile-detail-item">Age ${age}</span>` : ''}
+                        ${p.gender ? `<span class="profile-detail-item">${esc(capitalize(p.gender))}</span>` : ''}
+                        ${(p.beltRank || p.rank) ? `<span class="profile-badge belt-badge" style="background:${beltColor.bg};color:${beltColor.text};">${esc(p.beltRank || p.rank)}</span>` : ''}
+                        ${p.weight ? `<span class="profile-detail-item">${p.weight} lbs</span>` : ''}
+                    </div>
+                    ${guardianEmail ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">Parent: ${esc(guardianEmail)}</div>` : ''}
+                    <div class="profile-card-actions">
+                        <button class="btn-accent btn-sm" onclick="selectEventsForProfile('${p._id || p.id}')">Select Events</button>
+                        <button class="btn-ghost btn-sm" onclick="editProfile('${p._id || p.id}')">Edit</button>
+                        <button class="btn-ghost btn-sm btn-danger-ghost" onclick="deleteProfile('${p._id || p.id}')">Remove</button>
+                    </div>
+                </div>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+            return;
+        }
 
         // Check if user has created their own profile
         const hasSelfProfile = state.profiles.some(p => p.isSelf || p.userId === (user?._id || user?.id));
@@ -2051,6 +2116,14 @@
         form.reset();
         hideEl('profile-form-error');
 
+        // Show/hide guardian email field for coach mode
+        const guardianGroup = document.getElementById('guardian-email-group');
+        if (guardianGroup) {
+            guardianGroup.style.display = state.isCoachMode ? '' : 'none';
+            const guardianInput = document.getElementById('pf-guardianEmail');
+            if (guardianInput) guardianInput.required = state.isCoachMode;
+        }
+
         if (state.editingProfileId) {
             document.getElementById('profile-form-title').textContent = 'Edit Competitor';
             const p = state.profiles.find(x => (x._id || x.id) === state.editingProfileId);
@@ -2063,6 +2136,11 @@
                 document.getElementById('pf-experience').value = p.experienceLevel || p.experience || '';
                 document.getElementById('pf-weight').value = p.weight || '';
                 document.getElementById('pf-academy').value = p.academyName || '';
+                // Populate guardian email if editing in coach mode
+                const guardianEmailInput = document.getElementById('pf-guardianEmail');
+                if (guardianEmailInput && state.isCoachMode) {
+                    guardianEmailInput.value = p.guardian_email || p.guardianEmail || '';
+                }
             }
         } else {
             document.getElementById('profile-form-title').textContent = 'Add Competitor';
@@ -2084,6 +2162,7 @@
             weight: document.getElementById('pf-weight').value ? parseFloat(document.getElementById('pf-weight').value) : undefined,
             tshirtSize: document.getElementById('pf-tshirt').value || undefined,
             academyName: document.getElementById('pf-academy').value.trim() || undefined,
+            guardianEmail: state.isCoachMode ? (document.getElementById('pf-guardianEmail').value.trim() || undefined) : undefined,
         };
 
         btn.disabled = true;
@@ -2418,6 +2497,10 @@
             });
 
             if (data.url || data.sessionUrl || data.checkoutUrl) {
+                // Store coach mode flag before Stripe redirect
+                if (state.isCoachMode) {
+                    sessionStorage.setItem('taikai_coach_mode', 'true');
+                }
                 // Redirect to Stripe
                 window.location.href = data.url || data.sessionUrl || data.checkoutUrl;
             } else if (data.success || data.confirmed || data.status === 'completed') {
@@ -2456,6 +2539,17 @@
         }
         document.getElementById('success-summary').innerHTML = summaryHTML;
 
+        // Coach mode: update success message and actions
+        const isCoach = state.isCoachMode || sessionStorage.getItem('taikai_coach_mode') === 'true';
+        if (isCoach) {
+            document.getElementById('success-text').textContent = 'Registration confirmed. Waiver emails have been sent to the parents/guardians.';
+            document.getElementById('success-actions').innerHTML = `
+                <a href="/coach.html" class="btn-accent">Back to Coach Dashboard</a>
+                <button class="btn-ghost" onclick="navigate('dashboard')">Register More</button>
+            `;
+            sessionStorage.removeItem('taikai_coach_mode');
+        }
+
         // Clear cart
         state.cart = { items: [], discountCode: null, discountAmount: 0, discountPercent: 0 };
 
@@ -2474,7 +2568,16 @@
                         method: 'POST',
                         body: JSON.stringify({ sessionId }),
                     });
-                    document.getElementById('success-text').textContent = 'Your payment was successful and your registration is confirmed.';
+                    const isCoach = state.isCoachMode || sessionStorage.getItem('taikai_coach_mode') === 'true';
+                    if (isCoach) {
+                        document.getElementById('success-text').textContent = 'Registration confirmed. Waiver emails have been sent to the parents/guardians.';
+                        document.getElementById('success-actions').innerHTML = `
+                            <a href="/coach.html" class="btn-accent">Back to Coach Dashboard</a>
+                        `;
+                        sessionStorage.removeItem('taikai_coach_mode');
+                    } else {
+                        document.getElementById('success-text').textContent = 'Your payment was successful and your registration is confirmed.';
+                    }
                     document.getElementById('success-summary').innerHTML = '';
                     // Clear query params
                     history.replaceState(null, '', location.pathname + '#success');

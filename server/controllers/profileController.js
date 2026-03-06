@@ -23,6 +23,7 @@ async function createProfile(req, res, next) {
     const {
       firstName, lastName, dateOfBirth, gender,
       beltRank, experienceLevel, weight, academyName, isSelf,
+      guardianEmail,
     } = req.body;
 
     // If creating self-profile, check if one already exists
@@ -57,6 +58,7 @@ async function createProfile(req, res, next) {
       academyName,
       academyId,
       isSelf: isSelf || false,
+      guardianEmail,
     });
 
     res.status(201).json({ profile });

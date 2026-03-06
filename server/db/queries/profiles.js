@@ -35,17 +35,19 @@ async function findById(profileId) {
 async function create({
   userId, firstName, lastName, dateOfBirth, gender,
   beltRank, experienceLevel, weight, academyName, academyId, isSelf,
+  guardianEmail,
 }) {
   const result = await pool.query(
     `INSERT INTO competitor_profiles
       (user_id, first_name, last_name, date_of_birth, gender,
-       belt_rank, experience_level, weight, academy_name, academy_id, is_self)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       belt_rank, experience_level, weight, academy_name, academy_id, is_self, guardian_email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       userId, firstName, lastName, dateOfBirth, gender,
       beltRank || null, experienceLevel || null, weight || null,
       academyName || null, academyId || null, isSelf || false,
+      guardianEmail || null,
     ]
   );
   return result.rows[0];
@@ -58,6 +60,7 @@ async function update(profileId, updates) {
   const allowedFields = [
     'first_name', 'last_name', 'date_of_birth', 'gender',
     'belt_rank', 'experience_level', 'weight', 'academy_name', 'academy_id',
+    'guardian_email',
   ];
   const fields = [];
   const values = [];

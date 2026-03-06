@@ -34,6 +34,8 @@ const templates = {
   roleRequest:              require('./emails/roleRequest'),
   roleApproved:             require('./emails/roleApproved'),
   roleDeclined:             require('./emails/roleDeclined'),
+  waiverRequest:            require('./emails/waiverRequest'),
+  waiverSigned:             require('./emails/waiverSigned'),
 };
 
 // ── Core send helper ─────────────────────────────────────────────────────────
@@ -154,6 +156,23 @@ async function sendRoleDeclinedEmail(applicantEmail, opts) {
   return sendEmail(applicantEmail, `Application Update — ${opts.tournamentName}`, html);
 }
 
+/**
+ * Send waiver request email to a parent/guardian.
+ */
+async function sendWaiverRequestEmail(parentEmail, opts) {
+  const waiverUrl = `${APP_URL()}/waiver.html?token=${opts.token}`;
+  const html = templates.waiverRequest({ ...opts, waiverUrl });
+  return sendEmail(parentEmail, `Waiver Required — ${opts.tournamentName}`, html);
+}
+
+/**
+ * Send waiver signed notification email to the coach.
+ */
+async function sendWaiverSignedEmail(coachEmail, opts) {
+  const html = templates.waiverSigned(opts);
+  return sendEmail(coachEmail, `Waiver Signed — ${opts.competitorName}`, html);
+}
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
@@ -163,6 +182,8 @@ module.exports = {
   sendRoleRequestEmail,
   sendRoleApprovedEmail,
   sendRoleDeclinedEmail,
+  sendWaiverRequestEmail,
+  sendWaiverSignedEmail,
   APP_URL,
   EMAIL_FROM,
   templates,

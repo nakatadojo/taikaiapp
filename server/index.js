@@ -47,6 +47,7 @@ app.use('/api/email', require('./routes/email'));
 app.use('/api/tournament-members', require('./routes/tournamentMembers'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/my', require('./routes/myTournaments'));
+app.use('/api/waivers', require('./routes/waivers'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
@@ -76,6 +77,12 @@ app.get('/my-events', (req, res) => {
 });
 app.get('/badge', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'client', 'badge.html'));
+});
+app.get('/coach', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'coach.html'));
+});
+app.get('/waiver', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'waiver.html'));
 });
 
 // Tournament Builder Wizard
