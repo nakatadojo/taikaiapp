@@ -762,6 +762,19 @@
     .competitor-academy { font-size: 13px; color: var(--text-dim); }
     .competitor-events-list { font-size: 12px; color: var(--text-dim); margin-left: auto; }
 
+    /* ── Sponsor Cards ─────────────────────────────────────────────── */
+    .sponsors-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .sponsor-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 20px; transition: background var(--transition), border-color var(--transition); }
+    .sponsor-card:hover { background: var(--glass-hover); border-color: rgba(255,255,255,0.14); }
+    .sponsor-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .sponsor-logo { width: 48px; height: 48px; border-radius: 10px; object-fit: contain; background: rgba(255,255,255,0.04); flex-shrink: 0; }
+    .sponsor-name { font-weight: 600; font-size: 15px; }
+    .sponsor-cat { display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.06); color: var(--text-muted); margin-left: 8px; }
+    .sponsor-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.5; }
+    .sponsor-discount { display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; background: rgba(39,174,96,0.12); color: #27ae60; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .sponsor-link { font-size: 13px; color: var(--accent); }
+    .sponsor-link:hover { text-decoration: underline; }
+
     @media (max-width: 900px) {
         .tab-bar-inner { display: none; }
         .tab-hamburger { display: block; }
@@ -830,6 +843,7 @@
                 <button class="tab-btn" data-tab="brackets" onclick="switchTab('brackets')" id="tab-btn-brackets" style="display:none;">Brackets</button>
                 <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')" id="tab-btn-schedule" style="display:none;">Schedule</button>
                 <button class="tab-btn" data-tab="results" onclick="switchTab('results')" id="tab-btn-results" style="display:none;">Results</button>
+                <button class="tab-btn" data-tab="sponsors" onclick="switchTab('sponsors')" id="tab-btn-sponsors" style="display:none;">Sponsors</button>
                 <!-- Custom tabs inserted here by JS -->
             </div>
             <button class="tab-hamburger" id="tab-hamburger" onclick="toggleMobileMenu()">
@@ -912,6 +926,14 @@
                     <div class="section-card" id="results-section">
                         <div class="section-title">Results</div>
                         <div id="public-results-container"><div class="tab-loading">Loading results...</div></div>
+                    </div>
+                </div>
+
+                <!-- === SPONSORS TAB === -->
+                <div class="tab-panel" id="panel-sponsors">
+                    <div class="section-card">
+                        <div class="section-title">Sponsors &amp; Vendors</div>
+                        <div id="sponsors-tab-container"><div class="tab-loading">Loading sponsors...</div></div>
                     </div>
                 </div>
 
@@ -1660,6 +1682,9 @@ function setupTabs(t) {
     // Show results tab only if we have published results
     loadPublicResults(t.id);
 
+    // Load sponsors tab (show only if sponsors exist)
+    loadSponsorsTab(t.id);
+
     // Load custom tabs
     loadCustomTabs(t.id);
 
@@ -1709,6 +1734,7 @@ async function loadTabContent(tabName, tournamentId) {
         case 'brackets': return loadBracketsTab(tournamentId);
         case 'schedule': return loadScheduleTab(tournamentId);
         case 'results': return loadPublicResults(tournamentId);
+        case 'sponsors': return loadSponsorsTab(tournamentId);
         default:
             // Custom tab — content already rendered
             break;
@@ -1879,6 +1905,75 @@ async function loadPublicResults(tournamentId) {
 }
 
 // ── Custom Tabs ─────────────────────────────────────────────────────
+// ── Sponsors Tab ─────────────────────────────────────────────────
+async function loadSponsorsTab(tournamentId) {
+    const container = document.getElementById('sponsors-tab-container');
+    const btn = document.getElementById('tab-btn-sponsors');
+    try {
+        const res = await fetch(`/api/tournaments/${tournamentId}/sponsors/public`);
+        if (!res.ok) {
+            if (btn) btn.style.display = 'none';
+            return;
+        }
+        const data = await res.json();
+        const sponsors = data.sponsors || [];
+
+        if (sponsors.length === 0) {
+            if (btn) btn.style.display = 'none';
+            container.innerHTML = '<div class="tab-empty">No sponsors listed.</div>';
+            return;
+        }
+
+        // Show tab button
+        if (btn) btn.style.display = '';
+        buildMobileMenu();
+
+        const categoryLabels = {
+            sponsor: 'Sponsor',
+            hotel: 'Hotel',
+            restaurant: 'Restaurant',
+            dojo: 'Dojo',
+            other: 'Other',
+        };
+
+        container.innerHTML = '<div class="sponsors-grid">' + sponsors.map(function(s) {
+            const catLabel = categoryLabels[s.category] || s.category || 'Sponsor';
+            let html = '<div class="sponsor-card">';
+
+            // Header with optional logo
+            html += '<div class="sponsor-card-header">';
+            if (s.logo_url) {
+                html += '<img class="sponsor-logo" src="' + esc(s.logo_url) + '" alt="' + esc(s.name) + '">';
+            }
+            html += '<div><span class="sponsor-name">' + esc(s.name) + '</span>';
+            html += '<span class="sponsor-cat">' + esc(catLabel) + '</span></div>';
+            html += '</div>';
+
+            // Description
+            if (s.description) {
+                html += '<div class="sponsor-desc">' + esc(s.description) + '</div>';
+            }
+
+            // Discount code
+            if (s.discount_code) {
+                html += '<div class="sponsor-discount">CODE: ' + esc(s.discount_code) + '</div>';
+            }
+
+            // Website link
+            if (s.website_url) {
+                html += '<div><a href="' + esc(s.website_url) + '" target="_blank" rel="noopener" class="sponsor-link">Visit Website &rarr;</a></div>';
+            }
+
+            html += '</div>';
+            return html;
+        }).join('') + '</div>';
+    } catch (err) {
+        console.error('Failed to load sponsors:', err);
+        if (btn) btn.style.display = 'none';
+        container.innerHTML = '<div class="tab-empty">Unable to load sponsors.</div>';
+    }
+}
+
 async function loadCustomTabs(tournamentId) {
     try {
         const res = await fetch(`/api/tournaments/${tournamentId}/custom-tabs`);

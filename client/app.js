@@ -1104,6 +1104,12 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'academy') {
             loadAcademyView();
         }
+        if (view === 'medical-incidents') {
+            loadMedicalIncidents();
+        }
+        if (view === 'settings-sponsors') {
+            loadSponsorsView();
+        }
     });
 });
 
@@ -18347,6 +18353,416 @@ window.addEventListener('load', () => {
     };
     Auth.init();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDICAL INCIDENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// HTML-escape helper for safe template rendering
+function escHtml(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function loadMedicalIncidents() {
+    if (!currentTournamentId) return;
+    const tbody = document.getElementById('medical-incidents-tbody');
+    const countSpan = document.getElementById('medical-incident-count');
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">Loading...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load medical incidents');
+        const data = await res.json();
+        const incidents = data.incidents || [];
+
+        countSpan.textContent = `${incidents.length} incident${incidents.length !== 1 ? 's' : ''} logged`;
+
+        if (incidents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">No incidents logged yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = incidents.map(i => {
+            const time = i.created_at
+                ? new Date(i.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                : '';
+            const loggedBy = [i.logged_by_first_name, i.logged_by_last_name].filter(Boolean).join(' ') || '—';
+            const continueFlag = i.able_to_continue
+                ? '<span style="color:var(--success, #22c55e);">Yes</span>'
+                : '<span style="color:var(--red, #ef4444);">No</span>';
+            const emsFlag = i.medical_staff_called
+                ? '<span style="color:var(--red, #ef4444);">Yes</span>'
+                : '<span style="color:var(--text-muted);">No</span>';
+
+            return `<tr>
+                <td style="white-space:nowrap;">${escHtml(time)}</td>
+                <td>${escHtml(i.competitor_name || '')}</td>
+                <td>${escHtml(i.mat_number || '—')}</td>
+                <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(i.description || '')}">${escHtml(i.description || '')}</td>
+                <td>${escHtml(i.official_present || '—')}</td>
+                <td>${continueFlag}</td>
+                <td>${emsFlag}</td>
+                <td>${escHtml(loggedBy)}</td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--red);padding:30px;">${escHtml(err.message)}</td></tr>`;
+    }
+
+    // Populate the competitor selector for the log form
+    loadIncidentCompetitorSelector();
+}
+
+async function loadIncidentCompetitorSelector() {
+    const select = document.getElementById('incident-competitor');
+    if (!select || !currentTournamentId) return;
+
+    // Keep the first "manual" option
+    select.innerHTML = '<option value="">-- Select or type manually --</option>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/registrations`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const registrants = data.registrants || [];
+
+        registrants.forEach(r => {
+            const name = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+            if (!name) return;
+            const opt = document.createElement('option');
+            opt.value = r.registration_id || '';
+            opt.textContent = name + (r.academy_name ? ` (${r.academy_name})` : '');
+            opt.dataset.name = name;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        // Silently fail — user can still type manually
+    }
+}
+
+function onIncidentCompetitorChange() {
+    const select = document.getElementById('incident-competitor');
+    const nameInput = document.getElementById('incident-competitor-name');
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption && selectedOption.dataset.name) {
+        nameInput.value = selectedOption.dataset.name;
+    }
+}
+
+function showLogIncidentForm() {
+    document.getElementById('log-incident-form-panel').style.display = 'block';
+    document.getElementById('log-incident-form').reset();
+    document.getElementById('incident-competitor-name').value = '';
+}
+
+function hideLogIncidentForm() {
+    document.getElementById('log-incident-form-panel').style.display = 'none';
+}
+
+async function submitMedicalIncident(e) {
+    e.preventDefault();
+    if (!currentTournamentId) return;
+
+    const btn = document.getElementById('incident-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        const competitorName = document.getElementById('incident-competitor-name').value.trim();
+        const matNumber = document.getElementById('incident-mat').value.trim();
+        const description = document.getElementById('incident-description').value.trim();
+        const officialPresent = document.getElementById('incident-official').value.trim();
+        const ableToContinue = document.getElementById('incident-able-to-continue').checked;
+        const medicalStaffCalled = document.getElementById('incident-medical-staff').checked;
+
+        if (!competitorName) {
+            showToast('Competitor name is required', 'error');
+            return;
+        }
+        if (!description) {
+            showToast('Description is required', 'error');
+            return;
+        }
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                competitorName,
+                matNumber,
+                description,
+                officialPresent,
+                ableToContinue,
+                medicalStaffCalled,
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to log incident');
+        }
+
+        showToast('Medical incident logged', 'success');
+        hideLogIncidentForm();
+        loadMedicalIncidents();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Incident';
+    }
+}
+
+function exportMedicalIncidentsCSV() {
+    if (!currentTournamentId) return;
+    window.open(`/api/tournaments/${currentTournamentId}/medical-incidents/export.csv`, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPONSORS & VENDORS MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+let sponsorsCache = [];
+
+async function loadSponsorsView() {
+    if (!currentTournamentId) return;
+    const container = document.getElementById('sponsors-list');
+    container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Loading sponsors...</p>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load sponsors');
+        const data = await res.json();
+        sponsorsCache = data.sponsors || [];
+        renderSponsorsList(sponsorsCache);
+    } catch (err) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Failed to load sponsors.</p>';
+        console.error('Error loading sponsors:', err);
+    }
+}
+
+function renderSponsorsList(sponsors) {
+    const container = document.getElementById('sponsors-list');
+
+    if (sponsors.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No sponsors added yet. Click "Add Sponsor" to get started.</p>';
+        return;
+    }
+
+    const categoryLabels = {
+        sponsor: 'Sponsor',
+        hotel: 'Hotel',
+        restaurant: 'Restaurant',
+        dojo: 'Dojo',
+        other: 'Other',
+    };
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+    sponsors.forEach((s, idx) => {
+        const catLabel = categoryLabels[s.category] || s.category || 'Sponsor';
+        const visIcon = s.visible ? 'eye' : 'eye-off';
+        const visTitle = s.visible ? 'Visible (click to hide)' : 'Hidden (click to show)';
+        const visStyle = s.visible ? '' : 'opacity: 0.5;';
+
+        html += `
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 16px; ${visStyle}" data-sponsor-id="${s.id}">
+            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 32px; align-items: center;">
+                ${idx > 0 ? `<button class="btn-icon" onclick="moveSponsor('${s.id}', 'up')" title="Move up" style="padding:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#9650;</button>` : '<div style="height:24px;"></div>'}
+                ${idx < sponsors.length - 1 ? `<button class="btn-icon" onclick="moveSponsor('${s.id}', 'down')" title="Move down" style="padding:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#9660;</button>` : '<div style="height:24px;"></div>'}
+            </div>
+            <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <strong style="font-size: 15px;">${escHtml(s.name)}</strong>
+                    <span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.06); color: var(--text-muted);">${escHtml(catLabel)}</span>
+                    ${s.discount_code ? `<span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(39,174,96,0.15); color: #27ae60;">CODE: ${escHtml(s.discount_code)}</span>` : ''}
+                </div>
+                ${s.description ? `<p style="margin: 4px 0 0; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escHtml(s.description)}</p>` : ''}
+                ${s.website_url ? `<p style="margin: 2px 0 0; font-size: 12px;"><a href="${escHtml(s.website_url)}" target="_blank" rel="noopener" style="color: var(--accent-blue, #0071e3);">${escHtml(s.website_url)}</a></p>` : ''}
+            </div>
+            <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                <button class="btn btn-secondary btn-sm" onclick="toggleSponsorVisibility('${s.id}')" title="${visTitle}" style="padding: 6px 10px;"><i data-lucide="${visIcon}" style="width:16px;height:16px;"></i></button>
+                <button class="btn btn-secondary btn-sm" onclick="editSponsor('${s.id}')" title="Edit" style="padding: 6px 10px;"><i data-lucide="pencil" style="width:16px;height:16px;"></i></button>
+                <button class="btn btn-secondary btn-sm" onclick="deleteSponsor('${s.id}')" title="Delete" style="padding: 6px 10px; color: var(--danger, #e74c3c);"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Re-initialize lucide icons for the new buttons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function openSponsorForm(sponsorId) {
+    const panel = document.getElementById('sponsor-form-panel');
+    const title = document.getElementById('sponsor-form-title');
+    const editId = document.getElementById('sponsor-edit-id');
+
+    // Reset form
+    document.getElementById('sponsor-name').value = '';
+    document.getElementById('sponsor-category').value = 'sponsor';
+    document.getElementById('sponsor-website').value = '';
+    document.getElementById('sponsor-discount').value = '';
+    document.getElementById('sponsor-description').value = '';
+    editId.value = '';
+
+    if (sponsorId) {
+        const s = sponsorsCache.find(sp => sp.id === sponsorId);
+        if (s) {
+            title.textContent = 'Edit Sponsor';
+            editId.value = s.id;
+            document.getElementById('sponsor-name').value = s.name || '';
+            document.getElementById('sponsor-category').value = s.category || 'sponsor';
+            document.getElementById('sponsor-website').value = s.website_url || '';
+            document.getElementById('sponsor-discount').value = s.discount_code || '';
+            document.getElementById('sponsor-description').value = s.description || '';
+        }
+    } else {
+        title.textContent = 'Add Sponsor';
+    }
+
+    panel.style.display = '';
+    document.getElementById('sponsor-name').focus();
+}
+
+function closeSponsorForm() {
+    document.getElementById('sponsor-form-panel').style.display = 'none';
+}
+
+async function saveSponsor() {
+    if (!currentTournamentId) return;
+
+    const editId = document.getElementById('sponsor-edit-id').value;
+    const name = document.getElementById('sponsor-name').value.trim();
+    const category = document.getElementById('sponsor-category').value;
+    const website_url = document.getElementById('sponsor-website').value.trim() || null;
+    const discount_code = document.getElementById('sponsor-discount').value.trim() || null;
+    const description = document.getElementById('sponsor-description').value.trim() || null;
+
+    if (!name) {
+        showToast('Sponsor name is required', 'error');
+        return;
+    }
+
+    const body = { name, category, website_url, discount_code, description };
+
+    try {
+        let res;
+        if (editId) {
+            res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${editId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        } else {
+            res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        }
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to save sponsor');
+        }
+
+        showToast(editId ? 'Sponsor updated' : 'Sponsor added', 'success');
+        closeSponsorForm();
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function editSponsor(sponsorId) {
+    openSponsorForm(sponsorId);
+}
+
+async function deleteSponsor(sponsorId) {
+    if (!currentTournamentId) return;
+    if (!confirm('Delete this sponsor?')) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${sponsorId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to delete sponsor');
+        }
+        showToast('Sponsor deleted', 'success');
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function toggleSponsorVisibility(sponsorId) {
+    if (!currentTournamentId) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${sponsorId}/toggle`, {
+            method: 'PATCH',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to toggle visibility');
+        }
+        const data = await res.json();
+        showToast(data.sponsor.visible ? 'Sponsor is now visible' : 'Sponsor is now hidden', 'success');
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function moveSponsor(sponsorId, direction) {
+    if (!currentTournamentId) return;
+
+    const idx = sponsorsCache.findIndex(s => s.id === sponsorId);
+    if (idx === -1) return;
+
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= sponsorsCache.length) return;
+
+    // Swap in local array
+    const ids = sponsorsCache.map(s => s.id);
+    [ids[idx], ids[newIdx]] = [ids[newIdx], ids[idx]];
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/reorder`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderedIds: ids }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to reorder');
+        }
+        const data = await res.json();
+        sponsorsCache = data.sponsors || [];
+        renderSponsorsList(sponsorsCache);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
 
 // Simple global function to open TV display - always accessible
 window.openTVDisplay = function() {

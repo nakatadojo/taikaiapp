@@ -238,6 +238,52 @@
             <div class="stat-card red"><div class="stat-value" id="stat-missing">0</div><div class="stat-label">Missing</div></div>
         </div>
 
+        <!-- Medical Incident Button -->
+        <div style="margin-bottom:16px;">
+            <button class="btn btn-primary" onclick="showStaffIncidentForm()" style="background:var(--red);">
+                Report Medical Incident
+            </button>
+        </div>
+
+        <!-- Staff Medical Incident Form (hidden by default) -->
+        <div id="staff-incident-form-panel" style="display:none; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius); padding:20px; margin-bottom:16px;">
+            <h3 style="margin-bottom:12px; font-size:16px;">Log Medical Incident</h3>
+            <form id="staff-incident-form" onsubmit="submitStaffIncident(event)">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Competitor Name *</label>
+                        <input type="text" id="staff-incident-name" required placeholder="Name of injured competitor" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Mat / Area</label>
+                        <input type="text" id="staff-incident-mat" placeholder="e.g. Mat 1" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Description *</label>
+                    <textarea id="staff-incident-description" required rows="3" placeholder="What happened..." style="width:100%; padding:10px 14px; border-radius:var(--radius-sm); background:var(--glass); border:1px solid var(--glass-border); color:var(--text); font-size:14px; resize:vertical;"></textarea>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Official Present</label>
+                        <input type="text" id="staff-incident-official" placeholder="Name of official" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px; justify-content:center;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="staff-incident-continue"> Able to Continue
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="staff-incident-ems"> Medical Staff Called
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:16px;">
+                    <button type="submit" class="btn btn-primary" id="staff-incident-submit-btn">Save Incident</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideStaffIncidentForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
+
         <input type="text" class="search-bar" id="checkin-search" placeholder="Search by name or dojo..." oninput="applyFilters()">
 
         <div class="filter-tabs" id="filter-tabs">
@@ -555,6 +601,73 @@
                 showToast('Check-in undone', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
+            }
+        };
+
+        // ── Medical Incident (Staff) ─────────────────────────────────────
+        window.showStaffIncidentForm = function() {
+            document.getElementById('staff-incident-form-panel').style.display = 'block';
+            document.getElementById('staff-incident-form').reset();
+        };
+
+        window.hideStaffIncidentForm = function() {
+            document.getElementById('staff-incident-form-panel').style.display = 'none';
+        };
+
+        window.submitStaffIncident = async function(e) {
+            e.preventDefault();
+            if (!currentTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('staff-incident-submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                const competitorName = document.getElementById('staff-incident-name').value.trim();
+                const matNumber = document.getElementById('staff-incident-mat').value.trim();
+                const description = document.getElementById('staff-incident-description').value.trim();
+                const officialPresent = document.getElementById('staff-incident-official').value.trim();
+                const ableToContinue = document.getElementById('staff-incident-continue').checked;
+                const medicalStaffCalled = document.getElementById('staff-incident-ems').checked;
+
+                if (!competitorName) {
+                    showToast('Competitor name is required', 'error');
+                    return;
+                }
+                if (!description) {
+                    showToast('Description is required', 'error');
+                    return;
+                }
+
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        competitorName,
+                        matNumber,
+                        description,
+                        officialPresent,
+                        ableToContinue,
+                        medicalStaffCalled,
+                    }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to log incident');
+                }
+
+                showToast('Medical incident reported', 'success');
+                hideStaffIncidentForm();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Incident';
             }
         };
 
