@@ -16,32 +16,32 @@ router.get('/:id/custom-tabs', customTabController.getCustomTabs);
 
 router.post('/:id/custom-tabs',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   customTabController.createCustomTab
 );
 
 router.put('/:id/custom-tabs/reorder',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   customTabController.reorderCustomTabs
 );
 
 router.put('/:id/custom-tabs/:tabId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   customTabController.updateCustomTab
 );
 
 router.delete('/:id/custom-tabs/:tabId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   customTabController.deleteCustomTab
 );
 
 // ── Section visibility ──────────────────────────────────────────────────────
 router.put('/:id/section-visibility',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   customTabController.updateSectionVisibility
 );
 

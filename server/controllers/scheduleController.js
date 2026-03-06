@@ -20,9 +20,7 @@ async function syncSchedule(req, res, next) {
 
     const t = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
     if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
-    if (t.rows[0].created_by !== req.user.id
-        && !req.user.roles?.includes('admin')
-        && !req.user.roles?.includes('super_admin')) {
+    if (t.rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -38,9 +36,7 @@ async function setSchedulePublished(req, res, next) {
 
     const t = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
     if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
-    if (t.rows[0].created_by !== req.user.id
-        && !req.user.roles?.includes('admin')
-        && !req.user.roles?.includes('super_admin')) {
+    if (t.rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 

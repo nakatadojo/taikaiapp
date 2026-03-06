@@ -8,38 +8,38 @@ const router = express.Router();
 // Staff role definitions
 router.get('/:id/staff-roles',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.list
 );
 
 router.post('/:id/staff-roles',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.create
 );
 
 router.put('/:id/staff-roles/:roleId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.update
 );
 
 router.delete('/:id/staff-roles/:roleId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.remove
 );
 
 // Member role assignment
 router.put('/:id/members/:memberId/assign-role',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.assignRole
 );
 
 router.get('/:id/members-with-roles',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.listMembersWithRoles
 );
 

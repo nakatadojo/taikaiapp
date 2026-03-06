@@ -11,25 +11,25 @@ router.get('/:id/pricing-periods', controller.list);
 // Director
 router.post('/:id/pricing-periods',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.create
 );
 
 router.put('/:id/pricing-periods/bulk',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.bulkReplace
 );
 
 router.put('/:id/pricing-periods/:pid',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.update
 );
 
 router.delete('/:id/pricing-periods/:pid',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireRole('event_director'),
   controller.remove
 );
 
