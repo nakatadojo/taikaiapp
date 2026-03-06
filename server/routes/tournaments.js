@@ -33,6 +33,13 @@ router.get('/director/mine',
   tournamentController.getMyTournaments
 );
 
+// GET /api/tournaments/director/stats — Dashboard analytics for director
+router.get('/director/stats',
+  requireAuth,
+  requireRole('event_director'),
+  tournamentController.getDirectorStats
+);
+
 // GET /api/tournaments/:id — Get single tournament with events
 router.get('/:id', tournamentController.getTournament);
 

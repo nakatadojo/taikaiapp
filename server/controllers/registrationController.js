@@ -6,6 +6,7 @@ const tournamentQueries = require('../db/queries/tournaments');
 const profileQueries = require('../db/queries/profiles');
 const discountQueries = require('../db/queries/discounts');
 const creditQueries = require('../db/queries/credits');
+const notificationQueries = require('../db/queries/notifications');
 const pool = require('../db/pool');
 const { sendGuardianConfirmationEmail } = require('../config/email');
 const { sendRegistrationConfirmationEmail } = require('../email');
@@ -567,6 +568,26 @@ async function checkout(req, res, next) {
         console.warn('Waiver creation failed:', waiverErr.message);
       }
 
+      // Notify tournament director of new registration(s)
+      if (tournament.created_by) {
+        try {
+          for (const comp of validatedCompetitors) {
+            await notificationQueries.create({
+              recipientId: tournament.created_by,
+              tournamentId,
+              type: 'new_registration',
+              payload: {
+                competitorName: comp.name,
+                eventCount: comp.events.length,
+                amountPaid: comp.subtotal,
+              },
+            });
+          }
+        } catch (notifErr) {
+          console.warn('Failed to create registration notification:', notifErr.message);
+        }
+      }
+
       return res.json({
         status: 'completed',
         message: 'Registration confirmed (free with discount)',
@@ -684,6 +705,26 @@ async function confirmPayment(req, res, next) {
         }
       } catch (waiverErr) {
         console.warn('Waiver creation failed:', waiverErr.message);
+      }
+
+      // Notify tournament director of new registration(s)
+      if (tournament && tournament.created_by) {
+        try {
+          for (const comp of cartData.competitors) {
+            await notificationQueries.create({
+              recipientId: tournament.created_by,
+              tournamentId,
+              type: 'new_registration',
+              payload: {
+                competitorName: comp.name,
+                eventCount: comp.events ? comp.events.length : 0,
+                amountPaid: comp.subtotal || 0,
+              },
+            });
+          }
+        } catch (notifErr) {
+          console.warn('Failed to create registration notification:', notifErr.message);
+        }
       }
 
       res.json({

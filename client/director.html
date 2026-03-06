@@ -136,7 +136,7 @@
         .notif-bell {
             position: relative; cursor: pointer;
             color: var(--text-muted); padding: 6px;
-            transition: color 0.2s; display: none;
+            transition: color 0.2s;
         }
         .notif-bell:hover { color: var(--text-primary); }
         .notif-bell-badge {
@@ -721,6 +721,78 @@
         .action-card p {
             color: var(--text-muted);
             font-size: 13px;
+        }
+
+        /* ===== ANALYTICS CARDS ===== */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 900px) {
+            .analytics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 500px) {
+            .analytics-grid { grid-template-columns: 1fr; }
+        }
+        .analytics-card {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .analytics-card-icon {
+            width: 36px; height: 36px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; margin-bottom: 12px;
+        }
+        .analytics-card-icon.tournaments { background: rgba(99,102,241,0.15); color: #818cf8; }
+        .analytics-card-icon.registrants { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .analytics-card-icon.revenue { background: rgba(234,179,8,0.15); color: #facc15; }
+        .analytics-card-icon.upcoming { background: rgba(14,165,233,0.15); color: #38bdf8; }
+        .analytics-card-label {
+            font-size: 12px; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .analytics-card-value {
+            font-size: 28px; font-weight: 700; color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .analytics-card-sub {
+            font-size: 12px; color: var(--text-muted); margin-top: 4px;
+        }
+        .analytics-card-sub a {
+            color: var(--accent); text-decoration: none;
+        }
+        .analytics-card-sub a:hover { text-decoration: underline; }
+
+        .recent-regs-section {
+            margin-bottom: 28px;
+        }
+        .recent-regs-table {
+            width: 100%; border-collapse: collapse;
+            background: var(--bg-card); border: 1px solid var(--glass-border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .recent-regs-table th {
+            text-align: left; padding: 10px 14px;
+            font-size: 11px; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .recent-regs-table td {
+            padding: 10px 14px; font-size: 13px;
+            border-bottom: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+        }
+        .recent-regs-table tr:last-child td { border-bottom: none; }
+        .recent-regs-empty {
+            text-align: center; padding: 24px;
+            color: var(--text-muted); font-size: 13px;
         }
 
         .btn-create-tournament {
@@ -1327,6 +1399,49 @@
                     <p>Create and publish your event for competitors to register</p>
                     <a href="/director/tournaments/new" class="btn btn-primary btn-create-tournament">+ Create Tournament</a>
                 </div>
+            </div>
+
+            <!-- Analytics Summary Cards -->
+            <div class="analytics-grid" id="analytics-grid">
+                <div class="analytics-card">
+                    <div class="analytics-card-icon tournaments">&#127942;</div>
+                    <div class="analytics-card-label">Total Tournaments</div>
+                    <div class="analytics-card-value" id="stat-total-tournaments">--</div>
+                    <div class="analytics-card-sub"><span id="stat-published-count">0</span> published</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon registrants">&#128101;</div>
+                    <div class="analytics-card-label">Total Registrants</div>
+                    <div class="analytics-card-value" id="stat-total-registrants">--</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon revenue">&#128176;</div>
+                    <div class="analytics-card-label">Total Revenue</div>
+                    <div class="analytics-card-value" id="stat-total-revenue">--</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon upcoming">&#128197;</div>
+                    <div class="analytics-card-label">Next Tournament</div>
+                    <div class="analytics-card-value" id="stat-next-tournament" style="font-size:16px;">--</div>
+                    <div class="analytics-card-sub" id="stat-next-tournament-date"></div>
+                </div>
+            </div>
+
+            <!-- Recent Registrations -->
+            <div class="recent-regs-section" id="recent-regs-section" style="display:none;">
+                <div class="section-title">Recent Registrations</div>
+                <table class="recent-regs-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Tournament</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-regs-tbody"></tbody>
+                </table>
             </div>
 
             <div class="section-title">My Tournaments</div>
@@ -2237,6 +2352,56 @@
                 warning.classList.add('visible');
             } else {
                 warning.classList.remove('visible');
+            }
+
+            // Load director analytics stats
+            try {
+                const statsData = await apiFetch('/api/tournaments/director/stats');
+                const s = statsData.stats || {};
+                $('#stat-total-tournaments').textContent = s.totalTournaments || 0;
+                $('#stat-published-count').textContent = s.publishedCount || 0;
+                $('#stat-total-registrants').textContent = s.totalRegistrants || 0;
+                $('#stat-total-revenue').textContent = '$' + (s.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                // Next tournament
+                const next = statsData.nextTournament;
+                if (next) {
+                    $('#stat-next-tournament').textContent = next.name;
+                    const dateStr = next.date ? new Date(typeof next.date === 'string' && next.date.length === 10 ? next.date + 'T12:00:00' : next.date)
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                    const sub = $('#stat-next-tournament-date');
+                    sub.innerHTML = dateStr + (next.slug ? ' &middot; <a href="/tournaments/' + encodeURIComponent(next.slug) + '" target="_blank">View page</a>' : '');
+                } else {
+                    $('#stat-next-tournament').textContent = 'None';
+                    $('#stat-next-tournament-date').textContent = '';
+                }
+
+                // Recent registrations table
+                const recentRegs = statsData.recentRegistrations || [];
+                const regsSection = $('#recent-regs-section');
+                const tbody = $('#recent-regs-tbody');
+                if (recentRegs.length > 0) {
+                    regsSection.style.display = '';
+                    tbody.innerHTML = recentRegs.map(r => {
+                        const name = (r.first_name && r.last_name) ? escapeHtml(r.first_name + ' ' + r.last_name) : 'Unknown';
+                        const tn = r.tournament_name ? escapeHtml(r.tournament_name) : '--';
+                        const amount = r.amount_paid ? '$' + parseFloat(r.amount_paid).toFixed(2) : '$0.00';
+                        const statusClass = r.payment_status === 'paid' ? 'color:#4ade80' : 'color:var(--text-muted)';
+                        const statusLabel = r.payment_status ? r.payment_status.charAt(0).toUpperCase() + r.payment_status.slice(1) : '--';
+                        const dateStr = r.created_at ? formatTimeAgo(r.created_at) : '--';
+                        return '<tr>' +
+                            '<td>' + name + '</td>' +
+                            '<td>' + tn + '</td>' +
+                            '<td>' + amount + '</td>' +
+                            '<td><span style="' + statusClass + '">' + statusLabel + '</span></td>' +
+                            '<td>' + dateStr + '</td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    regsSection.style.display = 'none';
+                }
+            } catch (statsErr) {
+                console.warn('Failed to load director stats:', statsErr);
             }
 
             // Load tournaments
@@ -3306,7 +3471,12 @@
             }
 
             updateNavbar();
-            if (user) fetchNotifications();
+            if (user) {
+                fetchNotifications();
+                // Poll for new notifications every 60 seconds
+                if (window._notifPollInterval) clearInterval(window._notifPollInterval);
+                window._notifPollInterval = setInterval(fetchNotifications, 60000);
+            }
             handleRoute();
         };
 
@@ -3359,6 +3529,10 @@
                     text = `Your application as <strong>${escNotif(p.role)}</strong> was approved!`;
                 } else if (n.type === 'role_declined') {
                     text = `Your application as <strong>${escNotif(p.role)}</strong> was declined.`;
+                } else if (n.type === 'new_registration') {
+                    text = `<strong>${escNotif(p.competitorName || 'Someone')}</strong> registered` +
+                           (n.tournament_name ? ` for <strong>${escNotif(n.tournament_name)}</strong>` : '') +
+                           (p.eventCount ? ` (${p.eventCount} event${p.eventCount > 1 ? 's' : ''})` : '');
                 } else {
                     text = n.type;
                 }

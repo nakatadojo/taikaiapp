@@ -545,6 +545,59 @@ async function getRegistrants(req, res, next) {
   }
 }
 
+/**
+ * GET /api/tournaments/director/stats
+ * Aggregate stats for the logged-in Event Director's dashboard.
+ */
+async function getDirectorStats(req, res, next) {
+  try {
+    const directorId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM tournaments WHERE created_by = $1) AS total_tournaments,
+        (SELECT COUNT(*) FROM registrations r
+         JOIN tournaments t ON t.id = r.tournament_id
+         WHERE t.created_by = $1 AND r.status != 'cancelled') AS total_registrants,
+        (SELECT COALESCE(SUM(r.amount_paid), 0) FROM registrations r
+         JOIN tournaments t ON t.id = r.tournament_id
+         WHERE t.created_by = $1 AND r.payment_status = 'paid') AS total_revenue,
+        (SELECT COUNT(*) FROM tournaments WHERE created_by = $1 AND published = true) AS published_count
+    `, [directorId]);
+
+    // Recent registrations (last 7 days)
+    const recent = await pool.query(`
+      SELECT r.id, r.created_at, r.amount_paid, r.status, r.payment_status,
+             cp.first_name, cp.last_name, t.name AS tournament_name
+      FROM registrations r
+      JOIN tournaments t ON t.id = r.tournament_id
+      LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+      WHERE t.created_by = $1 AND r.status != 'cancelled'
+      ORDER BY r.created_at DESC
+      LIMIT 5
+    `, [directorId]);
+
+    // Next upcoming tournament
+    const upcoming = await pool.query(`
+      SELECT id, name, date, slug
+      FROM tournaments
+      WHERE created_by = $1 AND date >= CURRENT_DATE AND published = true
+      ORDER BY date ASC
+      LIMIT 1
+    `, [directorId]);
+
+    res.json({
+      stats: {
+        totalTournaments: parseInt(rows[0].total_tournaments),
+        totalRegistrants: parseInt(rows[0].total_registrants),
+        totalRevenue: parseFloat(rows[0].total_revenue),
+        publishedCount: parseInt(rows[0].published_count),
+      },
+      recentRegistrations: recent.rows,
+      nextTournament: upcoming.rows[0] || null,
+    });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -552,6 +605,7 @@ module.exports = {
   getTournamentBySlug,
   getEligibleEvents,
   getMyTournaments,
+  getDirectorStats,
   createTournament,
   updateTournament,
   publishTournament,
