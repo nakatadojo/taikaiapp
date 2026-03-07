@@ -2242,8 +2242,18 @@ function autoAssignToDivisions(competitor, competitorId) {
         const matchingTemplate = findMatchingTemplate(eventId, competitor, competitorAge);
 
         if (!matchingTemplate) {
-            console.warn(`No matching template found for ${event.name}`);
-            throw new Error(`No division template matches your age/gender for "${event.name}". Please contact tournament organizer.`);
+            console.warn(`No matching template found for ${event.name} — using auto-division grouping`);
+
+            // No template: auto-create a division name from the competitor's own attributes
+            const divisionName = buildAutoSingleDivisionName(competitor, competitorAge);
+            const divisions = db.load('divisions');
+            if (!divisions[eventId]) divisions[eventId] = { templates: [], generated: {} };
+            if (!divisions[eventId].generated) divisions[eventId].generated = {};
+            if (!divisions[eventId].generated[divisionName]) divisions[eventId].generated[divisionName] = [];
+            const divComp = divisions[eventId].generated[divisionName];
+            if (!divComp.find(c => c.id === competitorId)) divComp.push({ ...competitor, id: competitorId });
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+            return;
         }
 
         console.log('Matched template:', matchingTemplate.name);
@@ -2363,6 +2373,35 @@ function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, t
 
     // Save updated divisions
     localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+}
+
+// Build a division name automatically from a competitor's own attributes,
+// used when no template is configured for an event.
+function buildAutoSingleDivisionName(competitor, age) {
+    const parts = [];
+
+    // Age bucket
+    if (age < 8)        parts.push('Tiny (≤7)');
+    else if (age <= 11) parts.push('Kids (8-11)');
+    else if (age <= 14) parts.push('Cadets (12-14)');
+    else if (age <= 17) parts.push('Juniors (15-17)');
+    else if (age <= 35) parts.push('Adults (18-35)');
+    else                parts.push('Masters (36+)');
+
+    // Gender
+    if (competitor.gender) parts.push(competitor.gender);
+
+    // Rank group
+    const rank = (competitor.rank || '').toLowerCase();
+    const RANK_ORDER_LOCAL = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
+        'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
+        '6th dan', '7th dan', '8th dan', '9th dan', '10th dan'];
+    const rankIdx = RANK_ORDER_LOCAL.indexOf(rank);
+    if (rankIdx === -1)     parts.push(competitor.rank || 'Unknown Rank');
+    else if (rankIdx <= 6)  parts.push('Color Belt');
+    else                    parts.push('Black Belt');
+
+    return parts.join(' | ');
 }
 
 function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
@@ -6135,8 +6174,66 @@ function loadDivisions() {
     console.log('Event data for', eventId, ':', eventData);
 
     if (!eventData || !eventData.generated) {
+        // Auto-generate from existing competitors before giving up
+        const allCompetitors = db.load('competitors');
+        const competitors = currentTournamentId
+            ? allCompetitors.filter(c => c.tournamentId === currentTournamentId && c.events && c.events.includes(eventId))
+            : allCompetitors.filter(c => c.events && c.events.includes(eventId));
+
+        if (competitors.length > 0) {
+            const tournaments = db.load('tournaments');
+            const currentTournament = tournaments.find(t => t.id === currentTournamentId);
+            const ageCalc = currentTournament?.ageCalculationMethod || 'aau-standard';
+            const eventDate = currentTournament?.date || new Date();
+            const freshDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+            if (!freshDivisions[eventId]) freshDivisions[eventId] = { templates: [], generated: {} };
+            if (!freshDivisions[eventId].generated) freshDivisions[eventId].generated = {};
+
+            competitors.forEach(comp => {
+                const age = comp.dateOfBirth ? calculateAge(comp.dateOfBirth, ageCalc, eventDate) : (comp.age || 0);
+                const divName = buildAutoSingleDivisionName(comp, age);
+                if (!freshDivisions[eventId].generated[divName]) freshDivisions[eventId].generated[divName] = [];
+                if (!freshDivisions[eventId].generated[divName].find(c => c.id === comp.id)) {
+                    freshDivisions[eventId].generated[divName].push(comp);
+                }
+            });
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
+            // Re-read
+            const updated = freshDivisions[eventId];
+            if (updated && updated.generated && Object.keys(updated.generated).length > 0) {
+                const divisions = updated.generated;
+                const divisionKeys = Object.keys(divisions).sort();
+                divisionKeys.forEach(divisionName => {
+                    const divCompetitors = divisions[divisionName];
+                    if (!Array.isArray(divCompetitors) || (hideEmpty && divCompetitors.length === 0)) return;
+                    const sheet = document.createElement('div');
+                    sheet.className = 'division-sheet';
+                    const tableRows = divCompetitors.map(comp => `
+                        <tr>
+                            <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
+                            <td>${getDisplayAge(comp)}</td>
+                            <td>${comp.gender || '-'}</td>
+                            <td>${comp.weight !== undefined ? comp.weight + ' kg' : '-'}</td>
+                            <td>${comp.rank || '-'}</td>
+                            <td>${comp.club || '-'}</td>
+                            <td>${comp.country || '-'}</td>
+                        </tr>`).join('');
+                    sheet.innerHTML = `
+                        <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
+                        <div class="division-content">
+                            <table class="division-table">
+                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th></tr></thead>
+                                <tbody>${tableRows}</tbody>
+                            </table>
+                        </div>`;
+                    container.appendChild(sheet);
+                });
+                return;
+            }
+        }
+
         console.log('No event data or generated divisions');
-        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions generated yet. Configure criteria and click "Generate Divisions".</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary);">No competitors registered for this event yet.</p>';
         return;
     }
 
@@ -6147,7 +6244,7 @@ function loadDivisions() {
 
     if (divisionKeys.length === 0) {
         console.log('No division keys found');
-        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions generated yet. Click "Generate Divisions".</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Add competitors to see divisions appear automatically.</p>';
         return;
     }
 
