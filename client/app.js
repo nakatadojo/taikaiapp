@@ -704,6 +704,18 @@ function switchTournament() {
     } else {
         document.getElementById('main-nav').classList.add('hidden');
     }
+
+    // Update the delete danger zone label so user knows which tournament is selected
+    const nameEl = document.getElementById('delete-tournament-name');
+    if (nameEl) {
+        if (currentTournamentId) {
+            const tournaments = db.load('tournaments');
+            const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+            nameEl.textContent = t ? `"${t.name}"` : '';
+        } else {
+            nameEl.textContent = '';
+        }
+    }
 }
 
 function clearLogo() {
@@ -16990,7 +17002,8 @@ async function deleteTournamentFromServer() {
             credentials: 'include',
         });
 
-        if (!res.ok) {
+        // 404 means it's already gone from the server — still clean up locally
+        if (!res.ok && res.status !== 404) {
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || 'Failed to delete tournament');
         }
@@ -17009,13 +17022,18 @@ async function deleteTournamentFromServer() {
         // Update UI immediately
         loadTournamentSelector();
         document.getElementById('main-nav').classList.add('hidden');
+        const nameEl = document.getElementById('delete-tournament-name');
+        if (nameEl) nameEl.textContent = '';
 
-        showToast(`Tournament "${tournamentName}" deleted successfully`, 'success');
+        showToast(`Tournament "${tournamentName}" deleted`, 'success');
 
-        // Redirect to director dashboard after a moment
-        setTimeout(() => {
-            window.location.href = '/director';
-        }, 1500);
+        // Stay on page if there are more tournaments to delete, otherwise redirect
+        const leftover = JSON.parse(localStorage.getItem('tournaments') || '[]');
+        if (leftover.length === 0) {
+            setTimeout(() => {
+                window.location.href = '/account.html#tournaments';
+            }, 1200);
+        }
     } catch (err) {
         showToast(err.message || 'Failed to delete tournament', 'error');
     }
