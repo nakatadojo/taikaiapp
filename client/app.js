@@ -130,66 +130,78 @@ function generateUniqueId() {
     return newId;
 }
 
+// Active tournament — declared early so scoped-storage helpers can reference it.
+let currentTournamentId = null;
+
+// ── Tournament-Scoped Storage ───────────────────────────────────────────────
+// Keys that should be isolated per tournament to prevent cross-tournament data corruption.
+const _SCOPED_KEYS = new Set([
+    'competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches',
+    'eventTypes', 'divisions', 'matSchedule', 'matScoreboards', 'brackets',
+    'teams', 'results', 'scoreboardConfig', 'scoreboardSettings', 'scoreboardConfigs',
+    'certificateTemplate', 'certificateConfig', 'publicSiteConfig',
+    'scoreboard-state', 'scoreEditLog', 'operatorSidesSwapped',
+]);
+
+// Keys that must remain global (shared across all tournaments)
+// 'tournaments' — the list of all tournaments
+// 'mat-update-trigger' — cross-tab signaling
+// 'scheduleSettings_*' / 'matSchedule_*' — already tournament-scoped
+
+function _scopedKey(key) {
+    if (currentTournamentId && _SCOPED_KEYS.has(key)) {
+        return `t_${currentTournamentId}_${key}`;
+    }
+    return key;
+}
+
 // Database Storage using localStorage
 class Database {
     constructor() {
-        this.init();
+        // Don't init until tournament is selected
     }
 
     init() {
         // Array-based tables
-        if (!localStorage.getItem('competitors')) {
-            localStorage.setItem('competitors', JSON.stringify([]));
+        const arrayTables = ['competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
+        for (const table of arrayTables) {
+            const key = (table === 'tournaments') ? table : _scopedKey(table);
+            if (!localStorage.getItem(key)) {
+                if (table === 'mats') {
+                    localStorage.setItem(key, JSON.stringify([
+                        { id: 1, name: 'Mat 1', active: true },
+                        { id: 2, name: 'Mat 2', active: true }
+                    ]));
+                } else {
+                    localStorage.setItem(key, JSON.stringify([]));
+                }
+            }
         }
-        if (!localStorage.getItem('instructors')) {
-            localStorage.setItem('instructors', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('clubs')) {
-            localStorage.setItem('clubs', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('templates')) {
-            localStorage.setItem('templates', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('mats')) {
-            localStorage.setItem('mats', JSON.stringify([
-                { id: 1, name: 'Mat 1', active: true },
-                { id: 2, name: 'Mat 2', active: true }
-            ]));
-        }
-        if (!localStorage.getItem('matches')) {
-            localStorage.setItem('matches', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('tournaments')) {
-            localStorage.setItem('tournaments', JSON.stringify([]));
-        }
-        if (!localStorage.getItem('eventTypes')) {
-            localStorage.setItem('eventTypes', JSON.stringify([]));
-        }
-
         // Object-based tables
-        if (!localStorage.getItem('divisions')) {
-            localStorage.setItem('divisions', JSON.stringify({}));
-        }
-        if (!localStorage.getItem('matSchedule')) {
-            localStorage.setItem('matSchedule', JSON.stringify({}));
-        }
-        if (!localStorage.getItem('matScoreboards')) {
-            localStorage.setItem('matScoreboards', JSON.stringify({}));
+        const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
+        for (const table of objectTables) {
+            if (!localStorage.getItem(_scopedKey(table))) {
+                localStorage.setItem(_scopedKey(table), JSON.stringify({}));
+            }
         }
     }
 
     save(table, data) {
-        localStorage.setItem(table, JSON.stringify(data));
+        const key = (table === 'tournaments') ? table : _scopedKey(table);
+        localStorage.setItem(key, JSON.stringify(data));
+        // Backward compat: also write to global key for scoreboards/TV displays
+        if (currentTournamentId && (table === 'brackets' || table === 'matSchedule' || table === 'matScoreboards' || table === 'scoreboard-state' || table === 'mats')) {
+            localStorage.setItem(table, JSON.stringify(data));
+        }
     }
 
     load(table) {
-        const data = localStorage.getItem(table);
-        // Object-based tables return {} by default
+        const key = (table === 'tournaments') ? table : _scopedKey(table);
+        const data = localStorage.getItem(key);
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         if (objectTables.includes(table)) {
             return JSON.parse(data || '{}');
         }
-        // Array-based tables return [] by default
         return JSON.parse(data || '[]');
     }
 
@@ -219,18 +231,63 @@ class Database {
     }
 
     clear(table) {
-        // Object-based tables clear to {}
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         if (objectTables.includes(table)) {
             this.save(table, {});
         } else {
-            // Array-based tables clear to []
             this.save(table, []);
         }
     }
 }
 
 const db = new Database();
+
+// One-time migration: move unscoped localStorage data under tournament prefix
+function _migrateUnscopedData() {
+    if (!currentTournamentId) return;
+    const keysToMigrate = [..._SCOPED_KEYS];
+    for (const key of keysToMigrate) {
+        const scopedKey = `t_${currentTournamentId}_${key}`;
+        // Only migrate if scoped key doesn't exist yet but unscoped does
+        if (!localStorage.getItem(scopedKey) && localStorage.getItem(key)) {
+            const data = localStorage.getItem(key);
+            if (data && data !== '[]' && data !== '{}' && data !== 'null') {
+                try {
+                    localStorage.setItem(scopedKey, data);
+                    console.log(`[migration] Moved ${key} → ${scopedKey}`);
+                } catch (e) {
+                    // Quota exceeded — try to free space by removing old unscoped keys
+                    console.warn(`[migration] Quota exceeded migrating ${key}, cleaning up stale data...`);
+                    _cleanupLocalStorage();
+                    try {
+                        localStorage.setItem(scopedKey, data);
+                    } catch (e2) {
+                        console.warn(`[migration] Still cannot migrate ${key}, skipping`);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Clean up stale/orphaned localStorage data to free space
+function _cleanupLocalStorage() {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        // Remove unscoped copies of scoped keys (old pre-migration data)
+        if (_SCOPED_KEYS.has(key)) {
+            keysToRemove.push(key);
+        }
+    }
+    for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+    }
+    if (keysToRemove.length > 0) {
+        console.log(`[cleanup] Removed ${keysToRemove.length} stale unscoped keys`);
+    }
+}
 
 // Logo error handler
 function handleLogoError(img) {
@@ -244,7 +301,174 @@ function handleLogoError(img) {
 // Current template being edited
 let currentTemplate = null;
 let criteriaCounter = 0;
-let currentTournamentId = null;
+
+// ── Server Sync Helpers ──────────────────────────────────────────────────────
+// Non-blocking debounced sync to persist localStorage data to the server.
+
+const _syncDebounceTimers = {};
+
+function _debouncedSync(key, fn, delayMs = 1500) {
+    if (_syncDebounceTimers[key]) clearTimeout(_syncDebounceTimers[key]);
+    _syncDebounceTimers[key] = setTimeout(() => {
+        fn().catch(err => console.warn(`[sync] ${key} failed:`, err.message));
+    }, delayMs);
+}
+
+function setSyncIndicator(state) {
+    const el = document.getElementById('server-sync-indicator');
+    if (!el) return;
+    el.style.display = 'inline-flex';
+    const dot = el.querySelector('.sync-dot');
+    const label = el.querySelector('.sync-label');
+    if (!dot || !label) return;
+    dot.className = 'sync-dot';
+    if (state === 'syncing') {
+        dot.classList.add('sync-dot--syncing');
+        label.textContent = 'Saving...';
+    } else if (state === 'error') {
+        dot.classList.add('sync-dot--error');
+        label.textContent = 'Save failed';
+        setTimeout(() => setSyncIndicator('ok'), 10000);
+    } else {
+        label.textContent = 'Saved';
+    }
+}
+
+async function _syncScheduleToServer() {
+    if (!currentTournamentId) return;
+    const matSchedule = loadMatScheduleData();
+    const scheduleSettings = getScheduleSettings();
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matSchedule, scheduleSettings }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncBracketsToServer() {
+    if (!currentTournamentId) return;
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brackets }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncDivisionsToServer() {
+    if (!currentTournamentId) return;
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const generatedDivisions = {};
+    Object.keys(allDivisions).forEach(eventId => {
+        if (allDivisions[eventId]?.generated) {
+            generatedDivisions[eventId] = {
+                generated: allDivisions[eventId].generated,
+                updatedAt: allDivisions[eventId].updatedAt,
+            };
+        }
+    });
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ generatedDivisions }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncTemplateToServer(eventId, templates) {
+    if (!currentTournamentId || !eventId) return;
+    const res = await fetch(
+        `/api/tournaments/${currentTournamentId}/events/${eventId}/templates/sync`,
+        {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ criteriaTemplates: templates }),
+        }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+async function _syncTeamsToServer() {
+    if (!currentTournamentId) return;
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teams }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        throw err;
+    }
+}
+
+async function _syncJudgeVotesToServer() {
+    if (!currentTournamentId) return;
+    const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+    if (judgeVoteLog.length === 0) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-votes/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ votes: judgeVoteLog }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Clear the log after successful sync
+        localStorage.setItem(_scopedKey('judgeVoteLog'), '[]');
+        console.log('[Judge Analytics] Synced', judgeVoteLog.length, 'votes to server');
+    } catch (err) {
+        console.warn('[Judge Analytics] Sync failed:', err.message);
+        // Don't clear — will retry on next debounce
+    }
+}
+
+async function _loadTeamsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return; // silently skip if server not available
+        const data = await res.json();
+        if (data.teams && Object.keys(data.teams).length > 0) {
+            const localTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            // Only overwrite if local is empty (server is source of truth for initial load)
+            if (Object.keys(localTeams).length === 0) {
+                localStorage.setItem(_scopedKey('teams'), JSON.stringify(data.teams));
+                console.log(`[sync] Loaded ${Object.keys(data.teams).length} team(s) from server`);
+            }
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load teams from server:', err.message);
+    }
+}
 
 // Ordered rank list for grouped belt-range matching (WKF/AAU)
 const RANK_ORDER = [
@@ -315,7 +539,7 @@ window.togglePaymentStatus = function(competitorId) {
     const cycle = ['unpaid', 'paid', 'partial', 'waived'];
     const idx = cycle.indexOf(comp.paymentStatus || 'unpaid');
     comp.paymentStatus = cycle[(idx + 1) % cycle.length];
-    localStorage.setItem('competitors', JSON.stringify(competitors));
+    localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
     loadCompetitors(true);
 };
 
@@ -471,10 +695,12 @@ function switchTournament() {
     const select = document.getElementById('active-tournament');
     currentTournamentId = select.value || null;
     if (currentTournamentId) {
+        _migrateUnscopedData();
+        db.init();
         document.getElementById('main-nav').classList.remove('hidden');
-        // Reload all data for the selected tournament
         loadCompetitors();
         loadDashboard();
+        _loadTeamsFromServer();
     } else {
         document.getElementById('main-nav').classList.add('hidden');
     }
@@ -584,7 +810,7 @@ function migrateLegacyCompetitors() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem('competitors', JSON.stringify(competitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
         console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
     }
 }
@@ -611,7 +837,7 @@ function migrateLegacyPricing() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem('competitors', JSON.stringify(competitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
         console.log(`Migrated pricing data for ${migrated} competitors`);
     }
 }
@@ -860,13 +1086,23 @@ function closeMedalCountModal() {
 }
 
 // Navigation
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const view = btn.dataset.view;
 
-        // Update active button
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        // Update active button (clear both nav-btn and nav-sub-btn active states)
+        document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+
+        // Auto-expand settings children when a sub-item is clicked
+        if (btn.classList.contains('nav-sub-btn')) {
+            const toggle = document.getElementById('settings-toggle');
+            const children = document.getElementById('settings-children');
+            if (toggle && children) {
+                toggle.classList.add('expanded');
+                children.classList.add('expanded');
+            }
+        }
 
         // Update active view
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -909,11 +1145,39 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         if (view === 'settings') {
             loadSettings();
         }
+        if (view === 'settings-tournament-info') {
+            loadTournamentInfoView();
+        }
+        if (view === 'settings-certificates') {
+            loadCertificatesView();
+        }
         if (view === 'academy') {
             loadAcademyView();
         }
+        if (view === 'medical-incidents') {
+            loadMedicalIncidents();
+        }
+        if (view === 'settings-sponsors') {
+            loadSponsorsView();
+        }
+        if (view === 'settings-feedback') {
+            loadFeedbackView();
+        }
+        if (view === 'judge-analytics') {
+            loadJudgeAnalyticsView();
+        }
     });
 });
+
+// Toggle settings nav expand/collapse
+function toggleSettingsNav() {
+    const toggle = document.getElementById('settings-toggle');
+    const children = document.getElementById('settings-children');
+    if (toggle && children) {
+        toggle.classList.toggle('expanded');
+        children.classList.toggle('expanded');
+    }
+}
 
 // Navigation helper
 function navigateTo(viewName) {
@@ -1011,7 +1275,7 @@ function clearPhoto() {
  *
  * WORKFLOW:
  * 1. Click "Add Competitor" button
- * 2. showCompetitorForm() - Opens form, loads clubs and events
+ * 2. showCompetitorForm() - Opens form, loads dojos and events
  * 3. User enters competitor info including Date of Birth
  * 4. calculateAge() shows real-time age preview (registration vs event)
  * 5. User selects one or more events to register for
@@ -1022,8 +1286,8 @@ function clearPhoto() {
  * - Date of Birth instead of age (stores DOB, calculates age dynamically)
  * - Multi-event registration (checkboxes for multiple events)
  * - Real-time age preview (shows age at registration AND event date)
- * - Club selection with "Add New Club" option
- * - Club logo upload when adding new club
+ * - Dojo selection with "Add New Dojo" option
+ * - Dojo logo upload when adding new dojo
  * - Photo upload with preview
  * - Event pricing display
  *
@@ -1059,21 +1323,21 @@ function clearPhoto() {
  * - Events stored as array of IDs: [1, 3, 5]
  * - Display shows event names in table
  *
- * CLUB INTEGRATION:
+ * DOJO INTEGRATION:
  * - loadClubDropdown() loads from clubs table
- * - "+ Add New Club" option appears at bottom
+ * - "+ Add New Dojo" option appears at bottom
  * - When selected, shows:
- *   - New club name input
- *   - Club logo upload (optional)
- * - New club auto-saved when competitor registered
- * - Club logo cached in competitor.clubLogo
+ *   - New dojo name input
+ *   - Dojo logo upload (optional)
+ * - New dojo auto-saved when competitor registered
+ * - Dojo logo cached in competitor.clubLogo
  *
  * ✅ FEATURES:
  * 1. ✅ DOB-based age calculation (replaces static age)
  * 2. ✅ Multi-event registration with pricing
  * 3. ✅ Real-time age preview in form
  * 4. ✅ Dynamic age display in table (respects tournament setting)
- * 5. ✅ Club management integration
+ * 5. ✅ Dojo management integration
  * 6. ✅ Photo upload with preview
  * 7. ✅ Legacy support for old data
  *
@@ -1397,7 +1661,7 @@ function verifyTeamCode() {
     }
 
     // Find team by code
-    const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
     const team = teams[teamCode];
 
     if (!team) {
@@ -1539,7 +1803,7 @@ function loadClubDropdown() {
     // Combine and get unique, sorted list
     const allClubNames = [...new Set([...clubTableNames, ...competitorClubNames])].sort();
 
-    clubSelect.innerHTML = '<option value="">Select Club</option>';
+    clubSelect.innerHTML = '<option value="">Select Dojo</option>';
 
     allClubNames.forEach(clubName => {
         const option = document.createElement('option');
@@ -1548,10 +1812,10 @@ function loadClubDropdown() {
         clubSelect.appendChild(option);
     });
 
-    // Add "New Club" option
+    // Add "New Dojo" option
     const newOption = document.createElement('option');
     newOption.value = '__new__';
-    newOption.textContent = '+ Add New Club';
+    newOption.textContent = '+ Add New Dojo';
     clubSelect.appendChild(newOption);
 }
 
@@ -1641,7 +1905,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
             teamCode = generateTeamCode();
 
             // Create team record
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             teams[teamCode] = {
                 code: teamCode,
                 name: teamName,
@@ -1651,7 +1915,8 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                 members: [], // Will add competitor ID after creation
                 createdAt: new Date().toISOString()
             };
-            localStorage.setItem('teams', JSON.stringify(teams));
+            localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+            _debouncedSync('teams', _syncTeamsToServer, 2000);
 
         } else if (teamOption === 'join') {
             // Joining existing team
@@ -1661,7 +1926,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                 return;
             }
 
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
 
             if (!team) {
@@ -1726,7 +1991,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         };
 
         const updatedCompetitor = allCompetitors[compIndex];
-        localStorage.setItem('competitors', JSON.stringify(allCompetitors));
+        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(allCompetitors));
 
         // Update competitor data embedded in brackets (they store full objects, not IDs)
         updateCompetitorInBrackets(editingCompetitorId, updatedCompetitor);
@@ -1760,11 +2025,12 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
 
         // Add competitor to team members list
         if (teamCode) {
-            const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
             if (team) {
                 team.members.push(competitorId);
-                localStorage.setItem('teams', JSON.stringify(teams));
+                localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+                _debouncedSync('teams', _syncTeamsToServer, 2000);
             }
         }
 
@@ -1784,7 +2050,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
                     `Competitor registered successfully!\n\nTeam Code: ${teamCode}\n\nShare this code with your ${eventTypes.find(e => e.teamSize > 1)?.teamSize - 1} teammate(s) so they can join "${teamName}".`,
                     'success'
                 );
-                alert(`✓ Team Created Successfully!\n\nTeam Name: ${teamName}\nTeam Code: ${teamCode}\n\nShare this code with your teammates so they can join!`);
+                showToast(`Team created! Code: ${teamCode} — share with teammates`, 'success');
             } else {
                 showMessage(`Successfully joined team "${teamName}"!`, 'success');
             }
@@ -1804,7 +2070,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
 
 // Update competitor data embedded in all brackets
 function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let changed = false;
 
     // Fields to copy into embedded competitor objects
@@ -1903,7 +2169,7 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
     }
 
     if (changed) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
         console.log(`Updated competitor ${competitorId} in brackets`);
     }
 }
@@ -2084,7 +2350,7 @@ function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, t
     }
 
     // Save updated divisions
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
 }
 
 function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
@@ -2219,7 +2485,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     generateMatchesForBracket(bracket);
 
     // Save bracket
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Check if bracket already exists for this division
     const existingBracketKey = Object.keys(brackets).find(key =>
@@ -2238,7 +2504,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     }
 
     brackets[bracketId] = bracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     console.log(`Bracket generated: ${bracketId}`);
 }
@@ -2384,7 +2650,7 @@ function generateMatchesForBracket(bracket) {
  */
 
 function lockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -2410,14 +2676,15 @@ function lockBracket(bracketId) {
 
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
     showMessage(`Bracket locked for "${bracket.divisionName}"`, 'success');
 }
 
 function unlockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -2442,7 +2709,8 @@ function unlockBracket(bracketId) {
 
     bracket.locked = false;
     delete bracket.lockedAt;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
     showMessage(`Bracket unlocked for "${bracket.divisionName}"`, 'success');
@@ -2450,7 +2718,7 @@ function unlockBracket(bracketId) {
 
 function autoLockBracketOnMatchStart(bracketId) {
     // Called when a match status changes from 'pending' to 'in-progress'
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket || bracket.locked) return;
@@ -2460,7 +2728,7 @@ function autoLockBracketOnMatchStart(bracketId) {
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
     bracket.autoLocked = true; // Flag to indicate it was auto-locked
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 }
 
 function loadCompetitors(skipSync = false) {
@@ -2697,10 +2965,10 @@ function generateTestCompetitors() {
     ];
 
     const clubPool = [
-        'Rising Sun Karate', 'Midwest Martial Arts Academy', 'Heartland Dojo',
-        'Sakura Karate Club', 'Iron Fist Martial Arts', 'Pacific Coast Karate',
+        'Rising Sun Karate', 'Midwest Martial Arts Dojo', 'Heartland Dojo',
+        'Sakura Karate Dojo', 'Iron Fist Martial Arts', 'Pacific Coast Karate',
         'Dragon Spirit Dojo', 'Mountain View Karate', 'Thunder Bay Martial Arts',
-        'Golden Tiger Academy'
+        'Golden Tiger Dojo'
     ];
 
     const defaultRanks = ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', '1st Dan', '2nd Dan', '3rd Dan'];
@@ -2757,11 +3025,11 @@ function generateTestCompetitors() {
             divisions[eventId].generated = {};
         }
     }
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
     console.log('  Cleared generated divisions');
 
     // Clear brackets for current tournament's events
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketIdsToDelete = [];
     for (const [bracketId, bracket] of Object.entries(brackets)) {
         if (eventIds.includes(bracket.eventId)) {
@@ -2769,11 +3037,11 @@ function generateTestCompetitors() {
         }
     }
     bracketIdsToDelete.forEach(id => delete brackets[id]);
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     console.log(`  Deleted ${bracketIdsToDelete.length} brackets`);
 
     // Clear teams for current tournament's events
-    const teams = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
     const teamCodesToDelete = [];
     for (const [code, team] of Object.entries(teams)) {
         if (eventIds.includes(team.eventId)) {
@@ -2781,7 +3049,8 @@ function generateTestCompetitors() {
         }
     }
     teamCodesToDelete.forEach(code => delete teams[code]);
-    localStorage.setItem('teams', JSON.stringify(teams));
+    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+    _debouncedSync('teams', _syncTeamsToServer, 2000);
     console.log(`  Deleted ${teamCodesToDelete.length} teams`);
 
     // ── STEP 2: Ensure 6-8 clubs ──
@@ -3091,7 +3360,7 @@ function generateTestCompetitors() {
     let failCount = 0;
 
     // For team events, we need to create team entries
-    const teamRegistry = JSON.parse(localStorage.getItem('teams') || '{}');
+    const teamRegistry = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
 
     for (const comp of competitorsToCreate) {
         const competitorId = db.add('competitors', comp);
@@ -3125,7 +3394,8 @@ function generateTestCompetitors() {
     }
 
     // Save team registry
-    localStorage.setItem('teams', JSON.stringify(teamRegistry));
+    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamRegistry));
+    _debouncedSync('teams', _syncTeamsToServer, 2000);
 
     // ── STEP 7: Refresh UI and log summary ──
     syncCompetitorClubsToTable();
@@ -3151,7 +3421,7 @@ function generateTestCompetitors() {
     const teamMsg = teamCount > 0 ? ` (${teamCount} teams)` : '';
 
     showMessage(
-        `✓ Generated ${competitorsToCreate.length} test competitors${teamMsg} across ${Object.keys(perEventCount).length} events and ${clubNames.length} clubs. ${failCount > 0 ? `(${failCount} assignment failures)` : ''}`,
+        `✓ Generated ${competitorsToCreate.length} test competitors${teamMsg} across ${Object.keys(perEventCount).length} events and ${clubNames.length} dojos. ${failCount > 0 ? `(${failCount} assignment failures)` : ''}`,
         'success'
     );
 }
@@ -3163,16 +3433,16 @@ function clearAllCompetitors() {
             db.clear('competitors');
 
             // Clear all divisions for current tournament
-            localStorage.setItem('divisions', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify({}));
 
             // Clear mat schedule
-            localStorage.setItem('matSchedule', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify({}));
 
             // Clear matches
             db.clear('matches');
 
             // Clear brackets
-            localStorage.setItem('brackets', JSON.stringify({}));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
 
             // Reload views
             loadCompetitors();
@@ -3211,7 +3481,7 @@ function showClubForm() {
 
     // Update form title
     const formTitle = document.querySelector('#club-form-container h3');
-    if (formTitle) formTitle.textContent = 'Club Registration';
+    if (formTitle) formTitle.textContent = 'Dojo Registration';
 }
 
 window.editClub = function(id) {
@@ -3219,7 +3489,7 @@ window.editClub = function(id) {
     const club = clubs.find(c => c.id === id);
 
     if (!club) {
-        showMessage('Club not found', 'error');
+        showMessage('Dojo not found', 'error');
         return;
     }
 
@@ -3245,7 +3515,7 @@ window.editClub = function(id) {
     // Show form and update title
     document.getElementById('club-form-container').classList.remove('hidden');
     const formTitle = document.querySelector('#club-form-container h3');
-    if (formTitle) formTitle.textContent = 'Edit Club';
+    if (formTitle) formTitle.textContent = 'Edit Dojo';
 };
 
 function hideClubForm() {
@@ -3294,7 +3564,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
     const existingClub = clubs.find(c => c.name.toLowerCase() === clubName.toLowerCase() && c.id !== editingClubId);
 
     if (existingClub) {
-        showMessage('A club with this name already exists', 'error');
+        showMessage('A dojo with this name already exists', 'error');
         return;
     }
 
@@ -3302,7 +3572,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         // Edit mode - update existing club
         const clubIndex = clubs.findIndex(c => c.id === editingClubId);
         if (clubIndex === -1) {
-            showMessage('Club not found', 'error');
+            showMessage('Dojo not found', 'error');
             return;
         }
 
@@ -3316,7 +3586,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
             updatedAt: new Date().toISOString()
         };
 
-        localStorage.setItem('clubs', JSON.stringify(clubs));
+        localStorage.setItem(_scopedKey('clubs'), JSON.stringify(clubs));
 
         // If club name changed, update all competitors with this club
         if (oldClubName !== clubName) {
@@ -3329,11 +3599,11 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
                 }
             });
             if (updatedCount > 0) {
-                localStorage.setItem('competitors', JSON.stringify(competitors));
+                localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
             }
         }
 
-        showMessage('Club updated successfully!');
+        showMessage('Dojo updated successfully!');
     } else {
         // Add mode - create new club
         const club = {
@@ -3344,7 +3614,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         };
 
         db.add('clubs', club);
-        showMessage('Club added successfully!');
+        showMessage('Dojo added successfully!');
     }
 
     hideClubForm();
@@ -3357,7 +3627,7 @@ function syncCompetitorClubsToTable() {
     const clubs = db.load('clubs');
     const competitors = db.load('competitors');
 
-    console.log('Syncing clubs - Competitors:', competitors.length, 'Existing clubs:', clubs.length);
+    if (competitors.length === 0) return; // Nothing to sync
 
     const existingClubNames = clubs.map(c => c.name.toLowerCase());
     let addedCount = 0;
@@ -3398,7 +3668,7 @@ function loadClubs(skipSync = false) {
     tbody.innerHTML = '';
 
     if (clubs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No clubs registered yet. Click "Add Club" to get started.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No dojos registered yet. Click "Add Dojo" to get started.</td></tr>';
         return;
     }
 
@@ -3439,14 +3709,14 @@ function deleteClub(id) {
 
     let confirmMsg = `Are you sure you want to delete "${club.name}"?`;
     if (memberCount > 0) {
-        confirmMsg += `\n\nWarning: This club has ${memberCount} registered competitor(s). They will still show the club name but the club logo will be removed.`;
+        confirmMsg += `\n\nWarning: This dojo has ${memberCount} registered competitor(s). They will still show the dojo name but the dojo logo will be removed.`;
     }
 
     if (confirm(confirmMsg)) {
         db.delete('clubs', id);
         loadClubs();
         loadClubDropdown();
-        showMessage('Club deleted successfully!');
+        showMessage('Dojo deleted successfully!');
     }
 }
 
@@ -3455,11 +3725,11 @@ function clearAllClubs() {
     const competitors = db.load('competitors');
     const totalMembers = competitors.length;
 
-    if (confirm(`⚠️ WARNING: This will delete ALL ${clubs.length} clubs!\n\n${totalMembers} competitors are registered. Their club names will remain but club logos will be removed.\n\nAre you sure?`)) {
+    if (confirm(`⚠️ WARNING: This will delete ALL ${clubs.length} dojos!\n\n${totalMembers} competitors are registered. Their dojo names will remain but dojo logos will be removed.\n\nAre you sure?`)) {
         db.clear('clubs');
         loadClubs();
         loadClubDropdown();
-        showMessage('All clubs deleted!');
+        showMessage('All dojos deleted!');
     }
 }
 
@@ -3572,14 +3842,14 @@ function deleteInstructor(id) {
 }
 
 function clearAllInstructors() {
-    if (confirm('⚠️ WARNING: This will delete ALL instructors and their clubs permanently!\n\nAre you absolutely sure you want to continue?')) {
+    if (confirm('⚠️ WARNING: This will delete ALL instructors and their dojos permanently!\n\nAre you absolutely sure you want to continue?')) {
         if (confirm('This action CANNOT be undone! Click OK to confirm deletion of all instructors.')) {
             db.clear('instructors');
             db.clear('clubs');
             loadInstructors();
             loadClubDropdown();
             loadDashboard();
-            showMessage('All instructors and clubs have been deleted!');
+            showMessage('All instructors and dojos have been deleted!');
         }
     }
 }
@@ -3621,7 +3891,7 @@ function updateClubSelects() {
         if (!select) return; // Skip if element doesn't exist
 
         const currentValue = select.value;
-        select.innerHTML = '<option value="">Select Club</option>';
+        select.innerHTML = '<option value="">Select Dojo</option>';
         clubs.forEach(club => {
             const option = document.createElement('option');
             option.value = club.name;
@@ -3719,7 +3989,7 @@ function handleDefaultEventChange() {
         const existingDefault = eventTypes.find(et => et.isDefault);
 
         if (existingDefault) {
-            alert(`Note: "${existingDefault.name}" is currently the default event. Saving this event as default will replace it.`);
+            showToast(`Note: "${existingDefault.name}" is currently the default event. Saving this event as default will replace it.`, 'warning');
         }
     }
 }
@@ -3770,8 +4040,8 @@ if (eventForm) {
         };
 
         // Initialize event types storage if needed
-        if (!localStorage.getItem('eventTypes')) {
-            localStorage.setItem('eventTypes', JSON.stringify([]));
+        if (!localStorage.getItem(_scopedKey('eventTypes'))) {
+            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
         }
 
         db.add('eventTypes', eventType);
@@ -4191,7 +4461,7 @@ function loadScoreboardConfigsDropdown() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getUnifiedScoreboardConfig() {
-    try { return JSON.parse(localStorage.getItem('scoreboardConfig') || 'null'); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null'); } catch { return null; }
 }
 
 // Returns '#ffffff' for dark backgrounds, '#000000' for light backgrounds (like white)
@@ -4261,10 +4531,10 @@ function saveUnifiedScoreboardConfig() {
         },
     };
 
-    localStorage.setItem('scoreboardConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror corner names/colors into legacy scoreboardSettings so legacy paths still work
-    localStorage.setItem('scoreboardSettings', JSON.stringify({
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -4522,10 +4792,10 @@ function autoGenerateScoreboardConfig(sanctioningBody) {
         },
     };
 
-    localStorage.setItem('scoreboardConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror into legacy scoreboardSettings for backward compat
-    localStorage.setItem('scoreboardSettings', JSON.stringify({
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -5195,7 +5465,7 @@ function loadDivisionPreset() {
     selector.value = '';
 
     // Show success message
-    alert(`✓ Loaded preset: ${preset.name}\n\nYou can now customize the criteria as needed before saving.`);
+    showToast(`Loaded preset: ${preset.name} — customize as needed before saving`, 'success');
 }
 
 // Global variable to track current template being edited
@@ -5258,7 +5528,7 @@ function validateDivisionSizes(divisions, template) {
             '• Using presets (WKF/AAU) for standard categories'
         ].join('\n');
 
-        alert(warningMessage);
+        showToast(`Division size warnings: ${warnings.length} issue(s). ${viableDivisions}/${totalDivisions} viable. Consider combining small divisions.`, 'warning', 6000);
     } else if (viableDivisions > 0) {
         showMessage(`✓ ${viableDivisions} viable division${viableDivisions !== 1 ? 's' : ''} generated successfully!`, 'success');
     }
@@ -5484,7 +5754,7 @@ function deleteTemplate(templateId) {
 
     if (confirm(`Are you sure you want to delete the template "${template.name}"?\n\nThis will not affect already generated divisions.`)) {
         eventData.templates = eventData.templates.filter(t => t.id !== templateId);
-        localStorage.setItem('divisions', JSON.stringify(divisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
         loadTemplatesList();
         showMessage('Template deleted successfully!');
     }
@@ -5614,7 +5884,12 @@ function saveDivisionTemplate() {
         divisions[eventId].templates.push(template);
     }
 
-    localStorage.setItem('divisions', JSON.stringify(divisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+
+    // Sync templates to server (debounced)
+    const syncEventId = eventId;
+    const syncTemplates = divisions[eventId]?.templates || [];
+    _debouncedSync(`templates_${syncEventId}`, () => _syncTemplateToServer(syncEventId, syncTemplates), 1000);
 
     showMessage(currentTemplateId ? 'Template updated successfully!' : 'Template created successfully!');
 
@@ -5642,7 +5917,7 @@ function generateDivisions() {
     }
 
     // Get the division template for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     console.log('All divisions before generation:', allDivisions);
 
     const eventData = allDivisions[eventId];
@@ -5722,7 +5997,10 @@ function generateDivisions() {
     };
 
     console.log('Saving to localStorage:', allDivisions[eventId]);
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+
+    // Sync generated divisions to server (debounced)
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
 
     console.log('Calling loadDivisions...');
     loadDivisions();
@@ -5815,7 +6093,7 @@ function renderDivisions() {
 function loadDivisions() {
     console.log('=== LOAD DIVISIONS START ===');
 
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     console.log('All divisions from localStorage:', allDivisions);
 
     const container = document.getElementById('divisions-container');
@@ -5911,7 +6189,7 @@ function loadDivisions() {
                             <th>Gender</th>
                             <th>Weight</th>
                             <th>Rank</th>
-                            <th>Club</th>
+                            <th>Dojo</th>
                             <th>Country</th>
                         </tr>
                     </thead>
@@ -5946,7 +6224,7 @@ function exportDivisions() {
         return;
     }
 
-    let csvContent = 'Event,Division,Name,Age,Gender,Weight,Rank,Club,Country\n';
+    let csvContent = 'Event,Division,Name,Age,Gender,Weight,Rank,Dojo,Country\n';
     let totalCompetitors = 0;
 
     Object.keys(divisions).forEach(eventId => {
@@ -6056,12 +6334,12 @@ function deleteDivisions() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to show count
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6107,7 +6385,7 @@ function deleteDivisions() {
     // Only delete the generated divisions, preserve criteria/templates
     delete eventData.generated;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Clear the display
     renderDivisions();
@@ -6125,12 +6403,12 @@ function deleteCriteria() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to check if criteria exists
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.criteria || eventData.criteria.length === 0) {
@@ -6178,7 +6456,7 @@ function deleteCriteria() {
     // Delete criteria, preserve generated divisions
     delete eventData.criteria;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem('divisions', JSON.stringify(allDivisions));
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Hide the criteria builder if shown
     const builder = document.getElementById('division-builder');
@@ -6273,7 +6551,7 @@ function showBracketGenerator() {
     }
 
     // Load divisions for selected event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6282,7 +6560,7 @@ function showBracketGenerator() {
     }
 
     // Get event type to pre-populate defaults
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
 
     // Populate scoreboard dropdown from unified config
@@ -6436,14 +6714,14 @@ function updateBracketTypeOptions() {
 
 function getTemplateDurationForEvent(eventId) {
     // Check event-level match_duration_seconds first (from DB)
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const evt = eventTypes.find(e => String(e.id) === String(eventId));
     if (evt?.matchDurationSeconds) {
         return evt.matchDurationSeconds;
     }
 
     // Fall back to first template's matchDuration
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (eventData?.templates?.[0]?.matchDuration) {
         return eventData.templates[0].matchDuration;
@@ -6456,7 +6734,7 @@ function getTemplateDurationForEvent(eventId) {
  * Matches the division name against template age groups to find the right duration.
  */
 function getDivisionMatchDuration(divisionName, eventId) {
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (!eventData?.templates) return null;
 
@@ -6531,7 +6809,7 @@ function generateBracketsForAllDivisions() {
     }
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -6602,13 +6880,16 @@ function generateBracketsForAllDivisions() {
             bracket.matchDuration = (formDuration ? formDuration * 60 : null) || divisionDuration || eventDuration || null;
 
             // Save bracket
-            const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+            const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
             brackets[bracketId] = bracket;
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             successCount++;
         }
     });
+
+    // Sync all brackets to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     hideBracketGenerator();
     showMessage(`Generated ${successCount} brackets successfully! ${skippedCount > 0 ? `(Skipped ${skippedCount} divisions with less than 2 competitors)` : ''}`);
@@ -6698,7 +6979,7 @@ function generateBrackets(event) {
     }
 
     // Get competitors for this division
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     let competitors = [...(eventData.generated[divisionName] || [])];
 
@@ -6752,10 +7033,10 @@ function generateBrackets(event) {
     bracket.matAssignment = matAssignment;
 
     // Save bracket
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
     brackets[bracketId] = bracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     hideBracketGenerator();
     showMessage('Bracket generated successfully!');
@@ -7870,7 +8151,7 @@ function loadBrackets() {
 
     if (!container) return;
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Clean up: Remove any brackets with 0 competitors
     let cleaned = false;
@@ -7884,7 +8165,7 @@ function loadBrackets() {
 
     // Save if we cleaned anything
     if (cleaned) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     }
 
     const eventTypes = db.load('eventTypes');
@@ -8180,7 +8461,7 @@ let bracketEditMode = false;
 let originalBracketState = null;
 
 function viewBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -8277,9 +8558,12 @@ function saveBracketChanges() {
     if (!currentViewingBracket) return;
 
     // Save to localStorage
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     brackets[currentViewingBracket.id] = currentViewingBracket;
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+
+    // Sync to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     bracketEditMode = false;
     originalBracketState = null;
@@ -8479,7 +8763,7 @@ function renderRankingListBracket(container, bracket) {
     html += '<thead><tr style="border-bottom: 2px solid var(--glass-border);">';
     html += '<th style="text-align: center; padding: 10px; width: 50px;">#</th>';
     html += '<th style="text-align: left; padding: 10px;">Competitor</th>';
-    html += '<th style="text-align: left; padding: 10px;">Club</th>';
+    html += '<th style="text-align: left; padding: 10px;">Dojo</th>';
     html += '<th style="text-align: center; padding: 10px; width: 100px;">Score</th>';
     html += '<th style="text-align: center; padding: 10px; width: 100px;">Status</th>';
     html += '</tr></thead><tbody>';
@@ -8875,7 +9159,7 @@ window.scoreMatch = function(bracketId, matchId) {
     console.log('Bracket ID:', bracketId);
     console.log('Match ID:', matchId);
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     console.log('Available bracket IDs:', Object.keys(brackets));
 
     const bracket = brackets[bracketId];
@@ -8924,7 +9208,7 @@ window.scoreMatch = function(bracketId, matchId) {
     }
 
     // Get scoreboard configuration
-    const scoreboardConfigs = JSON.parse(localStorage.getItem('scoreboardConfigs') || '[]');
+    const scoreboardConfigs = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfigs')) || '[]');
     let scoreboardConfig = null;
     let scoreboardType = 'kumite';
 
@@ -8994,7 +9278,7 @@ function showDivisionTransfer() {
     const currentEventId = currentViewingBracket.eventId;
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[currentEventId];
 
     if (!eventData || !eventData.generated) {
@@ -9003,7 +9287,7 @@ function showDivisionTransfer() {
     }
 
     // Get all brackets to show competitor counts
-    const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Get ALL divisions (not just eligible ones)
     const allDivisionsData = [];
@@ -9260,8 +9544,8 @@ function transferCompetitor(targetDivisionName, eventId) {
         console.log('Event ID:', eventId);
 
         // Get all data
-        const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
-        const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const eventData = allDivisions[eventId];
 
         if (!eventData || !eventData.generated) {
@@ -9292,7 +9576,7 @@ function transferCompetitor(targetDivisionName, eventId) {
 
         // Save divisions
         allDivisions[eventId] = eventData;
-        localStorage.setItem('divisions', JSON.stringify(allDivisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
         console.log('Divisions saved');
 
         // Find target bracket before deleting anything
@@ -9320,7 +9604,7 @@ function transferCompetitor(targetDivisionName, eventId) {
         }
 
         // Save brackets (with deletions)
-        localStorage.setItem('brackets', JSON.stringify(allBrackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(allBrackets));
         console.log('Brackets saved after deletions');
 
         console.log('=== TRANSFER COMPLETE ===');
@@ -9343,10 +9627,17 @@ function transferCompetitor(targetDivisionName, eventId) {
 function deleteBracket(bracketId) {
     if (!confirm('Delete this bracket? This cannot be undone.')) return;
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     delete brackets[bracketId];
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+
+    // Delete from server (fire-and-forget)
+    if (currentTournamentId) {
+        fetch(`/api/tournaments/${currentTournamentId}/brackets/${encodeURIComponent(bracketId)}`, {
+            method: 'DELETE', credentials: 'include',
+        }).catch(err => console.warn('[sync] bracket delete failed:', err.message));
+    }
 
     // Clean orphaned schedule entries for deleted bracket
     if (bracket) {
@@ -9379,7 +9670,7 @@ function deleteBracket(bracketId) {
  */
 
 function deleteAllBrackets() {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketCount = Object.keys(brackets).length;
 
     if (bracketCount === 0) {
@@ -9417,7 +9708,10 @@ function deleteAllBrackets() {
     }
 
     // Delete all brackets
-    localStorage.setItem('brackets', JSON.stringify({}));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
+
+    // Sync deletion to server (debounced)
+    _debouncedSync('brackets', _syncBracketsToServer, 1000);
 
     // Clear mat schedule (brackets no longer exist) - use new scoped system
     cleanOrphanScheduleEntries();
@@ -9467,6 +9761,8 @@ function saveScheduleSettings() {
     showMessage('Schedule settings saved');
     recalculateScheduleTimes();
     loadScheduleGrid();
+    // Sync to server (debounced)
+    _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
 
 function resetScheduleSettings() {
@@ -9530,7 +9826,7 @@ function loadMatScheduleData() {
 
     // Migration: check old non-scoped key if no tournament-scoped data exists
     if (!data && currentTournamentId) {
-        const oldData = JSON.parse(localStorage.getItem('matSchedule') || 'null');
+        const oldData = JSON.parse(localStorage.getItem(_scopedKey('matSchedule')) || 'null');
         if (oldData && Object.keys(oldData).length > 0) {
             // Migrate old format to new format under tournament-scoped key
             data = migrateMatScheduleData(oldData);
@@ -9546,7 +9842,9 @@ function saveMatScheduleData(data) {
     const key = getMatScheduleKey();
     localStorage.setItem(key, JSON.stringify(data));
     // Also update the non-scoped key for backward compat with TV displays
-    localStorage.setItem('matSchedule', JSON.stringify(data));
+    localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(data));
+    // Sync to server (debounced)
+    _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
 
 function migrateMatScheduleData(oldData) {
@@ -9576,7 +9874,7 @@ function migrateMatScheduleData(oldData) {
 // Estimate duration for a division based on its bracket
 function estimateDivisionDuration(divisionName, eventId) {
     const settings = getScheduleSettings();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
     const event = eventTypes.find(e => e.id == eventId);
 
@@ -9631,7 +9929,7 @@ function estimateDivisionDuration(divisionName, eventId) {
 
 // Get progress for a division (completed units / total units)
 function getDivisionProgress(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Find bracket for this division
     let bracket = null;
@@ -9770,7 +10068,7 @@ function loadScheduleGrid() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Clean up empty brackets
     let cleaned = false;
@@ -9781,7 +10079,7 @@ function loadScheduleGrid() {
         }
     });
     if (cleaned) {
-        localStorage.setItem('brackets', JSON.stringify(brackets));
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
     }
 
     // Get all divisions that have brackets with competitors (ready to be scheduled)
@@ -10195,8 +10493,8 @@ function loadLiveControlGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -10305,7 +10603,7 @@ function loadQueueManagementGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -10452,10 +10750,10 @@ function handleQueueDragEnd(e) {
 
 // Live control functions
 function pauseMat(matId) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[matId]) {
         matScoreboards[matId].paused = !matScoreboards[matId].paused;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         showMessage(`Mat ${matId} ${matScoreboards[matId].paused ? 'paused' : 'resumed'}`);
         loadLiveControlGrid();
     }
@@ -10482,9 +10780,9 @@ function skipDivision(matId) {
             recalculateScheduleTimes();
 
             // Clear current scoreboard
-            const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+            const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
             delete matScoreboards[matId];
-            localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
             showMessage('Division skipped and moved to end of queue');
             loadLiveControlGrid();
@@ -10553,7 +10851,7 @@ function autoScheduleDivisions() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Get all divisions that have brackets with competitors
     const allDivisionsList = [];
@@ -10669,7 +10967,7 @@ function clearAllSchedules() {
 
 function cleanOrphanScheduleEntries() {
     const schedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     // Build a set of all valid division names from existing brackets
     const validDivisions = new Set();
@@ -10986,14 +11284,14 @@ let operatorYukoCountBlue = 0;
 
 // Default: AKA (red/corner1) on RIGHT, AO (blue/corner2) on LEFT (matches judge's view from behind ref)
 // When swapped: AKA on LEFT, AO on RIGHT (for operators sitting on the other side)
-let operatorSidesSwapped = localStorage.getItem('operatorSidesSwapped') === 'true';
+let operatorSidesSwapped = localStorage.getItem(_scopedKey('operatorSidesSwapped')) === 'true';
 
 // Toggle operator sides (swap left/right corner panels)
 // Default: AKA (corner1/red) on RIGHT, AO (corner2/blue) on LEFT
 // Swapped: AKA on LEFT, AO on RIGHT
 function toggleOperatorSides() {
     operatorSidesSwapped = !operatorSidesSwapped;
-    localStorage.setItem('operatorSidesSwapped', operatorSidesSwapped);
+    localStorage.setItem(_scopedKey('operatorSidesSwapped'), operatorSidesSwapped);
     // Kumite: 3-column grid [Corner1, Timer, Corner2]
     const grid = document.querySelector('.scoreboard-display');
     if (grid && grid.children.length >= 3) {
@@ -11175,12 +11473,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     currentOperatorEventId = eventId;
 
     // Get event type to determine scoreboard type
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     console.log('Event Type:', eventType);
 
     // Find bracket for this division
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let currentBracket = null;
 
     // Search for bracket matching this division and event
@@ -11260,7 +11558,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     if (isIndividualScoring || isKataFlagsWithKataStructure) {
         // Route to Kata scoreboard for individual scoring or kata-flags with kata structure
         if (!currentBracket) {
-            alert('No bracket found for this division. Please generate a bracket first.');
+            showToast('No bracket found for this division. Please generate a bracket first.', 'error');
             return;
         }
         console.log('Routing to KATA scoreboard');
@@ -11319,7 +11617,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     operatorBlueCompetitor = null;
 
     // Get competitors in this division
-    const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     const divisionCompetitors = eventData?.generated?.[divisionName] || [];
 
@@ -11356,7 +11654,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         if (currentMatch && currentMatch.status === 'pending') {
             currentMatch.status = 'in-progress';
             brackets[window.currentBracketId] = currentBracket;
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
         }
     }
 
@@ -11436,7 +11734,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     }
 
     // Get mat name and scoreboard settings
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -11466,7 +11764,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         corner2Color = scoreboardConfig.settings.corner2Color || '#0a84ff';
         console.log('Using legacy named scoreboard config:', { corner1Name, corner1Color, corner2Name, corner2Color });
     } else {
-        const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -11563,7 +11861,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // Show next division from schedule
     if (nextDivision) {
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         const eventName = nextEvent?.name || 'Unknown Event';
 
@@ -11604,7 +11902,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                                 ${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight || 'N/A'}kg | ${operatorRedCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorRedCompetitor.clubLogo ? `<img src="${operatorRedCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
-                                    <span>${operatorRedCompetitor.club || 'No Club'}</span>
+                                    <span>${operatorRedCompetitor.club || 'No Dojo'}</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -11648,7 +11946,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                                 ${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight || 'N/A'}kg | ${operatorBlueCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorBlueCompetitor.clubLogo ? `<img src="${operatorBlueCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
-                                    <span>${operatorBlueCompetitor.club || 'No Club'}</span>
+                                    <span>${operatorBlueCompetitor.club || 'No Dojo'}</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -11665,6 +11963,10 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                     <button class="btn btn-primary" onclick="operatorDeclareWinner('red')" style="background: ${corner1Color}; color: ${corner1TextColor}; border: 1px solid ${corner1TextColor}33; font-size: clamp(11px, 1.2vw, 14px); padding: clamp(6px, 0.8vh, 10px) 12px; order: ${operatorSidesSwapped ? 1 : 3};">${corner1Name} Wins</button>
                     <button class="btn btn-primary" onclick="operatorDeclareWinner('blue')" style="background: ${corner2Color}; color: ${corner2TextColor}; border: 1px solid ${corner2TextColor}33; font-size: clamp(11px, 1.2vw, 14px); padding: clamp(6px, 0.8vh, 10px) 12px; order: ${operatorSidesSwapped ? 3 : 1};">${corner2Name} Wins</button>
                     <button class="btn btn-secondary" onclick="operatorResetMatch()" style="font-size: clamp(11px, 1.2vw, 14px); padding: clamp(6px, 0.8vh, 10px) 12px; order: 2;">Reset</button>
+                </div>
+                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                    <button class="btn btn-secondary" onclick="operatorMarkAbsent('red')" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 1 : 3};">${corner1Name} Absent</button>
+                    <button class="btn btn-secondary" onclick="operatorMarkAbsent('blue')" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 3 : 1};">${corner2Name} Absent</button>
                 </div>
             </div>
 
@@ -11723,7 +12025,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // routing works. Kumite interference is already prevented by activeScoreboardType checks.
 
     // Get mat name early so we can store it globally
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -11864,7 +12166,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
 
     // Store for later use - find bracket ID by matching bracket properties
     window.currentMatchId = currentMatch.id;
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     window.currentBracketId = Object.keys(brackets).find(id => {
         const b = brackets[id];
         return (b.division === bracket.division || b.divisionName === bracket.division) && b.eventId == bracket.eventId;
@@ -11916,7 +12218,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner1TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor1.firstName} ${competitor1.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner1TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Club'}
+                        ${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Dojo'}
                     </div>
                     <div id="corner1-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner1TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner1TextColor}; opacity: 0.7;">Flags</div>
@@ -11933,7 +12235,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner2TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor2.firstName} ${competitor2.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner2TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Club'}
+                        ${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Dojo'}
                     </div>
                     <div id="corner2-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner2TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner2TextColor}; opacity: 0.7;">Flags</div>
@@ -11966,11 +12268,15 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             <div class="glass-panel" style="text-align: center; flex-shrink: 0;">
                 <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center;">
                     <button class="btn btn-primary kata-flags-declare-winner-btn" style="font-size: clamp(13px, 1.4vw, 16px); padding: clamp(6px, 1vh, 12px) 16px;">
-                        ✓ Declare Winner
+                        Declare Winner
                     </button>
                     <button class="btn btn-secondary kata-flags-reset-votes-btn" style="font-size: 12px; padding: 6px 12px;">
                         Reset Votes
                     </button>
+                </div>
+                <div style="display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                    <button class="btn btn-secondary kata-flags-mark-absent-btn" data-absent-corner="corner1" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 1 : 2};">${corner1Name} Absent</button>
+                    <button class="btn btn-secondary kata-flags-mark-absent-btn" data-absent-corner="corner2" style="font-size: 11px; padding: 4px 10px; color: #ff453a; border-color: #ff453a44; order: ${operatorSidesSwapped ? 2 : 1};">${corner2Name} Absent</button>
                 </div>
                 <div id="kata-flags-result" style="margin-top: 6px; font-size: 13px; color: var(--text-secondary);"></div>
             </div>
@@ -12031,6 +12337,17 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             return;
         }
 
+        // Handle Mark Absent button
+        const absentBtn = e.target.closest('.kata-flags-mark-absent-btn');
+        if (absentBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const absentCorner = absentBtn.dataset.absentCorner;
+            console.log('>>> Mark absent clicked for', absentCorner);
+            kataFlagsMarkAbsent(absentCorner);
+            return;
+        }
+
         // Handle judge voting buttons
         const voteBtn = e.target.closest('.kata-flags-vote');
         if (voteBtn) {
@@ -12054,14 +12371,14 @@ function openKataFlagsTVDisplay() {
     console.log('openKataFlagsTVDisplay called, kataFlagsMatId:', kataFlagsMatId);
     if (!kataFlagsMatId) {
         console.error('Cannot open TV display - kataFlagsMatId is not set');
-        alert('Error: Mat ID not set. Please close and reopen the operator.');
+        showToast('Error: Mat ID not set. Please close and reopen the operator.', 'error');
         return;
     }
     const windowName = `TVDisplay_Mat${kataFlagsMatId}`;
     console.log('Opening TV display window:', windowName);
     const newWindow = window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
     if (!newWindow) {
-        alert('Failed to open TV display. Please allow popups for this site.');
+        showToast('Failed to open TV display. Please allow popups for this site.', 'error');
     }
 }
 
@@ -12070,6 +12387,14 @@ window.openKataFlagsTVDisplay = openKataFlagsTVDisplay;
 
 function kataFlagsVote(judgeIndex, corner) {
     kataFlagsJudgeVotes[judgeIndex] = corner;
+
+    // Track vote timestamps for decision speed analytics
+    if (!window._kataFlagsVoteTimestamps) window._kataFlagsVoteTimestamps = {};
+    if (corner) {
+        window._kataFlagsVoteTimestamps[judgeIndex] = Date.now();
+    } else {
+        delete window._kataFlagsVoteTimestamps[judgeIndex];
+    }
 
     // Update UI - use the stored scoreboard config
     const voteDisplay = document.getElementById(`judge-${judgeIndex}-vote`);
@@ -12140,7 +12465,7 @@ function updateKataFlagsTVDisplay() {
 
         // Corner 1
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Club'}`,
+        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -12150,7 +12475,7 @@ function updateKataFlagsTVDisplay() {
 
         // Corner 2
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Club'}`,
+        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -12163,12 +12488,13 @@ function updateKataFlagsTVDisplay() {
     };
 
     console.log('State to save:', state);
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
     console.log('State saved to localStorage');
 }
 
 function kataFlagsResetVotes() {
     kataFlagsJudgeVotes.fill(null);
+    window._kataFlagsVoteTimestamps = {}; // reset vote timestamps for analytics
 
     // Reset UI
     kataFlagsJudgeVotes.forEach((_, i) => {
@@ -12195,16 +12521,16 @@ function kataFlagsDeclareWinner() {
 
     if (totalVotes === 0) {
         window._kataFlagsDeclaring = false;
-        alert('No votes recorded! Judges must vote before declaring a winner.');
+        showToast('No votes recorded! Judges must vote before declaring a winner.', 'error');
         return;
     }
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[window.currentBracketId];
 
     if (!bracket) {
         window._kataFlagsDeclaring = false;
-        alert('Error: Bracket not found. Please reload the operator.');
+        showToast('Error: Bracket not found. Please reload the operator.', 'error');
         console.error('Bracket ID not found:', window.currentBracketId);
         return;
     }
@@ -12230,7 +12556,7 @@ function kataFlagsDeclareWinner() {
 
     if (!match) {
         window._kataFlagsDeclaring = false;
-        alert('Error: Match not found in bracket.');
+        showToast('Error: Match not found in bracket.', 'error');
         console.error('Match ID not found:', window.currentMatchId);
         return;
     }
@@ -12243,7 +12569,7 @@ function kataFlagsDeclareWinner() {
         winner = match.blueCorner;
     } else {
         window._kataFlagsDeclaring = false;
-        alert('Tie! Judges must break the tie.');
+        showToast('Tie! Judges must break the tie.', 'warning');
         return;
     }
 
@@ -12252,6 +12578,11 @@ function kataFlagsDeclareWinner() {
     match.status = 'completed';
     match.corner1Flags = corner1Votes;
     match.corner2Flags = corner2Votes;
+    match.winMethod = 'decision';
+    match.winNote = `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`;
+
+    // Log win method to score edit log
+    logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `decision: Flag decision (${corner1Votes}-${corner2Votes})`);
 
     // Advance winner to next round
     if (bracket.type === 'single-elimination') {
@@ -12331,10 +12662,10 @@ function kataFlagsDeclareWinner() {
     }
 
     // Save updated bracket
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Save to results/history
-    const results = JSON.parse(localStorage.getItem('results') || '[]');
+    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
     results.push({
         id: generateUniqueId(),
         timestamp: new Date().toISOString(),
@@ -12346,9 +12677,62 @@ function kataFlagsDeclareWinner() {
         scoreboardType: 'kata-flags',
         corner1Flags: corner1Votes,
         corner2Flags: corner2Votes,
-        method: 'Flag Decision'
+        method: 'Flag Decision',
+        winMethod: 'decision',
+        winNote: `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`
     });
-    localStorage.setItem('results', JSON.stringify(results));
+    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+
+    // ── Judge Vote Analytics Logging ──────────────────────────────────────
+    // Store each judge's vote for analytics (does NOT block the UI flow)
+    try {
+        const majorityVote = corner1Votes > corner2Votes ? 'corner1' : 'corner2';
+        const voteTimestamps = window._kataFlagsVoteTimestamps || {};
+        const tsValues = Object.values(voteTimestamps);
+        const firstVoteTs = tsValues.length > 0 ? Math.min(...tsValues) : null;
+        const lastVoteTs = tsValues.length > 0 ? Math.max(...tsValues) : null;
+        // Approximate decision speed: time spread between first and last judge vote
+        const voteDurationSeconds = (firstVoteTs && lastVoteTs && lastVoteTs > firstVoteTs)
+            ? Math.round((lastVoteTs - firstVoteTs) / 100) / 10
+            : null;
+
+        const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+
+        for (let ji = 0; ji < kataFlagsJudgeVotes.length; ji++) {
+            const judgeVote = kataFlagsJudgeVotes[ji];
+            if (!judgeVote) continue; // skip judges who didn't vote
+
+            // Determine the competitor's dojo for the corner this judge voted for
+            let competitorDojo = null;
+            if (judgeVote === 'corner1' && kataFlagsCurrentMatch?.redCorner) {
+                competitorDojo = kataFlagsCurrentMatch.redCorner.club || null;
+            } else if (judgeVote === 'corner2' && kataFlagsCurrentMatch?.blueCorner) {
+                competitorDojo = kataFlagsCurrentMatch.blueCorner.club || null;
+            }
+
+            judgeVoteLog.push({
+                matchId: window.currentMatchId || match.id,
+                divisionName: kataFlagsDivisionName || null,
+                judgeName: `Judge ${ji + 1}`,
+                judgeIndex: ji,
+                vote: judgeVote,
+                majorityVote: majorityVote,
+                votedWithMajority: judgeVote === majorityVote,
+                voteDurationSeconds: voteDurationSeconds,
+                competitorDojo: competitorDojo,
+                timestamp: new Date().toISOString(),
+            });
+        }
+
+        localStorage.setItem(_scopedKey('judgeVoteLog'), JSON.stringify(judgeVoteLog));
+        window._kataFlagsVoteTimestamps = {}; // reset for next match
+
+        // Debounced sync to server
+        _debouncedSync('judgeVotes', _syncJudgeVotesToServer, 3000);
+    } catch (analyticsErr) {
+        console.warn('[Judge Analytics] Failed to log votes:', analyticsErr);
+    }
+    // ── End Judge Vote Analytics Logging ──────────────────────────────────
 
     // Show winner message with Next Match / Division Complete button
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
@@ -12394,7 +12778,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
 
         // Keep current competitors and flag counts
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Club'}`,
+        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -12403,7 +12787,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         corner1Color: corner1Color,
 
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Club'}`,
+        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -12423,7 +12807,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         }
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function kataFlagsNextMatch() {
@@ -12432,7 +12816,7 @@ function kataFlagsNextMatch() {
     console.log(`[NEXT MATCH] Division: ${kataFlagsDivisionName}, complete: ${divisionComplete}`);
 
     // Debug: dump the full bracket state
-    const debugBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const debugBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     for (const id in debugBrackets) {
         const b = debugBrackets[id];
         if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
@@ -12608,7 +12992,7 @@ function checkAutoWin(org, rules) {
             operatorPauseTimer();
             setTimeout(() => {
                 if (confirm(`${pointLead}-point lead reached!\n\n${winner.toUpperCase()} leads ${operatorRedScore} - ${operatorBlueScore}.\n\nDeclare ${winner.toUpperCase()} as winner?`)) {
-                    operatorDeclareWinner(winner);
+                    operatorDeclareWinner(winner, { winMethod: 'points', winNote: `${pointLead}-point lead` });
                 }
             }, 100);
         }
@@ -12624,7 +13008,7 @@ function checkAutoWin(org, rules) {
                         operatorPauseTimer();
                         setTimeout(() => {
                             showMessage(`SUDDEN DEATH — ${winner.toUpperCase()} wins!`);
-                            operatorDeclareWinner(winner);
+                            operatorDeclareWinner(winner, { winMethod: 'points', winNote: 'Sudden death' });
                         }, 100);
                     }
                     return;
@@ -12642,14 +13026,14 @@ function checkAutoWin(org, rules) {
                 const reason = operatorWazaariCountRed >= 2 ? 'AWASETE IPPON' : 'IPPON';
                 setTimeout(() => {
                     showMessage(`${reason}! RED wins!`);
-                    operatorDeclareWinner('red');
+                    operatorDeclareWinner('red', { winMethod: 'ippon', winNote: reason });
                 }, 100);
             } else if (blueWins && !redWins) {
                 operatorPauseTimer();
                 const reason = operatorWazaariCountBlue >= 2 ? 'AWASETE IPPON' : 'IPPON';
                 setTimeout(() => {
                     showMessage(`${reason}! BLUE wins!`);
-                    operatorDeclareWinner('blue');
+                    operatorDeclareWinner('blue', { winMethod: 'ippon', winNote: reason });
                 }, 100);
             }
         } else if (operatorMatchFormat === 'shobu-sanbon') {
@@ -12658,13 +13042,13 @@ function checkAutoWin(org, rules) {
                 operatorPauseTimer();
                 setTimeout(() => {
                     showMessage('SANBON! RED wins!');
-                    operatorDeclareWinner('red');
+                    operatorDeclareWinner('red', { winMethod: 'ippon', winNote: 'SANBON (3 points)' });
                 }, 100);
             } else if (operatorBlueScore >= 3.0) {
                 operatorPauseTimer();
                 setTimeout(() => {
                     showMessage('SANBON! BLUE wins!');
-                    operatorDeclareWinner('blue');
+                    operatorDeclareWinner('blue', { winMethod: 'ippon', winNote: 'SANBON (3 points)' });
                 }, 100);
             }
         }
@@ -12729,7 +13113,7 @@ function operatorAddPenalty(corner, trackName) {
     if (trackName === 'shikkaku') {
         const message = `${corner.toUpperCase()} disqualified from ENTIRE TOURNAMENT (SHIKKAKU)`;
         if (confirm(`${message}\n\nDeclare ${opponentCorner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(opponentCorner);
+            operatorDeclareWinner(opponentCorner, { winMethod: 'hansoku', winNote: 'SHIKKAKU - Tournament disqualification', withdrawalType: 'disqualified' });
         }
         return;
     }
@@ -12777,7 +13161,7 @@ function operatorAddPenalty(corner, trackName) {
         operatorPauseTimer();
         const message = `${corner.toUpperCase()} disqualified — ${trackDef.name} reached ${newLevelName.toUpperCase()}`;
         if (confirm(`${message}\n\nDeclare ${opponentCorner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(opponentCorner);
+            operatorDeclareWinner(opponentCorner, { winMethod: 'hansoku', winNote: `${trackDef.name} - ${newLevelName.toUpperCase()}`, withdrawalType: 'disqualified' });
             return;
         }
     }
@@ -12899,7 +13283,7 @@ function handleTimeUp(org, rules) {
         const redDisplay = rules.scoring.isDecimal ? operatorRedScore.toFixed(1) : operatorRedScore;
         const blueDisplay = rules.scoring.isDecimal ? operatorBlueScore.toFixed(1) : operatorBlueScore;
         if (confirm(`Time up! ${winner.toUpperCase()} leads ${redDisplay} - ${blueDisplay}.\n\nDeclare ${winner.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(winner);
+            operatorDeclareWinner(winner, { winMethod: 'points', winNote: 'Time up - score lead' });
         }
         return;
     }
@@ -12908,7 +13292,7 @@ function handleTimeUp(org, rules) {
     if (org === 'wkf' && rules.winConditions.senshu && operatorSenshu) {
         // Senshu holder wins on tie
         if (confirm(`Tied ${operatorRedScore} - ${operatorBlueScore}.\n\nSENSHU goes to ${operatorSenshu.toUpperCase()}.\n\nDeclare ${operatorSenshu.toUpperCase()} as winner?`)) {
-            operatorDeclareWinner(operatorSenshu);
+            operatorDeclareWinner(operatorSenshu, { winMethod: 'decision', winNote: 'SENSHU advantage' });
         }
         return;
     }
@@ -13067,12 +13451,12 @@ function showHanteiModal() {
         const panel = document.getElementById('timeup-decision-panel');
         if (panel) panel.remove();
         showMessage(`HANTEI: ${c1Name} wins by judges' decision!`);
-        operatorDeclareWinner('red');
+        operatorDeclareWinner('red', { winMethod: 'decision', winNote: 'HANTEI - Judges decision' });
     } else if (choice === '2') {
         const panel = document.getElementById('timeup-decision-panel');
         if (panel) panel.remove();
         showMessage(`HANTEI: ${c2Name} wins by judges' decision!`);
-        operatorDeclareWinner('blue');
+        operatorDeclareWinner('blue', { winMethod: 'decision', winNote: 'HANTEI - Judges decision' });
     }
 }
 
@@ -13151,7 +13535,62 @@ function operatorResetMatch() {
     updateOperatorTVDisplay();
 }
 
-function operatorDeclareWinner(corner) {
+/**
+ * Show a win-method selection modal. Returns a Promise that resolves to
+ * { winMethod, winNote } or null if the user cancels.
+ */
+function showWinMethodModal(winnerName, cornerLabel) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Declare <strong>${cornerLabel}</strong> corner (<strong>${winnerName}</strong>) as the WINNER?
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Win Method</label>
+                    <select id="win-method-select" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="points">Points (Score Lead)</option>
+                        <option value="decision">Decision (Hantei / Judge)</option>
+                        <option value="ippon">Ippon</option>
+                        <option value="hansoku">Hansoku (Disqualification)</option>
+                        <option value="withdrawal">Withdrawal</option>
+                        <option value="default_win">Default Win (No-Show / BYE)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Note (optional)</label>
+                    <input id="win-method-note" type="text" placeholder="e.g. excessive contact, out of bounds" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="win-method-cancel">Cancel</button>
+                    <button class="confirm-btn confirm-ok" id="win-method-confirm">Confirm Winner</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+
+        overlay.querySelector('#win-method-cancel').onclick = () => cleanup(null);
+        overlay.querySelector('#win-method-confirm').onclick = () => {
+            const winMethod = overlay.querySelector('#win-method-select').value;
+            const winNote = overlay.querySelector('#win-method-note').value.trim();
+            cleanup({ winMethod, winNote });
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#win-method-confirm').focus(), 50);
+    });
+}
+
+/**
+ * Declare a winner for kumite match.
+ * @param {string} corner - 'red' or 'blue'
+ * @param {object} [winMethodOverride] - Optional { winMethod, winNote, withdrawalType } to skip the modal
+ */
+async function operatorDeclareWinner(corner, winMethodOverride) {
     const winner = corner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
     const loser = corner === 'red' ? operatorBlueCompetitor : operatorRedCompetitor;
 
@@ -13160,18 +13599,30 @@ function operatorDeclareWinner(corner) {
         return;
     }
 
-    // Safety confirmation to prevent accidental winner declaration
-    const winnerName = `${winner.firstName} ${winner.lastName}`;
-    const cornerLabel = corner === 'red' ? 'RED' : 'BLUE';
-    if (!confirm(`Declare ${cornerLabel} corner (${winnerName}) as the WINNER?\n\nThis action will record the match result.`)) {
-        return;
+    let winMethod = 'points';
+    let winNote = '';
+    let withdrawalType = null;
+
+    if (winMethodOverride) {
+        // Auto-called path (ippon, DQ, no-show, etc.) — skip modal
+        winMethod = winMethodOverride.winMethod || 'points';
+        winNote = winMethodOverride.winNote || '';
+        withdrawalType = winMethodOverride.withdrawalType || null;
+    } else {
+        // Manual call — show win method modal
+        const winnerName = `${winner.firstName} ${winner.lastName}`;
+        const cornerLabel = corner === 'red' ? 'RED' : 'BLUE';
+        const result = await showWinMethodModal(winnerName, cornerLabel);
+        if (!result) return; // User cancelled
+        winMethod = result.winMethod;
+        winNote = result.winNote;
     }
 
     operatorPauseTimer();
 
     // Save match result to bracket
     if (window.currentBracketId && window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
 
         if (bracket) {
@@ -13201,6 +13652,12 @@ function operatorDeclareWinner(corner) {
                 match.score1 = corner === 'red' ? operatorRedScore : operatorBlueScore;
                 match.score2 = corner === 'red' ? operatorBlueScore : operatorRedScore;
                 match.status = 'completed';
+                match.winMethod = winMethod;
+                match.winNote = winNote || '';
+                if (withdrawalType) match.withdrawalType = withdrawalType;
+
+                // Log win method to score edit log
+                logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `${winMethod}${winNote ? ': ' + winNote : ''}`);
 
                 // Advance winner to next round
                 if (bracket.type === 'single-elimination') {
@@ -13252,7 +13709,7 @@ function operatorDeclareWinner(corner) {
                 }
 
                 // Save updated bracket
-                localStorage.setItem('brackets', JSON.stringify(brackets));
+                localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             }
         }
     }
@@ -13267,7 +13724,7 @@ function operatorDeclareWinner(corner) {
     });
 
     // Show inline winner result on operator side (no full-screen overlay)
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const winnerCornerName = corner === 'red' ? (settings.corner1Name || 'RED') : (settings.corner2Name || 'BLUE');
     const winnerColor = corner === 'red' ? (settings.corner1Custom || '#ff453a') : (settings.corner2Custom || '#0a84ff');
 
@@ -13319,6 +13776,302 @@ function operatorDeclareWinner(corner) {
     window._winnerCountdownInterval = countdownInterval;
 }
 
+/**
+ * Mark a competitor as absent (no-show / withdrew / medical / disqualified).
+ * Shows a modal to select withdrawal type, then auto-declares the opponent as winner.
+ * @param {string} absentCorner - 'red' or 'blue' — the corner that is absent
+ */
+async function operatorMarkAbsent(absentCorner) {
+    const absentCompetitor = absentCorner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
+    const opponentCorner = absentCorner === 'red' ? 'blue' : 'red';
+    const opponentCompetitor = opponentCorner === 'red' ? operatorRedCompetitor : operatorBlueCompetitor;
+
+    if (!absentCompetitor) {
+        showMessage('No competitor loaded for this corner', 'error');
+        return;
+    }
+    if (!opponentCompetitor) {
+        showMessage('No opponent loaded — cannot declare a default winner', 'error');
+        return;
+    }
+
+    const absentName = `${absentCompetitor.firstName} ${absentCompetitor.lastName}`;
+    const opponentName = `${opponentCompetitor.firstName} ${opponentCompetitor.lastName}`;
+
+    // Show withdrawal type modal
+    const result = await new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Mark <strong>${absentName}</strong> as absent?
+                </p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    <strong>${opponentName}</strong> will be declared the winner by default.
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Reason</label>
+                    <select id="absent-type-select" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="no_show">No-Show (Did not arrive)</option>
+                        <option value="withdrew">Withdrew (Pulled out)</option>
+                        <option value="medical">Medical (Injury / Illness)</option>
+                        <option value="disqualified">Disqualified</option>
+                    </select>
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="absent-cancel">Cancel</button>
+                    <button class="confirm-btn confirm-ok confirm-danger" id="absent-confirm">Mark Absent</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#absent-cancel').onclick = () => cleanup(null);
+        overlay.querySelector('#absent-confirm').onclick = () => {
+            const withdrawalType = overlay.querySelector('#absent-type-select').value;
+            cleanup(withdrawalType);
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#absent-confirm').focus(), 50);
+    });
+
+    if (!result) return; // User cancelled
+
+    const withdrawalLabels = {
+        no_show: 'Opponent no-show',
+        withdrew: 'Opponent withdrew',
+        medical: 'Opponent medical withdrawal',
+        disqualified: 'Opponent disqualified'
+    };
+
+    // Declare the opponent as winner with default_win method
+    operatorDeclareWinner(opponentCorner, {
+        winMethod: 'default_win',
+        winNote: withdrawalLabels[result] || 'Opponent absent',
+        withdrawalType: result
+    });
+}
+
+/**
+ * Mark a competitor as absent in kata-flags head-to-head.
+ * @param {string} absentCorner - 'corner1' (red) or 'corner2' (blue)
+ */
+async function kataFlagsMarkAbsent(absentCorner) {
+    const match = kataFlagsCurrentMatch;
+    if (!match) {
+        showToast('No current match loaded', 'error');
+        return;
+    }
+
+    const absentCompetitor = absentCorner === 'corner1' ? match.redCorner : match.blueCorner;
+    const opponentCompetitor = absentCorner === 'corner1' ? match.blueCorner : match.redCorner;
+
+    if (!absentCompetitor || !opponentCompetitor) {
+        showToast('Both competitors must be loaded', 'error');
+        return;
+    }
+
+    const absentName = `${absentCompetitor.firstName} ${absentCompetitor.lastName}`;
+    const opponentName = `${opponentCompetitor.firstName} ${opponentCompetitor.lastName}`;
+
+    // Show withdrawal type modal
+    const withdrawalType = await new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 420px; width: 90%;">
+                <p class="confirm-message" style="margin-bottom: 12px;">
+                    Mark <strong>${absentName}</strong> as absent?
+                </p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                    <strong>${opponentName}</strong> will be declared the winner by default.
+                </p>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary);">Reason</label>
+                    <select id="absent-type-select-kf" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                        <option value="no_show">No-Show (Did not arrive)</option>
+                        <option value="withdrew">Withdrew (Pulled out)</option>
+                        <option value="medical">Medical (Injury / Illness)</option>
+                        <option value="disqualified">Disqualified</option>
+                    </select>
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="absent-cancel-kf">Cancel</button>
+                    <button class="confirm-btn confirm-ok confirm-danger" id="absent-confirm-kf">Mark Absent</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#absent-cancel-kf').onclick = () => cleanup(null);
+        overlay.querySelector('#absent-confirm-kf').onclick = () => {
+            cleanup(overlay.querySelector('#absent-type-select-kf').value);
+        };
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(null); });
+        setTimeout(() => overlay.querySelector('#absent-confirm-kf').focus(), 50);
+    });
+
+    if (!withdrawalType) return; // User cancelled
+
+    const withdrawalLabels = {
+        no_show: 'Opponent no-show',
+        withdrew: 'Opponent withdrew',
+        medical: 'Opponent medical withdrawal',
+        disqualified: 'Opponent disqualified'
+    };
+
+    // Guard: if match is already completed, don't re-process
+    if (match.status === 'completed') {
+        showToast('Match already completed', 'error');
+        return;
+    }
+
+    // Update match data
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const bracket = brackets[window.currentBracketId];
+    if (!bracket) {
+        showToast('Bracket not found', 'error');
+        return;
+    }
+
+    // Find the match in all arrays
+    const allBracketMatches = [
+        ...(bracket.matches || []),
+        ...(bracket.winners || []),
+        ...(bracket.losers || []),
+        ...(bracket.repechageA || []),
+        ...(bracket.repechageB || [])
+    ];
+    if (bracket.finals) allBracketMatches.push(bracket.finals);
+    if (bracket.reset) allBracketMatches.push(bracket.reset);
+    const bracketMatch = allBracketMatches.find(m => m.id === window.currentMatchId);
+
+    if (!bracketMatch) {
+        showToast('Match not found in bracket', 'error');
+        return;
+    }
+
+    const winner = opponentCompetitor;
+    const loser = absentCompetitor;
+
+    bracketMatch.winner = winner;
+    bracketMatch.status = 'completed';
+    bracketMatch.winMethod = 'default_win';
+    bracketMatch.winNote = withdrawalLabels[withdrawalType] || 'Opponent absent';
+    bracketMatch.withdrawalType = withdrawalType;
+    bracketMatch.corner1Flags = 0;
+    bracketMatch.corner2Flags = 0;
+
+    // Log to score edit log
+    logScoreEdit(window.currentBracketId, window.currentMatchId, 'winMethod', null, `default_win: ${withdrawalLabels[withdrawalType]} (${absentName})`);
+
+    // Advance winner (reuse existing bracket advancement logic)
+    if (bracket.type === 'single-elimination') {
+        const matchPool = bracket.matches || [];
+        let advanceMatch = bracketMatch;
+        let advanceWinner = winner;
+
+        while (true) {
+            const nextRound = advanceMatch.round + 1;
+            const nextPosition = Math.floor(advanceMatch.position / 2);
+            const nextMatch = matchPool.find(m => m.round === nextRound && m.position === nextPosition);
+            if (!nextMatch) break;
+
+            // Guard duplicate
+            const winnerId = advanceWinner.id || `${advanceWinner.firstName}_${advanceWinner.lastName}`;
+            const redId = nextMatch.redCorner ? (nextMatch.redCorner.id || `${nextMatch.redCorner.firstName}_${nextMatch.redCorner.lastName}`) : null;
+            const blueId = nextMatch.blueCorner ? (nextMatch.blueCorner.id || `${nextMatch.blueCorner.firstName}_${nextMatch.blueCorner.lastName}`) : null;
+            if (winnerId === redId || winnerId === blueId) break;
+
+            if (advanceMatch.position % 2 === 0) {
+                if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
+                else if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
+                else break;
+            } else {
+                if (!nextMatch.blueCorner) nextMatch.blueCorner = advanceWinner;
+                else if (!nextMatch.redCorner) nextMatch.redCorner = advanceWinner;
+                else break;
+            }
+
+            // BYE cascade
+            if (nextMatch.redCorner && !nextMatch.blueCorner) {
+                const blueFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2 + 1);
+                if (blueFeeder && (blueFeeder.status === 'empty' || blueFeeder.status === 'bye')) {
+                    nextMatch.status = 'bye';
+                    nextMatch.winner = nextMatch.redCorner;
+                    nextMatch.score1 = 'BYE';
+                    advanceMatch = nextMatch;
+                    advanceWinner = nextMatch.redCorner;
+                    continue;
+                }
+            } else if (!nextMatch.redCorner && nextMatch.blueCorner) {
+                const redFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2);
+                if (redFeeder && (redFeeder.status === 'empty' || redFeeder.status === 'bye')) {
+                    nextMatch.status = 'bye';
+                    nextMatch.winner = nextMatch.blueCorner;
+                    nextMatch.score2 = 'BYE';
+                    advanceMatch = nextMatch;
+                    advanceWinner = nextMatch.blueCorner;
+                    continue;
+                }
+            }
+            break;
+        }
+    } else if (bracket.type === 'double-elimination') {
+        handleDoubleElimWinnerDeclaration(bracket, bracketMatch, winner, loser);
+    } else if (bracket.type === 'repechage') {
+        handleRepechageWinnerDeclaration(bracket, bracketMatch, winner, loser);
+    }
+
+    // Save updated bracket
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+
+    // Save to results/history
+    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
+    results.push({
+        id: generateUniqueId(),
+        timestamp: new Date().toISOString(),
+        matId: kataFlagsMatId,
+        division: kataFlagsDivisionName,
+        eventId: kataFlagsEventId,
+        winner: winner,
+        loser: loser,
+        scoreboardType: 'kata-flags',
+        method: 'Default Win',
+        winMethod: 'default_win',
+        winNote: withdrawalLabels[withdrawalType] || 'Opponent absent',
+        withdrawalType: withdrawalType
+    });
+    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+
+    // Show winner result
+    const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
+    const corner2Name = kataFlagsScoreboardConfig?.settings?.corner2Name || 'Blue';
+    const winnerCorner = absentCorner === 'corner1' ? corner2Name : corner1Name;
+
+    document.getElementById('kata-flags-result').innerHTML = `
+        <div style="background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e; border-radius: 12px; padding: 20px; margin-top: 20px;">
+            <div style="font-size: 24px; font-weight: 700; color: #22c55e; margin-bottom: 12px;">
+                WINNER: ${winner.firstName} ${winner.lastName}
+            </div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
+                ${winnerCorner} Corner wins by default (${withdrawalLabels[withdrawalType]})
+            </div>
+            <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
+                ${checkBracketComplete(kataFlagsDivisionName, kataFlagsEventId) ? 'View Results' : 'Next Match'}
+            </button>
+        </div>
+    `;
+
+    // Allow future declarations
+    window._kataFlagsDeclaring = false;
+}
+
 function operatorNextAfterWin() {
     // Clear countdown if still running
     if (window._winnerCountdownInterval) {
@@ -13328,9 +14081,9 @@ function operatorNextAfterWin() {
 
     // Clear winner from audience display (works for all scoreboard types)
     try {
-        const currentState = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem('scoreboard-state', JSON.stringify(currentState));
+        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
     } catch(e) {}
 
     const divisionComplete = checkBracketComplete(currentOperatorDivision, currentOperatorEventId);
@@ -13445,7 +14198,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentKataScoreboardType = scoreboardType;
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -13460,7 +14213,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
 
     // Check if bracket has kata structure (rounds array)
     if (!bracket.rounds || !Array.isArray(bracket.rounds)) {
-        alert(`❌ Bracket Structure Mismatch\n\nThis division's bracket was generated as "${bracket.type}" which does not have the expected kata round structure.\n\nPlease:\n1. Go to the Brackets tab\n2. Delete the existing bracket\n3. Generate a new bracket with the correct type for this event`);
+        showToast(`Bracket structure mismatch: generated as "${bracket.type}". Delete and regenerate with correct type.`, 'error', 6000);
         return;
     }
 
@@ -13468,7 +14221,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentKataRound = bracket.rounds.find(r => r.performances.some(p => !p.completed)) || bracket.rounds[0];
 
     if (!currentKataRound) {
-        alert('No rounds found in this Kata bracket.');
+        showToast('No rounds found in this Kata bracket.', 'error');
         return;
     }
 
@@ -13650,7 +14403,7 @@ function submitKataScores(isFlags) {
         finalScore = total / kataJudgeScores.length;
     }
 
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let bracketId = null;
 
     for (const id in brackets) {
@@ -13664,7 +14417,7 @@ function submitKataScores(isFlags) {
             performance.averageScore = finalScore;
             performance.completed = true;
 
-            localStorage.setItem('brackets', JSON.stringify(brackets));
+            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
             break;
         }
     }
@@ -13732,7 +14485,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     currentOperatorDivision = divisionName;
     currentOperatorEventId = eventId;
 
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -13881,11 +14634,11 @@ let currentRankingListNumJudges = 5;
 function updateRankingListTVDisplay(bracket, status) {
     currentRankingListBracket = bracket;
 
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
-    const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == currentOperatorEventId);
     const eventName = eventType?.name || 'Kata';
 
@@ -13929,7 +14682,7 @@ function updateRankingListTVDisplay(bracket, status) {
     // Get club logo if available
     let clubLogo = null;
     if (competitor?.club) {
-        const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
+        const clubs = JSON.parse(localStorage.getItem(_scopedKey('clubs')) || '[]');
         const club = clubs.find(c => c.name === competitor.club);
         clubLogo = club?.logo || null;
     }
@@ -13969,7 +14722,7 @@ function updateRankingListTVDisplay(bracket, status) {
         rankings: rankings
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function updateRankingListTotal(numJudges) {
@@ -14025,7 +14778,7 @@ function submitRankingListScore(numJudges) {
     const avgScore = total / count;
 
     // Find the bracket and update the current entry
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let targetBracketId = null;
 
     for (const [bracketId, bracket] of Object.entries(brackets)) {
@@ -14072,7 +14825,7 @@ function submitRankingListScore(numJudges) {
     }
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Sync 'submitted' status to TV (brief hold before transition)
     updateRankingListTVDisplay(bracket, allScored ? 'complete' : 'submitted');
@@ -14222,7 +14975,7 @@ function buildMatchProgressHTML(bracket) {
 }
 
 function checkBracketComplete(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -14293,9 +15046,9 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
 
     // Clear winner from audience display so celebration overlay goes away
     try {
-        const currentState = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem('scoreboard-state', JSON.stringify(currentState));
+        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
     } catch(e) {}
 
     // Mark division completed in schedule
@@ -14312,7 +15065,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     if (!content) return;
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -14348,7 +15101,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     let nextDivHTML = '';
     if (nextDivision) {
         // Check if next division has a bracket
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         let hasBracket = false;
         for (const id in brackets) {
             if ((brackets[id].division === nextDivision.division || brackets[id].divisionName === nextDivision.division) && brackets[id].eventId == nextDivision.eventId) {
@@ -14357,7 +15110,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
             }
         }
 
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
 
         nextDivHTML = `
@@ -14475,7 +15228,7 @@ function cancelAutoAdvance() {
 }
 
 function getDivisionResults(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -14497,7 +15250,7 @@ function getDivisionResults(divisionName, eventId) {
                     .sort((a, b) => (b.round || 0) - (a.round || 0))[0];
                 if (finalMatch && finalMatch.winner) {
                     const loser = finalMatch.redCorner?.id === finalMatch.winner.id ? finalMatch.blueCorner : finalMatch.redCorner;
-                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1 });
+                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1, winMethod: finalMatch.winMethod || '', winNote: finalMatch.winNote || '' });
                     if (loser) results.push({ name: `${loser.firstName} ${loser.lastName}`, club: loser.club || '', rank: 2 });
 
                     // 3rd place: losers of semi-finals
@@ -14520,7 +15273,7 @@ function getDivisionResults(divisionName, eventId) {
 
                 if (finalMatch && finalMatch.winner) {
                     const loser = finalMatch.redCorner?.id === finalMatch.winner.id ? finalMatch.blueCorner : finalMatch.redCorner;
-                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1 });
+                    results.push({ name: `${finalMatch.winner.firstName} ${finalMatch.winner.lastName}`, club: finalMatch.winner.club || '', rank: 1, winMethod: finalMatch.winMethod || '', winNote: finalMatch.winNote || '' });
                     if (loser) results.push({ name: `${loser.firstName} ${loser.lastName}`, club: loser.club || '', rank: 2 });
                 }
 
@@ -14548,8 +15301,11 @@ function getDivisionResults(divisionName, eventId) {
                     runnerUp = bracket.finals.redCorner?.id === bracket.finals.winner.id ? bracket.finals.blueCorner : bracket.finals.redCorner;
                 }
 
+                // Determine the decisive match for win method
+                const decisiveMatch = (bracket.reset && bracket.reset.winner) ? bracket.reset : bracket.finals;
+
                 if (champion) {
-                    results.push({ name: `${champion.firstName} ${champion.lastName}`, club: champion.club || '', rank: 1 });
+                    results.push({ name: `${champion.firstName} ${champion.lastName}`, club: champion.club || '', rank: 1, winMethod: decisiveMatch?.winMethod || '', winNote: decisiveMatch?.winNote || '' });
                 }
                 if (runnerUp) {
                     results.push({ name: `${runnerUp.firstName} ${runnerUp.lastName}`, club: runnerUp.club || '', rank: 2 });
@@ -14611,10 +15367,12 @@ function loadResults() {
                     <div>
                         ${results.map((result, idx) => {
                             const medalEmoji = result.rank <= 3 ? ['&#x1F947;','&#x1F948;','&#x1F949;'][result.rank - 1] || `#${result.rank}` : `#${result.rank}`;
+                            const winMethodLabel = result.winMethod ? { points: 'Points', decision: 'Decision', hansoku: 'Hansoku', withdrawal: 'Withdrawal', default_win: 'Default Win', ippon: 'Ippon' }[result.winMethod] || result.winMethod : '';
+                            const winMethodHTML = winMethodLabel ? `<span style="font-size: 10px; background: var(--bg-secondary); padding: 1px 6px; border-radius: 4px; color: var(--text-secondary); margin-left: 6px;">${winMethodLabel}${result.winNote ? ': ' + result.winNote : ''}</span>` : '';
                             return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
                                 <span style="width: 40px; text-align: center; font-size: 18px;">${medalEmoji}</span>
                                 <div style="flex: 1;">
-                                    <div style="font-weight: 600;">${result.name}</div>
+                                    <div style="font-weight: 600;">${result.name}${winMethodHTML}</div>
                                     ${result.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${result.club}</div>` : ''}
                                 </div>
                                 ${result.score !== undefined ? `<div style="font-weight: 700;">${typeof result.score === 'number' ? result.score.toFixed(2) : result.score}</div>` : ''}
@@ -14677,7 +15435,7 @@ function updateEditResultsButtonVisibility(bracket) {
 }
 
 function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
-    const edits = JSON.parse(localStorage.getItem('scoreEditLog') || '[]');
+    const edits = JSON.parse(localStorage.getItem(_scopedKey('scoreEditLog')) || '[]');
     edits.push({
         bracketId,
         entryId,
@@ -14688,11 +15446,11 @@ function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
         division: currentOperatorDivision,
         eventId: currentOperatorEventId
     });
-    localStorage.setItem('scoreEditLog', JSON.stringify(edits));
+    localStorage.setItem(_scopedKey('scoreEditLog'), JSON.stringify(edits));
 }
 
 function openEditResultsPanel(matId, divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     let bracketId = null;
     let bracket = null;
 
@@ -14792,7 +15550,7 @@ function openEditRankingListPanel(matId, divisionName, eventId, bracketId, brack
 }
 
 function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxScore) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -14854,7 +15612,7 @@ function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxSco
 }
 
 function saveRankingListEdit(entryIndex, bracketId, numJudges) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -14898,7 +15656,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
     scored.forEach((e, idx) => { e.rank = idx + 1; });
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     // Sync TV display
     if (currentRankingListBracket) {
@@ -14913,7 +15671,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
 
 function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
     const content = document.getElementById('operator-scoreboard-content');
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Name = settings.corner1Name || 'RED';
     const corner2Name = settings.corner2Name || 'BLUE';
 
@@ -14991,7 +15749,7 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
 }
 
 function editKumiteMatch(matchId, bracketId) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -15037,7 +15795,7 @@ function editKumiteMatch(matchId, bracketId) {
     const redName = match.redCorner ? `${match.redCorner.firstName} ${match.redCorner.lastName}` : 'Unknown';
     const blueName = match.blueCorner ? `${match.blueCorner.firstName} ${match.blueCorner.lastName}` : 'Unknown';
 
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Color = settings.corner1Custom || '#ff453a';
     const corner2Color = settings.corner2Custom || '#0a84ff';
 
@@ -15089,7 +15847,7 @@ function editKumiteMatch(matchId, bracketId) {
 }
 
 function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
-    const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -15156,7 +15914,7 @@ function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
     }
 
     // Save
-    localStorage.setItem('brackets', JSON.stringify(brackets));
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
     showMessage(`Match result updated`, 'success');
 
@@ -15192,7 +15950,7 @@ function updateOperatorTVDisplay(winner = null) {
     }
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem('mats') || '[]');
+    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
@@ -15206,7 +15964,7 @@ function updateOperatorTVDisplay(winner = null) {
         corner1Color = uk.corner1Color || '#ff453a';
         corner2Color = uk.corner2Color || '#0a84ff';
     } else {
-        const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -15216,7 +15974,7 @@ function updateOperatorTVDisplay(winner = null) {
     // Build match info
     let matchInfo = 'Current Match';
     if (window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
         if (bracket) {
             let match = null;
@@ -15245,12 +16003,12 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision = scheduleForNext[currentDivIndex + 1];
 
         // Get event type name for next division
-        const eventTypes = JSON.parse(localStorage.getItem('eventTypes') || '[]');
+        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         nextDivision.eventName = nextEvent?.name || 'Unknown Event';
 
         // Get bracket info for next division
-        const allBrackets = JSON.parse(localStorage.getItem('brackets') || '{}');
+        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
         for (const bracketId in allBrackets) {
             const b = allBrackets[bracketId];
             if (b.division === nextDivision.division && b.eventId == nextDivision.eventId) {
@@ -15318,7 +16076,7 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision: nextDivision
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function generateMats() {
@@ -15480,7 +16238,7 @@ function loadMatchToScoreboard(matchId) {
         selectMatScoreboard(match.matId);
 
         // Load competitors for this mat
-        const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[match.matId]) {
             matScoreboards[match.matId] = {
                 redId: match.redId,
@@ -15491,7 +16249,7 @@ function loadMatchToScoreboard(matchId) {
                 bluePenalties: 0,
                 timeRemaining: 120
             };
-            localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         }
 
         renderActiveScoreboard();
@@ -15562,7 +16320,7 @@ function renderActiveScoreboard() {
     const container = document.getElementById('active-scoreboard-container');
     if (!container) return;
 
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard] || {
         redId: null,
         blueId: null,
@@ -15683,7 +16441,7 @@ function selectMatCompetitor(corner) {
     const selectId = corner === 'red' ? 'mat-red-select' : 'mat-blue-select';
     const competitorId = parseInt(document.getElementById(selectId).value);
 
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard] = {
             redScore: 0,
@@ -15700,7 +16458,7 @@ function selectMatCompetitor(corner) {
         matScoreboards[currentMatScoreboard].blueId = competitorId || null;
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -15708,7 +16466,7 @@ function selectMatCompetitor(corner) {
 let matTimerIntervals = {};
 
 function addMatScore(corner, points) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     if (corner === 'red') {
@@ -15717,13 +16475,13 @@ function addMatScore(corner, points) {
         matScoreboards[currentMatScoreboard].blueScore += points;
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     document.getElementById(`mat-${corner}-score`).textContent = matScoreboards[currentMatScoreboard][`${corner}Score`];
     updateAllMatDisplays();
 }
 
 function addMatPenalty(corner) {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     const mat = matScoreboards[currentMatScoreboard];
@@ -15747,10 +16505,10 @@ function addMatPenalty(corner) {
     } else if (penaltyCount === 3) {
         if (opponentCorner === 'red') { mat.redScore += 2; } else { mat.blueScore += 2; }
     } else if (penaltyCount >= 4) {
-        alert(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`);
+        showToast(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`, 'error', 5000);
     }
 
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -15759,11 +16517,11 @@ function startMatTimer() {
     if (matTimerIntervals[currentMatScoreboard]) return;
 
     matTimerIntervals[currentMatScoreboard] = setInterval(() => {
-        const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[currentMatScoreboard]) return;
 
         matScoreboards[currentMatScoreboard].timeRemaining--;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
         const minutes = Math.floor(matScoreboards[currentMatScoreboard].timeRemaining / 60);
         const seconds = matScoreboards[currentMatScoreboard].timeRemaining % 60;
@@ -15773,7 +16531,7 @@ function startMatTimer() {
 
         if (matScoreboards[currentMatScoreboard].timeRemaining <= 0) {
             pauseMatTimer();
-            alert('Time is up!');
+            showToast('Time is up!', 'warning');
         }
     }, 1000);
 }
@@ -15787,10 +16545,10 @@ function pauseMatTimer() {
 
 function resetMatTimer() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard].timeRemaining = 120;
-        localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         document.getElementById('mat-timer').textContent = '2:00';
         updateAllMatDisplays();
     }
@@ -15798,22 +16556,22 @@ function resetMatTimer() {
 
 function declareMatWinner() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard];
 
     if (!matData) return;
 
     const winner = matData.redScore > matData.blueScore ? 'Red Corner' : matData.blueScore > matData.redScore ? 'Blue Corner' : 'Draw';
-    alert(`Winner: ${winner}\nRed: ${matData.redScore} | Blue: ${matData.blueScore}`);
+    showToast(`Winner: ${winner} | Red: ${matData.redScore} - Blue: ${matData.blueScore}`, 'success', 5000);
 
     // Update display with winner
     matData.winner = winner;
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     updateAllMatDisplays();
 }
 
 function resetMatScoreboard() {
-    const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
     matScoreboards[currentMatScoreboard] = {
         redId: null,
         blueId: null,
@@ -15823,7 +16581,7 @@ function resetMatScoreboard() {
         bluePenalties: 0,
         timeRemaining: 120
     };
-    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -15937,13 +16695,13 @@ function saveScoreboardSettings() {
         updatedAt: new Date().toISOString()
     };
 
-    localStorage.setItem('scoreboardSettings', JSON.stringify(settings));
+    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify(settings));
     showMessage('Scoreboard settings saved successfully!');
 }
 
 // Load scoreboard settings on page load
 function loadScoreboardSettings() {
-    const settings = JSON.parse(localStorage.getItem('scoreboardSettings') || '{}');
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
 
     if (document.getElementById('corner1-name')) {
         document.getElementById('corner1-name').value = settings.corner1Name || 'RED';
@@ -16097,9 +16855,48 @@ function openStagingDisplay() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function loadSettings() {
-    loadSettingsEvents();
+    // Settings view now contains only Staff Roles — no additional loading needed
+    // Staff roles render via createStaffRole()/etc. on demand
+}
 
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+function loadTournamentInfoView() {
+    loadTournamentSelector();
+    const content = document.getElementById('tournament-info-content');
+    const deleteNameEl = document.getElementById('delete-tournament-name');
+
+    if (!currentTournamentId) {
+        if (content) content.innerHTML = '<p class="hint">No tournament selected.</p>';
+        if (deleteNameEl) deleteNameEl.textContent = '';
+        return;
+    }
+
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    if (!t) {
+        if (content) content.innerHTML = '<p class="hint">Tournament not found.</p>';
+        return;
+    }
+
+    if (content) {
+        const dateStr = t.date ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString() : '\u2014';
+        content.innerHTML = `
+            <div style="display: grid; gap: 10px; font-size: 14px;">
+                <div><strong>Name:</strong> ${t.name || '\u2014'}</div>
+                <div><strong>Date:</strong> ${dateStr}</div>
+                <div><strong>Location:</strong> ${t.location || t.venue || '\u2014'}</div>
+                <div><strong>Sanctioning Body:</strong> ${t.sanctioningBody ? t.sanctioningBody.toUpperCase() : '\u2014'}</div>
+                <div><strong>Status:</strong> ${t.published ? 'Published' : 'Draft'}</div>
+            </div>
+        `;
+    }
+
+    if (deleteNameEl) {
+        deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
+    }
+}
+
+function loadCertificatesView() {
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (template && template.data) {
         const previewImg = document.getElementById('certificate-preview-img');
         const previewDiv = document.getElementById('certificate-template-preview');
@@ -16107,7 +16904,8 @@ function loadSettings() {
             previewImg.src = template.data;
             previewDiv.style.display = 'block';
         }
-        document.getElementById('merge-tag-config-panel').style.display = 'block';
+        const mergePanel = document.getElementById('merge-tag-config-panel');
+        if (mergePanel) mergePanel.style.display = 'block';
         loadMergeTagEditors();
     }
 }
@@ -16157,9 +16955,9 @@ async function deleteEventFromServer(eventId) {
         db.delete('eventTypes', eventId);
 
         // Remove associated divisions
-        const allDivisions = JSON.parse(localStorage.getItem('divisions') || '{}');
+        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
         delete allDivisions[eventId];
-        localStorage.setItem('divisions', JSON.stringify(allDivisions));
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
         // Refresh UI
         loadSettingsEvents();
@@ -16176,7 +16974,13 @@ async function deleteTournamentFromServer() {
         showMessage('No tournament selected', 'error');
         return;
     }
-    if (!confirm('Are you sure you want to permanently delete this tournament? This will remove all events, registrations, and brackets. This cannot be undone.')) {
+
+    // Look up tournament name for the confirmation dialog
+    const tournaments = db.load('tournaments');
+    const tournament = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const tournamentName = tournament ? tournament.name : 'this tournament';
+
+    if (!confirm(`Are you sure you want to permanently delete "${tournamentName}"?\n\nThis will remove all events, registrations, and brackets. This cannot be undone.`)) {
         return;
     }
 
@@ -16191,20 +16995,61 @@ async function deleteTournamentFromServer() {
             throw new Error(data.error || 'Failed to delete tournament');
         }
 
-        // Clear localStorage
-        localStorage.removeItem('eventTypes');
-        localStorage.removeItem('divisions');
-        localStorage.removeItem('scoreboardConfig');
+        // Clear scoped localStorage keys
+        localStorage.removeItem(_scopedKey('eventTypes'));
+        localStorage.removeItem(_scopedKey('divisions'));
+        localStorage.removeItem(_scopedKey('scoreboardConfig'));
+
+        // Remove from the tournaments array in localStorage so it disappears from dropdown
+        const remaining = tournaments.filter(t => String(t.id) !== String(currentTournamentId));
+        localStorage.setItem('tournaments', JSON.stringify(remaining));
+
         currentTournamentId = null;
 
-        showMessage('Tournament deleted successfully');
+        // Update UI immediately
+        loadTournamentSelector();
+        document.getElementById('main-nav').classList.add('hidden');
 
-        // Redirect to director dashboard
+        showToast(`Tournament "${tournamentName}" deleted successfully`, 'success');
+
+        // Redirect to director dashboard after a moment
         setTimeout(() => {
             window.location.href = '/director';
-        }, 1000);
+        }, 1500);
     } catch (err) {
-        showMessage(err.message, 'error');
+        showToast(err.message || 'Failed to delete tournament', 'error');
+    }
+}
+
+async function cloneTournamentFromManage() {
+    if (!currentTournamentId) {
+        showToast('No tournament selected', 'error');
+        return;
+    }
+    if (!confirm('Clone this tournament? A new draft copy will be created with all events, pricing periods, and staff roles.')) return;
+
+    const btn = document.getElementById('clone-tournament-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Cloning...'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/clone`, {
+            method: 'POST',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to clone tournament');
+        }
+        const data = await res.json();
+        showToast('Tournament cloned successfully!', 'success');
+        if (data.tournament && data.tournament.id) {
+            setTimeout(() => {
+                window.location.href = `/director/tournaments/${data.tournament.id}/manage`;
+            }, 1000);
+        }
+    } catch (err) {
+        showToast(err.message || 'Failed to clone tournament', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Clone This Tournament'; }
     }
 }
 
@@ -16225,7 +17070,7 @@ function previewCertificateTemplate() {
 }
 
 function clearCertificateTemplate() {
-    localStorage.removeItem('certificateTemplate');
+    localStorage.removeItem(_scopedKey('certificateTemplate'));
     const previewDiv = document.getElementById('certificate-template-preview');
     if (previewDiv) previewDiv.style.display = 'none';
     document.getElementById('merge-tag-config-panel').style.display = 'none';
@@ -16254,7 +17099,7 @@ function saveCertificateTemplate() {
             uploadedAt: new Date().toISOString()
         };
 
-        localStorage.setItem('certificateTemplate', JSON.stringify(template));
+        localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(template));
         showMessage('Certificate template saved successfully!');
 
         // Show merge tag config
@@ -16280,11 +17125,11 @@ const TAG_LABELS = {
     division: '{{division}} - Division Name',
     tournament: '{{tournament}} - Tournament Name',
     date: '{{date}} - Tournament Date',
-    club: '{{club}} - Club Name'
+    club: '{{club}} - Dojo Name'
 };
 
 function loadMergeTagEditors() {
-    const config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     const tags = config?.tags || DEFAULT_CERTIFICATE_TAGS;
 
     const container = document.getElementById('merge-tag-list');
@@ -16352,7 +17197,7 @@ function getCertificateConfigFromForm() {
 
 function saveCertificateConfig() {
     const config = getCertificateConfigFromForm();
-    localStorage.setItem('certificateConfig', JSON.stringify(config));
+    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
     showMessage('Certificate configuration saved!');
 }
 
@@ -16383,7 +17228,7 @@ function previewCertificateWithSampleData() {
 }
 
 function renderCertificateOnCanvas(canvas, data, callback) {
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (!template || !template.data) {
         if (callback) callback(null);
         return;
@@ -16395,7 +17240,7 @@ function renderCertificateOnCanvas(canvas, data, callback) {
     if (formEl) {
         config = getCertificateConfigFromForm();
     } else {
-        config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+        config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     }
     if (!config) config = { tags: DEFAULT_CERTIFICATE_TAGS };
 
@@ -16434,13 +17279,13 @@ function renderCertificateOnCanvas(canvas, data, callback) {
 }
 
 function generateAllCertificates() {
-    const template = JSON.parse(localStorage.getItem('certificateTemplate') || 'null');
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
         showMessage('Please upload a certificate template first in Settings', 'error');
         return;
     }
 
-    const config = JSON.parse(localStorage.getItem('certificateConfig') || 'null');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
         showMessage('Please configure merge tag positions in Settings first', 'error');
         return;
@@ -16450,7 +17295,7 @@ function generateAllCertificates() {
     const eventTypes = db.load('eventTypes');
 
     // Get tournament info
-    const publicSiteConfig = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
+    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
@@ -16514,6 +17359,254 @@ function generateAllCertificates() {
     }
 
     generateNext();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CERTIFICATE SERVER SYNC
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Upload the current certificate template (from file input) to the server.
+ */
+async function syncCertificateTemplateToServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const fileInput = document.getElementById('settings-certificate-template');
+    const statusEl = document.getElementById('cert-sync-status');
+
+    // Check for a file in the file input first
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+        const formData = new FormData();
+        formData.append('template', fileInput.files[0]);
+
+        try {
+            if (statusEl) statusEl.textContent = 'Uploading template to server...';
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Upload failed');
+            }
+
+            // Also sync the config if available
+            await syncCertificateConfigToServerSilent();
+
+            if (statusEl) statusEl.textContent = 'Template synced to server successfully.';
+            showMessage('Certificate template synced to server!');
+        } catch (err) {
+            if (statusEl) statusEl.textContent = 'Sync failed: ' + err.message;
+            showMessage('Failed to sync template: ' + err.message, 'error');
+        }
+        return;
+    }
+
+    // Fallback: try to upload from localStorage base64 data
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    if (!template || !template.data) {
+        showMessage('No certificate template to sync. Please select or save a template first.', 'error');
+        return;
+    }
+
+    // Convert base64 data URL back to a Blob for upload
+    try {
+        if (statusEl) statusEl.textContent = 'Uploading template to server...';
+
+        const dataUrlParts = template.data.split(',');
+        const mimeMatch = dataUrlParts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const byteString = atob(dataUrlParts[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mime });
+
+        const formData = new FormData();
+        const ext = mime.split('/')[1] || 'png';
+        formData.append('template', blob, template.fileName || `template.${ext}`);
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Upload failed');
+        }
+
+        // Also sync the config
+        await syncCertificateConfigToServerSilent();
+
+        if (statusEl) statusEl.textContent = 'Template synced to server successfully.';
+        showMessage('Certificate template synced to server!');
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'Sync failed: ' + err.message;
+        showMessage('Failed to sync template: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Save the current merge-tag config to the server (silently, used as part of template sync).
+ */
+async function syncCertificateConfigToServerSilent() {
+    if (!currentTournamentId) return;
+
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    if (!config) return;
+
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/certificate-template/config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+    } catch (err) {
+        console.warn('Could not sync certificate config:', err.message);
+    }
+}
+
+/**
+ * Save the certificate merge-tag config to the server (with user feedback).
+ */
+async function saveCertificateConfigToServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const config = getCertificateConfigFromForm();
+    // Also save locally
+    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template/config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Save failed');
+        }
+
+        showMessage('Certificate configuration saved to server!');
+    } catch (err) {
+        showMessage('Failed to save config to server: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Load the certificate template and config from the server into localStorage.
+ */
+async function loadCertificateTemplateFromServer() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    const statusEl = document.getElementById('cert-sync-status');
+
+    try {
+        if (statusEl) statusEl.textContent = 'Loading template from server...';
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Load failed');
+        }
+
+        const { template } = await res.json();
+        if (!template) {
+            if (statusEl) statusEl.textContent = 'No template found on server.';
+            showMessage('No certificate template found on server for this tournament.', 'info');
+            return;
+        }
+
+        // Save template data to localStorage
+        if (template.template_data) {
+            const templateObj = {
+                fileName: 'server-template.png',
+                fileType: 'image/png',
+                data: template.template_data,
+                uploadedAt: template.updated_at || new Date().toISOString(),
+            };
+            localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(templateObj));
+
+            // Update preview
+            const previewImg = document.getElementById('certificate-preview-img');
+            const previewDiv = document.getElementById('certificate-template-preview');
+            if (previewImg && previewDiv) {
+                previewImg.src = template.template_data;
+                previewDiv.style.display = 'block';
+            }
+        }
+
+        // Save merge tag config to localStorage
+        if (template.merge_tag_config && Object.keys(template.merge_tag_config).length > 0) {
+            localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(template.merge_tag_config));
+            document.getElementById('merge-tag-config-panel').style.display = 'block';
+            loadMergeTagEditors();
+        }
+
+        if (statusEl) statusEl.textContent = 'Template loaded from server.';
+        showMessage('Certificate template loaded from server!');
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'Load failed: ' + err.message;
+        showMessage('Failed to load template: ' + err.message, 'error');
+    }
+}
+
+/**
+ * Download a batch PDF of all certificates from the server.
+ */
+async function downloadBatchCertificatePDF() {
+    if (!currentTournamentId) {
+        showMessage('No tournament selected', 'error');
+        return;
+    }
+
+    showMessage('Generating batch certificate PDF...', 'info');
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/certificates/batch.pdf`, {
+            credentials: 'include',
+        });
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'PDF generation failed');
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `certificates-${currentTournamentId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showMessage('Batch certificate PDF downloaded!');
+    } catch (err) {
+        showMessage('Failed to generate PDF: ' + err.message, 'error');
+    }
 }
 
 // Scoreboard (keeping old single scoreboard for compatibility)
@@ -16656,7 +17749,7 @@ function updateTVDisplay() {
         winner: null
     };
 
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 }
 
 function addScore(corner, points) {
@@ -16675,7 +17768,7 @@ function addScore(corner, points) {
     if (scoreboardType === 'wkf' && Math.abs(redScore - blueScore) >= 8) {
         pauseTimer();
         setTimeout(() => {
-            alert(`${redScore > blueScore ? 'Red' : 'Blue'} corner wins by 8-point difference!`);
+            showToast(`${redScore > blueScore ? 'Red' : 'Blue'} corner wins by 8-point difference!`, 'success', 5000);
         }, 100);
     }
 }
@@ -16703,7 +17796,7 @@ function addPenalty(corner) {
     } else if (penaltyCount >= 4) {
         pauseTimer();
         setTimeout(() => {
-            alert(`${corner.charAt(0).toUpperCase() + corner.slice(1)} corner is disqualified! (Hansoku - 4th penalty)`);
+            showToast(`${corner.charAt(0).toUpperCase() + corner.slice(1)} corner is disqualified! (Hansoku - 4th penalty)`, 'error', 5000);
         }, 100);
     }
 
@@ -16720,7 +17813,7 @@ function startTimer() {
         if (timeRemaining <= 0) {
             pauseTimer();
             setTimeout(() => {
-                alert('Time is up!');
+                showToast('Time is up!', 'warning');
             }, 100);
         }
     }, 1000);
@@ -16764,11 +17857,11 @@ function declareWinner() {
     }
 
     // Update TV display with winner
-    const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+    const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
     state.winner = winnerName;
-    localStorage.setItem('scoreboard-state', JSON.stringify(state));
+    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
 
-    alert(`Winner: ${winner}\nRed: ${redScore} | Blue: ${blueScore}`);
+    showToast(`Winner: ${winner} | Red: ${redScore} - Blue: ${blueScore}`, 'success', 5000);
 }
 
 function resetScoreboard() {
@@ -16882,15 +17975,15 @@ if (publicSiteForm) {
                 location: document.getElementById('public-location')?.value || '',
                 description: document.getElementById('public-description')?.value || '',
                 primaryColor: document.getElementById('public-primary-color')?.value || '#0071e3',
-                coverImage: currentPublicCoverData || JSON.parse(localStorage.getItem('publicSiteConfig') || '{}').coverImage || null,
-                logo: currentPublicLogoData || JSON.parse(localStorage.getItem('publicSiteConfig') || '{}').logo || null,
+                coverImage: currentPublicCoverData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').coverImage || null,
+                logo: currentPublicLogoData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').logo || null,
                 footerText: document.getElementById('public-footer-text')?.value || '',
                 showSchedule: document.getElementById('public-show-schedule')?.checked || false,
                 showResults: document.getElementById('public-show-results')?.checked || false,
                 updatedAt: new Date().toISOString()
             };
 
-            localStorage.setItem('publicSiteConfig', JSON.stringify(config));
+            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(config));
             showMessage('Public site configuration saved successfully!');
 
             // Trigger storage event for public.html to update
@@ -16903,7 +17996,7 @@ if (publicSiteForm) {
 }
 
 function loadPublicSiteConfig() {
-    const config = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
+    const config = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
 
     const nameInput = document.getElementById('public-tournament-name');
     const dateInput = document.getElementById('public-tournament-date');
@@ -16975,7 +18068,7 @@ function copyPublicSiteUrl() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ACADEMY VIEW — Coach dashboard for managing academy, members, registrations
+// DOJO VIEW — Coach dashboard for managing dojo, members, registrations
 // ═══════════════════════════════════════════════════════════════════════════
 
 let currentAcademy = null;
@@ -17071,14 +18164,14 @@ async function handleCreateAcademy(e) {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to create academy');
+            showToast(data.error || 'Failed to create dojo', 'error');
             return;
         }
 
         sessionStorage.setItem('academyPromptDismissed', '1');
         loadAcademyView();
     } catch (err) {
-        alert('Error creating academy: ' + err.message);
+        showToast('Error creating dojo: ' + err.message, 'error');
     }
 }
 
@@ -17088,7 +18181,7 @@ async function handleLogoUpload(event) {
 
     // Validate size (2MB max)
     if (file.size > 2 * 1024 * 1024) {
-        alert('Logo must be under 2MB');
+        showToast('Logo must be under 2MB', 'error');
         return;
     }
 
@@ -17104,14 +18197,14 @@ async function handleLogoUpload(event) {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to upload logo');
+            showToast(data.error || 'Failed to upload logo', 'error');
             return;
         }
 
         currentAcademy = data.academy;
         renderAcademyProfile();
     } catch (err) {
-        alert('Error uploading logo: ' + err.message);
+        showToast('Error uploading logo: ' + err.message, 'error');
     }
 }
 
@@ -17147,7 +18240,7 @@ async function handleEditAcademy() {
 
         const data = await res.json();
         if (!res.ok) {
-            alert(data.error || 'Failed to update academy');
+            showToast(data.error || 'Failed to update dojo', 'error');
             return;
         }
 
@@ -17155,7 +18248,7 @@ async function handleEditAcademy() {
         renderAcademyProfile();
         hideEditAcademyForm();
     } catch (err) {
-        alert('Error updating academy: ' + err.message);
+        showToast('Error updating dojo: ' + err.message, 'error');
     }
 }
 
@@ -17306,7 +18399,7 @@ async function handleRegisterAssistant(e) {
 }
 
 async function handleRemoveMember(userId) {
-    if (!confirm('Remove this member from your academy?')) return;
+    if (!confirm('Remove this member from your dojo?')) return;
 
     try {
         const res = await fetch(`/api/academies/${currentAcademy.id}/members/${userId}`, {
@@ -17316,13 +18409,13 @@ async function handleRemoveMember(userId) {
 
         if (!res.ok) {
             const data = await res.json();
-            alert(data.error || 'Failed to remove member');
+            showToast(data.error || 'Failed to remove member', 'error');
             return;
         }
 
         loadAcademyView();
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -17413,14 +18506,14 @@ async function handleReviewRequest(requestId, action) {
 
         if (!res.ok) {
             const data = await res.json();
-            alert(data.error || 'Failed to review request');
+            showToast(data.error || 'Failed to review request', 'error');
             return;
         }
 
         loadMembershipRequests();
         if (action === 'approve') loadAcademyView(); // Refresh roster too
     } catch (err) {
-        alert('Error: ' + err.message);
+        showToast('Error: ' + err.message, 'error');
     }
 }
 
@@ -17489,7 +18582,7 @@ async function syncRegistrationsFromServer() {
         });
 
         if (added > 0) {
-            localStorage.setItem('competitors', JSON.stringify(existing));
+            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(existing));
             loadCompetitors();
         }
 
@@ -17701,31 +18794,59 @@ window.addEventListener('load', () => {
     loadPublicSiteConfig();
     loadScoreboardSettings();
 
+    // Role-based nav visibility for judges/staff (restricted view of manage.html)
+    function applyRoleBasedNavVisibility(user) {
+        const isAdmin = user.roles.includes('admin') || user.roles.includes('super_admin');
+        if (isAdmin) return; // Admins see everything
+
+        const isJudge = user.roles.includes('judge');
+        const isStaff = user.roles.includes('staff');
+        const isCoach = user.roles.includes('coach');
+        const isTournamentMember = isJudge || isStaff || isCoach;
+
+        // If user has no tournament-level role, they're the tournament owner — show everything
+        if (!isTournamentMember) return;
+
+        // Tournament-level nav items to hide for non-owners
+        let viewsToHide = [];
+
+        if (isJudge) {
+            // Judges see: Dashboard, Scoreboards, Brackets, Schedule, Results
+            viewsToHide = ['competitors', 'clubs', 'instructors'];
+        } else if (isStaff) {
+            // Staff sees: Dashboard, Schedule, Results
+            viewsToHide = ['competitors', 'clubs', 'instructors', 'scoreboards', 'brackets'];
+        }
+
+        viewsToHide.forEach(view => {
+            const btn = document.querySelector(`.nav-btn[data-view="${view}"]`);
+            if (btn) btn.style.display = 'none';
+        });
+
+        // Hide entire Settings nav group for non-owners (coaches/judges/staff)
+        const settingsGroup = document.getElementById('settings-nav-group');
+        if (settingsGroup) settingsGroup.style.display = 'none';
+
+        // Hide nav group labels for empty groups
+        document.querySelectorAll('.nav-group').forEach(group => {
+            const visibleBtns = [...group.querySelectorAll('.nav-btn')].filter(b => b.style.display !== 'none');
+            if (visibleBtns.length === 0) {
+                group.style.display = 'none';
+            }
+        });
+    }
+
     // Auth initialization
     Auth.onAuthChange = (user) => {
         const gate = document.getElementById('auth-gate');
         const academyNavGroup = document.getElementById('academy-nav-group');
-        if (user && (user.roles.includes('admin') || user.roles.includes('event_director') || user.roles.includes('coach') || user.roles.includes('judge'))) {
+        if (user) {
             gate.classList.add('hidden');
             updateUserMenu(user);
             startSyncPolling();
+            applyRoleBasedNavVisibility(user);
 
-            // Show academy nav for coaches
-            if (user.roles.includes('coach') && academyNavGroup) {
-                academyNavGroup.style.display = '';
-                // On first login as coach, check if they have an academy
-                if (!sessionStorage.getItem('academyPromptDismissed')) {
-                    checkCoachAcademySetup();
-                }
-            } else if (academyNavGroup) {
-                academyNavGroup.style.display = 'none';
-            }
-        } else if (user) {
-            // Logged in but no admin/coach/judge role — show message
-            gate.classList.remove('hidden');
-            showAuthError('login', 'Access denied. You need admin, coach, or judge role to access the dashboard.');
-            updateUserMenu(null);
-            stopSyncPolling();
+            // Academy nav is hidden — dojo management moved to account.html
             if (academyNavGroup) academyNavGroup.style.display = 'none';
         } else {
             gate.classList.remove('hidden');
@@ -17736,6 +18857,503 @@ window.addEventListener('load', () => {
     };
     Auth.init();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDICAL INCIDENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// HTML-escape helper for safe template rendering
+function escHtml(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function loadMedicalIncidents() {
+    if (!currentTournamentId) return;
+    const tbody = document.getElementById('medical-incidents-tbody');
+    const countSpan = document.getElementById('medical-incident-count');
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">Loading...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load medical incidents');
+        const data = await res.json();
+        const incidents = data.incidents || [];
+
+        countSpan.textContent = `${incidents.length} incident${incidents.length !== 1 ? 's' : ''} logged`;
+
+        if (incidents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">No incidents logged yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = incidents.map(i => {
+            const time = i.created_at
+                ? new Date(i.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                : '';
+            const loggedBy = [i.logged_by_first_name, i.logged_by_last_name].filter(Boolean).join(' ') || '—';
+            const continueFlag = i.able_to_continue
+                ? '<span style="color:var(--success, #22c55e);">Yes</span>'
+                : '<span style="color:var(--red, #ef4444);">No</span>';
+            const emsFlag = i.medical_staff_called
+                ? '<span style="color:var(--red, #ef4444);">Yes</span>'
+                : '<span style="color:var(--text-muted);">No</span>';
+
+            return `<tr>
+                <td style="white-space:nowrap;">${escHtml(time)}</td>
+                <td>${escHtml(i.competitor_name || '')}</td>
+                <td>${escHtml(i.mat_number || '—')}</td>
+                <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(i.description || '')}">${escHtml(i.description || '')}</td>
+                <td>${escHtml(i.official_present || '—')}</td>
+                <td>${continueFlag}</td>
+                <td>${emsFlag}</td>
+                <td>${escHtml(loggedBy)}</td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--red);padding:30px;">${escHtml(err.message)}</td></tr>`;
+    }
+
+    // Populate the competitor selector for the log form
+    loadIncidentCompetitorSelector();
+}
+
+async function loadIncidentCompetitorSelector() {
+    const select = document.getElementById('incident-competitor');
+    if (!select || !currentTournamentId) return;
+
+    // Keep the first "manual" option
+    select.innerHTML = '<option value="">-- Select or type manually --</option>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/registrations`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const registrants = data.registrants || [];
+
+        registrants.forEach(r => {
+            const name = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+            if (!name) return;
+            const opt = document.createElement('option');
+            opt.value = r.registration_id || '';
+            opt.textContent = name + (r.academy_name ? ` (${r.academy_name})` : '');
+            opt.dataset.name = name;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        // Silently fail — user can still type manually
+    }
+}
+
+function onIncidentCompetitorChange() {
+    const select = document.getElementById('incident-competitor');
+    const nameInput = document.getElementById('incident-competitor-name');
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption && selectedOption.dataset.name) {
+        nameInput.value = selectedOption.dataset.name;
+    }
+}
+
+function showLogIncidentForm() {
+    document.getElementById('log-incident-form-panel').style.display = 'block';
+    document.getElementById('log-incident-form').reset();
+    document.getElementById('incident-competitor-name').value = '';
+}
+
+function hideLogIncidentForm() {
+    document.getElementById('log-incident-form-panel').style.display = 'none';
+}
+
+async function submitMedicalIncident(e) {
+    e.preventDefault();
+    if (!currentTournamentId) return;
+
+    const btn = document.getElementById('incident-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+        const competitorName = document.getElementById('incident-competitor-name').value.trim();
+        const matNumber = document.getElementById('incident-mat').value.trim();
+        const description = document.getElementById('incident-description').value.trim();
+        const officialPresent = document.getElementById('incident-official').value.trim();
+        const ableToContinue = document.getElementById('incident-able-to-continue').checked;
+        const medicalStaffCalled = document.getElementById('incident-medical-staff').checked;
+
+        if (!competitorName) {
+            showToast('Competitor name is required', 'error');
+            return;
+        }
+        if (!description) {
+            showToast('Description is required', 'error');
+            return;
+        }
+
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                competitorName,
+                matNumber,
+                description,
+                officialPresent,
+                ableToContinue,
+                medicalStaffCalled,
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to log incident');
+        }
+
+        showToast('Medical incident logged', 'success');
+        hideLogIncidentForm();
+        loadMedicalIncidents();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Incident';
+    }
+}
+
+function exportMedicalIncidentsCSV() {
+    if (!currentTournamentId) return;
+    window.open(`/api/tournaments/${currentTournamentId}/medical-incidents/export.csv`, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JUDGE PERFORMANCE ANALYTICS VIEW
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function loadJudgeAnalyticsView() {
+    if (!currentTournamentId) return;
+
+    const loading = document.getElementById('judge-analytics-loading');
+    const empty = document.getElementById('judge-analytics-empty');
+    const content = document.getElementById('judge-analytics-content');
+
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-analytics`, { credentials: 'include' });
+        if (!res.ok) {
+            // If 403 or 404, show empty state gracefully
+            if (res.status === 403 || res.status === 404) {
+                if (loading) loading.style.display = 'none';
+                if (empty) empty.style.display = 'block';
+                return;
+            }
+            throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (loading) loading.style.display = 'none';
+
+        if (!data.judges || data.judges.length === 0) {
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+
+        if (content) content.style.display = 'block';
+
+        // Populate summary cards
+        document.getElementById('ja-total-matches').textContent = data.summary.totalMatches || 0;
+        document.getElementById('ja-total-votes').textContent = data.summary.totalVotes || 0;
+
+        const overallEl = document.getElementById('ja-overall-consistency');
+        const overallVal = data.summary.overallConsistency || 0;
+        overallEl.textContent = overallVal + '%';
+        overallEl.style.color = _jaConsistencyColor(overallVal);
+
+        // Populate per-judge table
+        const tbody = document.getElementById('ja-judges-tbody');
+        tbody.innerHTML = data.judges.map(j => {
+            const consistency = parseFloat(j.consistency_rate) || 0;
+            const consistencyColor = _jaConsistencyColor(consistency);
+            const avgTime = j.avg_vote_duration != null ? parseFloat(j.avg_vote_duration).toFixed(1) + 's' : '--';
+
+            let biasHtml = '--';
+            if (j.biasFlags && j.biasFlags.length > 0) {
+                biasHtml = j.biasFlags.map(b =>
+                    `<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(239,68,68,0.15);color:#ef4444;margin:2px;" title="Voted for ${escHtml(b.dojo)} ${b.rate}% of the time (${b.votesForDojo}/${b.matchesWithDojo} matches)">${escHtml(b.dojo)} (${b.rate}%)</span>`
+                ).join(' ');
+            }
+
+            return `<tr>
+                <td style="font-weight:600;">${escHtml(j.judge_name)}</td>
+                <td>${j.total_votes}</td>
+                <td>
+                    <span style="font-weight:700;color:${consistencyColor};">${consistency}%</span>
+                    <span style="font-size:11px;color:var(--text-muted);margin-left:4px;">(${j.votes_with_majority}/${j.total_votes})</span>
+                </td>
+                <td>${avgTime}</td>
+                <td>${biasHtml}</td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        if (loading) loading.style.display = 'none';
+        if (empty) {
+            empty.style.display = 'block';
+            empty.querySelector('p').textContent = 'Failed to load analytics: ' + err.message;
+        }
+        console.error('[Judge Analytics] Load failed:', err);
+    }
+}
+
+function _jaConsistencyColor(pct) {
+    if (pct >= 80) return '#22c55e'; // green
+    if (pct >= 60) return '#eab308'; // yellow
+    return '#ef4444'; // red
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPONSORS & VENDORS MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+
+let sponsorsCache = [];
+
+async function loadSponsorsView() {
+    if (!currentTournamentId) return;
+    const container = document.getElementById('sponsors-list');
+    container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Loading sponsors...</p>';
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load sponsors');
+        const data = await res.json();
+        sponsorsCache = data.sponsors || [];
+        renderSponsorsList(sponsorsCache);
+    } catch (err) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Failed to load sponsors.</p>';
+        console.error('Error loading sponsors:', err);
+    }
+}
+
+function renderSponsorsList(sponsors) {
+    const container = document.getElementById('sponsors-list');
+
+    if (sponsors.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No sponsors added yet. Click "Add Sponsor" to get started.</p>';
+        return;
+    }
+
+    const categoryLabels = {
+        sponsor: 'Sponsor',
+        hotel: 'Hotel',
+        restaurant: 'Restaurant',
+        dojo: 'Dojo',
+        other: 'Other',
+    };
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+    sponsors.forEach((s, idx) => {
+        const catLabel = categoryLabels[s.category] || s.category || 'Sponsor';
+        const visIcon = s.visible ? 'eye' : 'eye-off';
+        const visTitle = s.visible ? 'Visible (click to hide)' : 'Hidden (click to show)';
+        const visStyle = s.visible ? '' : 'opacity: 0.5;';
+
+        html += `
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 16px; ${visStyle}" data-sponsor-id="${s.id}">
+            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 32px; align-items: center;">
+                ${idx > 0 ? `<button class="btn-icon" onclick="moveSponsor('${s.id}', 'up')" title="Move up" style="padding:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#9650;</button>` : '<div style="height:24px;"></div>'}
+                ${idx < sponsors.length - 1 ? `<button class="btn-icon" onclick="moveSponsor('${s.id}', 'down')" title="Move down" style="padding:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#9660;</button>` : '<div style="height:24px;"></div>'}
+            </div>
+            <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <strong style="font-size: 15px;">${escHtml(s.name)}</strong>
+                    <span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.06); color: var(--text-muted);">${escHtml(catLabel)}</span>
+                    ${s.discount_code ? `<span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(39,174,96,0.15); color: #27ae60;">CODE: ${escHtml(s.discount_code)}</span>` : ''}
+                </div>
+                ${s.description ? `<p style="margin: 4px 0 0; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escHtml(s.description)}</p>` : ''}
+                ${s.website_url ? `<p style="margin: 2px 0 0; font-size: 12px;"><a href="${escHtml(s.website_url)}" target="_blank" rel="noopener" style="color: var(--accent-blue, #0071e3);">${escHtml(s.website_url)}</a></p>` : ''}
+            </div>
+            <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                <button class="btn btn-secondary btn-sm" onclick="toggleSponsorVisibility('${s.id}')" title="${visTitle}" style="padding: 6px 10px;"><i data-lucide="${visIcon}" style="width:16px;height:16px;"></i></button>
+                <button class="btn btn-secondary btn-sm" onclick="editSponsor('${s.id}')" title="Edit" style="padding: 6px 10px;"><i data-lucide="pencil" style="width:16px;height:16px;"></i></button>
+                <button class="btn btn-secondary btn-sm" onclick="deleteSponsor('${s.id}')" title="Delete" style="padding: 6px 10px; color: var(--danger, #e74c3c);"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Re-initialize lucide icons for the new buttons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function openSponsorForm(sponsorId) {
+    const panel = document.getElementById('sponsor-form-panel');
+    const title = document.getElementById('sponsor-form-title');
+    const editId = document.getElementById('sponsor-edit-id');
+
+    // Reset form
+    document.getElementById('sponsor-name').value = '';
+    document.getElementById('sponsor-category').value = 'sponsor';
+    document.getElementById('sponsor-website').value = '';
+    document.getElementById('sponsor-discount').value = '';
+    document.getElementById('sponsor-description').value = '';
+    editId.value = '';
+
+    if (sponsorId) {
+        const s = sponsorsCache.find(sp => sp.id === sponsorId);
+        if (s) {
+            title.textContent = 'Edit Sponsor';
+            editId.value = s.id;
+            document.getElementById('sponsor-name').value = s.name || '';
+            document.getElementById('sponsor-category').value = s.category || 'sponsor';
+            document.getElementById('sponsor-website').value = s.website_url || '';
+            document.getElementById('sponsor-discount').value = s.discount_code || '';
+            document.getElementById('sponsor-description').value = s.description || '';
+        }
+    } else {
+        title.textContent = 'Add Sponsor';
+    }
+
+    panel.style.display = '';
+    document.getElementById('sponsor-name').focus();
+}
+
+function closeSponsorForm() {
+    document.getElementById('sponsor-form-panel').style.display = 'none';
+}
+
+async function saveSponsor() {
+    if (!currentTournamentId) return;
+
+    const editId = document.getElementById('sponsor-edit-id').value;
+    const name = document.getElementById('sponsor-name').value.trim();
+    const category = document.getElementById('sponsor-category').value;
+    const website_url = document.getElementById('sponsor-website').value.trim() || null;
+    const discount_code = document.getElementById('sponsor-discount').value.trim() || null;
+    const description = document.getElementById('sponsor-description').value.trim() || null;
+
+    if (!name) {
+        showToast('Sponsor name is required', 'error');
+        return;
+    }
+
+    const body = { name, category, website_url, discount_code, description };
+
+    try {
+        let res;
+        if (editId) {
+            res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${editId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        } else {
+            res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        }
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to save sponsor');
+        }
+
+        showToast(editId ? 'Sponsor updated' : 'Sponsor added', 'success');
+        closeSponsorForm();
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+function editSponsor(sponsorId) {
+    openSponsorForm(sponsorId);
+}
+
+async function deleteSponsor(sponsorId) {
+    if (!currentTournamentId) return;
+    if (!confirm('Delete this sponsor?')) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${sponsorId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to delete sponsor');
+        }
+        showToast('Sponsor deleted', 'success');
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function toggleSponsorVisibility(sponsorId) {
+    if (!currentTournamentId) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/${sponsorId}/toggle`, {
+            method: 'PATCH',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to toggle visibility');
+        }
+        const data = await res.json();
+        showToast(data.sponsor.visible ? 'Sponsor is now visible' : 'Sponsor is now hidden', 'success');
+        loadSponsorsView();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function moveSponsor(sponsorId, direction) {
+    if (!currentTournamentId) return;
+
+    const idx = sponsorsCache.findIndex(s => s.id === sponsorId);
+    if (idx === -1) return;
+
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= sponsorsCache.length) return;
+
+    // Swap in local array
+    const ids = sponsorsCache.map(s => s.id);
+    [ids[idx], ids[newIdx]] = [ids[newIdx], ids[idx]];
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/sponsors/reorder`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderedIds: ids }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to reorder');
+        }
+        const data = await res.json();
+        sponsorsCache = data.sponsors || [];
+        renderSponsorsList(sponsorsCache);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
 
 // Simple global function to open TV display - always accessible
 window.openTVDisplay = function() {
@@ -17752,3 +19370,299 @@ window.openTVDisplay = function() {
         window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ══ POST-TOURNAMENT FEEDBACK ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+
+let feedbackFormData = null;
+let feedbackQuestions = [];
+
+const DEFAULT_FEEDBACK_QUESTIONS = [
+    { id: 'q1', text: 'How would you rate the overall event organization?', type: 'rating', required: true },
+    { id: 'q2', text: 'How would you rate the judging quality?', type: 'rating', required: true },
+    { id: 'q3', text: 'How would you rate the venue and facilities?', type: 'rating', required: true },
+    { id: 'q4', text: 'How likely are you to participate in future events?', type: 'rating', required: true },
+    { id: 'q5', text: 'Any additional comments or suggestions?', type: 'text', required: false },
+];
+
+async function loadFeedbackView() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            feedbackFormData = data.form;
+        } else {
+            feedbackFormData = null;
+        }
+    } catch (err) {
+        console.error('Failed to load feedback form:', err);
+        feedbackFormData = null;
+    }
+
+    if (feedbackFormData) {
+        feedbackQuestions = feedbackFormData.questions || [];
+        document.getElementById('feedback-enabled').checked = feedbackFormData.enabled || false;
+        document.getElementById('feedback-delay-hours').value = feedbackFormData.delay_hours ?? 24;
+        document.getElementById('feedback-recipients').value = feedbackFormData.recipients || 'competitors';
+
+        // Show feedback link
+        const linkBox = document.getElementById('feedback-form-link-box');
+        const linkInput = document.getElementById('feedback-form-link');
+        if (linkBox && linkInput) {
+            const baseUrl = window.location.origin;
+            linkInput.value = `${baseUrl}/feedback?form=${feedbackFormData.id}`;
+            linkBox.style.display = 'block';
+        }
+    } else {
+        // Pre-populate with defaults
+        feedbackQuestions = JSON.parse(JSON.stringify(DEFAULT_FEEDBACK_QUESTIONS));
+        document.getElementById('feedback-enabled').checked = false;
+        document.getElementById('feedback-delay-hours').value = 24;
+        document.getElementById('feedback-recipients').value = 'competitors';
+        const linkBox = document.getElementById('feedback-form-link-box');
+        if (linkBox) linkBox.style.display = 'none';
+    }
+
+    renderFeedbackQuestions();
+    loadFeedbackStats();
+}
+
+function renderFeedbackQuestions() {
+    const container = document.getElementById('feedback-questions-list');
+
+    if (!feedbackQuestions.length) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No questions added. Click "Add Question" to get started.</p>';
+        return;
+    }
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+    feedbackQuestions.forEach((q, idx) => {
+        const typeLabel = q.type === 'rating' ? 'Star Rating (1-5)' : 'Text Response';
+        const reqLabel = q.required ? '<span style="color: var(--accent); font-size: 11px; font-weight: 600;">REQUIRED</span>' : '';
+        html += `
+        <div class="glass-card" style="padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                        <strong style="font-size: 14px;">Q${idx + 1}.</strong>
+                        <span style="padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.06); color: var(--text-muted);">${escHtml(typeLabel)}</span>
+                        ${reqLabel}
+                    </div>
+                    <div style="font-size: 14px; color: var(--text-primary);">${escHtml(q.text)}</div>
+                </div>
+                <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                    <button class="btn btn-secondary btn-sm" onclick="editFeedbackQuestion(${idx})" title="Edit" style="padding: 6px 10px;"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
+                    ${idx > 0 ? `<button class="btn btn-secondary btn-sm" onclick="moveFeedbackQuestion(${idx}, -1)" title="Move up" style="padding: 6px 10px;">&#9650;</button>` : ''}
+                    ${idx < feedbackQuestions.length - 1 ? `<button class="btn btn-secondary btn-sm" onclick="moveFeedbackQuestion(${idx}, 1)" title="Move down" style="padding: 6px 10px;">&#9660;</button>` : ''}
+                    <button class="btn btn-secondary btn-sm" onclick="removeFeedbackQuestion(${idx})" title="Remove" style="padding: 6px 10px; color: var(--danger, #e74c3c);">&#10005;</button>
+                </div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function addFeedbackQuestion() {
+    const id = 'q_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const text = prompt('Enter the question text:');
+    if (!text || !text.trim()) return;
+
+    const typeInput = prompt('Question type: "rating" (star rating 1-5) or "text" (free text)?', 'rating');
+    const type = (typeInput || '').trim().toLowerCase() === 'text' ? 'text' : 'rating';
+
+    const reqInput = prompt('Is this question required? (yes/no)', 'yes');
+    const required = (reqInput || '').trim().toLowerCase() !== 'no';
+
+    feedbackQuestions.push({ id, text: text.trim(), type, required });
+    renderFeedbackQuestions();
+}
+
+function editFeedbackQuestion(idx) {
+    const q = feedbackQuestions[idx];
+    if (!q) return;
+
+    const text = prompt('Edit question text:', q.text);
+    if (text === null) return;
+    if (!text.trim()) {
+        alert('Question text cannot be empty.');
+        return;
+    }
+
+    const typeInput = prompt('Question type: "rating" or "text"?', q.type);
+    const type = (typeInput || '').trim().toLowerCase() === 'text' ? 'text' : 'rating';
+
+    const reqInput = prompt('Is this question required? (yes/no)', q.required ? 'yes' : 'no');
+    const required = (reqInput || '').trim().toLowerCase() !== 'no';
+
+    feedbackQuestions[idx] = { ...q, text: text.trim(), type, required };
+    renderFeedbackQuestions();
+}
+
+function removeFeedbackQuestion(idx) {
+    if (!confirm('Remove this question?')) return;
+    feedbackQuestions.splice(idx, 1);
+    renderFeedbackQuestions();
+}
+
+function moveFeedbackQuestion(idx, direction) {
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= feedbackQuestions.length) return;
+    const temp = feedbackQuestions[idx];
+    feedbackQuestions[idx] = feedbackQuestions[newIdx];
+    feedbackQuestions[newIdx] = temp;
+    renderFeedbackQuestions();
+}
+
+async function saveFeedbackForm() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    const statusEl = document.getElementById('feedback-save-status');
+    statusEl.textContent = 'Saving...';
+    statusEl.style.color = 'var(--text-muted)';
+
+    const payload = {
+        questions: feedbackQuestions,
+        recipients: document.getElementById('feedback-recipients').value,
+        delay_hours: parseInt(document.getElementById('feedback-delay-hours').value) || 24,
+        enabled: document.getElementById('feedback-enabled').checked,
+    };
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Failed to save');
+        }
+        const data = await res.json();
+        feedbackFormData = data.form;
+
+        // Update the feedback link
+        const linkBox = document.getElementById('feedback-form-link-box');
+        const linkInput = document.getElementById('feedback-form-link');
+        if (linkBox && linkInput && feedbackFormData) {
+            const baseUrl = window.location.origin;
+            linkInput.value = `${baseUrl}/feedback?form=${feedbackFormData.id}`;
+            linkBox.style.display = 'block';
+        }
+
+        statusEl.textContent = 'Saved successfully.';
+        statusEl.style.color = 'var(--green, #22c55e)';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+
+        loadFeedbackStats();
+    } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.style.color = '#e74c3c';
+    }
+}
+
+function copyFeedbackLink() {
+    const input = document.getElementById('feedback-form-link');
+    if (!input) return;
+    navigator.clipboard.writeText(input.value).then(() => {
+        if (typeof showToast === 'function') showToast('Link copied!');
+    }).catch(() => {
+        input.select();
+        document.execCommand('copy');
+    });
+}
+
+async function loadFeedbackStats() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+
+    const container = document.getElementById('feedback-stats-container');
+
+    if (!feedbackFormData) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Save and enable the form to view responses.</p>';
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/feedback-form/stats`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load stats');
+        const data = await res.json();
+        const stats = data.stats;
+
+        if (!stats || stats.totalResponses === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">No responses yet.</p>';
+            return;
+        }
+
+        let html = `<div style="margin-bottom: 16px; font-size: 15px; font-weight: 600;">${stats.totalResponses} Response${stats.totalResponses !== 1 ? 's' : ''}</div>`;
+        html += '<div style="display: flex; flex-direction: column; gap: 16px;">';
+
+        for (const qs of stats.questionStats) {
+            html += '<div style="padding: 12px 16px; background: var(--glass); border-radius: 10px;">';
+            html += `<div style="font-size: 14px; font-weight: 600; margin-bottom: 6px;">${escHtml(qs.text)}</div>`;
+
+            if (qs.type === 'rating' && qs.averageRating != null) {
+                const pct = (qs.averageRating / 5) * 100;
+                const fullStars = Math.floor(qs.averageRating);
+                const starsHtml = renderStarsHtml(qs.averageRating);
+                html += `<div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">`;
+                html += `<div style="font-size: 24px; font-weight: 700; color: #f59e0b;">${qs.averageRating.toFixed(1)}</div>`;
+                html += `<div style="font-size: 18px; letter-spacing: 2px;">${starsHtml}</div>`;
+                html += `<div style="font-size: 12px; color: var(--text-muted);">${qs.totalAnswers} rating${qs.totalAnswers !== 1 ? 's' : ''}</div>`;
+                html += `</div>`;
+                // Rating bar
+                html += `<div style="margin-top: 8px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">`;
+                html += `<div style="height: 100%; width: ${pct}%; background: #f59e0b; border-radius: 3px;"></div>`;
+                html += `</div>`;
+            } else if (qs.type === 'text' && qs.textResponses && qs.textResponses.length > 0) {
+                html += `<div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">${qs.totalAnswers} text response${qs.totalAnswers !== 1 ? 's' : ''}</div>`;
+                const maxShow = 5;
+                const shown = qs.textResponses.slice(0, maxShow);
+                for (const t of shown) {
+                    html += `<div style="padding: 8px 12px; margin-bottom: 4px; background: var(--bg-secondary); border-radius: 8px; font-size: 13px; color: var(--text-muted); line-height: 1.5;">${escHtml(t)}</div>`;
+                }
+                if (qs.textResponses.length > maxShow) {
+                    html += `<div style="font-size: 12px; color: var(--text-dim);">... and ${qs.textResponses.length - maxShow} more</div>`;
+                }
+            } else {
+                html += `<div style="font-size: 13px; color: var(--text-dim);">No responses for this question.</div>`;
+            }
+
+            html += '</div>';
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Failed to load feedback stats:', err);
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 14px;">Failed to load stats.</p>';
+    }
+}
+
+function renderStarsHtml(rating) {
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+        if (i <= Math.floor(rating)) {
+            html += '<span style="color: #f59e0b;">&#9733;</span>';
+        } else if (i - rating < 1 && i - rating > 0) {
+            html += '<span style="color: #f59e0b;">&#9733;</span>';
+        } else {
+            html += '<span style="color: rgba(255,255,255,0.15);">&#9733;</span>';
+        }
+    }
+    return html;
+}
+
+function exportFeedbackCSV() {
+    const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+    if (!tid) return;
+    window.open(`/api/tournaments/${tid}/feedback-form/export.csv`, '_blank');
+}

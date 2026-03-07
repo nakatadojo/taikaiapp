@@ -12,7 +12,10 @@ async function findById(id) {
   const result = await pool.query(
     `SELECT id, email, first_name, last_name, phone, date_of_birth,
             profile_photo_url, email_verified, account_type,
-            organization_name, credit_balance, settings, created_at, updated_at
+            organization_name, credit_balance, settings,
+            profile_completed, address_line1, address_city, address_state, address_zip,
+            is_certified, certification_body, certification_class,
+            created_at, updated_at
      FROM users WHERE id = $1`,
     [id]
   );
@@ -97,7 +100,13 @@ async function resetPassword(token, passwordHash) {
 
 async function updateProfile(id, updates) {
   // Only allow specific fields to be updated
-  const allowedFields = ['first_name', 'last_name', 'phone', 'date_of_birth', 'profile_photo_url'];
+  const allowedFields = [
+    'first_name', 'last_name', 'phone', 'date_of_birth', 'profile_photo_url',
+    'account_type', 'profile_completed',
+    'address_line1', 'address_city', 'address_state', 'address_zip',
+    'is_certified', 'certification_body', 'certification_class',
+    'timezone',
+  ];
   const fields = [];
   const values = [];
   let idx = 1;

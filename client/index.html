@@ -87,6 +87,12 @@
                     <span>Discount Codes</span>
                 </button>
 
+                <div class="nav-section-label">Analytics</div>
+                <button class="nav-item" data-view="judge-analytics" onclick="switchView('judge-analytics')">
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Judge Analytics</span>
+                </button>
+
                 <div class="nav-section-label">Content</div>
                 <button class="nav-item" data-view="templates" onclick="switchView('templates')">
                     <i data-lucide="file-text"></i>
@@ -390,6 +396,62 @@
                     </div>
                 </section>
 
+                <!-- Judge Analytics View -->
+                <section id="judge-analytics-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Judge Performance Analytics</h2>
+                        <p style="color:var(--text-muted);font-size:13px;margin-top:4px;">Cross-tournament aggregate judge statistics</p>
+                    </div>
+
+                    <div id="admin-ja-loading" style="text-align:center;padding:40px;">
+                        <div class="spinner"></div>
+                        <p style="color:var(--text-muted);margin-top:12px;">Loading analytics...</p>
+                    </div>
+
+                    <div id="admin-ja-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);">
+                        <h3>No judge vote data yet</h3>
+                        <p>Judge vote analytics will appear here after tournament directors sync judge voting data.</p>
+                    </div>
+
+                    <div id="admin-ja-content" class="hidden">
+                        <!-- Summary Cards -->
+                        <div class="admin-stats-grid" style="margin-bottom:24px;">
+                            <div class="stat-card">
+                                <div class="stat-label">Total Judges</div>
+                                <div class="stat-value" id="admin-ja-total-judges">--</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Votes</div>
+                                <div class="stat-value" id="admin-ja-total-votes">--</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Overall Consistency</div>
+                                <div class="stat-value" id="admin-ja-overall-consistency">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Per-Judge Table -->
+                        <div class="glass-panel">
+                            <h3 style="margin-bottom:12px;">Per-Judge Breakdown (All Tournaments)</h3>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Judge</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Tournaments</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Total Votes</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Consistency %</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Avg Decision Time</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Bias Flags</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-ja-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </main>
         </div>
     </div>
@@ -516,6 +578,7 @@
     </div>
 
     <script src="auth.js"></script>
+    <script src="/toast.js"></script>
     <script src="admin.js"></script>
     <script>lucide.createIcons();</script>
 </body>

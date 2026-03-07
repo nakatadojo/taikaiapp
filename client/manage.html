@@ -3,11 +3,264 @@
 <head>
     <meta charset="UTF-8">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
-    <meta name="viewport" content="width=1200">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tournament Manager - TAIKAI</title>
     <link rel="stylesheet" href="/styles.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="/taikai-logo.js"></script>
+    <style>
+    /* Awards Dashboard */
+    .awards-tab { background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; font-size:14px; font-weight:600; border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .awards-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .awards-tab:hover { color:var(--text); }
+    .awards-count { display:inline-block; background:var(--surface); padding:1px 8px; border-radius:10px; font-size:11px; margin-left:4px; }
+    .awards-empty { text-align:center; padding:40px 20px; color:var(--text-muted); }
+    .awards-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; }
+    .awards-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px; }
+    .awards-card-title { font-weight:600; font-size:15px; }
+    .awards-card-event { font-size:12px; color:var(--text-muted); }
+    .awards-card-placements { display:flex; gap:16px; margin:8px 0; flex-wrap:wrap; }
+    .awards-placement { display:flex; align-items:center; gap:6px; font-size:13px; }
+    .awards-placement .medal { font-size:16px; }
+    .awards-card-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .awards-badge { display:inline-block; padding:2px 10px; border-radius:8px; font-size:11px; font-weight:600; }
+    .awards-badge.pending { background:var(--warning); color:#000; }
+    .awards-badge.published { background:var(--success); color:#fff; }
+
+    /* Sync indicator */
+    .sync-indicator { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted, #888); padding:4px 0; }
+    .sync-dot { width:8px; height:8px; border-radius:50%; background:var(--success, #22c55e); }
+    .sync-dot--syncing { background:var(--warning, #eab308); animation:sync-pulse 1s infinite; }
+    .sync-dot--error { background:var(--red, #ef4444); }
+    @keyframes sync-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       HAMBURGER MENU BUTTON (hidden on desktop)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .hamburger-btn {
+        display: none;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 1001;
+        background: var(--glass, rgba(30,30,40,0.85));
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+        border-radius: 10px;
+        padding: 10px;
+        cursor: pointer;
+        color: var(--text, #fff);
+        width: 44px;
+        height: 44px;
+        align-items: center;
+        justify-content: center;
+    }
+    .hamburger-btn svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+    /* Sidebar overlay backdrop (mobile only) */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 99;
+    }
+    .sidebar-overlay.active { display: block; }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       TABLET BREAKPOINT (max-width: 1024px)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 1024px) {
+        /* Override global min-width constraints */
+        body { min-width: 0 !important; }
+        .app-layout { min-width: 0 !important; }
+
+        /* Sidebar becomes fixed overlay */
+        .sidebar {
+            position: fixed;
+            left: -260px;
+            top: 0;
+            width: 250px;
+            min-width: 250px;
+            height: 100vh;
+            transition: left 0.3s ease;
+            z-index: 200;
+        }
+        .sidebar.open {
+            left: 0;
+        }
+
+        /* Show hamburger */
+        .hamburger-btn { display: flex; }
+
+        /* Main area takes full width */
+        .main-area, .main-content {
+            width: 100%;
+            min-width: 0;
+        }
+
+        /* Content padding adjustment */
+        main.content, .content-area {
+            padding: 16px 20px;
+            padding-top: 60px; /* space for hamburger */
+        }
+
+        /* Tables horizontally scrollable */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-container table {
+            min-width: 600px;
+        }
+
+        /* Dashboard grid 2 columns */
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        /* Form grid 2 columns */
+        .form-grid {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        /* Quick actions 2 columns */
+        .quick-actions {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        /* Modal adjustments */
+        .modal-content {
+            max-width: 95vw !important;
+            margin: 20px auto;
+        }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       PHONE BREAKPOINT (max-width: 768px)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+        /* Content area single column, more compact */
+        main.content, .content-area {
+            padding: 12px 14px;
+            padding-top: 60px;
+        }
+
+        /* Dashboard grid single column */
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        /* Stat cards smaller */
+        .stat-card { padding: 16px; }
+        .stat-number { font-size: 1.8em; }
+
+        /* Forms full width single column */
+        .form-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        /* Quick actions single column */
+        .quick-actions {
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        /* Glass panels less padding */
+        .glass-panel {
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        /* Larger touch targets for buttons */
+        .btn {
+            min-height: 44px;
+            padding: 10px 16px;
+            font-size: 14px;
+        }
+        .btn-small {
+            min-height: 38px;
+            padding: 8px 12px;
+        }
+
+        /* Nav buttons larger for touch */
+        .nav-btn {
+            padding: 12px;
+            font-size: 15px;
+            min-height: 44px;
+        }
+
+        /* Form inputs full width, larger */
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        input[type="date"],
+        input[type="file"],
+        input[type="tel"],
+        select,
+        textarea {
+            width: 100%;
+            min-height: 44px;
+            font-size: 16px; /* prevents iOS zoom on focus */
+        }
+
+        /* Workflow steps compact */
+        .workflow-step {
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px;
+        }
+        .step-number {
+            width: 32px;
+            height: 32px;
+            font-size: 14px;
+        }
+
+        /* Heading sizes */
+        h2 { font-size: 1.4em; }
+        h3 { font-size: 1.15em; }
+
+        /* Awards cards compact */
+        .awards-card { padding: 12px; }
+        .awards-card-header { flex-direction: column; align-items: flex-start; }
+        .awards-card-placements { flex-direction: column; gap: 8px; }
+        .awards-card-actions { flex-direction: column; }
+        .awards-card-actions .btn { width: 100%; }
+
+        /* Table container touch scrolling hint */
+        .table-container {
+            position: relative;
+        }
+        .table-container table {
+            min-width: 500px;
+        }
+
+        /* Modal content full width on phone */
+        .modal-content {
+            max-width: 100vw !important;
+            width: 100% !important;
+            margin: 0;
+            border-radius: 0;
+            min-height: 100vh;
+        }
+
+        /* Action button rows wrap */
+        div[style*="display: flex"][style*="gap"] {
+            flex-wrap: wrap;
+        }
+
+        /* Tournament selector in sidebar */
+        .sidebar-tournament { padding: 10px 12px; }
+
+        /* User menu compact */
+        .user-menu-info { gap: 8px; }
+        .user-avatar { width: 32px; height: 32px; font-size: 13px; }
+    }
+    </style>
 </head>
 <body>
     <!-- ===== AUTH GATE (login/signup overlay) ===== -->
@@ -96,57 +349,68 @@
         </div>
     </div>
 
+    <!-- Hamburger menu button (visible only on mobile/tablet) -->
+    <button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle navigation menu" onclick="toggleMobileSidebar()">
+        <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+
     <div class="app-layout">
+        <!-- Sidebar overlay (mobile tap-to-close) -->
+        <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
         <!-- ===== LEFT SIDEBAR ===== -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="app-sidebar">
             <div class="sidebar-header">
                 <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
             </div>
 
-            <div class="sidebar-tournament">
-                <div class="tournament-selector" id="tournament-selector">
-                    <select id="active-tournament" onchange="switchTournament()">
-                        <option value="">Select Tournament</option>
-                    </select>
-                    <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
-                </div>
-            </div>
+            <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
+                <span class="sync-dot"></span>
+                <span class="sync-label">Saved</span>
+            </span>
 
             <nav id="main-nav" class="hidden">
                 <div class="nav-group">
                     <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-label">Setup</div>
-                    <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
-                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Clubs</button>
-                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
-                    <button class="nav-btn" data-view="events"><i data-lucide="award" class="nav-icon"></i> Event Types</button>
-                </div>
-                <div class="nav-group">
                     <div class="nav-group-label">Tournament</div>
-                    <button class="nav-btn" data-view="scoreboard-configs"><i data-lucide="settings" class="nav-icon"></i> Scoreboard Setup</button>
+                    <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
+                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
+                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
-                </div>
-                <div class="nav-group">
-                    <div class="nav-group-label">Live</div>
                     <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
-                    <button class="nav-btn" data-view="public-site"><i data-lucide="globe" class="nav-icon"></i> Public Site</button>
+                    <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
+                    <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
                 </div>
                 <div class="nav-group" id="academy-nav-group" style="display:none">
-                    <div class="nav-group-label">Academy</div>
-                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Academy</button>
+                    <div class="nav-group-label">Dojo</div>
+                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Dojo</button>
                 </div>
-                <div class="nav-group">
+                <div class="nav-group" id="settings-nav-group">
                     <div class="nav-group-label">Admin</div>
-                    <button class="nav-btn" data-view="settings"><i data-lucide="settings-2" class="nav-icon"></i> Settings</button>
+                    <button class="nav-settings-toggle" id="settings-toggle" onclick="toggleSettingsNav()">
+                        <i data-lucide="settings-2" class="nav-icon"></i> Settings
+                        <i data-lucide="chevron-right" class="nav-chevron"></i>
+                    </button>
+                    <div class="nav-settings-children" id="settings-children">
+                        <button class="nav-sub-btn" data-view="settings-tournament-info">Tournament Info</button>
+                        <button class="nav-sub-btn" data-view="events">Event Types</button>
+                        <button class="nav-sub-btn" data-view="scoreboard-configs">Scoreboard Setup</button>
+                        <button class="nav-sub-btn" data-view="public-site">Public Site</button>
+                        <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
+                        <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
+                        <button class="nav-sub-btn" data-view="settings-feedback">Feedback</button>
+                        <button class="nav-sub-btn" data-view="settings">Staff Roles</button>
+                    </div>
                 </div>
             </nav>
 
             <div class="sidebar-footer">
+                <a href="/account.html" style="display:block;padding:8px 12px;margin:0 8px 8px;border-radius:8px;font-size:13px;color:rgba(255,255,255,0.6);text-decoration:none;transition:all 0.15s;text-align:center;border:1px solid rgba(255,255,255,0.08);" onmouseover="this.style.background='rgba(255,255,255,0.06)';this.style.color='#fff'" onmouseout="this.style.background='';this.style.color='rgba(255,255,255,0.6)'">My Account</a>
                 <div id="user-menu" class="user-menu hidden">
                     <div class="user-menu-info">
                         <div class="user-avatar" id="user-avatar">?</div>
@@ -282,8 +546,8 @@
                         <div class="workflow-step">
                             <div class="step-number">1</div>
                             <div class="step-content">
-                                <h4>Register Instructors & Clubs</h4>
-                                <p>Add instructors with club logos first</p>
+                                <h4>Register Instructors & Dojos</h4>
+                                <p>Add instructors with dojo logos first</p>
                                 <button class="btn btn-secondary btn-small" onclick="navigateTo('instructors')">Go to Instructors</button>
                             </div>
                         </div>
@@ -411,23 +675,23 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="club">Club *</label>
+                                <label for="club">Dojo *</label>
                                 <select id="club" required onchange="handleClubSelection()">
-                                    <option value="">Select Club</option>
+                                    <option value="">Select Dojo</option>
                                 </select>
                             </div>
                             <div class="form-group" id="new-club-name-group" style="display: none;">
-                                <label for="new-club-name">New Club Name *</label>
-                                <input type="text" id="new-club-name" placeholder="Enter club name">
+                                <label for="new-club-name">New Dojo Name *</label>
+                                <input type="text" id="new-club-name" placeholder="Enter dojo name">
                             </div>
                             <div class="form-group" id="new-club-logo-group" style="display: none;">
-                                <label for="new-club-logo">Club Logo (optional)</label>
+                                <label for="new-club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="new-club-logo" accept="image/*">
                                 <div id="new-club-logo-preview" class="photo-preview hidden">
-                                    <img id="new-club-logo-preview-img" alt="Club Logo">
+                                    <img id="new-club-logo-preview-img" alt="Dojo Logo">
                                     <button type="button" class="btn btn-small btn-danger" onclick="clearNewClubLogo()">Remove</button>
                                 </div>
-                                <p class="hint">Upload your club's logo for identification</p>
+                                <p class="hint">Upload your dojo's logo for identification</p>
                             </div>
                             <div class="form-group">
                                 <label for="photo">Competitor Photo (optional)</label>
@@ -513,7 +777,7 @@
                                 <th>Gender</th>
                                 <th>Weight</th>
                                 <th>Rank</th>
-                                <th>Club</th>
+                                <th>Dojo</th>
                                 <th>Events</th>
                                 <th>Total Due</th>
                                 <th>Payment</th>
@@ -527,26 +791,26 @@
 
             <!-- Clubs View -->
             <section id="clubs-view" class="view">
-                <h2>Clubs</h2>
+                <h2>Dojos</h2>
                 <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                    <button class="btn btn-primary" onclick="showClubForm()">+ Add Club</button>
-                    <button class="btn btn-danger btn-small" onclick="clearAllClubs()">🗑️ Clear All Clubs</button>
+                    <button class="btn btn-primary" onclick="showClubForm()">+ Add Dojo</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllClubs()">🗑️ Clear All Dojos</button>
                 </div>
 
                 <div id="club-form-container" class="glass-panel hidden">
-                    <h3>Club Registration</h3>
+                    <h3>Dojo Registration</h3>
                     <form id="club-form">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label for="club-name">Club Name *</label>
-                                <input type="text" id="club-name" required placeholder="Enter club name">
+                                <label for="club-name">Dojo Name *</label>
+                                <input type="text" id="club-name" required placeholder="Enter dojo name">
                             </div>
                             <div class="form-group">
                                 <label for="club-country">Country</label>
                                 <input type="text" id="club-country" placeholder="e.g., USA, Japan">
                             </div>
                             <div class="form-group">
-                                <label for="club-logo">Club Logo (optional)</label>
+                                <label for="club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="club-logo" accept="image/*">
                                 <div id="club-logo-preview" class="photo-preview hidden">
                                     <img id="club-logo-preview-img" alt="Logo Preview">
@@ -555,19 +819,19 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Save Club</button>
+                            <button type="submit" class="btn btn-primary">Save Dojo</button>
                             <button type="button" class="btn btn-secondary" onclick="hideClubForm()">Cancel</button>
                         </div>
                     </form>
                 </div>
 
                 <div class="table-container">
-                    <input type="text" id="club-search" placeholder="Search clubs..." onkeyup="filterClubs()">
+                    <input type="text" id="club-search" placeholder="Search dojos..." onkeyup="filterClubs()">
                     <table id="clubs-table">
                         <thead>
                             <tr>
                                 <th>Logo</th>
-                                <th>Club Name</th>
+                                <th>Dojo Name</th>
                                 <th>Country</th>
                                 <th>Members</th>
                                 <th>Actions</th>
@@ -613,7 +877,7 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="instructorClub">Club Name *</label>
+                                <label for="instructorClub">Dojo Name *</label>
                                 <input type="text" id="instructorClub" required>
                             </div>
                             <div class="form-group">
@@ -625,7 +889,7 @@
                                 <input type="tel" id="instructorPhone">
                             </div>
                             <div class="form-group">
-                                <label for="instructor-club-logo">Club Logo (optional)</label>
+                                <label for="instructor-club-logo">Dojo Logo (optional)</label>
                                 <input type="file" id="instructor-club-logo" accept="image/*">
                                 <div id="instructor-club-logo-preview" class="photo-preview hidden">
                                     <img id="instructor-club-logo-preview-img" alt="Preview">
@@ -647,7 +911,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Rank</th>
-                                <th>Club</th>
+                                <th>Dojo</th>
                                 <th>Email</th>
                                 <th>Phone</th>
                                 <th>Actions</th>
@@ -1094,7 +1358,7 @@
                                         <option value="rank">Seeded by Rank (Higher ranks first)</option>
                                         <option value="age">Seeded by Age (Younger first)</option>
                                         <option value="country">Seeded by Country (Separate countries)</option>
-                                        <option value="club">Seeded by Club (Separate clubs)</option>
+                                        <option value="club">Seeded by Dojo (Separate dojos)</option>
                                     </select>
                                 </div>
 
@@ -1148,9 +1412,12 @@
                                 <option value="">All Events</option>
                             </select>
                         </div>
-                        <div style="display: flex; gap: 12px;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <button class="btn btn-danger" onclick="deleteAllBrackets()">Delete All Brackets</button>
                             <button class="btn btn-primary" onclick="showBracketGenerator()">+ Generate New Bracket</button>
+                            <button class="btn" id="brackets-publish-btn" onclick="toggleBracketsPublished()" style="background:var(--accent);color:#fff;">
+                                <span id="brackets-publish-label">Publish All Brackets</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1310,12 +1577,15 @@
                                 <h3 style="margin: 0 0 8px 0;">Dynamic Timeline</h3>
                                 <p class="hint" style="margin: 0;">Drag divisions from the left to mat columns on the right. Times are calculated automatically.</p>
                             </div>
-                            <div style="display: flex; gap: 8px;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
                                     ⚡ Auto-Schedule All
                                 </button>
                                 <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">
                                     🗑️ Clear All Schedules
+                                </button>
+                                <button class="btn btn-small" id="schedule-publish-btn" onclick="toggleSchedulePublished()" style="background:var(--accent);color:#fff;">
+                                    <span id="schedule-publish-label">Publish Schedule</span>
                                 </button>
                             </div>
                         </div>
@@ -1355,7 +1625,7 @@
                             <div class="form-group">
                                 <label class="checkbox-label">
                                     <input type="checkbox" id="show-club-logo" checked>
-                                    Show Club Logo (Small Circle)
+                                    Show Dojo Logo (Small Circle)
                                 </label>
                             </div>
                             <div class="form-group">
@@ -1421,34 +1691,258 @@
                 <div id="mat-scoreboards-container"></div>
             </section>
 
-            <!-- Results View -->
+            <!-- Awards & Results View -->
             <section id="results-view" class="view">
-                <h2>Results & Certificates</h2>
+                <h2>Awards & Results</h2>
 
-                <div class="glass-panel">
-                    <h3>Division Results</h3>
+                <!-- Sync bar -->
+                <div class="glass-panel" style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="syncResultsToServer()" id="btn-sync-results">Sync Results from Scoreboard</button>
+                    <span id="sync-status" style="color:var(--text-muted);font-size:13px;"></span>
+                    <div style="margin-left:auto;display:flex;gap:8px;">
+                        <button class="btn btn-sm" onclick="bulkPublishResults()" id="btn-publish-all" style="background:var(--success);color:#fff;">Publish All</button>
+                        <button class="btn btn-sm" onclick="bulkUnpublishResults()" id="btn-unpublish-all" style="background:var(--text-muted);color:#fff;">Unpublish All</button>
+                    </div>
+                </div>
+
+                <!-- Awards tabs -->
+                <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border);">
+                    <button class="awards-tab active" data-awards-tab="pending" onclick="switchAwardsTab('pending')">
+                        Pending Awards <span id="pending-count" class="awards-count">0</span>
+                    </button>
+                    <button class="awards-tab" data-awards-tab="published" onclick="switchAwardsTab('published')">
+                        Published <span id="published-count" class="awards-count">0</span>
+                    </button>
+                </div>
+
+                <!-- Pending tab -->
+                <div id="awards-pending-tab" class="awards-tab-content">
+                    <div id="pending-results-container"></div>
+                    <div id="pending-empty" class="awards-empty" style="display:none;">
+                        <p>No pending awards. Sync results from the scoreboard to get started.</p>
+                    </div>
+                </div>
+
+                <!-- Published tab -->
+                <div id="awards-published-tab" class="awards-tab-content" style="display:none;">
+                    <div id="published-results-container"></div>
+                    <div id="published-empty" class="awards-empty" style="display:none;">
+                        <p>No published results yet.</p>
+                    </div>
+                </div>
+
+                <!-- Legacy results (for certificate generation from localStorage) -->
+                <div class="glass-panel" style="margin-top:24px;">
+                    <h3>Certificates</h3>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Generate certificates from localStorage bracket data or download a batch PDF from the server.</p>
                     <div id="results-container"></div>
-                    <button class="btn btn-primary" onclick="generateAllCertificates()" style="margin-top: 16px;">Generate All Certificates</button>
+                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="generateAllCertificates()">Generate All Certificates</button>
+                        <button class="btn btn-secondary" onclick="downloadBatchCertificatePDF()">Download All Certificates (PDF)</button>
+                    </div>
                 </div>
             </section>
 
-            <!-- Settings View -->
-            <section id="settings-view" class="view">
-                <h2>Settings</h2>
+            <!-- Medical Incidents View -->
+            <section id="medical-incidents-view" class="view">
+                <h2>Medical Incident Log</h2>
+
+                <div class="glass-panel" style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="showLogIncidentForm()">
+                        <i data-lucide="plus" style="width:16px;height:16px;"></i> Log Incident
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportMedicalIncidentsCSV()">
+                        <i data-lucide="download" style="width:16px;height:16px;"></i> Export CSV
+                    </button>
+                    <span id="medical-incident-count" style="margin-left:auto;color:var(--text-muted);font-size:13px;"></span>
+                </div>
+
+                <!-- Log Incident Form (hidden by default) -->
+                <div id="log-incident-form-panel" class="glass-panel" style="display:none; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">Log Medical Incident</h3>
+                    <form id="log-incident-form" onsubmit="submitMedicalIncident(event)">
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div class="form-group">
+                                <label for="incident-competitor">Competitor <span class="required">*</span></label>
+                                <select id="incident-competitor" onchange="onIncidentCompetitorChange()">
+                                    <option value="">-- Select or type manually --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="incident-competitor-name">Competitor Name <span class="required">*</span></label>
+                                <input type="text" id="incident-competitor-name" required placeholder="Name of injured competitor">
+                            </div>
+                            <div class="form-group">
+                                <label for="incident-mat">Mat / Area Number</label>
+                                <input type="text" id="incident-mat" placeholder="e.g. Mat 1, Ring A">
+                            </div>
+                            <div class="form-group">
+                                <label for="incident-official">Official / Judge Present</label>
+                                <input type="text" id="incident-official" placeholder="Name of official present">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label for="incident-description">Description <span class="required">*</span></label>
+                            <textarea id="incident-description" required rows="3" placeholder="Describe the injury/incident, what happened, and any actions taken..."></textarea>
+                        </div>
+                        <div style="display:flex; gap:24px; margin-top:12px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;">
+                                <input type="checkbox" id="incident-able-to-continue"> Able to Continue
+                            </label>
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px;">
+                                <input type="checkbox" id="incident-medical-staff"> Medical Staff Called
+                            </label>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button type="submit" class="btn btn-primary" id="incident-submit-btn">Save Incident</button>
+                            <button type="button" class="btn btn-ghost" onclick="hideLogIncidentForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Incidents Table -->
+                <div class="glass-panel">
+                    <div class="table-container">
+                        <table id="medical-incidents-table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Competitor</th>
+                                    <th>Mat</th>
+                                    <th>Description</th>
+                                    <th>Official</th>
+                                    <th>Continue?</th>
+                                    <th>EMS?</th>
+                                    <th>Logged By</th>
+                                </tr>
+                            </thead>
+                            <tbody id="medical-incidents-tbody">
+                                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">No incidents logged yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Judge Analytics View -->
+            <section id="judge-analytics-view" class="view">
+                <h2>Judge Performance Analytics</h2>
+
+                <div id="judge-analytics-loading" style="text-align:center;padding:40px;">
+                    <span class="spinner"></span> Loading analytics...
+                </div>
+
+                <div id="judge-analytics-empty" style="display:none;text-align:center;padding:40px;color:var(--text-muted);">
+                    <div style="font-size:48px;margin-bottom:16px;">&#9878;</div>
+                    <h3 style="margin-bottom:8px;">No judge vote data yet</h3>
+                    <p>Judge vote analytics will appear here after kata-flags matches have been judged and synced.</p>
+                </div>
+
+                <div id="judge-analytics-content" style="display:none;">
+                    <!-- Summary Cards -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Total Matches Judged</div>
+                            <div id="ja-total-matches" style="font-size:28px; font-weight:700; color:var(--accent);">0</div>
+                        </div>
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Total Votes Recorded</div>
+                            <div id="ja-total-votes" style="font-size:28px; font-weight:700; color:var(--accent);">0</div>
+                        </div>
+                        <div class="glass-panel" style="text-align:center; padding:20px;">
+                            <div style="font-size:13px; color:var(--text-muted); margin-bottom:4px;">Overall Consistency Rate</div>
+                            <div id="ja-overall-consistency" style="font-size:28px; font-weight:700;">0%</div>
+                        </div>
+                    </div>
+
+                    <!-- Per-Judge Table -->
+                    <div class="glass-panel">
+                        <h3 style="margin-bottom:12px;">Per-Judge Breakdown</h3>
+                        <div class="table-container">
+                            <table style="width:100%;">
+                                <thead>
+                                    <tr>
+                                        <th>Judge</th>
+                                        <th>Total Votes</th>
+                                        <th>Consistency %</th>
+                                        <th>Avg Decision Time</th>
+                                        <th>Bias Flags</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ja-judges-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tournament Info View (Settings sub-page) -->
+            <section id="settings-tournament-info-view" class="view">
+                <h2>Tournament Info</h2>
 
                 <div class="glass-panel">
-                    <h3>Event Types</h3>
-                    <p class="hint">Manage the event types for this tournament. Deleting an event will also remove its divisions and brackets.</p>
-                    <div id="settings-events-list" style="margin-top: 12px;">
-                        <p class="hint">No events loaded.</p>
+                    <h3>Active Tournament</h3>
+                    <p class="hint">Select which tournament to manage, or create a new one.</p>
+                    <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
+                        <select id="active-tournament" onchange="switchTournament()" style="flex: 1; min-width: 200px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
+                            <option value="">Select Tournament</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
+                    </div>
+                </div>
+
+                <div class="glass-panel" id="tournament-info-details">
+                    <h3>Details</h3>
+                    <div id="tournament-info-content">
+                        <p class="hint">Select a tournament to view its details.</p>
                     </div>
                 </div>
 
                 <div class="glass-panel">
-                    <h3>Danger Zone</h3>
-                    <p class="hint">Permanently delete this tournament and all associated data (events, registrations, brackets). This cannot be undone.</p>
-                    <button class="btn btn-danger" onclick="deleteTournamentFromServer()" style="margin-top: 12px;">Delete Tournament</button>
+                    <h3>Clone Tournament</h3>
+                    <p class="hint">Create a new draft copy of this tournament with all events, pricing periods, and staff roles.</p>
+                    <button class="btn btn-secondary" id="clone-tournament-btn" onclick="cloneTournamentFromManage()" style="margin-top: 12px;">Clone This Tournament</button>
                 </div>
+
+                <div class="glass-panel" style="border: 1px solid var(--danger); border-radius: 12px;">
+                    <h3 style="color: var(--danger);">Danger Zone</h3>
+                    <p class="hint">Permanently delete this tournament and all associated data (events, registrations, brackets). This cannot be undone.</p>
+                    <p id="delete-tournament-name" style="margin-top: 8px; font-weight: 600; color: var(--danger);"></p>
+                    <button class="btn btn-danger" id="delete-tournament-btn" onclick="deleteTournamentFromServer()" style="margin-top: 12px;">Delete Tournament</button>
+                </div>
+            </section>
+
+            <!-- Staff Roles View (Settings sub-page) -->
+            <section id="settings-view" class="view">
+                <h2>Staff Roles & Permissions</h2>
+
+                <div class="glass-panel" id="staff-roles-panel">
+                    <p class="hint">Define custom roles for staff members with specific permissions. Assign roles to approved tournament members.</p>
+
+                    <div id="staff-roles-list" style="margin-top: 12px;"></div>
+
+                    <div style="margin-top: 16px; padding: 16px; background: var(--glass); border: 1px dashed var(--glass-border); border-radius: 8px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px;">Create New Role</h4>
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <input type="text" id="new-role-name" class="form-input" placeholder="Role name (e.g., Head Judge)" style="flex: 1;">
+                        </div>
+                        <div id="new-role-permissions" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;"></div>
+                        <button class="btn btn-primary btn-sm" onclick="createStaffRole()">Create Role</button>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 14px;">Member Role Assignments</h4>
+                        <div id="staff-member-assignments" style="font-size: 13px; color: var(--text-secondary);">
+                            <p class="hint">No approved staff members yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Certificates View (Settings sub-page) -->
+            <section id="settings-certificates-view" class="view">
+                <h2>Certificates</h2>
 
                 <div class="glass-panel">
                     <h3>Certificate Template</h3>
@@ -1463,15 +1957,21 @@
                             <button class="btn btn-secondary btn-sm" onclick="clearCertificateTemplate()">Remove Template</button>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveCertificateTemplate()" style="margin-top: 12px;">Save Template</button>
+                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="saveCertificateTemplate()">Save Template</button>
+                        <button class="btn btn-secondary" onclick="syncCertificateTemplateToServer()">Sync to Server</button>
+                        <button class="btn btn-secondary" onclick="loadCertificateTemplateFromServer()">Load from Server</button>
+                    </div>
+                    <div id="cert-sync-status" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
                 </div>
 
                 <div class="glass-panel" id="merge-tag-config-panel" style="display: none;">
                     <h3>Merge Tag Positioning</h3>
                     <p class="hint">Configure which tags appear on the certificate and their position (X/Y as % of image), font size, color, and alignment.</p>
                     <div id="merge-tag-list" style="margin-top: 16px;"></div>
-                    <div style="margin-top: 16px; display: flex; gap: 8px;">
+                    <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="btn btn-primary" onclick="saveCertificateConfig()">Save Configuration</button>
+                        <button class="btn btn-secondary" onclick="saveCertificateConfigToServer()">Save Config to Server</button>
                         <button class="btn btn-secondary" onclick="previewCertificateWithSampleData()">Preview with Sample Data</button>
                     </div>
                 </div>
@@ -1479,6 +1979,130 @@
                 <div class="glass-panel" id="certificate-live-preview-panel" style="display: none;">
                     <h3>Certificate Preview</h3>
                     <canvas id="certificate-preview-canvas" style="max-width: 100%; border: 1px solid var(--glass-border); border-radius: 8px;"></canvas>
+                </div>
+            </section>
+
+            <!-- Sponsors View -->
+            <section id="settings-sponsors-view" class="view">
+                <h2>Sponsors &amp; Vendors</h2>
+
+                <div class="glass-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="margin: 0;">Sponsor Directory</h3>
+                        <button class="btn btn-primary btn-sm" onclick="openSponsorForm()">+ Add Sponsor</button>
+                    </div>
+
+                    <!-- Add/Edit Sponsor Form (hidden by default) -->
+                    <div id="sponsor-form-panel" style="display: none; margin-bottom: 24px; padding: 20px; background: var(--bg-secondary); border-radius: 12px; border: 1px solid var(--glass-border);">
+                        <h4 id="sponsor-form-title" style="margin: 0 0 16px 0;">Add Sponsor</h4>
+                        <input type="hidden" id="sponsor-edit-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="sponsor-name">Name *</label>
+                                <input type="text" id="sponsor-name" placeholder="Sponsor or vendor name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sponsor-category">Category</label>
+                                <select id="sponsor-category">
+                                    <option value="sponsor">Sponsor</option>
+                                    <option value="hotel">Hotel</option>
+                                    <option value="restaurant">Restaurant</option>
+                                    <option value="dojo">Dojo</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sponsor-website">Website URL</label>
+                                <input type="url" id="sponsor-website" placeholder="https://example.com">
+                            </div>
+                            <div class="form-group">
+                                <label for="sponsor-discount">Discount Code</label>
+                                <input type="text" id="sponsor-discount" placeholder="e.g. KARATE20">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 8px;">
+                            <label for="sponsor-description">Description</label>
+                            <textarea id="sponsor-description" rows="3" placeholder="Brief description of sponsor..." style="width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--glass); color: var(--text-primary); font-family: inherit; resize: vertical;"></textarea>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 16px;">
+                            <button class="btn btn-primary btn-sm" onclick="saveSponsor()">Save</button>
+                            <button class="btn btn-secondary btn-sm" onclick="closeSponsorForm()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Sponsors List -->
+                    <div id="sponsors-list">
+                        <p style="color: var(--text-muted); font-size: 14px;">Loading sponsors...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Feedback View (Settings sub-page) -->
+            <section id="settings-feedback-view" class="view">
+                <h2>Post-Tournament Feedback</h2>
+
+                <div class="glass-panel">
+                    <h3>Feedback Form Configuration</h3>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="feedback-enabled" style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
+                            <span style="font-weight: 600;">Enable post-tournament feedback</span>
+                        </label>
+                        <p class="hint" style="margin-top: 6px;">When enabled, feedback emails will be sent to recipients after the tournament ends.</p>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="feedback-delay-hours">Send Delay (hours after tournament)</label>
+                            <input type="number" id="feedback-delay-hours" min="0" max="720" value="24" placeholder="24">
+                            <p class="hint">How many hours after the tournament ends to send feedback requests.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="feedback-recipients">Recipients</label>
+                            <select id="feedback-recipients">
+                                <option value="competitors">Competitors Only</option>
+                                <option value="parents">Parents Only</option>
+                                <option value="coaches">Coaches Only</option>
+                                <option value="all">All (Competitors, Parents, Coaches)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px;">
+                        <div id="feedback-form-link-box" style="display:none; margin-bottom: 16px; padding: 12px 16px; background: var(--glass); border-radius: 10px;">
+                            <div style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Public Feedback Link</div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="text" id="feedback-form-link" readonly style="flex: 1; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 8px; color: var(--text-primary); font-size: 13px; font-family: monospace;">
+                                <button class="btn btn-secondary btn-sm" onclick="copyFeedbackLink()" style="white-space: nowrap;">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="margin: 0;">Questions</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="addFeedbackQuestion()">+ Add Question</button>
+                    </div>
+                    <div id="feedback-questions-list">
+                        <p style="color: var(--text-muted); font-size: 14px;">Loading questions...</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="saveFeedbackForm()">Save Feedback Form</button>
+                </div>
+                <div id="feedback-save-status" style="margin-top: 8px; font-size: 13px; color: var(--text-muted);"></div>
+
+                <div class="glass-panel" style="margin-top: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="margin: 0;">Responses &amp; Stats</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="exportFeedbackCSV()">Export CSV</button>
+                    </div>
+                    <div id="feedback-stats-container">
+                        <p style="color: var(--text-muted); font-size: 14px;">Save and enable the form to view responses.</p>
+                    </div>
                 </div>
             </section>
 
@@ -1537,51 +2161,58 @@
                             <input type="text" id="public-footer-text" placeholder="© 2024 Tournament Name. All rights reserved.">
                         </div>
 
-                        <h4 style="margin-top: 20px;">Visibility Settings</h4>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="public-show-schedule">
-                                    Show Schedule to Public
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="public-show-results">
-                                    Show Results to Public
-                                </label>
-                            </div>
-                        </div>
-
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Save Configuration</button>
-                            <button type="button" class="btn btn-secondary" onclick="openPublicSite()">📺 Preview Public Site</button>
+                            <button type="button" class="btn btn-secondary" onclick="openPublicSite()">Preview Public Site</button>
                         </div>
                     </form>
                 </div>
 
+                <!-- Section Visibility -->
+                <div class="glass-panel">
+                    <h3>Landing Page Sections</h3>
+                    <p class="hint" style="margin-bottom:16px;">Control which tabs are visible on your tournament's public page.</p>
+                    <div id="visibility-toggles" style="display:grid;gap:10px;">
+                        <label class="checkbox-label"><input type="checkbox" id="vis-competitors" checked onchange="saveVisibility()"> Competitors list</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-divisions" checked onchange="saveVisibility()"> Divisions</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-brackets" onchange="saveVisibility()"> Brackets</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-schedule" onchange="saveVisibility()"> Schedule</label>
+                        <label class="checkbox-label"><input type="checkbox" id="vis-hide-count" onchange="saveVisibility()"> Hide competitor count from hero</label>
+                    </div>
+                    <p class="hint" style="margin-top:8px;">Results are controlled by the Awards workflow — publish from the Results tab.</p>
+                </div>
+
+                <!-- Custom Tabs -->
+                <div class="glass-panel">
+                    <h3>Custom Tabs</h3>
+                    <p class="hint" style="margin-bottom:16px;">Add informational tabs (e.g., Hotel Deals, Tournament Rules, Parking Info).</p>
+                    <div id="custom-tabs-list"></div>
+                    <button class="btn btn-secondary" onclick="addCustomTabRow()" style="margin-top:12px;">+ Add Custom Tab</button>
+                </div>
+
+                <!-- Share -->
                 <div class="glass-panel">
                     <h3>Share Public Site</h3>
                     <p class="hint">Share this link with competitors and spectators:</p>
                     <div style="display: flex; gap: 12px; align-items: center; margin-top: 16px;">
-                        <input type="text" id="public-site-url" readonly value="public.html" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary);">
+                        <input type="text" id="public-site-url" readonly value="" style="flex: 1; padding: 12px; border-radius: 10px; border: none; background: var(--bg-secondary); color: var(--text-primary);">
                         <button class="btn btn-secondary" onclick="copyPublicSiteUrl()">Copy Link</button>
                     </div>
                 </div>
             </section>
 
-            <!-- ═══ Academy View ═══ -->
+            <!-- ═══ Dojo View ═══ -->
             <section id="academy-view" class="view">
-                <!-- Setup Panel (shown when no academy exists) -->
+                <!-- Setup Panel (shown when no dojo exists) -->
                 <div id="academy-setup-panel" class="academy-setup hidden">
                     <div class="glass-panel" style="max-width: 600px; margin: 80px auto;">
-                        <h2>Set Up Your Academy</h2>
-                        <p class="hint" style="margin-bottom: 24px;">Create your academy to manage your team, register competitors, and track tournament participation.</p>
+                        <h2>Set Up Your Dojo</h2>
+                        <p class="hint" style="margin-bottom: 24px;">Create your dojo to manage your team, register competitors, and track tournament participation.</p>
                         <form id="academy-setup-form" onsubmit="handleCreateAcademy(event)">
                             <div class="form-grid" style="grid-template-columns: 1fr;">
                                 <div class="form-group">
-                                    <label>Academy Name <span class="required">*</span></label>
-                                    <input type="text" id="setup-academy-name" required placeholder="e.g. Tiger Martial Arts Academy">
+                                    <label>Dojo Name <span class="required">*</span></label>
+                                    <input type="text" id="setup-academy-name" required placeholder="e.g. Tiger Martial Arts Dojo">
                                 </div>
                                 <div class="form-group">
                                     <label>Address</label>
@@ -1602,13 +2233,13 @@
                                     <input type="url" id="setup-academy-website" placeholder="https://...">
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Create Academy</button>
+                            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Create Dojo</button>
                         </form>
                         <button class="btn btn-ghost" style="width: 100%; margin-top: 8px;" onclick="document.querySelector('[data-view=dashboard]').click()">Skip for Now</button>
                     </div>
                 </div>
 
-                <!-- Dashboard (shown when academy exists) -->
+                <!-- Dashboard (shown when dojo exists) -->
                 <div id="academy-dashboard" class="hidden">
                     <!-- Profile Card -->
                     <div class="glass-panel academy-profile-card" id="academy-profile-card">
@@ -1637,7 +2268,7 @@
                         <div id="academy-edit-form" class="hidden" style="margin-top: 16px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
                             <div class="form-grid" style="grid-template-columns: 1fr;">
                                 <div class="form-group">
-                                    <label>Academy Name</label>
+                                    <label>Dojo Name</label>
                                     <input type="text" id="edit-academy-name">
                                 </div>
                                 <div class="form-group">
@@ -1692,7 +2323,7 @@
                             <!-- Register Competitor -->
                             <div class="glass-panel">
                                 <h3>Register Competitor / Student</h3>
-                                <p class="hint" style="margin-bottom: 16px;">Creates an account for this student and adds them to your academy.</p>
+                                <p class="hint" style="margin-bottom: 16px;">Creates an account for this student and adds them to your dojo.</p>
                                 <form id="register-competitor-form" onsubmit="handleRegisterCompetitor(event)">
                                     <div class="form-group">
                                         <label>First Name <span class="required">*</span></label>
@@ -1778,6 +2409,7 @@
 
     <script src="/criteria-presets.js"></script>
     <script src="/auth.js"></script>
+    <script src="/toast.js"></script>
     <script src="/app.js"></script>
     <script>lucide.createIcons();</script>
     <script>
@@ -1853,8 +2485,67 @@
                 });
             }
 
-            localStorage.setItem('eventTypes', JSON.stringify(eventTypes));
-            localStorage.setItem('divisions', JSON.stringify(allDivisions));
+            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify(eventTypes));
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+
+            // Load schedule, divisions, and brackets from server (parallel)
+            try {
+                const [schedResult, divResult, brkResult, teamResult] = await Promise.allSettled([
+                    fetch(`/api/tournaments/${tournamentId}/schedule`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/divisions`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/brackets`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tournamentId}/teams`, { credentials: 'include' }),
+                ]);
+
+                // Seed schedule from server
+                if (schedResult.status === 'fulfilled' && schedResult.value.ok) {
+                    const schedData = await schedResult.value.json();
+                    if (schedData.matSchedule && Object.keys(schedData.matSchedule).length > 0) {
+                        localStorage.setItem(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
+                        localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(schedData.matSchedule));
+                    }
+                    if (schedData.scheduleSettings && Object.keys(schedData.scheduleSettings).length > 0) {
+                        localStorage.setItem(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
+                    }
+                    // Track published state for UI
+                    window._schedulePublished = schedData.published || false;
+                }
+
+                // Merge generated divisions from server
+                if (divResult.status === 'fulfilled' && divResult.value.ok) {
+                    const divData = await divResult.value.json();
+                    if (divData.generatedDivisions && Object.keys(divData.generatedDivisions).length > 0) {
+                        const current = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+                        Object.keys(divData.generatedDivisions).forEach(evId => {
+                            if (!current[evId]) current[evId] = {};
+                            current[evId].generated = divData.generatedDivisions[evId].generated;
+                            current[evId].updatedAt = divData.generatedDivisions[evId].updatedAt;
+                        });
+                        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(current));
+                    }
+                }
+
+                // Seed brackets from server
+                if (brkResult.status === 'fulfilled' && brkResult.value.ok) {
+                    const brkData = await brkResult.value.json();
+                    if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
+                        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brkData.brackets));
+                    }
+                }
+
+                // Seed teams from server
+                if (teamResult.status === 'fulfilled' && teamResult.value.ok) {
+                    const teamData = await teamResult.value.json();
+                    if (teamData.teams && Object.keys(teamData.teams).length > 0) {
+                        const localTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+                        if (Object.keys(localTeams).length === 0) {
+                            localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamData.teams));
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not load server data:', e.message);
+            }
 
             // Reload the tournament selector and auto-select
             loadTournamentSelector();
@@ -1864,7 +2555,7 @@
 
             // Auto-generate scoreboard config from sanctioning body (after switchTournament sets currentTournamentId)
             if (t.sanctioning_body && typeof autoGenerateScoreboardConfig === 'function') {
-                const existing = JSON.parse(localStorage.getItem('scoreboardConfig') || 'null');
+                const existing = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null');
                 if (!existing || String(existing.tournamentId) !== String(t.id)) {
                     autoGenerateScoreboardConfig(t.sanctioning_body);
                 }
@@ -1876,7 +2567,661 @@
         } catch (err) {
             console.error('Failed to auto-load tournament:', err);
         }
+        // Update publish button labels after load
+        if (window._schedulePublished) {
+            const lbl = document.getElementById('schedule-publish-label');
+            if (lbl) lbl.textContent = 'Unpublish Schedule';
+        }
     })();
+
+    // ── Publish toggle functions ─────────────────────────────────────
+    window._schedulePublished = window._schedulePublished || false;
+    window._bracketsPublished = false;
+
+    window.toggleSchedulePublished = async function() {
+        if (!currentTournamentId) return;
+        window._schedulePublished = !window._schedulePublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule/publish`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._schedulePublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('schedule-publish-label').textContent =
+                window._schedulePublished ? 'Unpublish Schedule' : 'Publish Schedule';
+            showMessage(window._schedulePublished ? 'Schedule published to public page' : 'Schedule unpublished');
+        } catch (err) {
+            window._schedulePublished = !window._schedulePublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
+
+    window.toggleBracketsPublished = async function() {
+        if (!currentTournamentId) return;
+        window._bracketsPublished = !window._bracketsPublished;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/publish-all`, {
+                method: 'PUT', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ published: window._bracketsPublished }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            document.getElementById('brackets-publish-label').textContent =
+                window._bracketsPublished ? 'Unpublish All Brackets' : 'Publish All Brackets';
+            showMessage(window._bracketsPublished ? 'All brackets published to public page' : 'All brackets unpublished');
+        } catch (err) {
+            window._bracketsPublished = !window._bracketsPublished;
+            showMessage('Failed to update publish status', 'error');
+        }
+    };
+    </script>
+
+    <!-- Awards Dashboard Logic -->
+    <script>
+    (function() {
+        let awardsResults = [];
+        let awardsCounts = { pending: 0, published: 0 };
+
+        // ── Tab switching ──────────────────────────────────────────────
+        window.switchAwardsTab = function(tab) {
+            document.querySelectorAll('.awards-tab').forEach(t => t.classList.toggle('active', t.dataset.awardsTab === tab));
+            document.getElementById('awards-pending-tab').style.display = tab === 'pending' ? '' : 'none';
+            document.getElementById('awards-published-tab').style.display = tab === 'published' ? '' : 'none';
+        };
+
+        // ── Sync localStorage results to server ───────────────────────
+        window.syncResultsToServer = async function() {
+            const statusEl = document.getElementById('sync-status');
+            const btn = document.getElementById('btn-sync-results');
+            btn.disabled = true;
+            statusEl.textContent = 'Syncing...';
+
+            try {
+                // Read divisions and brackets from localStorage
+                const divisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+                const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+                const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+
+                if (!Object.keys(divisions).length && !Object.keys(brackets).length) {
+                    statusEl.textContent = 'No localStorage data found. Run scoreboards first.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Extract results from completed brackets
+                const syncData = [];
+                for (const bracket of brackets) {
+                    if (!bracket.matches || !bracket.matches.length) continue;
+                    // Check if bracket has any completed matches
+                    const completed = bracket.matches.filter(m => m.status === 'completed' || m.winner);
+                    if (!completed.length) continue;
+
+                    // Find event name
+                    const event = eventTypes.find(e => String(e.id) === String(bracket.eventId));
+                    const eventName = event ? event.name : 'Unknown Event';
+
+                    // Extract placements using getDivisionResults if available
+                    let placements = [];
+                    if (typeof getDivisionResults === 'function') {
+                        try {
+                            placements = getDivisionResults(bracket.divisionName, bracket.eventId);
+                        } catch (e) {
+                            console.warn('getDivisionResults failed for', bracket.divisionName, e);
+                        }
+                    }
+
+                    // Fallback: extract from bracket matches directly
+                    if (!placements || !placements.length) {
+                        placements = extractPlacementsFromBracket(bracket);
+                    }
+
+                    if (placements.length) {
+                        syncData.push({
+                            eventName,
+                            divisionName: bracket.divisionName || bracket.division || 'Unknown Division',
+                            results: placements,
+                        });
+                    }
+                }
+
+                if (!syncData.length) {
+                    statusEl.textContent = 'No completed results found in brackets.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+                if (!tid) {
+                    statusEl.textContent = 'No tournament selected.';
+                    btn.disabled = false;
+                    return;
+                }
+
+                const res = await fetch(`/api/tournaments/${tid}/results/sync`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ divisions: syncData }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Sync failed');
+
+                statusEl.textContent = data.message || 'Synced successfully';
+                loadAwardsDashboard();
+            } catch (err) {
+                console.error('Sync error:', err);
+                statusEl.textContent = 'Error: ' + err.message;
+            }
+            btn.disabled = false;
+        };
+
+        // Fallback placement extraction from bracket data
+        function extractPlacementsFromBracket(bracket) {
+            const placements = [];
+            const matches = bracket.matches || [];
+            // Find the final match (no match references it as a source)
+            const matchIds = new Set(matches.map(m => m.id || m.matchNumber));
+            let finalMatch = null;
+            for (const m of matches) {
+                if (m.round === 'final' || m.round === 'Final' || m.isFinal) {
+                    finalMatch = m;
+                    break;
+                }
+            }
+            if (!finalMatch) {
+                // Last match by round number
+                finalMatch = matches.reduce((best, m) => (!best || (m.round || 0) > (best.round || 0)) ? m : best, null);
+            }
+            if (finalMatch && finalMatch.winner) {
+                placements.push({ rank: 1, name: finalMatch.winner.name || finalMatch.winner, club: finalMatch.winner.club || '' });
+                const loser = finalMatch.competitor1 === finalMatch.winner ? finalMatch.competitor2 : finalMatch.competitor1;
+                if (loser) {
+                    placements.push({ rank: 2, name: typeof loser === 'object' ? loser.name : loser, club: typeof loser === 'object' ? loser.club || '' : '' });
+                }
+            }
+            return placements;
+        }
+
+        // ── Load Awards Dashboard from server ─────────────────────────
+        window.loadAwardsDashboard = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results`, { credentials: 'include' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to load');
+
+                awardsResults = data.results || [];
+                awardsCounts = data.counts || { pending: 0, published: 0 };
+
+                document.getElementById('pending-count').textContent = awardsCounts.pending;
+                document.getElementById('published-count').textContent = awardsCounts.published;
+
+                renderAwardsCards('pending');
+                renderAwardsCards('published');
+            } catch (err) {
+                console.error('Load awards error:', err);
+            }
+        };
+
+        function renderAwardsCards(status) {
+            const filtered = awardsResults.filter(r => r.status === status);
+            const container = document.getElementById(status === 'pending' ? 'pending-results-container' : 'published-results-container');
+            const empty = document.getElementById(status === 'pending' ? 'pending-empty' : 'published-empty');
+
+            if (!filtered.length) {
+                container.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            empty.style.display = 'none';
+
+            container.innerHTML = filtered.map(r => {
+                const results = Array.isArray(r.results_data) ? r.results_data : [];
+                const medals = ['🥇', '🥈', '🥉'];
+                const placementsHtml = results.slice(0, 3).map((p, i) =>
+                    `<div class="awards-placement"><span class="medal">${medals[i] || ''}</span> ${escapeHtml(p.name || 'TBD')}${p.club ? ` <span style="color:var(--text-muted)">(${escapeHtml(p.club)})</span>` : ''}</div>`
+                ).join('');
+
+                const actions = status === 'pending'
+                    ? `<button class="btn btn-sm" style="background:var(--success);color:#fff;" onclick="publishDivisionResult('${r.id}')">Publish</button>
+                       <button class="btn btn-sm" onclick="printDivisionCertificate('${escapeHtml(r.division_name)}')">Print Certificates</button>`
+                    : `<button class="btn btn-sm" style="background:var(--text-muted);color:#fff;" onclick="unpublishDivisionResult('${r.id}')">Unpublish</button>`;
+
+                return `<div class="awards-card">
+                    <div class="awards-card-header">
+                        <div>
+                            <span class="awards-card-title">${escapeHtml(r.division_name)}</span>
+                            <span class="awards-card-event">${escapeHtml(r.event_name)}</span>
+                        </div>
+                        <span class="awards-badge ${status}">${status === 'pending' ? 'Pending' : 'Published'}</span>
+                    </div>
+                    <div class="awards-card-placements">${placementsHtml || '<span style="color:var(--text-muted)">No placements</span>'}</div>
+                    <div class="awards-card-actions">${actions}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ── Publish / Unpublish actions ───────────────────────────────
+        window.publishDivisionResult = async function(resultId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/${resultId}/publish`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Publish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed to publish: ' + err.message); }
+        };
+
+        window.unpublishDivisionResult = async function(resultId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/${resultId}/unpublish`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Unpublish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed to unpublish: ' + err.message); }
+        };
+
+        window.bulkPublishResults = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/publish-all`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Bulk publish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed: ' + err.message); }
+        };
+
+        window.bulkUnpublishResults = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/results/unpublish-all`, {
+                    method: 'PUT', credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Bulk unpublish failed');
+                loadAwardsDashboard();
+            } catch (err) { console.error(err); alert('Failed: ' + err.message); }
+        };
+
+        window.printDivisionCertificate = function(divisionName) {
+            // Delegate to existing certificate system in app.js
+            if (typeof printCertificatesForDivision === 'function') {
+                printCertificatesForDivision(divisionName);
+            } else {
+                alert('Certificate printing not available. Use the Certificates section below.');
+            }
+        };
+
+        // ── Hook into view switching ──────────────────────────────────
+        const origShowView = window.showView;
+        window.showView = function(viewName) {
+            if (typeof origShowView === 'function') origShowView(viewName);
+            if (viewName === 'results') {
+                loadAwardsDashboard();
+            }
+            if (viewName === 'public-site') {
+                loadVisibilitySettings();
+                loadCustomTabsList();
+                updatePublicSiteUrl();
+            }
+            if (viewName === 'settings') {
+                loadStaffRoles();
+            }
+        };
+    })();
+
+    // ── Section Visibility ────────────────────────────────────────────
+    (function() {
+        window.loadVisibilitySettings = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}`, { credentials: 'include' });
+                const data = await res.json();
+                const vis = (data.tournament || data).section_visibility || {};
+                document.getElementById('vis-competitors').checked = vis.competitors !== false;
+                document.getElementById('vis-divisions').checked = vis.divisions !== false;
+                document.getElementById('vis-brackets').checked = !!vis.brackets;
+                document.getElementById('vis-schedule').checked = !!vis.schedule;
+                document.getElementById('vis-hide-count').checked = !!vis.hideCompetitorCount;
+            } catch (err) {
+                console.error('Failed to load visibility:', err);
+            }
+        };
+
+        window.saveVisibility = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            const visibility = {
+                competitors: document.getElementById('vis-competitors').checked,
+                divisions: document.getElementById('vis-divisions').checked,
+                brackets: document.getElementById('vis-brackets').checked,
+                schedule: document.getElementById('vis-schedule').checked,
+                hideCompetitorCount: document.getElementById('vis-hide-count').checked,
+            };
+            try {
+                await fetch(`/api/tournaments/${tid}/section-visibility`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ visibility }),
+                });
+            } catch (err) {
+                console.error('Failed to save visibility:', err);
+            }
+        };
+
+        // ── Custom Tabs Management ────────────────────────────────────
+        let customTabsData = [];
+
+        window.loadCustomTabsList = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/custom-tabs`, { credentials: 'include' });
+                const data = await res.json();
+                customTabsData = data.tabs || [];
+                renderCustomTabsList();
+            } catch (err) {
+                console.error('Failed to load custom tabs:', err);
+            }
+        };
+
+        function renderCustomTabsList() {
+            const container = document.getElementById('custom-tabs-list');
+            if (!customTabsData.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No custom tabs yet.</p>';
+                return;
+            }
+            container.innerHTML = customTabsData.map((tab, i) => `
+                <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <input type="text" value="${tab.tab_name.replace(/"/g, '&quot;')}"
+                               onchange="updateCustomTabField('${tab.id}', 'tabName', this.value)"
+                               style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);"
+                               placeholder="Tab name">
+                        <label style="font-size:12px;white-space:nowrap;">
+                            <input type="checkbox" ${tab.visible ? 'checked' : ''} onchange="updateCustomTabField('${tab.id}', 'visible', this.checked)"> Visible
+                        </label>
+                        <button class="btn btn-sm" style="background:var(--danger);color:#fff;font-size:11px;" onclick="deleteCustomTab('${tab.id}')">Delete</button>
+                    </div>
+                    <textarea rows="3" placeholder="Tab content (HTML supported)..."
+                              onchange="updateCustomTabField('${tab.id}', 'contentHtml', this.value)"
+                              style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;resize:vertical;">${tab.content_html.replace(/</g, '&lt;')}</textarea>
+                </div>
+            `).join('');
+        }
+
+        window.addCustomTabRow = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/custom-tabs`, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tabName: 'New Tab', tabOrder: customTabsData.length }),
+                });
+                if (res.ok) loadCustomTabsList();
+            } catch (err) { console.error(err); }
+        };
+
+        window.updateCustomTabField = async function(tabId, field, value) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            try {
+                await fetch(`/api/tournaments/${tid}/custom-tabs/${tabId}`, {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value }),
+                });
+            } catch (err) { console.error(err); }
+        };
+
+        window.deleteCustomTab = async function(tabId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid || !confirm('Delete this tab?')) return;
+            try {
+                await fetch(`/api/tournaments/${tid}/custom-tabs/${tabId}`, {
+                    method: 'DELETE', credentials: 'include',
+                });
+                loadCustomTabsList();
+            } catch (err) { console.error(err); }
+        };
+
+        window.updatePublicSiteUrl = function() {
+            const slugEl = document.getElementById('public-site-url');
+            if (slugEl && typeof currentTournamentId !== 'undefined') {
+                // Try to find slug from loaded tournament data
+                const select = document.getElementById('active-tournament');
+                if (select && select.selectedOptions[0]) {
+                    const name = select.selectedOptions[0].textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                    slugEl.value = window.location.origin + '/tournaments/' + name;
+                }
+            }
+        };
+    })();
+    </script>
+
+    <!-- Staff Roles Management -->
+    <script>
+    (function() {
+        const PERMISSION_LABELS = {
+            view_schedule: 'View Schedule',
+            operate_scoreboard: 'Operate Scoreboard',
+            view_results: 'View Results',
+            print_certificates: 'Print Certificates',
+            publish_awards: 'Publish Awards',
+            manage_checkin: 'Manage Check-in',
+        };
+
+        let staffRoles = [];
+        let staffMembers = [];
+        let availablePermissions = [];
+
+        window.loadStaffRoles = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const [rolesRes, membersRes] = await Promise.all([
+                    fetch(`/api/tournaments/${tid}/staff-roles`, { credentials: 'include' }),
+                    fetch(`/api/tournaments/${tid}/members-with-roles`, { credentials: 'include' }),
+                ]);
+
+                if (rolesRes.ok) {
+                    const data = await rolesRes.json();
+                    staffRoles = data.roles || [];
+                    availablePermissions = data.availablePermissions || Object.keys(PERMISSION_LABELS);
+                }
+
+                if (membersRes.ok) {
+                    const data = await membersRes.json();
+                    staffMembers = data.members || [];
+                }
+            } catch (err) {
+                console.warn('Could not load staff roles:', err.message);
+            }
+
+            renderStaffRoles();
+            renderNewRolePermissions();
+            renderMemberAssignments();
+        };
+
+        function renderStaffRoles() {
+            const container = document.getElementById('staff-roles-list');
+            if (!container) return;
+
+            if (staffRoles.length === 0) {
+                container.innerHTML = '<p class="hint">No custom roles defined yet.</p>';
+                return;
+            }
+
+            container.innerHTML = staffRoles.map(role => {
+                const perms = (role.permissions || []).map(p => PERMISSION_LABELS[p] || p).join(', ');
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 8px; margin-bottom: 8px;">
+                        <div>
+                            <strong style="font-size: 14px;">${escapeHtml(role.role_name)}</strong>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${perms || 'No permissions'}</div>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="deleteStaffRole('${role.id}')" style="font-size: 12px; padding: 4px 10px;">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderNewRolePermissions() {
+            const container = document.getElementById('new-role-permissions');
+            if (!container) return;
+
+            container.innerHTML = availablePermissions.map(p => `
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; background: var(--glass); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--glass-border);">
+                    <input type="checkbox" class="new-role-perm" value="${p}">
+                    ${PERMISSION_LABELS[p] || p}
+                </label>
+            `).join('');
+        }
+
+        function renderMemberAssignments() {
+            const container = document.getElementById('staff-member-assignments');
+            if (!container) return;
+
+            const approvedStaff = staffMembers.filter(m => m.status === 'approved' && m.role === 'staff');
+            if (approvedStaff.length === 0) {
+                container.innerHTML = '<p class="hint">No approved staff members yet. Staff can apply from the tournament page.</p>';
+                return;
+            }
+
+            container.innerHTML = approvedStaff.map(member => {
+                const options = staffRoles.map(r =>
+                    `<option value="${r.id}" ${member.role_definition_id === r.id ? 'selected' : ''}>${escapeHtml(r.role_name)}</option>`
+                ).join('');
+
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--glass-border);">
+                        <span>${escapeHtml(member.first_name || '')} ${escapeHtml(member.last_name || '')}</span>
+                        <select style="padding: 4px 8px; border-radius: 4px; background: var(--glass); border: 1px solid var(--glass-border); color: var(--text-primary); font-size: 13px;"
+                                onchange="assignStaffRole('${member.id}', this.value)">
+                            <option value="">No role assigned</option>
+                            ${options}
+                        </select>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.createStaffRole = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            const name = document.getElementById('new-role-name').value.trim();
+            if (!name) { alert('Please enter a role name'); return; }
+
+            const perms = [...document.querySelectorAll('.new-role-perm:checked')].map(el => el.value);
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/staff-roles`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_name: name, permissions: perms }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to create role');
+                }
+
+                document.getElementById('new-role-name').value = '';
+                document.querySelectorAll('.new-role-perm:checked').forEach(el => el.checked = false);
+                loadStaffRoles();
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        window.deleteStaffRole = async function(roleId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            if (!confirm('Delete this role? Members assigned to it will lose their role assignment.')) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/staff-roles/${roleId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                if (!res.ok) throw new Error('Failed to delete role');
+                loadStaffRoles();
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        window.assignStaffRole = async function(memberId, roleDefId) {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/members/${memberId}/assign-role`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role_definition_id: roleDefId || null }),
+                });
+                if (!res.ok) throw new Error('Failed to assign role');
+            } catch (err) {
+                alert(err.message);
+            }
+        };
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+    })();
+    </script>
+
+    <!-- Mobile sidebar toggle -->
+    <script>
+    function toggleMobileSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar.classList.contains('open')) {
+            closeMobileSidebar();
+        } else {
+            sidebar.classList.add('open');
+            overlay.classList.add('active');
+        }
+    }
+    function closeMobileSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.remove('open');
+        overlay.classList.remove('active');
+    }
+    // Close sidebar when a nav button is clicked (mobile)
+    document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (window.innerWidth <= 1024) {
+                closeMobileSidebar();
+            }
+        });
+    });
     </script>
 </body>
 </html>

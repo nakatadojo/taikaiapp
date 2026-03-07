@@ -79,10 +79,8 @@ async function list(req, res, next) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
-    // Verify ownership or admin
-    if (tournament.created_by !== req.user.id
-        && !req.user.roles.includes('admin')
-        && !req.user.roles.includes('super_admin')) {
+    // Verify ownership
+    if (tournament.created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -106,9 +104,7 @@ async function approve(req, res, next) {
     }
 
     const tournament = await tournamentQueries.findById(existing.tournament_id);
-    if (tournament.created_by !== req.user.id
-        && !req.user.roles.includes('admin')
-        && !req.user.roles.includes('super_admin')) {
+    if (tournament.created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -159,9 +155,7 @@ async function decline(req, res, next) {
     }
 
     const tournament = await tournamentQueries.findById(existing.tournament_id);
-    if (tournament.created_by !== req.user.id
-        && !req.user.roles.includes('admin')
-        && !req.user.roles.includes('super_admin')) {
+    if (tournament.created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -222,10 +216,8 @@ async function getMembership(req, res, next) {
     if (!member) {
       return res.status(404).json({ error: 'Membership not found' });
     }
-    // Only the member themselves can view this (or admin)
-    if (member.user_id !== req.user.id
-        && !req.user.roles.includes('admin')
-        && !req.user.roles.includes('super_admin')) {
+    // Only the member themselves can view this
+    if (member.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
     res.json({ member });
@@ -234,4 +226,38 @@ async function getMembership(req, res, next) {
   }
 }
 
-module.exports = { apply, list, approve, decline, myTournaments, getMembership };
+/**
+ * GET /api/my/staff-dashboard
+ * Get approved staff/judge assignments for the current user.
+ */
+async function staffDashboard(req, res, next) {
+  try {
+    const assignments = await tournamentMemberQueries.getStaffDashboard(req.user.id);
+    res.json({ assignments });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/tournament-members/:tournamentId/public
+ * Public list of approved members (coaches, judges, staff).
+ */
+async function listPublic(req, res, next) {
+  try {
+    const members = await tournamentMemberQueries.getByTournament(req.params.tournamentId, { status: 'approved' });
+    // Only return public-safe fields
+    const publicMembers = members.map(m => ({
+      id: m.id,
+      first_name: m.first_name,
+      last_name: m.last_name,
+      role: m.role,
+      staff_role: m.staff_role,
+    }));
+    res.json({ members: publicMembers });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, staffDashboard };

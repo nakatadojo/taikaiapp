@@ -6,9 +6,11 @@ const tournamentQueries = require('../db/queries/tournaments');
 const profileQueries = require('../db/queries/profiles');
 const discountQueries = require('../db/queries/discounts');
 const creditQueries = require('../db/queries/credits');
+const notificationQueries = require('../db/queries/notifications');
 const pool = require('../db/pool');
 const { sendGuardianConfirmationEmail } = require('../config/email');
 const { sendRegistrationConfirmationEmail } = require('../email');
+const { assignDivision } = require('../services/divisionAssignment');
 
 /**
  * POST /api/registrations/competitor
@@ -129,14 +131,14 @@ async function registerInstructor(req, res, next) {
 
 /**
  * POST /api/registrations/club
- * Public club registration.
+ * Public dojo registration.
  */
 async function registerClub(req, res, next) {
   try {
     const { name, country, city, email, tournamentId } = req.body;
 
     if (!name) {
-      return res.status(400).json({ error: 'Club name is required' });
+      return res.status(400).json({ error: 'Dojo name is required' });
     }
 
     const registration = await registrationQueries.createClubRegistration({
@@ -145,7 +147,7 @@ async function registerClub(req, res, next) {
     });
 
     res.status(201).json({
-      message: 'Club registration submitted successfully',
+      message: 'Dojo registration submitted successfully',
       registration: { id: registration.id },
     });
   } catch (err) {
@@ -315,8 +317,16 @@ async function checkout(req, res, next) {
       }
     }
 
-    const basePrice = parseFloat(tournament.base_event_price) || 75;
-    const addonPrice = parseFloat(tournament.addon_event_price) || 25;
+    // Check for active pricing period — overrides tournament-level defaults
+    const PricingPeriodQueries = require('../db/queries/pricingPeriods');
+    const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
+
+    const basePrice = activePeriod
+      ? parseFloat(activePeriod.base_event_price)
+      : (parseFloat(tournament.base_event_price) || 75);
+    const addonPrice = activePeriod
+      ? parseFloat(activePeriod.addon_event_price)
+      : (parseFloat(tournament.addon_event_price) || 25);
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
 
     // Validate cart and calculate server-side pricing
@@ -353,6 +363,28 @@ async function checkout(req, res, next) {
           return res.status(400).json({
             error: `${profile.first_name} ${profile.last_name} is already registered for ${event.name}`,
           });
+        }
+
+        // Event prerequisite check
+        if (event.prerequisite_event_id) {
+          const prereqSelected = comp.events.some(e => e.eventId === event.prerequisite_event_id);
+          if (!prereqSelected) {
+            const prereqReg = await pool.query(
+              `SELECT re.id FROM registration_events re
+               JOIN registrations r ON r.id = re.registration_id
+               WHERE r.tournament_id = $1 AND r.profile_id = $2 AND re.event_id = $3
+                 AND r.status != 'cancelled'`,
+              [tournamentId, comp.profileId, event.prerequisite_event_id]
+            );
+            if (prereqReg.rows.length === 0) {
+              const prereqEvent = eventMap.get(event.prerequisite_event_id);
+              const prereqName = prereqEvent ? prereqEvent.name : 'the prerequisite event';
+              return res.status(400).json({
+                error: `${event.name} requires registration in ${prereqName} first.`,
+                code: 'PREREQUISITE_MISSING',
+              });
+            }
+          }
         }
 
         // Sold-out capacity check
@@ -414,6 +446,27 @@ async function checkout(req, res, next) {
     if (finalTotal > 0 && process.env.STRIPE_SECRET_KEY) {
       const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+      // Ensure user has a Stripe Customer ID for future payment method storage
+      let stripeCustomerId = null;
+      const userRow = await pool.query('SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = $1', [req.user.id]);
+      const userData = userRow.rows[0];
+      if (userData) {
+        stripeCustomerId = userData.stripe_customer_id;
+        if (!stripeCustomerId) {
+          try {
+            const customer = await stripe.customers.create({
+              email: userData.email,
+              name: `${userData.first_name} ${userData.last_name}`,
+              metadata: { userId: req.user.id },
+            });
+            stripeCustomerId = customer.id;
+            await pool.query('UPDATE users SET stripe_customer_id = $1 WHERE id = $2', [stripeCustomerId, req.user.id]);
+          } catch (e) {
+            console.warn('Failed to create Stripe customer:', e.message);
+          }
+        }
+      }
+
       const lineItems = validatedCompetitors.map(comp => ({
         price_data: {
           currency: 'usd',
@@ -443,6 +496,7 @@ async function checkout(req, res, next) {
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
+        ...(stripeCustomerId && { customer: stripeCustomerId }),
         line_items: discountAmount > 0
           ? [{
             price_data: {
@@ -534,6 +588,26 @@ async function checkout(req, res, next) {
         }
       } catch (waiverErr) {
         console.warn('Waiver creation failed:', waiverErr.message);
+      }
+
+      // Notify tournament director of new registration(s)
+      if (tournament.created_by) {
+        try {
+          for (const comp of validatedCompetitors) {
+            await notificationQueries.create({
+              recipientId: tournament.created_by,
+              tournamentId,
+              type: 'new_registration',
+              payload: {
+                competitorName: comp.name,
+                eventCount: comp.events.length,
+                amountPaid: comp.subtotal,
+              },
+            });
+          }
+        } catch (notifErr) {
+          console.warn('Failed to create registration notification:', notifErr.message);
+        }
       }
 
       return res.json({
@@ -653,6 +727,26 @@ async function confirmPayment(req, res, next) {
         }
       } catch (waiverErr) {
         console.warn('Waiver creation failed:', waiverErr.message);
+      }
+
+      // Notify tournament director of new registration(s)
+      if (tournament && tournament.created_by) {
+        try {
+          for (const comp of cartData.competitors) {
+            await notificationQueries.create({
+              recipientId: tournament.created_by,
+              tournamentId,
+              type: 'new_registration',
+              payload: {
+                competitorName: comp.name,
+                eventCount: comp.events ? comp.events.length : 0,
+                amountPaid: comp.subtotal || 0,
+              },
+            });
+          }
+        } catch (notifErr) {
+          console.warn('Failed to create registration notification:', notifErr.message);
+        }
       }
 
       res.json({
@@ -780,15 +874,45 @@ async function createRegistrationsFromCart(
       const registration = regResult.rows[0];
       registrationIds.push(registration.id);
 
-      // Create registration events
+      // Load profile for division assignment
+      const profile = await client.query(
+        'SELECT * FROM competitor_profiles WHERE id = $1',
+        [comp.profileId]
+      );
+
+      // Load tournament date for age calculation
+      const tournamentRow = await client.query(
+        'SELECT date FROM tournaments WHERE id = $1',
+        [tournamentId]
+      );
+      const tournamentDate = tournamentRow.rows[0]?.date;
+
+      // Create registration events with auto-division assignment
       for (let i = 0; i < comp.events.length; i++) {
         const evt = comp.events[i];
+
+        // Try auto-division assignment
+        let divisionName = null;
+        if (profile.rows[0]) {
+          const eventRow = await client.query(
+            'SELECT criteria_templates, is_event_type FROM tournament_events WHERE id = $1',
+            [evt.eventId]
+          );
+          const eventData = eventRow.rows[0];
+          if (eventData?.is_event_type && eventData?.criteria_templates) {
+            const templates = typeof eventData.criteria_templates === 'string'
+              ? JSON.parse(eventData.criteria_templates)
+              : eventData.criteria_templates;
+            divisionName = assignDivision(profile.rows[0], templates, tournamentDate);
+          }
+        }
+
         await client.query(
           `INSERT INTO registration_events
-            (registration_id, event_id, is_primary, price, selection_order)
-           VALUES ($1, $2, $3, $4, $5)
+            (registration_id, event_id, is_primary, price, selection_order, assigned_division)
+           VALUES ($1, $2, $3, $4, $5, $6)
            ON CONFLICT (registration_id, event_id) DO NOTHING`,
-          [registration.id, evt.eventId, evt.isPrimary, evt.price, i]
+          [registration.id, evt.eventId, evt.isPrimary, evt.price, i, divisionName]
         );
       }
     }

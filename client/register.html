@@ -643,6 +643,55 @@
         background: var(--border-color);
     }
 
+    /* ── Role Selection Cards ─────────────────────────────────────────── */
+    .role-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .role-card {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 18px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all var(--transition);
+        text-align: left;
+        width: 100%;
+    }
+    .role-card:hover {
+        background: var(--bg-surface-hover);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .role-card-icon {
+        font-size: 28px;
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(220,38,38,0.08);
+        border-radius: 10px;
+        flex-shrink: 0;
+    }
+    .role-card-title {
+        display: block;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.2px;
+    }
+    .role-card-desc {
+        display: block;
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+
     /* ═══════════════════════════════════════════════════════════════════════
        #dashboard — Profile Cards
        ═══════════════════════════════════════════════════════════════════════ */
@@ -827,6 +876,22 @@
     .event-card:hover {
         background: var(--bg-surface-hover);
         border-color: rgba(255,255,255,0.15);
+    }
+    .event-card.locked {
+        opacity: 0.45;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+    .event-card-lock {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--warning);
+        background: rgba(243, 156, 18, 0.15);
+        padding: 2px 8px;
+        border-radius: 4px;
     }
     .event-card.selected {
         border-color: var(--accent);
@@ -1437,7 +1502,7 @@
                             </select>
                         </div>
                         <div class="form-group academy-autocomplete">
-                            <label for="pf-academy">Academy / Dojo</label>
+                            <label for="pf-academy">Dojo</label>
                             <input type="text" id="pf-academy" placeholder="Start typing..." autocomplete="off">
                             <div class="academy-dropdown" id="pf-academy-dropdown"></div>
                         </div>
@@ -1446,6 +1511,17 @@
                             <input type="email" id="pf-guardianEmail" placeholder="parent@example.com">
                         </div>
                     </div>
+
+                    <!-- Photo upload (shown when tournament requires it) -->
+                    <div id="photo-upload-group" style="display:none; margin-top:16px;">
+                        <label for="pf-photo" style="font-weight:600;">Competitor Photo *</label>
+                        <p id="photo-upload-message" class="text-muted text-sm" style="margin:4px 0 8px;"></p>
+                        <input type="file" id="pf-photo" accept="image/*" style="margin-top:4px;">
+                        <img id="pf-photo-preview" style="display:none; max-width:120px; border-radius:8px; margin-top:8px;">
+                    </div>
+
+                    <!-- Custom document uploads (shown when tournament requires them) -->
+                    <div id="custom-docs-upload-group" style="display:none; margin-top:16px;"></div>
                 </div>
 
                 <div class="flex gap-12 mt-24" style="justify-content:flex-end;flex-wrap:wrap;">
@@ -1520,6 +1596,13 @@
                 </div>
                 <div id="cart-discount-msg" class="cart-discount-msg msg-hidden"></div>
                 <div id="cart-totals"></div>
+                <div id="cart-waiver" style="display:none; margin-top:16px; padding:16px; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm);">
+                    <label style="display:flex; gap:10px; cursor:pointer; font-size:13px; color:var(--text-muted); line-height:1.5;">
+                        <input type="checkbox" id="cart-waiver-check" style="accent-color:var(--accent); width:18px; height:18px; margin-top:2px; flex-shrink:0;"
+                               onchange="document.getElementById('cart-pay-btn').disabled = !this.checked">
+                        <span>I acknowledge that by completing this registration, I agree to the tournament waiver and rules. I confirm that all competitor information provided is accurate.</span>
+                    </label>
+                </div>
                 <div class="mt-24">
                     <button class="btn-accent btn-block" onclick="handleCheckout()" id="cart-pay-btn">
                         Pay Now
@@ -1569,7 +1652,7 @@
 
 
 <!-- ════════════════════════════════════════════════════════════════════════
-     AUTH MODAL
+     AUTH MODAL — 4-step signup flow
      ════════════════════════════════════════════════════════════════════════ -->
 <div class="auth-modal" id="auth-modal">
     <div class="auth-overlay" onclick="closeAuthModal()"></div>
@@ -1577,95 +1660,194 @@
         <div class="auth-card-left">
         <button class="auth-close" onclick="closeAuthModal()">&times;</button>
 
-        <div class="auth-tabs">
-            <button class="auth-tab" data-tab="login" onclick="switchAuthTab('login')">Login</button>
-            <button class="auth-tab active" data-tab="signup" onclick="switchAuthTab('signup')">Sign Up</button>
+        <!-- ── STEP: LOGIN / SIGNUP / FORGOT ─────────────────────────── -->
+        <div id="auth-step-auth">
+            <div class="auth-tabs">
+                <button class="auth-tab" data-tab="login" onclick="switchAuthTab('login')">Login</button>
+                <button class="auth-tab active" data-tab="signup" onclick="switchAuthTab('signup')">Sign Up</button>
+            </div>
+
+            <!-- LOGIN FORM -->
+            <form id="auth-login-form" class="auth-form reg-form" onsubmit="handleLogin(event)">
+                <div id="login-error" class="msg-error msg-hidden"></div>
+                <div class="form-group mb-16">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group mb-24">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Your password">
+                </div>
+                <button type="submit" class="btn-accent btn-block" id="login-submit-btn">Sign In</button>
+                <button type="button" onclick="switchAuthTab('forgot')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">Forgot password?</button>
+            </form>
+
+            <!-- SIGNUP FORM — simplified: name + email + password only -->
+            <form id="auth-signup-form" class="auth-form active reg-form" onsubmit="handleSignup(event)">
+                <div id="signup-error" class="msg-error msg-hidden"></div>
+                <div id="signup-success" class="msg-success msg-hidden"></div>
+                <div class="form-grid mb-16">
+                    <div class="form-group">
+                        <label for="signup-first">First Name *</label>
+                        <input type="text" id="signup-first" required placeholder="First name">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-last">Last Name *</label>
+                        <input type="text" id="signup-last" required placeholder="Last name">
+                    </div>
+                </div>
+                <div class="form-group mb-16">
+                    <label for="signup-email">Email *</label>
+                    <input type="email" id="signup-email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group mb-16">
+                    <label for="signup-password">Password *</label>
+                    <input type="password" id="signup-password" required placeholder="Min 8 chars, upper + lower + digit" minlength="8">
+                </div>
+                <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
+                <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;">Already have an account? <span style="text-decoration:underline;">Sign in</span></button>
+            </form>
+
+            <!-- FORGOT PASSWORD FORM -->
+            <form id="auth-forgot-form" class="auth-form reg-form" onsubmit="handleForgotPassword(event)">
+                <div id="forgot-error" class="msg-error msg-hidden"></div>
+                <div id="forgot-success" class="msg-success msg-hidden"></div>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Enter your email and we'll send a reset link.</p>
+                <div class="form-group mb-16">
+                    <label for="forgot-email">Email</label>
+                    <input type="email" id="forgot-email" required placeholder="you@example.com">
+                </div>
+                <button type="submit" class="btn-accent btn-block" id="forgot-submit-btn">Send Reset Link</button>
+                <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
+            </form>
         </div>
 
-        <!-- ── LOGIN FORM ──────────────────────────────────────────────── -->
-        <form id="auth-login-form" class="auth-form reg-form" onsubmit="handleLogin(event)">
-            <div id="login-error" class="msg-error msg-hidden"></div>
-
-            <div class="form-group mb-16">
-                <label for="login-email">Email</label>
-                <input type="email" id="login-email" required placeholder="you@example.com">
+        <!-- ── STEP: ROLE SELECTION ──────────────────────────────────── -->
+        <div id="auth-step-role" style="display:none;">
+            <h3 style="font-size:20px;font-weight:700;margin-bottom:4px;letter-spacing:-0.5px;">I am a...</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px;">Select the role that best describes you.</p>
+            <div id="role-select-error" class="msg-error msg-hidden"></div>
+            <div class="role-cards">
+                <button class="role-card" onclick="handleRoleSelect('competitor')">
+                    <span class="role-card-icon">&#x1F94B;</span>
+                    <span class="role-card-title">Competitor</span>
+                    <span class="role-card-desc">I compete in tournaments (18+)</span>
+                </button>
+                <button class="role-card" onclick="handleRoleSelect('parent')">
+                    <span class="role-card-icon">&#x1F468;&#x200D;&#x1F467;</span>
+                    <span class="role-card-title">Parent</span>
+                    <span class="role-card-desc">I register my children</span>
+                </button>
+                <button class="role-card" onclick="handleRoleSelect('coach')">
+                    <span class="role-card-icon">&#x1F3C6;</span>
+                    <span class="role-card-title">Coach</span>
+                    <span class="role-card-desc">I manage a dojo or team</span>
+                </button>
+                <button class="role-card" onclick="handleRoleSelect('judge')">
+                    <span class="role-card-icon">&#x2696;&#xFE0F;</span>
+                    <span class="role-card-title">Judge</span>
+                    <span class="role-card-desc">I officiate tournament events</span>
+                </button>
+                <button class="role-card" onclick="handleRoleSelect('staff')">
+                    <span class="role-card-icon">&#x1F4CB;</span>
+                    <span class="role-card-title">Staff</span>
+                    <span class="role-card-desc">I volunteer at tournaments</span>
+                </button>
             </div>
-            <div class="form-group mb-24">
-                <label for="login-password">Password</label>
-                <input type="password" id="login-password" required placeholder="Your password">
-            </div>
-            <button type="submit" class="btn-accent btn-block" id="login-submit-btn">Sign In</button>
-            <button type="button" onclick="switchAuthTab('forgot')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">Forgot password?</button>
-        </form>
+        </div>
 
-        <!-- ── SIGNUP FORM ─────────────────────────────────────────────── -->
-        <form id="auth-signup-form" class="auth-form active reg-form" onsubmit="handleSignup(event)">
-            <div id="signup-error" class="msg-error msg-hidden"></div>
-            <div id="signup-success" class="msg-success msg-hidden"></div>
+        <!-- ── STEP: ROLE GUIDANCE ───────────────────────────────────── -->
+        <div id="auth-step-guidance" style="display:none;">
+            <button class="auth-back-btn" onclick="showAuthStep('role')" style="background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;margin-bottom:12px;">&larr; Change role</button>
+            <div id="guidance-icon" style="font-size:48px;margin-bottom:12px;"></div>
+            <h3 id="guidance-title" style="font-size:20px;font-weight:700;margin-bottom:8px;letter-spacing:-0.5px;"></h3>
+            <p id="guidance-description" style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px;"></p>
+            <button class="btn-accent btn-block" onclick="showAuthStep('profile')">Continue</button>
+        </div>
 
-            <div class="form-grid mb-16">
-                <div class="form-group">
-                    <label for="signup-first">First Name *</label>
-                    <input type="text" id="signup-first" required placeholder="First name">
+        <!-- ── STEP: PROFILE COMPLETION ──────────────────────────────── -->
+        <div id="auth-step-profile" style="display:none;">
+            <button class="auth-back-btn" onclick="showAuthStep('guidance')" style="background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;margin-bottom:12px;">&larr; Back</button>
+            <h3 style="font-size:20px;font-weight:700;margin-bottom:4px;letter-spacing:-0.5px;">Complete Your Profile</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Just a few more details to get you started.</p>
+            <div id="profile-complete-error" class="msg-error msg-hidden"></div>
+            <form id="auth-profile-form" class="reg-form" onsubmit="handleProfileComplete(event)">
+                <!-- Common field: phone -->
+                <div class="form-group mb-16">
+                    <label for="cp-phone">Phone Number</label>
+                    <input type="tel" id="cp-phone" placeholder="(555) 123-4567">
                 </div>
-                <div class="form-group">
-                    <label for="signup-last">Last Name *</label>
-                    <input type="text" id="signup-last" required placeholder="Last name">
+                <!-- Competitor fields: DOB + Gender -->
+                <div id="cp-competitor-fields" style="display:none;">
+                    <div class="form-grid mb-16">
+                        <div class="form-group">
+                            <label for="cp-dob">Date of Birth *</label>
+                            <input type="date" id="cp-dob">
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-gender">Gender *</label>
+                            <select id="cp-gender">
+                                <option value="">Select gender</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-            </div>
-
-            <div class="form-group mb-16">
-                <label for="signup-email">Email *</label>
-                <input type="email" id="signup-email" required placeholder="you@example.com">
-            </div>
-            <div class="form-group mb-16">
-                <label for="signup-password">Password *</label>
-                <input type="password" id="signup-password" required placeholder="Min 8 chars, upper + lower + digit" minlength="8">
-            </div>
-            <div class="form-grid mb-16" id="signup-dob-gender-row">
-                <div class="form-group">
-                    <label for="signup-dob">Date of Birth *</label>
-                    <input type="date" id="signup-dob" required>
+                <!-- Parent fields: address -->
+                <div id="cp-parent-fields" style="display:none;">
+                    <div class="form-group mb-16">
+                        <label for="cp-address">Home Address *</label>
+                        <input type="text" id="cp-address" placeholder="Street address">
+                    </div>
+                    <div class="form-grid mb-16">
+                        <div class="form-group">
+                            <label for="cp-city">City *</label>
+                            <input type="text" id="cp-city" placeholder="City">
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-state">State *</label>
+                            <input type="text" id="cp-state" placeholder="State">
+                        </div>
+                        <div class="form-group">
+                            <label for="cp-zip">ZIP Code *</label>
+                            <input type="text" id="cp-zip" placeholder="ZIP" maxlength="10">
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group" id="signup-gender-group">
-                    <label for="signup-gender">Gender *</label>
-                    <select id="signup-gender" required>
-                        <option value="">Select gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                    </select>
+                <!-- Judge fields: certification -->
+                <div id="cp-judge-fields" style="display:none;">
+                    <div class="form-group mb-16">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="cp-certified" onchange="document.getElementById('cp-cert-details').style.display=this.checked?'':'none'">
+                            Are you certified?
+                        </label>
+                    </div>
+                    <div id="cp-cert-details" style="display:none;">
+                        <div class="form-grid mb-16">
+                            <div class="form-group">
+                                <label for="cp-cert-body">Certification Body</label>
+                                <input type="text" id="cp-cert-body" placeholder="e.g., WKF, AAU">
+                            </div>
+                            <div class="form-group">
+                                <label for="cp-cert-class">Official Class/Level</label>
+                                <input type="text" id="cp-cert-class" placeholder="e.g., Class A">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+                <button type="submit" class="btn-accent btn-block" id="profile-complete-btn">Finish Setup</button>
+            </form>
+        </div>
 
-            <button type="submit" class="btn-accent btn-block" id="signup-submit-btn">Create Account</button>
-            <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;">Already have an account? <span style="text-decoration:underline;">Sign in</span></button>
-        </form>
-
-        <!-- ── FORGOT PASSWORD FORM ──────────────────────────────────── -->
-        <form id="auth-forgot-form" class="auth-form reg-form" onsubmit="handleForgotPassword(event)">
-            <div id="forgot-error" class="msg-error msg-hidden"></div>
-            <div id="forgot-success" class="msg-success msg-hidden"></div>
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">Enter your email and we'll send a reset link.</p>
-            <div class="form-group mb-16">
-                <label for="forgot-email">Email</label>
-                <input type="email" id="forgot-email" required placeholder="you@example.com">
-            </div>
-            <button type="submit" class="btn-accent btn-block" id="forgot-submit-btn">Send Reset Link</button>
-            <button type="button" onclick="switchAuthTab('login')" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>
-        </form>
         </div><!-- .auth-card-left -->
 
+        <!-- Right panel for role info (shown during role selection/guidance) -->
         <div class="auth-card-right hidden" id="auth-role-panel">
-            <div class="auth-role-icon" id="auth-role-icon">👨‍👧</div>
-            <div class="auth-role-title" id="auth-role-title">Parent Account</div>
-            <div class="auth-role-subtitle" id="auth-role-subtitle">Create an account to manage your child's tournament participation.</div>
-            <ul class="auth-features" id="auth-role-features">
-                <li><span class="auth-feature-icon">✓</span> Register your children for tournaments</li>
-                <li><span class="auth-feature-icon">✓</span> Manage competitor profiles</li>
-                <li><span class="auth-feature-icon">✓</span> Sign participation waivers</li>
-                <li><span class="auth-feature-icon">✓</span> Track registrations and event details</li>
-                <li><span class="auth-feature-icon">✓</span> View digital competitor badges</li>
-            </ul>
+            <div class="auth-role-icon" id="auth-role-icon"></div>
+            <div class="auth-role-title" id="auth-role-title"></div>
+            <div class="auth-role-subtitle" id="auth-role-subtitle"></div>
+            <ul class="auth-features" id="auth-role-features"></ul>
         </div>
     </div>
 </div>
@@ -1675,6 +1857,7 @@
      SCRIPTS
      ════════════════════════════════════════════════════════════════════════ -->
 <script src="auth.js"></script>
+<script src="/toast.js"></script>
 <script>
 (function() {
     'use strict';
@@ -1810,44 +1993,8 @@
        ══════════════════════════════════════════════════════════════════════ */
     window.openAuthModal = function() {
         document.getElementById('auth-modal').classList.add('open');
+        showAuthStep('auth');
         switchAuthTab('signup');
-
-        // Show role info panel for parent/coach roles
-        var card = document.getElementById('auth-card');
-        var panel = document.getElementById('auth-role-panel');
-        var role = state.selectedRole;
-
-        if (role === 'parent' || role === 'coach') {
-            panel.classList.remove('hidden');
-            card.classList.add('has-panel');
-            // Update panel content per role
-            var icon = document.getElementById('auth-role-icon');
-            var title = document.getElementById('auth-role-title');
-            var subtitle = document.getElementById('auth-role-subtitle');
-            var features = document.getElementById('auth-role-features');
-            if (role === 'coach') {
-                icon.textContent = '🥋';
-                title.textContent = 'Coach Account';
-                subtitle.textContent = 'Create an account to register your team for tournaments.';
-                features.innerHTML = '<li><span class="auth-feature-icon">✓</span> Register competitors on behalf of parents</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Manage competitor profiles and events</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Send waivers to parents for signing</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Track waiver and registration status</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Access the Coach Dashboard</li>';
-            } else {
-                icon.textContent = '👨‍👧';
-                title.textContent = 'Parent Account';
-                subtitle.textContent = 'Create an account to manage your child\'s tournament participation.';
-                features.innerHTML = '<li><span class="auth-feature-icon">✓</span> Register your children for tournaments</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Manage competitor profiles</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Sign participation waivers</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> Track registrations and event details</li>'
-                    + '<li><span class="auth-feature-icon">✓</span> View digital competitor badges</li>';
-            }
-        } else {
-            panel.classList.add('hidden');
-            card.classList.remove('has-panel');
-        }
     };
 
     window.closeAuthModal = function() {
@@ -1881,8 +2028,10 @@
 
         try {
             await Auth.login(email, password);
-            closeAuthModal();
             updateTopbar();
+
+            // Login complete — close modal and navigate to dashboard
+            closeAuthModal();
             navigate('dashboard');
         } catch (err) {
             if (err.code === 'EMAIL_NOT_VERIFIED') {
@@ -1954,35 +2103,178 @@
         const lastName = document.getElementById('signup-last').value.trim();
         const email = document.getElementById('signup-email').value.trim();
         const password = document.getElementById('signup-password').value;
-        const dob = document.getElementById('signup-dob').value;
-        const gender = document.getElementById('signup-gender').value;
         hideEl('signup-error');
         hideEl('signup-success');
-
-        // Age validation: must be 18+ to create an account
-        const age = calcAge(dob);
-        if (age < 18) {
-            showError('signup-error', 'You must be at least 18 years old to create an account. If you are under 18, a parent or guardian must register on your behalf.');
-            return;
-        }
-
-        const roles = ['competitor'];
 
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Creating account...';
 
         try {
-            await Auth.signup({ email, password, firstName, lastName, dateOfBirth: dob, roles });
-            // Login immediately after signup
-            await Auth.login(email, password);
+            await Auth.signup({ email, password, firstName, lastName });
+            updateTopbar();
+            // Signup complete — close modal and navigate to dashboard
+            closeAuthModal();
+            navigate('dashboard');
+        } catch (err) {
+            showError('signup-error', err.message || err.error || 'Signup failed. Please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Account';
+        }
+    };
+
+    /* ── Auth Modal Step Navigation ── */
+    const ROLE_GUIDANCE = {
+        competitor: {
+            icon: '&#x1F94B;',
+            title: 'Competitor',
+            description: 'Register for tournaments, manage your own profile, view your brackets and schedule, and track your event history. Must be 18 or older.',
+        },
+        parent: {
+            icon: '&#x1F468;&#x200D;&#x1F467;',
+            title: 'Parent',
+            description: 'Create and manage competitor profiles for your children, register them for tournaments, handle payments, and view their schedules and brackets.',
+        },
+        coach: {
+            icon: '&#x1F3C6;',
+            title: 'Coach',
+            description: 'Register and manage your dojo, manage student profiles and documentation, register students for individual and team events, and update student ranks.',
+        },
+        judge: {
+            icon: '&#x2696;&#xFE0F;',
+            title: 'Judge',
+            description: 'View your assigned events, manage your certifications, download your event badge with QR code for check-in.',
+        },
+        staff: {
+            icon: '&#x1F4CB;',
+            title: 'Staff',
+            description: 'View available tournament roles and time slots. Your specific dashboard access will be determined by the event director for each tournament.',
+        },
+    };
+
+    window.showAuthStep = function(step) {
+        // Hide all steps
+        ['auth-step-auth', 'auth-step-role', 'auth-step-guidance', 'auth-step-profile'].forEach(function(id) {
+            document.getElementById(id).style.display = 'none';
+        });
+        // Hide right panel by default
+        var panel = document.getElementById('auth-role-panel');
+        var card = document.getElementById('auth-card');
+        panel.classList.add('hidden');
+        card.classList.remove('has-panel');
+
+        // Show the requested step
+        var stepEl = document.getElementById('auth-step-' + step);
+        if (stepEl) stepEl.style.display = '';
+
+        // Show role panel during guidance and profile steps
+        if ((step === 'guidance' || step === 'profile') && state.selectedRole && ROLE_GUIDANCE[state.selectedRole]) {
+            var g = ROLE_GUIDANCE[state.selectedRole];
+            panel.classList.remove('hidden');
+            card.classList.add('has-panel');
+            document.getElementById('auth-role-icon').innerHTML = g.icon;
+            document.getElementById('auth-role-title').textContent = g.title;
+            document.getElementById('auth-role-subtitle').textContent = g.description;
+            document.getElementById('auth-role-features').innerHTML = '';
+        }
+
+        // Show role-specific fields in profile step
+        if (step === 'profile') {
+            document.getElementById('cp-competitor-fields').style.display = state.selectedRole === 'competitor' ? '' : 'none';
+            document.getElementById('cp-parent-fields').style.display = state.selectedRole === 'parent' ? '' : 'none';
+            document.getElementById('cp-judge-fields').style.display = state.selectedRole === 'judge' ? '' : 'none';
+            // Set required attributes dynamically
+            var dobEl = document.getElementById('cp-dob');
+            var genderEl = document.getElementById('cp-gender');
+            var addrEl = document.getElementById('cp-address');
+            var cityEl = document.getElementById('cp-city');
+            var stateEl = document.getElementById('cp-state');
+            var zipEl = document.getElementById('cp-zip');
+            dobEl.required = state.selectedRole === 'competitor';
+            genderEl.required = state.selectedRole === 'competitor';
+            addrEl.required = state.selectedRole === 'parent';
+            cityEl.required = state.selectedRole === 'parent';
+            stateEl.required = state.selectedRole === 'parent';
+            zipEl.required = state.selectedRole === 'parent';
+        }
+
+        // Show guidance content
+        if (step === 'guidance' && state.selectedRole && ROLE_GUIDANCE[state.selectedRole]) {
+            var info = ROLE_GUIDANCE[state.selectedRole];
+            document.getElementById('guidance-icon').innerHTML = info.icon;
+            document.getElementById('guidance-title').textContent = info.title;
+            document.getElementById('guidance-description').textContent = info.description;
+        }
+    };
+
+    window.handleRoleSelect = async function(role) {
+        hideEl('role-select-error');
+        state.selectedRole = role;
+        state.isCoachMode = role === 'coach';
+
+        try {
+            await Auth.selectRole(role);
+            showAuthStep('guidance');
+        } catch (err) {
+            showError('role-select-error', err.message || err.error || 'Failed to select role.');
+        }
+    };
+
+    window.handleProfileComplete = async function(e) {
+        e.preventDefault();
+        var btn = document.getElementById('profile-complete-btn');
+        hideEl('profile-complete-error');
+
+        var payload = {
+            phone: document.getElementById('cp-phone').value.trim() || undefined,
+        };
+
+        if (state.selectedRole === 'competitor') {
+            payload.dateOfBirth = document.getElementById('cp-dob').value;
+            payload.gender = document.getElementById('cp-gender').value;
+            if (!payload.dateOfBirth || !payload.gender) {
+                showError('profile-complete-error', 'Date of birth and gender are required for competitors.');
+                return;
+            }
+            var age = calcAge(payload.dateOfBirth);
+            if (age < 18) {
+                showError('profile-complete-error', 'Competitors must be 18 or older. If you are a minor, a parent or guardian should register on your behalf.');
+                return;
+            }
+        }
+
+        if (state.selectedRole === 'parent') {
+            payload.addressLine1 = document.getElementById('cp-address').value.trim();
+            payload.addressCity = document.getElementById('cp-city').value.trim();
+            payload.addressState = document.getElementById('cp-state').value.trim();
+            payload.addressZip = document.getElementById('cp-zip').value.trim();
+            if (!payload.addressLine1 || !payload.addressCity || !payload.addressState || !payload.addressZip) {
+                showError('profile-complete-error', 'Home address is required for parents.');
+                return;
+            }
+        }
+
+        if (state.selectedRole === 'judge') {
+            payload.isCertified = document.getElementById('cp-certified').checked;
+            if (payload.isCertified) {
+                payload.certificationBody = document.getElementById('cp-cert-body').value.trim();
+                payload.certificationClass = document.getElementById('cp-cert-class').value.trim();
+            }
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+        try {
+            await Auth.completeProfile(payload);
             closeAuthModal();
             updateTopbar();
             navigate('dashboard');
         } catch (err) {
-            showError('signup-error', err.message || 'Signup failed. Please try again.');
+            showError('profile-complete-error', err.message || err.error || 'Failed to save profile.');
         } finally {
             btn.disabled = false;
-            btn.textContent = 'Create Account';
+            btn.textContent = 'Finish Setup';
         }
     };
 
@@ -2390,6 +2682,64 @@
             if (guardianInput) guardianInput.required = state.isCoachMode;
         }
 
+        // Show/hide registration requirement fields (photo, weight, custom docs)
+        const t = state.tournament?.tournament || state.tournament || {};
+        const regSettings = t.registration_settings || {};
+
+        // Photo upload
+        const photoGroup = document.getElementById('photo-upload-group');
+        if (photoGroup) {
+            photoGroup.style.display = regSettings.photoRequired ? '' : 'none';
+            const photoMsg = document.getElementById('photo-upload-message');
+            if (photoMsg) photoMsg.textContent = regSettings.photoMessage || 'Upload a head-and-shoulders photo for the competitor badge.';
+        }
+        // Photo preview handler
+        const photoInput = document.getElementById('pf-photo');
+        if (photoInput && !photoInput._listenerAdded) {
+            photoInput._listenerAdded = true;
+            photoInput.addEventListener('change', function() {
+                const preview = document.getElementById('pf-photo-preview');
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => { preview.src = e.target.result; preview.style.display = ''; };
+                    reader.readAsDataURL(this.files[0]);
+                } else {
+                    preview.style.display = 'none';
+                }
+            });
+        }
+
+        // Weight required
+        const weightInput = document.getElementById('pf-weight');
+        const weightLabel = weightInput?.parentElement?.querySelector('label');
+        if (regSettings.weightRequired) {
+            weightInput.required = true;
+            if (weightLabel) weightLabel.textContent = 'Weight (lbs) *';
+        } else {
+            weightInput.required = false;
+            if (weightLabel) weightLabel.textContent = 'Weight (lbs)';
+        }
+
+        // Custom document uploads
+        const docsGroup = document.getElementById('custom-docs-upload-group');
+        if (docsGroup) {
+            const customDocs = regSettings.customDocuments || [];
+            if (customDocs.length > 0) {
+                docsGroup.style.display = '';
+                docsGroup.innerHTML = '<h3 style="font-size:14px; font-weight:600; margin-bottom:12px;">Required Documents</h3>' +
+                    customDocs.map(doc => `
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label>${esc(doc.name)}${doc.required ? ' *' : ''}</label>
+                            ${doc.instruction ? `<p class="text-muted text-sm" style="margin:2px 0 6px;">${esc(doc.instruction)}</p>` : ''}
+                            <input type="file" class="custom-doc-input" data-doc-name="${esc(doc.name)}" data-doc-required="${doc.required}" accept="image/*,.pdf,.doc,.docx">
+                        </div>
+                    `).join('');
+            } else {
+                docsGroup.style.display = 'none';
+                docsGroup.innerHTML = '';
+            }
+        }
+
         if (state.editingProfileId) {
             document.getElementById('profile-form-title').textContent = 'Edit Competitor';
             const p = state.profiles.find(x => (x._id || x.id) === state.editingProfileId);
@@ -2435,17 +2785,48 @@
         btn.innerHTML = '<span class="spinner"></span> Saving...';
 
         try {
+            let savedProfileId = state.editingProfileId;
             if (state.editingProfileId) {
                 await api('/api/profiles/' + state.editingProfileId, {
                     method: 'PUT',
                     body: JSON.stringify(payload),
                 });
             } else {
-                await api('/api/profiles', {
+                const result = await api('/api/profiles', {
                     method: 'POST',
                     body: JSON.stringify(payload),
                 });
+                savedProfileId = result.profile?.id || result.id;
             }
+
+            // Upload photo if provided
+            const photoFile = document.getElementById('pf-photo')?.files?.[0];
+            if (photoFile && savedProfileId) {
+                const photoForm = new FormData();
+                photoForm.append('photo', photoFile);
+                await fetch(`/api/profiles/${savedProfileId}/photo`, {
+                    method: 'POST',
+                    body: photoForm,
+                    credentials: 'include',
+                });
+            }
+
+            // Upload custom documents if provided
+            const docInputs = document.querySelectorAll('.custom-doc-input');
+            for (const docInput of docInputs) {
+                if (docInput.files?.[0] && savedProfileId && state.tournamentId) {
+                    const docForm = new FormData();
+                    docForm.append('file', docInput.files[0]);
+                    docForm.append('tournamentId', state.tournamentId);
+                    docForm.append('documentName', docInput.dataset.docName);
+                    await fetch(`/api/profiles/${savedProfileId}/documents`, {
+                        method: 'POST',
+                        body: docForm,
+                        credentials: 'include',
+                    });
+                }
+            }
+
             state.editingProfileId = null;
             navigate('dashboard');
         } catch (err) {
@@ -2496,6 +2877,8 @@
        ══════════════════════════════════════════════════════════════════════ */
     let eligibleEvents = [];
     let selectedEventIds = new Set();
+    let eventPrerequisites = {}; // { eventId: prerequisiteEventId }
+    let registrationSettings = {}; // tournament registration requirements
 
     async function loadEligibleEvents() {
         const container = document.getElementById('events-container');
@@ -2513,9 +2896,23 @@
         selectedEventIds = new Set((cartItem?.events || []).map(e => e.id || e._id));
 
         try {
-            const data = await api(`/api/tournaments/${state.tournamentId}/events/eligible/${state.currentProfileId}`);
-            eligibleEvents = data.events || data.data || data || [];
+            // Load events, prerequisites, and registration settings in parallel
+            const [eventData, regSettingsData] = await Promise.all([
+                api(`/api/tournaments/${state.tournamentId}/events/eligible/${state.currentProfileId}`),
+                api(`/api/tournaments/${state.tournamentId}/registration-settings`).catch(() => ({ registrationSettings: {} })),
+            ]);
+
+            eligibleEvents = eventData.events || eventData.data || eventData || [];
             if (!Array.isArray(eligibleEvents)) eligibleEvents = [];
+            registrationSettings = regSettingsData.registrationSettings || {};
+
+            // Build prerequisite map from event data
+            eventPrerequisites = {};
+            for (const ev of eligibleEvents) {
+                if (ev.prerequisite_event_id) {
+                    eventPrerequisites[ev._id || ev.id] = ev.prerequisite_event_id;
+                }
+            }
 
             if (eligibleEvents.length === 0) {
                 container.innerHTML = `
@@ -2536,6 +2933,24 @@
         }
     }
 
+    function isPrerequisiteMet(eventId) {
+        const prereqId = eventPrerequisites[eventId];
+        if (!prereqId) return true; // no prerequisite
+        // Check if prerequisite is selected in current selection
+        if (selectedEventIds.has(prereqId)) return true;
+        // Check if already in cart for this profile
+        const cartItem = state.cart.items.find(i => i.profileId === state.currentProfileId);
+        if (cartItem && cartItem.events.some(e => e.id === prereqId)) return true;
+        return false;
+    }
+
+    function getPrerequisiteName(eventId) {
+        const prereqId = eventPrerequisites[eventId];
+        if (!prereqId) return '';
+        const prereqEvent = eligibleEvents.find(e => (e._id || e.id) === prereqId);
+        return prereqEvent ? (prereqEvent.name || prereqEvent.eventName) : 'prerequisite event';
+    }
+
     function renderEventCards() {
         const container = document.getElementById('events-container');
         let html = '<div class="event-grid">';
@@ -2546,9 +2961,12 @@
             const badgeClass = isPrimary ? 'badge-primary' : 'badge-addon';
             const badgeText = isPrimary ? 'PRIMARY' : 'ADD-ON';
             const price = typeof ev.price === 'number' ? ev.price : (ev.fee || 0);
+            const locked = !isPrerequisiteMet(evId);
+            const prereqName = locked ? getPrerequisiteName(evId) : '';
 
             html += `
-            <div class="event-card ${isSelected ? 'selected' : ''}" data-event-id="${evId}" onclick="toggleEvent('${evId}')">
+            <div class="event-card ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''}" data-event-id="${evId}" onclick="${locked ? '' : `toggleEvent('${evId}')`}" ${locked ? `title="Requires ${esc(prereqName)} first"` : ''}>
+                ${locked ? `<div class="event-card-lock">Requires ${esc(prereqName)}</div>` : ''}
                 <div class="event-card-badge ${badgeClass}">${badgeText}</div>
                 <div class="event-card-name">${esc(ev.name || ev.eventName)}</div>
                 <div class="event-card-meta">${esc(ev.type || ev.eventType || '')}${ev.division ? ' &middot; ' + esc(ev.division) : ''}</div>
@@ -2562,13 +2980,17 @@
     window.toggleEvent = function(eventId) {
         if (selectedEventIds.has(eventId)) {
             selectedEventIds.delete(eventId);
+            // Also deselect any events that depended on this one
+            for (const [evId, prereqId] of Object.entries(eventPrerequisites)) {
+                if (prereqId === eventId) {
+                    selectedEventIds.delete(evId);
+                }
+            }
         } else {
             selectedEventIds.add(eventId);
         }
-        // Update card visual
-        document.querySelectorAll('.event-card').forEach(card => {
-            card.classList.toggle('selected', selectedEventIds.has(card.dataset.eventId));
-        });
+        // Re-render to update prerequisite locks
+        renderEventCards();
         updateEventsSubtotal();
     };
 
@@ -2662,6 +3084,15 @@
 
         container.innerHTML = html;
         summary.style.display = '';
+
+        // Show waiver acknowledgment and disable pay until checked
+        const waiverEl = document.getElementById('cart-waiver');
+        const waiverCheck = document.getElementById('cart-waiver-check');
+        const payBtn = document.getElementById('cart-pay-btn');
+        waiverEl.style.display = 'block';
+        waiverCheck.checked = false;
+        payBtn.disabled = true;
+
         updateCartTotals();
     }
 

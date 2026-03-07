@@ -49,19 +49,17 @@ router.get('/stats', async (req, res, next) => {
   try {
     const stats = await pool.query(`
       SELECT
-        (SELECT COUNT(DISTINCT u.id) FROM users u JOIN user_roles ur ON ur.user_id = u.id WHERE ur.role = 'event_director') AS total_directors,
+        (SELECT COUNT(*) FROM users) AS total_users,
+        (SELECT COUNT(*) FROM academies) AS total_dojos,
         (SELECT COUNT(*) FROM tournaments) AS total_tournaments,
         (SELECT COUNT(*) FROM tournaments WHERE status = 'published') AS active_tournaments,
-        (SELECT COALESCE(SUM(amount), 0) FROM credit_transactions WHERE type = 'purchase' AND amount > 0) AS total_revenue_credits,
-        (SELECT COALESCE(SUM(CASE WHEN ct.type = 'purchase' THEN ct.amount ELSE 0 END), 0) FROM credit_transactions ct) AS total_credits_purchased,
         (SELECT COUNT(DISTINCT r.profile_id) FROM registrations r WHERE r.status != 'cancelled') AS total_registrations
     `);
 
-    // Recent director signups (last 10)
-    const recentDirectors = await pool.query(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.organization_name, u.created_at
+    // Recent user signups (last 10)
+    const recentUsers = await pool.query(`
+      SELECT u.id, u.email, u.first_name, u.last_name, u.created_at
       FROM users u
-      JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'event_director'
       ORDER BY u.created_at DESC
       LIMIT 10
     `);
@@ -78,7 +76,7 @@ router.get('/stats', async (req, res, next) => {
 
     res.json({
       stats: stats.rows[0],
-      recentDirectors: recentDirectors.rows,
+      recentUsers: recentUsers.rows,
       recentTournaments: recentTournaments.rows,
     });
   } catch (err) {
@@ -123,59 +121,85 @@ router.get('/revenue', async (req, res, next) => {
   }
 });
 
-// ── Directors ───────────────────────────────────────────────────────────────
+// ── Users ───────────────────────────────────────────────────────────────────
 
-// GET /api/super-admin/directors — List all Event Directors with credit balances
-router.get('/directors', async (req, res, next) => {
+// GET /api/super-admin/users — List all users with aggregated info
+router.get('/users', async (req, res, next) => {
   try {
     const result = await pool.query(
-      `SELECT u.id, u.email, u.first_name, u.last_name, u.organization_name,
+      `SELECT u.id, u.email, u.first_name, u.last_name,
               u.credit_balance, u.created_at, u.email_verified,
-              COUNT(t.id)::int AS tournament_count
+              COUNT(DISTINCT t.id)::int AS tournament_count,
+              (SELECT a.name FROM academies a WHERE a.head_coach_id = u.id LIMIT 1) AS dojo_name,
+              (SELECT a.id FROM academies a WHERE a.head_coach_id = u.id LIMIT 1) AS dojo_id
        FROM users u
-       JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'event_director'
        LEFT JOIN tournaments t ON t.created_by = u.id
        GROUP BY u.id
        ORDER BY u.created_at DESC`
     );
-    res.json({ directors: result.rows });
+    res.json({ users: result.rows });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/super-admin/directors/:id — Single director detail
-router.get('/directors/:id', async (req, res, next) => {
+// GET /api/super-admin/users/:id — Detailed user view
+router.get('/users/:id', async (req, res, next) => {
   try {
     const user = await userQueries.findById(req.params.id);
     if (!user) {
-      return res.status(404).json({ error: 'Director not found' });
+      return res.status(404).json({ error: 'User not found' });
     }
 
     const roles = await roleQueries.getRolesForUser(user.id);
 
-    // Get their tournaments
+    // Tournaments they created
     const tournaments = await pool.query(
-      `SELECT id, name, status, created_at FROM tournaments WHERE created_by = $1 ORDER BY created_at DESC`,
+      `SELECT id, name, status, date, created_at,
+              COALESCE((SELECT COUNT(DISTINCT profile_id) FROM registrations WHERE tournament_id = t.id AND status != 'cancelled'), 0)::int AS competitor_count
+       FROM tournaments t WHERE created_by = $1 ORDER BY created_at DESC`,
       [user.id]
     );
 
-    // Get their credit history
+    // Dojos they own
+    const dojos = await pool.query(
+      `SELECT a.id, a.name, a.city, a.state, a.created_at,
+              COUNT(am.id)::int AS member_count
+       FROM academies a
+       LEFT JOIN academy_members am ON am.academy_id = a.id
+       WHERE a.head_coach_id = $1
+       GROUP BY a.id`,
+      [user.id]
+    );
+
+    // Tournament memberships (coach/judge/staff roles)
+    const memberships = await pool.query(
+      `SELECT tm.id, tm.role, tm.staff_role, tm.status, tm.applied_at,
+              t.name AS tournament_name, t.date AS tournament_date
+       FROM tournament_members tm
+       JOIN tournaments t ON t.id = tm.tournament_id
+       WHERE tm.user_id = $1
+       ORDER BY tm.applied_at DESC`,
+      [user.id]
+    );
+
+    // Credit history
     const creditHistory = await creditQueries.getTransactions(user.id, { limit: 50 });
 
     res.json({
-      director: {
+      user: {
         id: user.id,
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        organizationName: user.organization_name,
         creditBalance: user.credit_balance,
         emailVerified: user.email_verified,
         createdAt: user.created_at,
         roles,
       },
       tournaments: tournaments.rows,
+      dojos: dojos.rows,
+      memberships: memberships.rows,
       creditHistory,
     });
   } catch (err) {
@@ -183,9 +207,31 @@ router.get('/directors/:id', async (req, res, next) => {
   }
 });
 
+// ── Dojos ───────────────────────────────────────────────────────────────────
+
+// GET /api/super-admin/dojos — List all dojos with owner info
+router.get('/dojos', async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT a.id, a.name, a.city, a.state, a.website, a.logo_url, a.created_at,
+              u.id AS owner_id, u.first_name AS owner_first_name,
+              u.last_name AS owner_last_name, u.email AS owner_email,
+              COUNT(am.id)::int AS member_count
+       FROM academies a
+       LEFT JOIN users u ON u.id = a.head_coach_id
+       LEFT JOIN academy_members am ON am.academy_id = a.id
+       GROUP BY a.id, u.id
+       ORDER BY a.name ASC`
+    );
+    res.json({ dojos: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Credits Grant ───────────────────────────────────────────────────────────
 
-// POST /api/super-admin/credits/grant — Grant credits to an Event Director
+// POST /api/super-admin/credits/grant — Grant credits to a user
 router.post('/credits/grant',
   [
     body('userId').isUUID().withMessage('Valid user ID is required'),
@@ -226,7 +272,7 @@ router.post('/credits/grant',
 
 // ── Tournaments ─────────────────────────────────────────────────────────────
 
-// GET /api/super-admin/tournaments — List ALL tournaments across all directors
+// GET /api/super-admin/tournaments — List ALL tournaments
 router.get('/tournaments', async (req, res, next) => {
   try {
     const result = await pool.query(
@@ -263,18 +309,15 @@ router.post('/impersonate/:userId', async (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Verify they have event_director role
     const targetRoles = await roleQueries.getRolesForUser(userId);
-    if (!targetRoles.includes('event_director')) {
-      return res.status(400).json({ error: 'Can only impersonate event directors' });
-    }
+    const platformRoles = targetRoles.filter(r => ['admin', 'super_admin'].includes(r));
 
     // Build impersonation JWT — target user's identity + impersonation flag
     const jwt = require('jsonwebtoken');
     const payload = {
       id: targetUser.id,
       email: targetUser.email,
-      roles: targetRoles,
+      roles: platformRoles,
       emailVerified: targetUser.email_verified,
       impersonating: true,
       originalUserId: req.user.id,
@@ -290,7 +333,7 @@ router.post('/impersonate/:userId', async (req, res, next) => {
 
     res.json({
       message: `Now impersonating ${targetUser.first_name} ${targetUser.last_name}`,
-      redirectUrl: '/director.html',
+      redirectUrl: '/',
     });
   } catch (err) {
     next(err);

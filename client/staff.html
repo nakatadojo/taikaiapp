@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Dashboard — Taikai</title>
+    <style>
+        /* ─── Reset & Variables ─── */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f0f14;
+            --bg-secondary: #1a1a24;
+            --accent: #dc2626;
+            --accent-hover: #b91c1c;
+            --text: #ffffff;
+            --text-muted: rgba(255,255,255,0.6);
+            --text-dim: rgba(255,255,255,0.35);
+            --glass: rgba(255,255,255,0.06);
+            --glass-border: rgba(255,255,255,0.08);
+            --glass-hover: rgba(255,255,255,0.1);
+            --radius: 14px;
+            --radius-sm: 10px;
+            --green: #22c55e;
+            --red: #ef4444;
+            --blue: #3b82f6;
+            --purple: #a855f7;
+            --yellow: #eab308;
+            --orange: #f97316;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+        a { color: inherit; text-decoration: none; }
+
+        /* ─── Navbar ─── */
+        .navbar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 32px; height: 64px;
+            background: rgba(15,15,20,0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .navbar-brand { font-size: 22px; font-weight: 800; letter-spacing: 3px; color: var(--accent); }
+        .navbar-actions { display: flex; align-items: center; gap: 12px; }
+        .nav-link {
+            color: var(--text-muted); font-size: 14px; font-weight: 500;
+            padding: 8px 14px; border-radius: 8px; transition: all 0.2s;
+        }
+        .nav-link:hover { color: var(--text); background: var(--glass); }
+        .nav-btn-ghost {
+            padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+            cursor: pointer; border: none; background: transparent; color: var(--text-muted); transition: all 0.2s;
+        }
+        .nav-btn-ghost:hover { color: var(--text); background: var(--glass); }
+
+        /* ─── Page Content ─── */
+        .page { padding: 96px 32px 48px; max-width: 960px; margin: 0 auto; }
+        .page-title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .page-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 32px; }
+
+        /* ─── Loading / Empty ─── */
+        .loading { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .spinner {
+            width: 32px; height: 32px; border: 3px solid var(--glass-border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state {
+            text-align: center; padding: 60px 20px;
+            background: var(--glass); border: 1px solid var(--glass-border);
+            border-radius: var(--radius); color: var(--text-muted);
+        }
+        .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+
+        /* ─── Assignment Cards ─── */
+        .assignment-card {
+            background: var(--glass); border: 1px solid var(--glass-border);
+            border-radius: var(--radius); padding: 24px; margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+        .assignment-card:hover { border-color: rgba(255,255,255,0.15); }
+        .assignment-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .assignment-name { font-size: 18px; font-weight: 600; }
+        .assignment-meta { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        .role-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .role-badge.judge { background: rgba(168,85,247,0.2); color: var(--purple); }
+        .role-badge.staff { background: rgba(59,130,246,0.2); color: var(--blue); }
+        .perm-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+        .perm-pill {
+            font-size: 11px; padding: 3px 10px; border-radius: 12px;
+            background: var(--glass-hover); color: var(--text-muted); border: 1px solid var(--glass-border);
+        }
+        .assignment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; border: none; transition: all 0.2s; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-secondary { background: var(--glass-hover); color: var(--text-muted); border: 1px solid var(--glass-border); }
+        .btn-secondary:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+        /* ─── Check-in View ─── */
+        .checkin-view { display: none; }
+        .checkin-view.active { display: block; }
+        .dashboard-view.hidden { display: none; }
+
+        .back-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 14px; color: var(--text-muted); background: none; border: none;
+            cursor: pointer; margin-bottom: 16px; padding: 0;
+        }
+        .back-btn:hover { color: var(--text); }
+
+        .stats-bar {
+            display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .stat-card {
+            flex: 1; min-width: 120px; padding: 16px; border-radius: var(--radius-sm);
+            background: var(--glass); border: 1px solid var(--glass-border); text-align: center;
+        }
+        .stat-value { font-size: 28px; font-weight: 700; }
+        .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .stat-card.green .stat-value { color: var(--green); }
+        .stat-card.orange .stat-value { color: var(--orange); }
+        .stat-card.red .stat-value { color: var(--red); }
+
+        .search-bar {
+            width: 100%; padding: 12px 16px; border-radius: var(--radius-sm);
+            background: var(--glass); border: 1px solid var(--glass-border);
+            color: var(--text); font-size: 14px; outline: none; margin-bottom: 12px;
+        }
+        .search-bar:focus { border-color: var(--accent); }
+        .search-bar::placeholder { color: var(--text-dim); }
+
+        .filter-tabs {
+            display: flex; gap: 4px; margin-bottom: 16px;
+            background: var(--glass); border-radius: 8px; padding: 3px;
+        }
+        .filter-tab {
+            flex: 1; padding: 8px; border: none; background: none;
+            color: var(--text-muted); font-size: 13px; font-weight: 500;
+            border-radius: 6px; cursor: pointer; transition: all 0.2s; text-align: center;
+        }
+        .filter-tab.active { background: var(--accent); color: white; }
+        .filter-tab:hover:not(.active) { color: var(--text); }
+
+        .competitor-list { display: flex; flex-direction: column; gap: 4px; }
+        .competitor-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; background: var(--glass); border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm); gap: 12px;
+        }
+        .competitor-info { flex: 1; min-width: 0; }
+        .competitor-name { font-size: 14px; font-weight: 600; }
+        .competitor-detail { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .competitor-status {
+            font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 600;
+            white-space: nowrap;
+        }
+        .status-checked-in { background: rgba(34,197,94,0.15); color: var(--green); }
+        .status-on-mat { background: rgba(249,115,22,0.15); color: var(--orange); }
+        .status-missing { background: rgba(255,255,255,0.05); color: var(--text-dim); }
+        .status-not-arrived {
+            background: rgba(239,68,68,0.12); color: var(--red); font-weight: 700;
+            animation: pulse-not-arrived 2s ease-in-out infinite;
+        }
+        @keyframes pulse-not-arrived {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .competitor-row.not-arrived-row {
+            border-color: rgba(239,68,68,0.2);
+            background: rgba(239,68,68,0.04);
+        }
+        .next-match-info {
+            font-size: 10px; color: var(--orange); margin-top: 2px; font-weight: 500;
+        }
+        .competitor-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
+        .btn-green { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+        .btn-green:hover { background: rgba(34,197,94,0.25); }
+        .btn-orange { background: rgba(249,115,22,0.15); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+        .btn-orange:hover { background: rgba(249,115,22,0.25); }
+        .btn-ghost { background: none; color: var(--text-dim); border: 1px solid var(--glass-border); }
+        .btn-ghost:hover { color: var(--text-muted); border-color: rgba(255,255,255,0.15); }
+        .btn-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+            border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 1000;
+            animation: slideIn 0.3s ease-out; display: none;
+        }
+        .toast.error { background: var(--red); color: white; }
+        .toast.success { background: var(--green); color: white; }
+        .toast.visible { display: block; }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        @media (max-width: 640px) {
+            .navbar { padding: 0 16px; }
+            .page { padding: 80px 16px 32px; }
+            .stats-bar { gap: 8px; }
+            .stat-card { min-width: 70px; padding: 12px 8px; }
+            .stat-value { font-size: 22px; }
+            .competitor-row { flex-wrap: wrap; }
+            .competitor-actions { width: 100%; justify-content: flex-end; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">TAIKAI</a>
+        <div class="navbar-actions">
+            <a href="/my-events" class="nav-link">My Events</a>
+            <a href="/coach" class="nav-link">Coach</a>
+            <button class="nav-btn-ghost" onclick="Auth.logout()">Log Out</button>
+        </div>
+    </nav>
+
+    <!-- Dashboard View -->
+    <div class="page dashboard-view" id="dashboard-view">
+        <h1 class="page-title">Staff Dashboard</h1>
+        <p class="page-subtitle">Your tournament assignments and tools</p>
+
+        <div id="assignments-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading assignments...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Check-in View -->
+    <div class="page checkin-view" id="checkin-view">
+        <button class="back-btn" onclick="closeCheckin()">&larr; Back to Dashboard</button>
+        <h1 class="page-title" id="checkin-title">Check-in</h1>
+
+        <div class="stats-bar" id="checkin-stats">
+            <div class="stat-card"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Total</div></div>
+            <div class="stat-card green"><div class="stat-value" id="stat-checked-in">0</div><div class="stat-label">Checked In</div></div>
+            <div class="stat-card orange"><div class="stat-value" id="stat-on-mat">0</div><div class="stat-label">On Mat</div></div>
+            <div class="stat-card red"><div class="stat-value" id="stat-missing">0</div><div class="stat-label">Missing</div></div>
+        </div>
+
+        <!-- Medical Incident Button -->
+        <div style="margin-bottom:16px;">
+            <button class="btn btn-primary" onclick="showStaffIncidentForm()" style="background:var(--red);">
+                Report Medical Incident
+            </button>
+        </div>
+
+        <!-- Staff Medical Incident Form (hidden by default) -->
+        <div id="staff-incident-form-panel" style="display:none; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius); padding:20px; margin-bottom:16px;">
+            <h3 style="margin-bottom:12px; font-size:16px;">Log Medical Incident</h3>
+            <form id="staff-incident-form" onsubmit="submitStaffIncident(event)">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Competitor Name *</label>
+                        <input type="text" id="staff-incident-name" required placeholder="Name of injured competitor" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Mat / Area</label>
+                        <input type="text" id="staff-incident-mat" placeholder="e.g. Mat 1" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Description *</label>
+                    <textarea id="staff-incident-description" required rows="3" placeholder="What happened..." style="width:100%; padding:10px 14px; border-radius:var(--radius-sm); background:var(--glass); border:1px solid var(--glass-border); color:var(--text); font-size:14px; resize:vertical;"></textarea>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+                    <div>
+                        <label style="font-size:13px; color:var(--text-muted); display:block; margin-bottom:4px;">Official Present</label>
+                        <input type="text" id="staff-incident-official" placeholder="Name of official" class="search-bar" style="margin-bottom:0;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px; justify-content:center;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="staff-incident-continue"> Able to Continue
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" id="staff-incident-ems"> Medical Staff Called
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:16px;">
+                    <button type="submit" class="btn btn-primary" id="staff-incident-submit-btn">Save Incident</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideStaffIncidentForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
+
+        <input type="text" class="search-bar" id="checkin-search" placeholder="Search by name or dojo..." oninput="applyFilters()">
+
+        <div class="filter-tabs" id="filter-tabs">
+            <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">All</button>
+            <button class="filter-tab" data-filter="checked_in" onclick="setFilter('checked_in')">Checked In</button>
+            <button class="filter-tab" data-filter="on_mat" onclick="setFilter('on_mat')">On Mat</button>
+            <button class="filter-tab" data-filter="missing" onclick="setFilter('missing')">Missing</button>
+        </div>
+
+        <div class="competitor-list" id="competitor-list"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="/auth.js"></script>
+    <script>
+    (function() {
+        let currentTournamentId = null;
+        let currentFilter = 'all';
+        let allCompetitors = [];
+
+        const PERM_LABELS = {
+            view_schedule: 'View Schedule',
+            operate_scoreboard: 'Operate Scoreboard',
+            view_results: 'View Results',
+            print_certificates: 'Print Certificates',
+            publish_awards: 'Publish Awards',
+            manage_checkin: 'Manage Check-in',
+        };
+
+        // ── Auth ──────────────────────────────────────────────────────────
+        Auth.onAuthChange = function(user) {
+            if (!user) {
+                window.location.href = '/my-events';
+                return;
+            }
+            loadStaffDashboard();
+        };
+
+        Auth.init();
+
+        // ── Dashboard ─────────────────────────────────────────────────────
+        async function loadStaffDashboard() {
+            const container = document.getElementById('assignments-container');
+            try {
+                const res = await fetch('/api/my/staff-dashboard', { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+                const assignments = data.assignments || [];
+
+                if (assignments.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No Assignments Yet</h3>
+                            <p>You don't have any approved staff or judge roles. Apply at a tournament page to get started.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = assignments.map(a => renderAssignmentCard(a)).join('');
+            } catch (err) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Could Not Load</h3>
+                        <p>${esc(err.message)}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderAssignmentCard(a) {
+            const perms = a.custom_permissions || [];
+            const dateStr = a.tournament_date
+                ? new Date(a.tournament_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                : '';
+            const location = [a.tournament_city, a.tournament_state].filter(Boolean).join(', ') || a.tournament_location || '';
+
+            let permPills = '';
+            if (perms.length > 0) {
+                permPills = `<div class="perm-pills">${perms.map(p =>
+                    `<span class="perm-pill">${PERM_LABELS[p] || p}</span>`
+                ).join('')}</div>`;
+            }
+
+            let actions = `<a href="/tournaments/${esc(a.tournament_slug || '')}" class="btn btn-secondary btn-sm">View Tournament</a>`;
+
+            if (perms.includes('operate_scoreboard') || a.role === 'judge') {
+                actions += `<a href="/director/tournaments/${a.tournament_id}/manage" class="btn btn-secondary btn-sm">Open Scoreboard</a>`;
+            }
+            if (perms.includes('manage_checkin')) {
+                actions += `<button class="btn btn-primary btn-sm" onclick="openCheckin('${a.tournament_id}', '${esc(a.tournament_name)}')">Check-in</button>`;
+            }
+            if (perms.includes('view_results')) {
+                actions += `<a href="/tournaments/${esc(a.tournament_slug || '')}#results" class="btn btn-secondary btn-sm">View Results</a>`;
+            }
+            if (perms.includes('print_certificates')) {
+                actions += `<a href="/badge?tournamentId=${a.tournament_id}" class="btn btn-secondary btn-sm">Print Badges</a>`;
+            }
+
+            const customRoleName = a.custom_role_name ? ` &middot; ${esc(a.custom_role_name)}` : '';
+
+            return `
+                <div class="assignment-card">
+                    <div class="assignment-header">
+                        <div>
+                            <div class="assignment-name">${esc(a.tournament_name)}</div>
+                            <div class="assignment-meta">${esc(dateStr)}${location ? ' &middot; ' + esc(location) : ''}</div>
+                        </div>
+                        <span class="role-badge ${a.role}">${a.role}${customRoleName}</span>
+                    </div>
+                    ${permPills}
+                    <div class="assignment-actions">${actions}</div>
+                </div>
+            `;
+        }
+
+        // ── Check-in ──────────────────────────────────────────────────────
+        window.openCheckin = async function(tournamentId, name) {
+            currentTournamentId = tournamentId;
+            document.getElementById('checkin-title').textContent = name + ' — Check-in';
+            document.getElementById('dashboard-view').classList.add('hidden');
+            document.getElementById('checkin-view').classList.add('active');
+            document.getElementById('checkin-search').value = '';
+            currentFilter = 'all';
+            setFilterActive('all');
+            await loadCheckinData();
+        };
+
+        window.closeCheckin = function() {
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            document.getElementById('checkin-view').classList.remove('active');
+            currentTournamentId = null;
+            allCompetitors = [];
+        };
+
+        async function loadCheckinData() {
+            const list = document.getElementById('competitor-list');
+            list.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
+
+            try {
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load check-in data');
+                const data = await res.json();
+                allCompetitors = data.competitors || [];
+                updateStats(data.stats);
+                applyFilters();
+            } catch (err) {
+                list.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${esc(err.message)}</p></div>`;
+            }
+        }
+
+        function updateStats(stats) {
+            if (!stats) return;
+            document.getElementById('stat-total').textContent = stats.total || 0;
+            document.getElementById('stat-checked-in').textContent = stats.checked_in || 0;
+            document.getElementById('stat-on-mat').textContent = stats.on_mat || 0;
+            document.getElementById('stat-missing').textContent = stats.missing || 0;
+        }
+
+        window.setFilter = function(filter) {
+            currentFilter = filter;
+            setFilterActive(filter);
+            applyFilters();
+        };
+
+        function setFilterActive(filter) {
+            document.querySelectorAll('.filter-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.filter === filter);
+            });
+        }
+
+        window.applyFilters = function() {
+            const search = (document.getElementById('checkin-search').value || '').toLowerCase();
+            const list = document.getElementById('competitor-list');
+
+            let filtered = allCompetitors;
+
+            // Status filter
+            if (currentFilter === 'checked_in') {
+                filtered = filtered.filter(c => c.checkin_id && !c.mat_called_at);
+            } else if (currentFilter === 'on_mat') {
+                filtered = filtered.filter(c => c.mat_called_at);
+            } else if (currentFilter === 'missing') {
+                filtered = filtered.filter(c => !c.checkin_id);
+            }
+
+            // Search filter
+            if (search) {
+                filtered = filtered.filter(c => {
+                    const name = ((c.first_name || '') + ' ' + (c.last_name || '')).toLowerCase();
+                    const academy = (c.academy_name || '').toLowerCase();
+                    return name.includes(search) || academy.includes(search);
+                });
+            }
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<div class="empty-state" style="padding: 30px;"><p>No competitors match your filters.</p></div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(c => {
+                const name = `${esc(c.first_name || '')} ${esc(c.last_name || '')}`;
+                const academy = c.academy_name ? esc(c.academy_name) : '';
+                const events = (c.events || []).map(e => e.eventName).filter(Boolean).join(', ');
+
+                let statusBadge = '';
+                let actionButtons = '';
+
+                if (c.mat_called_at) {
+                    statusBadge = '<span class="competitor-status status-on-mat">On Mat</span>';
+                    actionButtons = `<button class="btn btn-sm btn-ghost btn-disabled" title="Cannot undo — competitor has been called to the mat">Undo</button>`;
+                } else if (c.checkin_id) {
+                    statusBadge = '<span class="competitor-status status-checked-in">Checked In</span>';
+                    actionButtons = `
+                        <button class="btn btn-sm btn-orange" onclick="callToMat('${c.registration_id}')">Call to Mat</button>
+                        <button class="btn btn-sm btn-ghost" onclick="undoCheckin('${c.registration_id}')">Undo</button>
+                    `;
+                } else {
+                    statusBadge = '<span class="competitor-status status-not-arrived">Not Yet Arrived</span>';
+                    actionButtons = `<button class="btn btn-sm btn-green" onclick="checkinCompetitor('${c.registration_id}')">Check In</button>`;
+                }
+
+                const isNotArrived = !c.checkin_id && !c.mat_called_at;
+                const rowClass = isNotArrived ? 'competitor-row not-arrived-row' : 'competitor-row';
+
+                // Show next scheduled match time if available (for not-yet-arrived competitors)
+                const nextMatchInfo = isNotArrived && c.next_match_time
+                    ? `<div class="next-match-info">Next match: ${new Date(c.next_match_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>`
+                    : '';
+
+                return `
+                    <div class="${rowClass}">
+                        <div class="competitor-info">
+                            <div class="competitor-name">${name}</div>
+                            <div class="competitor-detail">${academy}${events ? ' &middot; ' + esc(events) : ''}</div>
+                            ${nextMatchInfo}
+                        </div>
+                        ${statusBadge}
+                        <div class="competitor-actions">${actionButtons}</div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        window.checkinCompetitor = async function(registrationId) {
+            try {
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ registrationId }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Check-in failed');
+                }
+                const data = await res.json();
+                updateStats(data.stats);
+                // Update local state
+                const comp = allCompetitors.find(c => c.registration_id === registrationId);
+                if (comp) {
+                    comp.checkin_id = data.checkin.id;
+                    comp.checked_in_at = data.checkin.checked_in_at;
+                    comp.mat_called_at = null;
+                }
+                applyFilters();
+                showToast('Competitor checked in', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+
+        window.callToMat = async function(registrationId) {
+            try {
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin/${registrationId}/mat-call`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to mark as called');
+                }
+                const data = await res.json();
+                // Update local state
+                const comp = allCompetitors.find(c => c.registration_id === registrationId);
+                if (comp) {
+                    comp.mat_called_at = data.checkin.mat_called_at;
+                }
+                // Refresh stats
+                const statsRes = await fetch(`/api/tournaments/${currentTournamentId}/checkin/stats`, { credentials: 'include' });
+                if (statsRes.ok) updateStats(await statsRes.json());
+                applyFilters();
+                showToast('Competitor called to mat', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+
+        window.undoCheckin = async function(registrationId) {
+            try {
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin/${registrationId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    if (err.code === 'MAT_CALLED') {
+                        showToast('Cannot undo — competitor has been called to the mat', 'error');
+                        return;
+                    }
+                    throw new Error(err.error || 'Undo failed');
+                }
+                const data = await res.json();
+                updateStats(data.stats);
+                // Update local state
+                const comp = allCompetitors.find(c => c.registration_id === registrationId);
+                if (comp) {
+                    comp.checkin_id = null;
+                    comp.checked_in_at = null;
+                    comp.mat_called_at = null;
+                }
+                applyFilters();
+                showToast('Check-in undone', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+
+        // ── Medical Incident (Staff) ─────────────────────────────────────
+        window.showStaffIncidentForm = function() {
+            document.getElementById('staff-incident-form-panel').style.display = 'block';
+            document.getElementById('staff-incident-form').reset();
+        };
+
+        window.hideStaffIncidentForm = function() {
+            document.getElementById('staff-incident-form-panel').style.display = 'none';
+        };
+
+        window.submitStaffIncident = async function(e) {
+            e.preventDefault();
+            if (!currentTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('staff-incident-submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                const competitorName = document.getElementById('staff-incident-name').value.trim();
+                const matNumber = document.getElementById('staff-incident-mat').value.trim();
+                const description = document.getElementById('staff-incident-description').value.trim();
+                const officialPresent = document.getElementById('staff-incident-official').value.trim();
+                const ableToContinue = document.getElementById('staff-incident-continue').checked;
+                const medicalStaffCalled = document.getElementById('staff-incident-ems').checked;
+
+                if (!competitorName) {
+                    showToast('Competitor name is required', 'error');
+                    return;
+                }
+                if (!description) {
+                    showToast('Description is required', 'error');
+                    return;
+                }
+
+                const res = await fetch(`/api/tournaments/${currentTournamentId}/medical-incidents`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        competitorName,
+                        matNumber,
+                        description,
+                        officialPresent,
+                        ableToContinue,
+                        medicalStaffCalled,
+                    }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Failed to log incident');
+                }
+
+                showToast('Medical incident reported', 'success');
+                hideStaffIncidentForm();
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Incident';
+            }
+        };
+
+        // ── Utilities ─────────────────────────────────────────────────────
+        function esc(s) {
+            if (!s) return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} visible`;
+            setTimeout(() => { toast.classList.remove('visible'); }, 3000);
+        }
+    })();
+    </script>
+</body>
+</html>

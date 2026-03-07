@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/tournamentMemberController');
 
 const router = express.Router();
@@ -19,24 +19,29 @@ router.post('/',
   controller.apply
 );
 
-// GET /api/tournament-members/:tournamentId — List members for a tournament
+// GET /api/tournament-members/:tournamentId/public — Public list of approved members
+router.get('/:tournamentId/public',
+  controller.listPublic
+);
+
+// GET /api/tournament-members/:tournamentId — List members for a tournament (admin)
 router.get('/:tournamentId',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireTournamentOwner,
   controller.list
 );
 
 // PATCH /api/tournament-members/:id/approve — Approve application
 router.patch('/:id/approve',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireTournamentOwner,
   controller.approve
 );
 
 // PATCH /api/tournament-members/:id/decline — Decline application
 router.patch('/:id/decline',
   requireAuth,
-  requireRole('event_director', 'admin', 'super_admin'),
+  requireTournamentOwner,
   controller.decline
 );
 

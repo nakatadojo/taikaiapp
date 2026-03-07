@@ -100,4 +100,27 @@ async function getByUser(userId) {
   return result.rows;
 }
 
-module.exports = { create, findById, getByTournament, approve, decline, getByUser };
+/**
+ * Get staff/judge assignments for a user (for Staff Dashboard).
+ * Includes tournament info, custom role name, and permissions.
+ */
+async function getStaffDashboard(userId) {
+  const result = await pool.query(
+    `SELECT tm.id, tm.tournament_id, tm.role, tm.staff_role, tm.status,
+            t.name AS tournament_name, t.date AS tournament_date,
+            t.location AS tournament_location, t.slug AS tournament_slug,
+            t.city AS tournament_city, t.state AS tournament_state,
+            srd.role_name AS custom_role_name, srd.permissions AS custom_permissions
+     FROM tournament_members tm
+     JOIN tournaments t ON t.id = tm.tournament_id
+     LEFT JOIN staff_role_definitions srd ON tm.role_definition_id = srd.id
+     WHERE tm.user_id = $1
+       AND tm.status = 'approved'
+       AND tm.role IN ('staff', 'judge')
+     ORDER BY t.date ASC NULLS LAST`,
+    [userId]
+  );
+  return result.rows;
+}
+
+module.exports = { create, findById, getByTournament, approve, decline, getByUser, getStaffDashboard };

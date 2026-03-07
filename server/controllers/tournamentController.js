@@ -146,7 +146,7 @@ async function getMyTournaments(req, res, next) {
 
 /**
  * POST /api/tournaments
- * Create a tournament (event_director or admin).
+ * Create a tournament (tournament owner or admin).
  */
 async function createTournament(req, res, next) {
   try {
@@ -154,7 +154,7 @@ async function createTournament(req, res, next) {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, timezone,
     } = req.body;
 
     // If slug provided, validate uniqueness
@@ -170,7 +170,7 @@ async function createTournament(req, res, next) {
       createdBy: req.user.id,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, timezone,
     });
     res.status(201).json({ tournament });
   } catch (err) {
@@ -183,23 +183,21 @@ async function createTournament(req, res, next) {
 
 /**
  * PUT /api/tournaments/:id
- * Update a tournament (must own or be super_admin).
+ * Update a tournament (must own).
  */
 async function updateTournament(req, res, next) {
   try {
-    // Check ownership (unless super_admin)
-    if (!req.user.roles.includes('super_admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const {
       name, date, location, registrationOpen, baseEventPrice, addonEventPrice,
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
-      sanctioningBody, collectTshirtSizes,
+      sanctioningBody, collectTshirtSizes, registrationSettings, timezone,
     } = req.body;
 
     const updates = {};
@@ -220,6 +218,14 @@ async function updateTournament(req, res, next) {
     if (registrationDeadline !== undefined) updates.registration_deadline = registrationDeadline;
     if (sanctioningBody !== undefined) updates.sanctioning_body = sanctioningBody;
     if (collectTshirtSizes !== undefined) updates.collect_tshirt_sizes = collectTshirtSizes;
+    if (timezone !== undefined) updates.timezone = timezone;
+    if (registrationSettings !== undefined) {
+      // Validate structure
+      if (typeof registrationSettings !== 'object' || registrationSettings === null) {
+        return res.status(400).json({ error: 'registrationSettings must be an object' });
+      }
+      updates.registration_settings = JSON.stringify(registrationSettings);
+    }
 
     // Handle slug update with uniqueness check
     if (slug !== undefined) {
@@ -243,12 +249,10 @@ async function updateTournament(req, res, next) {
  */
 async function publishTournament(req, res, next) {
   try {
-    // Check ownership (unless super_admin)
-    if (!req.user.roles.includes('super_admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const { published } = req.body;
@@ -285,12 +289,10 @@ async function publishTournament(req, res, next) {
  */
 async function uploadCoverImage(req, res, next) {
   try {
-    // Check ownership (unless super_admin)
-    if (!req.user.roles.includes('super_admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     if (!req.file) {
@@ -313,20 +315,18 @@ async function uploadCoverImage(req, res, next) {
   }
 }
 
-// ── Admin Endpoints (Legacy — retained for backward compat) ─────────────────
+// ── Event Endpoints ─────────────────────────────────────────────────────────
 
 /**
  * POST /api/tournaments/:id/events
- * Create an event for a tournament.
+ * Create an event for a tournament (must own).
  */
 async function createEvent(req, res, next) {
   try {
-    // Check ownership (unless super_admin or admin)
-    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const {
@@ -354,11 +354,9 @@ async function createEvent(req, res, next) {
 async function updateEvent(req, res, next) {
   try {
     // Check ownership
-    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const {
@@ -396,11 +394,10 @@ async function updateEvent(req, res, next) {
  */
 async function deleteTournament(req, res, next) {
   try {
-    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const deleted = await tournamentQueries.deleteTournament(req.params.id);
@@ -416,11 +413,9 @@ async function deleteTournament(req, res, next) {
 async function deleteEvent(req, res, next) {
   try {
     // Check ownership
-    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const event = await tournamentQueries.deleteEvent(req.params.eventId);
@@ -440,11 +435,9 @@ async function deleteEvent(req, res, next) {
 async function syncEvents(req, res, next) {
   try {
     // Check ownership
-    if (!req.user.roles.includes('super_admin') && !req.user.roles.includes('admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const { events } = req.body;
@@ -478,12 +471,10 @@ async function syncEvents(req, res, next) {
  */
 async function getRegistrants(req, res, next) {
   try {
-    // Check ownership (unless super_admin)
-    if (!req.user.roles.includes('super_admin')) {
-      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-      if (!owned) {
-        return res.status(403).json({ error: 'You do not own this tournament' });
-      }
+    // Check ownership
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
     }
 
     const { rows } = await pool.query(
@@ -555,6 +546,81 @@ async function getRegistrants(req, res, next) {
   }
 }
 
+/**
+ * GET /api/tournaments/director/stats
+ * Aggregate stats for the logged-in Event Director's dashboard.
+ */
+async function getDirectorStats(req, res, next) {
+  try {
+    const directorId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM tournaments WHERE created_by = $1) AS total_tournaments,
+        (SELECT COUNT(*) FROM registrations r
+         JOIN tournaments t ON t.id = r.tournament_id
+         WHERE t.created_by = $1 AND r.status != 'cancelled') AS total_registrants,
+        (SELECT COALESCE(SUM(r.amount_paid), 0) FROM registrations r
+         JOIN tournaments t ON t.id = r.tournament_id
+         WHERE t.created_by = $1 AND r.payment_status = 'paid') AS total_revenue,
+        (SELECT COUNT(*) FROM tournaments WHERE created_by = $1 AND published = true) AS published_count
+    `, [directorId]);
+
+    // Recent registrations (last 7 days)
+    const recent = await pool.query(`
+      SELECT r.id, r.created_at, r.amount_paid, r.status, r.payment_status,
+             cp.first_name, cp.last_name, t.name AS tournament_name
+      FROM registrations r
+      JOIN tournaments t ON t.id = r.tournament_id
+      LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+      WHERE t.created_by = $1 AND r.status != 'cancelled'
+      ORDER BY r.created_at DESC
+      LIMIT 5
+    `, [directorId]);
+
+    // Next upcoming tournament
+    const upcoming = await pool.query(`
+      SELECT id, name, date, slug
+      FROM tournaments
+      WHERE created_by = $1 AND date >= CURRENT_DATE AND published = true
+      ORDER BY date ASC
+      LIMIT 1
+    `, [directorId]);
+
+    res.json({
+      stats: {
+        totalTournaments: parseInt(rows[0].total_tournaments),
+        totalRegistrants: parseInt(rows[0].total_registrants),
+        totalRevenue: parseFloat(rows[0].total_revenue),
+        publishedCount: parseInt(rows[0].published_count),
+      },
+      recentRegistrations: recent.rows,
+      nextTournament: upcoming.rows[0] || null,
+    });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/tournaments/:id/clone
+ * Clone a tournament (must own the original).
+ */
+async function cloneTournament(req, res, next) {
+  try {
+    // Check ownership of the source tournament
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) {
+      return res.status(403).json({ error: 'You do not own this tournament' });
+    }
+
+    const cloned = await tournamentQueries.cloneTournament(req.params.id, req.user.id);
+    res.status(201).json({ tournament: cloned });
+  } catch (err) {
+    if (err.message === 'Tournament not found') {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -562,6 +628,7 @@ module.exports = {
   getTournamentBySlug,
   getEligibleEvents,
   getMyTournaments,
+  getDirectorStats,
   createTournament,
   updateTournament,
   publishTournament,
@@ -572,4 +639,5 @@ module.exports = {
   deleteEvent,
   syncEvents,
   getRegistrants,
+  cloneTournament,
 };

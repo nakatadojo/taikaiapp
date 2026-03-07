@@ -66,12 +66,12 @@
                     <button class="btn btn-primary" onclick="showRegistrationForm('instructor')">Register as Instructor</button>
                 </div>
 
-                <!-- Club Registration -->
+                <!-- Dojo Registration -->
                 <div class="registration-card">
                     <div class="card-icon">🏛️</div>
-                    <h3>Club</h3>
-                    <p>Register your martial arts club or dojo</p>
-                    <button class="btn btn-primary" onclick="showRegistrationForm('club')">Register Club</button>
+                    <h3>Dojo</h3>
+                    <p>Register your martial arts dojo</p>
+                    <button class="btn btn-primary" onclick="showRegistrationForm('club')">Register Dojo</button>
                 </div>
             </div>
         </div>
@@ -106,8 +106,8 @@
                             <small class="hint" style="margin-top:4px;">Required for competitors under 18. Guardian will receive a confirmation email.</small>
                         </div>
                         <div class="form-group" style="position:relative;">
-                            <label for="pub-academySearch">Academy/Club (optional)</label>
-                            <input type="text" id="pub-academySearch" placeholder="Start typing academy name..." autocomplete="off">
+                            <label for="pub-academySearch">Dojo (optional)</label>
+                            <input type="text" id="pub-academySearch" placeholder="Start typing dojo name..." autocomplete="off">
                             <div id="pub-academy-autocomplete" class="autocomplete-dropdown"></div>
                             <input type="hidden" id="pub-academyId">
                         </div>
@@ -144,7 +144,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="pub-club">Club *</label>
+                            <label for="pub-club">Dojo *</label>
                             <input type="text" id="pub-club" required>
                         </div>
                         <div class="form-group">
@@ -160,7 +160,7 @@
                             <input type="file" id="pub-photo" accept="image/*">
                         </div>
                         <div class="form-group">
-                            <label for="pub-club-logo">Club Logo (optional)</label>
+                            <label for="pub-club-logo">Dojo Logo (optional)</label>
                             <input type="file" id="pub-club-logo" accept="image/*">
                         </div>
                     </div>
@@ -204,7 +204,7 @@
                             <input type="text" id="pub-inst-rank" placeholder="e.g., 5th Dan" required>
                         </div>
                         <div class="form-group">
-                            <label for="pub-inst-club">Club *</label>
+                            <label for="pub-inst-club">Dojo *</label>
                             <input type="text" id="pub-inst-club" required>
                         </div>
                         <div class="form-group">
@@ -223,13 +223,13 @@
                 </form>
             </div>
 
-            <!-- Club Form -->
+            <!-- Dojo Form -->
             <div id="club-registration" class="registration-form hidden">
-                <h2>Club Registration</h2>
+                <h2>Dojo Registration</h2>
                 <form id="public-club-form">
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="pub-club-name">Club Name *</label>
+                            <label for="pub-club-name">Dojo Name *</label>
                             <input type="text" id="pub-club-name" required>
                         </div>
                         <div class="form-group">

@@ -3,7 +3,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const userQueries = require('../db/queries/users');
 const roleQueries = require('../db/queries/roles');
-const profileQueries = require('../db/queries/profiles');
 const pool = require('../db/pool');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../email');
 
@@ -13,12 +12,15 @@ const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 /**
  * Build JWT payload and set httpOnly cookie.
  */
-function setAuthCookie(res, user, roles) {
+function setAuthCookie(res, user, roles, extra = {}) {
+  // Only include platform-level roles (admin/super_admin) in JWT
+  const platformRoles = (roles || []).filter(r => ['admin', 'super_admin'].includes(r));
   const payload = {
     id: user.id,
     email: user.email,
-    roles,
+    roles: platformRoles,
     emailVerified: user.email_verified,
+    ...extra,
   };
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
 
@@ -38,25 +40,7 @@ function setAuthCookie(res, user, roles) {
  */
 async function signup(req, res, next) {
   try {
-    const { email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName } = req.body;
-
-    // Validate account type if provided
-    const validAccountTypes = ['competitor', 'guardian', 'both', 'event_director'];
-    const acctType = accountType && validAccountTypes.includes(accountType) ? accountType : null;
-
-    // If accountType includes competitor, validate 18+ age
-    if (acctType && (acctType === 'competitor' || acctType === 'both') && dateOfBirth) {
-      const dob = new Date(typeof dateOfBirth === 'string' && dateOfBirth.length === 10 ? dateOfBirth + 'T12:00:00' : dateOfBirth);
-      const today = new Date();
-      let age = today.getFullYear() - dob.getFullYear();
-      const monthDiff = today.getMonth() - dob.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
-      if (age < 18) {
-        return res.status(400).json({
-          error: 'Competitors must be 18 or older to create an account. If you are a minor, your parent or guardian should create an account and add you as a competitor.',
-        });
-      }
-    }
+    const { email, password, firstName, lastName, phone, organizationName } = req.body;
 
     // Check for existing user
     const existing = await userQueries.findByEmail(email);
@@ -78,68 +62,58 @@ async function signup(req, res, next) {
       firstName,
       lastName,
       phone,
-      dateOfBirth,
       verificationToken,
       verificationTokenExpires,
     });
 
-    // Set account_type and organization_name on user record
-    if (acctType || organizationName) {
-      const setClauses = [];
-      const setParams = [];
-      let pIdx = 1;
-      if (acctType) { setClauses.push(`account_type = $${pIdx++}`); setParams.push(acctType); }
-      if (organizationName) { setClauses.push(`organization_name = $${pIdx++}`); setParams.push(organizationName); }
-      setParams.push(user.id);
+    // Set organization_name on user record if provided
+    if (organizationName) {
       await pool.query(
-        `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${pIdx}`,
-        setParams
+        'UPDATE users SET organization_name = $1 WHERE id = $2',
+        [organizationName, user.id]
       );
     }
 
-    // Assign roles based on accountType
-    let selectedRoles;
-    if (acctType === 'event_director') {
-      selectedRoles = ['event_director'];
-    } else if (acctType === 'competitor') {
-      selectedRoles = ['competitor'];
-    } else if (acctType === 'guardian') {
-      selectedRoles = ['competitor']; // Guardians still get competitor role for system access
-    } else if (acctType === 'both') {
-      selectedRoles = ['competitor'];
-    } else {
-      // Fallback: use provided roles or default
-      const validRoles = ['competitor', 'coach', 'judge', 'assistant_coach'];
-      selectedRoles = (roles || ['competitor']).filter(r => validRoles.includes(r));
-      if (selectedRoles.length === 0) selectedRoles.push('competitor');
-    }
-    await roleQueries.addRoles(user.id, selectedRoles);
+    // No global roles assigned — roles are contextual (per-tournament, per-dojo)
 
-    // Auto-create self-profile for competitors
-    if (acctType === 'competitor' || acctType === 'both') {
-      try {
-        await profileQueries.create({
-          userId: user.id,
-          firstName,
-          lastName,
-          dateOfBirth: dateOfBirth || '2000-01-01',
-          gender: gender || 'male',
-          isSelf: true,
-        });
-      } catch (profileErr) {
-        console.warn('Failed to auto-create self-profile:', profileErr.message);
-      }
-    }
-
-    // Send verification email (director-specific template for event directors)
+    // Auto-accept any pending tournament invitations for this email
     try {
-      await sendVerificationEmail(email, verificationToken, {
-        accountType: acctType,
-        organizationName,
-      });
+      const pendingInvites = await pool.query(
+        `SELECT id, tournament_id, role FROM tournament_invitations
+         WHERE email = $1 AND status = 'pending'`,
+        [email.toLowerCase()]
+      );
+      for (const inv of pendingInvites.rows) {
+        // Create tournament member with approved status
+        await pool.query(
+          `INSERT INTO tournament_members (user_id, tournament_id, role, status, applied_at, reviewed_at)
+           VALUES ($1, $2, $3::user_role, 'approved', NOW(), NOW())
+           ON CONFLICT (user_id, tournament_id, role) DO NOTHING`,
+          [user.id, inv.tournament_id, inv.role]
+        );
+        // Mark invitation as accepted
+        await pool.query(
+          `UPDATE tournament_invitations SET status = 'accepted', accepted_at = NOW() WHERE id = $1`,
+          [inv.id]
+        );
+      }
+      if (pendingInvites.rows.length > 0) {
+        console.log(`Auto-accepted ${pendingInvites.rows.length} tournament invitation(s) for ${email}`);
+      }
+    } catch (invErr) {
+      console.error('Auto-accept invitations failed:', invErr.message);
+      // Don't fail signup — invitations can be accepted later
+    }
+
+    // Send verification email
+    try {
+      await sendVerificationEmail(email, verificationToken, { organizationName });
     } catch (emailErr) {
       console.error('Verification email failed:', emailErr.message);
     }
+
+    // Set auth cookie (no roles — JWT will only include admin/super_admin if applicable)
+    setAuthCookie(res, user, []);
 
     res.status(201).json({
       message: 'Account created. Please check your email to verify your address.',
@@ -148,8 +122,8 @@ async function signup(req, res, next) {
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        roles: selectedRoles,
-        accountType: acctType,
+        roles: [],
+        profileCompleted: true,
       },
     });
   } catch (err) {
@@ -175,7 +149,7 @@ async function verifyEmail(req, res, next) {
 
     // Redirect to landing page with success flag
     const appUrl = process.env.APP_URL || '';
-    res.redirect(`${appUrl}/landing.html?verified=1`);
+    res.redirect(`${appUrl}/?verified=1`);
   } catch (err) {
     next(err);
   }
@@ -201,19 +175,12 @@ async function login(req, res, next) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Check email verification
-    if (!user.email_verified) {
-      return res.status(403).json({
-        error: 'Please verify your email address before logging in',
-        code: 'EMAIL_NOT_VERIFIED',
-      });
-    }
-
-    // Load roles
-    const roles = await roleQueries.getRolesForUser(user.id);
+    // Load roles and filter to platform-level only
+    const allRoles = await roleQueries.getRolesForUser(user.id);
+    const platformRoles = allRoles.filter(r => ['admin', 'super_admin'].includes(r));
 
     // Set auth cookie and return profile
-    const payload = setAuthCookie(res, user, roles);
+    setAuthCookie(res, user, allRoles);
 
     res.json({
       user: {
@@ -224,11 +191,77 @@ async function login(req, res, next) {
         phone: user.phone,
         dateOfBirth: user.date_of_birth,
         profilePhotoUrl: user.profile_photo_url,
-        roles,
+        roles: platformRoles,
         emailVerified: user.email_verified,
-        accountType: user.account_type,
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
+        profileCompleted: true,
+        timezone: user.timezone || 'America/New_York',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/auth/select-role
+ * Sets the user's role after account creation (new multi-step signup flow).
+ */
+async function selectRole(req, res, next) {
+  try {
+    // No-op: global roles are no longer assigned. Kept for backward compatibility.
+    const userId = req.user.id;
+    const user = await userQueries.findById(userId);
+    const roles = await roleQueries.getRolesForUser(userId);
+
+    res.json({
+      message: 'Role selection is no longer required. All features are available to all users.',
+      user: {
+        id: user.id,
+        email: user.email,
+        roles: roles.filter(r => ['admin', 'super_admin'].includes(r)),
+        profileCompleted: true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PUT /api/auth/complete-profile
+ * Completes the user's profile after role selection (new multi-step signup flow).
+ */
+async function completeProfile(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { phone, dateOfBirth, gender } = req.body;
+
+    const user = await userQueries.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Build update map — accept optional profile fields
+    const updates = { profile_completed: true };
+    if (phone !== undefined) updates.phone = phone;
+    if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
+
+    const updatedUser = await userQueries.updateProfile(userId, updates);
+
+    // Refresh auth cookie
+    const roles = await roleQueries.getRolesForUser(userId);
+    setAuthCookie(res, updatedUser, roles);
+
+    res.json({
+      message: 'Profile completed successfully',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.first_name,
+        lastName: updatedUser.last_name,
+        phone: updatedUser.phone,
+        roles: roles.filter(r => ['admin', 'super_admin'].includes(r)),
+        profileCompleted: true,
       },
     });
   } catch (err) {
@@ -303,7 +336,22 @@ async function getMe(req, res, next) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const roles = await roleQueries.getRolesForUser(user.id);
+    const allRoles = await roleQueries.getRolesForUser(user.id);
+    const platformRoles = allRoles.filter(r => ['admin', 'super_admin'].includes(r));
+
+    // Count owned tournaments for context-based UI
+    const ownedResult = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM tournaments WHERE created_by = $1',
+      [user.id]
+    );
+    const ownedTournamentCount = ownedResult.rows[0]?.count || 0;
+
+    // Check if user has a dojo
+    const dojoResult = await pool.query(
+      'SELECT id, name FROM academies WHERE head_coach_id = $1 LIMIT 1',
+      [user.id]
+    );
+    const dojo = dojoResult.rows[0] || null;
 
     const response = {
       user: {
@@ -314,12 +362,15 @@ async function getMe(req, res, next) {
         phone: user.phone,
         dateOfBirth: user.date_of_birth,
         profilePhotoUrl: user.profile_photo_url,
-        roles,
+        roles: platformRoles,
         emailVerified: user.email_verified,
-        accountType: user.account_type,
         organizationName: user.organization_name,
         creditBalance: user.credit_balance || 0,
+        profileCompleted: true,
         settings: user.settings || {},
+        timezone: user.timezone || 'America/New_York',
+        ownedTournamentCount,
+        dojo,
       },
     };
 
@@ -341,7 +392,7 @@ async function getMe(req, res, next) {
  */
 async function updateMe(req, res, next) {
   try {
-    const { firstName, lastName, phone, dateOfBirth } = req.body;
+    const { firstName, lastName, phone, dateOfBirth, timezone } = req.body;
 
     // Map camelCase request body → snake_case DB columns
     const updates = {};
@@ -349,13 +400,15 @@ async function updateMe(req, res, next) {
     if (lastName !== undefined) updates.last_name = lastName;
     if (phone !== undefined) updates.phone = phone;
     if (dateOfBirth !== undefined) updates.date_of_birth = dateOfBirth;
+    if (timezone !== undefined) updates.timezone = timezone;
 
     const user = await userQueries.updateProfile(req.user.id, updates);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const roles = await roleQueries.getRolesForUser(user.id);
+    const allRoles = await roleQueries.getRolesForUser(user.id);
+    const platformRoles = allRoles.filter(r => ['admin', 'super_admin'].includes(r));
 
     res.json({
       user: {
@@ -366,7 +419,7 @@ async function updateMe(req, res, next) {
         phone: user.phone,
         dateOfBirth: user.date_of_birth,
         profilePhotoUrl: user.profile_photo_url,
-        roles,
+        roles: platformRoles,
         emailVerified: user.email_verified,
       },
     });
@@ -595,6 +648,8 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  selectRole,
+  completeProfile,
   forgotPassword,
   resetPassword,
   resendVerification,

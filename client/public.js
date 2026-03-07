@@ -540,7 +540,7 @@ document.getElementById('public-club-form')?.addEventListener('submit', async (e
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        showSuccessMessage('Club registration submitted successfully!');
+        showSuccessMessage('Dojo registration submitted successfully!');
         closeRegistrationForm();
         e.target.reset();
     } catch (err) {

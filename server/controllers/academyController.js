@@ -1,6 +1,5 @@
 const academyQueries = require('../db/queries/academies');
 const userQueries = require('../db/queries/users');
-const roleQueries = require('../db/queries/roles');
 const registrationQueries = require('../db/queries/registrations');
 const guardianQueries = require('../db/queries/guardians');
 const membershipRequestQueries = require('../db/queries/membershipRequests');
@@ -13,23 +12,23 @@ const {
 
 /**
  * POST /api/academies
- * Create a new academy. Requires 'coach' role.
+ * Create a new dojo. Requires 'coach' role.
  */
 async function createAcademy(req, res, next) {
   try {
     const { name, address, city, state, website } = req.body;
 
     if (!name) {
-      return res.status(400).json({ error: 'Academy name is required' });
+      return res.status(400).json({ error: 'Dojo name is required' });
     }
 
-    // Check if coach already has an academy
+    // Check if coach already has a dojo
     const existing = await academyQueries.findByCoach(req.user.id);
     if (existing) {
-      return res.status(409).json({ error: 'You already have an academy. A coach can only manage one academy.' });
+      return res.status(409).json({ error: 'You already have a dojo. A coach can only manage one dojo.' });
     }
 
-    // Create academy with current user as head coach
+    // Create dojo with current user as head coach
     const academy = await academyQueries.create({
       name,
       headCoachId: req.user.id,
@@ -50,13 +49,13 @@ async function createAcademy(req, res, next) {
 
 /**
  * GET /api/academies/my
- * Get current user's academy (where they are head coach).
+ * Get current user's dojo (where they are head coach).
  */
 async function getMyAcademy(req, res, next) {
   try {
     const academy = await academyQueries.findByCoach(req.user.id);
     if (!academy) {
-      return res.status(404).json({ error: 'No academy found. Create one first.' });
+      return res.status(404).json({ error: 'No dojo found. Create one first.' });
     }
 
     const members = await academyQueries.getMembers(academy.id);
@@ -80,7 +79,7 @@ async function getMyAcademy(req, res, next) {
 
 /**
  * PUT /api/academies/:id
- * Update academy details. Requires head_coach.
+ * Update dojo details. Requires head_coach.
  */
 async function updateAcademy(req, res, next) {
   try {
@@ -88,11 +87,11 @@ async function updateAcademy(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
-      return res.status(403).json({ error: 'Only the head coach can update the academy' });
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Only the head coach can update the dojo' });
     }
 
     const { name, address, city, state, website } = req.body;
@@ -112,7 +111,7 @@ async function updateAcademy(req, res, next) {
 
 /**
  * GET /api/academies/:id/members
- * Get all members of an academy.
+ * Get all members of a dojo.
  */
 async function getMembers(req, res, next) {
   try {
@@ -120,7 +119,7 @@ async function getMembers(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
     const members = await academyQueries.getMembers(id);
@@ -143,7 +142,7 @@ async function getMembers(req, res, next) {
 
 /**
  * POST /api/academies/:id/members
- * Add a member to an academy. Requires head_coach.
+ * Add a member to a dojo. Requires head_coach.
  */
 async function addMember(req, res, next) {
   try {
@@ -152,10 +151,10 @@ async function addMember(req, res, next) {
 
     const academy = await academyQueries.findById(id);
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can add members' });
     }
 
@@ -193,7 +192,7 @@ async function addMember(req, res, next) {
 
 /**
  * DELETE /api/academies/:id/members/:userId
- * Remove a member from an academy. Requires head_coach.
+ * Remove a member from a dojo. Requires head_coach.
  */
 async function removeMember(req, res, next) {
   try {
@@ -201,16 +200,16 @@ async function removeMember(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can remove members' });
     }
 
     // Prevent removing head coach
     if (userId === academy.head_coach_id) {
-      return res.status(400).json({ error: 'Cannot remove the head coach from the academy' });
+      return res.status(400).json({ error: 'Cannot remove the head coach from the dojo' });
     }
 
     await academyQueries.removeMember(id, userId);
@@ -222,7 +221,7 @@ async function removeMember(req, res, next) {
 
 /**
  * POST /api/academies/:id/logo
- * Upload academy logo. Resizes to max 400x400 WebP.
+ * Upload dojo logo. Resizes to max 400x400 WebP.
  */
 async function uploadLogo(req, res, next) {
   try {
@@ -230,10 +229,10 @@ async function uploadLogo(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can update the logo' });
     }
 
@@ -268,7 +267,7 @@ async function uploadLogo(req, res, next) {
 
 /**
  * POST /api/academies/:id/register-competitor
- * Coach registers a competitor/student. Creates user account (passwordless), adds to academy.
+ * Coach registers a competitor/student. Creates user account (passwordless), adds to dojo.
  * Auto-links coach as guardian if competitor is under 18.
  */
 async function registerCompetitorMember(req, res, next) {
@@ -278,10 +277,10 @@ async function registerCompetitorMember(req, res, next) {
 
     const academy = await academyQueries.findById(id);
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can register members' });
     }
 
@@ -306,9 +305,6 @@ async function registerCompetitorMember(req, res, next) {
         phone,
       });
       isNewUser = true;
-
-      // Assign competitor role
-      await roleQueries.addRole(targetUser.id, 'competitor');
 
       // Add to academy
       await academyQueries.addMember(id, targetUser.id, 'competitor', req.user.id);
@@ -351,7 +347,7 @@ async function registerCompetitorMember(req, res, next) {
 
 /**
  * POST /api/academies/:id/register-assistant
- * Coach registers an assistant coach. Creates user account (passwordless), adds to academy.
+ * Coach registers an assistant coach. Creates user account (passwordless), adds to dojo.
  */
 async function registerAssistantCoach(req, res, next) {
   try {
@@ -360,10 +356,10 @@ async function registerAssistantCoach(req, res, next) {
 
     const academy = await academyQueries.findById(id);
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can register assistant coaches' });
     }
 
@@ -378,8 +374,6 @@ async function registerAssistantCoach(req, res, next) {
     if (targetUser) {
       // User exists — just add to academy as assistant
       await academyQueries.addMember(id, targetUser.id, 'assistant_coach', req.user.id);
-      // Add assistant_coach role if they don't have it
-      await roleQueries.addRole(targetUser.id, 'assistant_coach');
     } else {
       // Create passwordless account
       targetUser = await userQueries.createWithoutPassword({
@@ -388,9 +382,6 @@ async function registerAssistantCoach(req, res, next) {
         lastName,
       });
       isNewUser = true;
-
-      // Assign assistant_coach role
-      await roleQueries.addRole(targetUser.id, 'assistant_coach');
 
       // Add to academy
       await academyQueries.addMember(id, targetUser.id, 'assistant_coach', req.user.id);
@@ -420,7 +411,7 @@ async function registerAssistantCoach(req, res, next) {
 
 /**
  * GET /api/academies/:id/registrations
- * Get all tournament registrations for academy members.
+ * Get all tournament registrations for dojo members.
  */
 async function getAcademyRegistrations(req, res, next) {
   try {
@@ -428,7 +419,7 @@ async function getAcademyRegistrations(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
     const registrations = await registrationQueries.getRegistrationsForAcademy(id);
@@ -458,7 +449,7 @@ async function getAcademyRegistrations(req, res, next) {
 
 /**
  * GET /api/academies/:id/membership-requests
- * Get pending membership requests for the academy.
+ * Get pending membership requests for the dojo.
  */
 async function getMembershipRequests(req, res, next) {
   try {
@@ -466,10 +457,10 @@ async function getMembershipRequests(req, res, next) {
     const academy = await academyQueries.findById(id);
 
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can view membership requests' });
     }
 
@@ -504,10 +495,10 @@ async function reviewMembershipRequest(req, res, next) {
 
     const academy = await academyQueries.findById(id);
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can review requests' });
     }
 
@@ -533,7 +524,7 @@ async function reviewMembershipRequest(req, res, next) {
 
 /**
  * POST /api/academies/:id/bulk-register
- * Bulk register academy members for tournament events.
+ * Bulk register dojo members for tournament events.
  * Supports dryRun=true for pricing preview without creating registrations.
  */
 async function bulkRegisterForEvents(req, res, next) {
@@ -543,10 +534,10 @@ async function bulkRegisterForEvents(req, res, next) {
 
     const academy = await academyQueries.findById(id);
     if (!academy) {
-      return res.status(404).json({ error: 'Academy not found' });
+      return res.status(404).json({ error: 'Dojo not found' });
     }
 
-    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin')) {
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
       return res.status(403).json({ error: 'Only the head coach can register members for events' });
     }
 
@@ -683,7 +674,7 @@ async function bulkRegisterForEvents(req, res, next) {
 
 /**
  * GET /api/academies/search?q=...
- * Public academy name search for autocomplete.
+ * Public dojo name search for autocomplete.
  */
 async function searchAcademies(req, res, next) {
   try {
@@ -713,6 +704,137 @@ function calculateAgeFromDOB(dob) {
   return age;
 }
 
+/**
+ * POST /api/academies/:id/transfer
+ * Transfer dojo ownership to another user by email.
+ */
+async function transferOwnership(req, res, next) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email of the new owner is required' });
+    }
+
+    const academy = await academyQueries.findById(req.params.id);
+    if (!academy) {
+      return res.status(404).json({ error: 'Dojo not found' });
+    }
+
+    // Only current head coach or admin can transfer
+    if (academy.head_coach_id !== req.user.id
+        && !req.user.roles.includes('admin')
+        && !req.user.roles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Only the dojo owner can transfer ownership' });
+    }
+
+    // Find target user
+    const targetUser = await userQueries.findByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'No user found with that email address. They must create an account first.' });
+    }
+
+    if (targetUser.id === req.user.id) {
+      return res.status(400).json({ error: 'You already own this dojo' });
+    }
+
+    // Check if target user already owns a dojo
+    const existingDojo = await academyQueries.findByCoach(targetUser.id);
+    if (existingDojo) {
+      return res.status(409).json({ error: 'That user already owns a dojo. A user can only manage one dojo.' });
+    }
+
+    // Transfer ownership
+    const pool = require('../db/pool');
+    await pool.query(
+      'UPDATE academies SET head_coach_id = $1 WHERE id = $2',
+      [targetUser.id, academy.id]
+    );
+
+    // Update membership — make new owner head_coach, demote old owner to competitor
+    await pool.query(
+      `UPDATE academy_members SET role = 'competitor' WHERE academy_id = $1 AND user_id = $2`,
+      [academy.id, req.user.id]
+    );
+
+    // Check if new owner is already a member
+    const existingMember = await pool.query(
+      'SELECT id FROM academy_members WHERE academy_id = $1 AND user_id = $2',
+      [academy.id, targetUser.id]
+    );
+    if (existingMember.rows.length > 0) {
+      await pool.query(
+        `UPDATE academy_members SET role = 'head_coach' WHERE academy_id = $1 AND user_id = $2`,
+        [academy.id, targetUser.id]
+      );
+    } else {
+      await academyQueries.addMember(academy.id, targetUser.id, 'head_coach', targetUser.id);
+    }
+
+    res.json({
+      message: `Ownership transferred to ${targetUser.first_name} ${targetUser.last_name}`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PUT /api/academies/:id/members/:userId/rank
+ * Update a member's belt rank and experience level.
+ */
+async function updateMemberRank(req, res, next) {
+  try {
+    const { beltRank, experienceLevel } = req.body;
+
+    const academy = await academyQueries.findById(req.params.id);
+    if (!academy) {
+      return res.status(404).json({ error: 'Dojo not found' });
+    }
+
+    // Only head coach or admin can update ranks
+    if (academy.head_coach_id !== req.user.id
+        && !req.user.roles.includes('admin')
+        && !req.user.roles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Only the dojo owner can update member ranks' });
+    }
+
+    // Find the member's competitor profile linked to this academy
+    const pool = require('../db/pool');
+    const profileResult = await pool.query(
+      `SELECT cp.id FROM competitor_profiles cp
+       WHERE cp.user_id = $1 AND cp.academy_id = $2
+       LIMIT 1`,
+      [req.params.userId, academy.id]
+    );
+
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No competitor profile found for this member in this dojo' });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const updates = {};
+    if (beltRank !== undefined) updates.belt_rank = beltRank;
+    if (experienceLevel !== undefined) updates.experience_level = experienceLevel;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'At least one of beltRank or experienceLevel is required' });
+    }
+
+    const setClauses = Object.entries(updates).map(([key, _], i) => `${key} = $${i + 1}`).join(', ');
+    const values = Object.values(updates);
+    values.push(profileId);
+
+    await pool.query(
+      `UPDATE competitor_profiles SET ${setClauses} WHERE id = $${values.length}`,
+      values
+    );
+
+    res.json({ message: 'Member rank updated' });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createAcademy,
   getMyAcademy,
@@ -728,4 +850,6 @@ module.exports = {
   reviewMembershipRequest,
   bulkRegisterForEvents,
   searchAcademies,
+  transferOwnership,
+  updateMemberRank,
 };

@@ -3,7 +3,6 @@ const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { optionalAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
 const registrationController = require('../controllers/registrationController');
 const discountController = require('../controllers/discountController');
 
@@ -39,9 +38,9 @@ router.post('/instructor', optionalAuth, registrationController.registerInstruct
 router.post('/club', optionalAuth, registrationController.registerClub);
 
 // Admin sync endpoint
-router.get('/', requireAuth, requireRole('admin', 'coach', 'judge', 'event_director'), registrationController.getRegistrations);
+router.get('/', requireAuth, registrationController.getRegistrations);
 
-// Force-activate a pending registration (coach/admin override)
-router.put('/:id/activate', requireAuth, requireRole('coach', 'admin'), registrationController.activateRegistration);
+// Force-activate a pending registration (guardian/owner override)
+router.put('/:id/activate', requireAuth, registrationController.activateRegistration);
 
 module.exports = router;

@@ -136,7 +136,7 @@
         .notif-bell {
             position: relative; cursor: pointer;
             color: var(--text-muted); padding: 6px;
-            transition: color 0.2s; display: none;
+            transition: color 0.2s;
         }
         .notif-bell:hover { color: var(--text-primary); }
         .notif-bell-badge {
@@ -473,6 +473,26 @@
             border: 1px solid rgba(243,156,18,0.2);
             color: var(--warning);
         }
+        .reg-status-refunded {
+            background: rgba(255,140,0,0.1);
+            border: 1px solid rgba(255,140,0,0.25);
+            color: #ff8c00;
+        }
+        .reg-status-disputed {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #ef4444;
+        }
+        .reg-status-waived {
+            background: rgba(100,116,139,0.1);
+            border: 1px solid rgba(100,116,139,0.2);
+            color: var(--text-muted);
+        }
+        .reg-status-partial {
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #3b82f6;
+        }
 
         .registrants-export-btn {
             background: var(--glass);
@@ -488,6 +508,53 @@
         }
         .registrants-export-btn:hover {
             background: var(--glass-hover);
+        }
+
+        /* ── Export Dropdown ── */
+        .export-dropdown-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .export-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 180px;
+            background: rgba(25,25,35,0.98);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            z-index: 100;
+            overflow: hidden;
+        }
+        .export-dropdown-wrap.open .export-dropdown-menu {
+            display: block;
+        }
+        .export-dropdown-menu a,
+        .export-dropdown-menu button {
+            display: block;
+            width: 100%;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            background: none;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            font-family: var(--font);
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+        .export-dropdown-menu a:hover,
+        .export-dropdown-menu button:hover {
+            background: rgba(255,255,255,0.06);
+        }
+        .export-dropdown-divider {
+            height: 1px;
+            background: var(--glass-border);
+            margin: 4px 0;
         }
 
         /* ===== MAIN CONTENT ===== */
@@ -721,6 +788,78 @@
         .action-card p {
             color: var(--text-muted);
             font-size: 13px;
+        }
+
+        /* ===== ANALYTICS CARDS ===== */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        @media (max-width: 900px) {
+            .analytics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 500px) {
+            .analytics-grid { grid-template-columns: 1fr; }
+        }
+        .analytics-card {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .analytics-card-icon {
+            width: 36px; height: 36px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; margin-bottom: 12px;
+        }
+        .analytics-card-icon.tournaments { background: rgba(99,102,241,0.15); color: #818cf8; }
+        .analytics-card-icon.registrants { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .analytics-card-icon.revenue { background: rgba(234,179,8,0.15); color: #facc15; }
+        .analytics-card-icon.upcoming { background: rgba(14,165,233,0.15); color: #38bdf8; }
+        .analytics-card-label {
+            font-size: 12px; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .analytics-card-value {
+            font-size: 28px; font-weight: 700; color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .analytics-card-sub {
+            font-size: 12px; color: var(--text-muted); margin-top: 4px;
+        }
+        .analytics-card-sub a {
+            color: var(--accent); text-decoration: none;
+        }
+        .analytics-card-sub a:hover { text-decoration: underline; }
+
+        .recent-regs-section {
+            margin-bottom: 28px;
+        }
+        .recent-regs-table {
+            width: 100%; border-collapse: collapse;
+            background: var(--bg-card); border: 1px solid var(--glass-border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .recent-regs-table th {
+            text-align: left; padding: 10px 14px;
+            font-size: 11px; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .recent-regs-table td {
+            padding: 10px 14px; font-size: 13px;
+            border-bottom: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+        }
+        .recent-regs-table tr:last-child td { border-bottom: none; }
+        .recent-regs-empty {
+            text-align: center; padding: 24px;
+            color: var(--text-muted); font-size: 13px;
         }
 
         .btn-create-tournament {
@@ -1329,6 +1468,49 @@
                 </div>
             </div>
 
+            <!-- Analytics Summary Cards -->
+            <div class="analytics-grid" id="analytics-grid">
+                <div class="analytics-card">
+                    <div class="analytics-card-icon tournaments">&#127942;</div>
+                    <div class="analytics-card-label">Total Tournaments</div>
+                    <div class="analytics-card-value" id="stat-total-tournaments">--</div>
+                    <div class="analytics-card-sub"><span id="stat-published-count">0</span> published</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon registrants">&#128101;</div>
+                    <div class="analytics-card-label">Total Registrants</div>
+                    <div class="analytics-card-value" id="stat-total-registrants">--</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon revenue">&#128176;</div>
+                    <div class="analytics-card-label">Total Revenue</div>
+                    <div class="analytics-card-value" id="stat-total-revenue">--</div>
+                </div>
+                <div class="analytics-card">
+                    <div class="analytics-card-icon upcoming">&#128197;</div>
+                    <div class="analytics-card-label">Next Tournament</div>
+                    <div class="analytics-card-value" id="stat-next-tournament" style="font-size:16px;">--</div>
+                    <div class="analytics-card-sub" id="stat-next-tournament-date"></div>
+                </div>
+            </div>
+
+            <!-- Recent Registrations -->
+            <div class="recent-regs-section" id="recent-regs-section" style="display:none;">
+                <div class="section-title">Recent Registrations</div>
+                <table class="recent-regs-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Tournament</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-regs-tbody"></tbody>
+                </table>
+            </div>
+
             <div class="section-title">My Tournaments</div>
             <div id="tournaments-loading" class="loading-overlay">
                 <span class="spinner"></span> Loading tournaments...
@@ -1679,7 +1861,15 @@
                     <p style="color:var(--text-muted);font-size:14px;margin-top:4px;" id="registrants-subtitle"></p>
                 </div>
                 <div style="display:flex;gap:12px;align-items:center;">
-                    <button class="registrants-export-btn" onclick="exportRegistrantsCSV()">&#128196; Export CSV</button>
+                    <div class="export-dropdown-wrap" id="registrants-export-dropdown">
+                        <button class="registrants-export-btn" onclick="toggleExportDropdown('registrants-export-dropdown')">&#128196; Export &#9662;</button>
+                        <div class="export-dropdown-menu">
+                            <a href="#" onclick="serverExport('registrants.csv'); return false;">CSV (Server)</a>
+                            <a href="#" onclick="serverExport('registrants.pdf'); return false;">PDF (Server)</a>
+                            <div class="export-dropdown-divider"></div>
+                            <button onclick="exportRegistrantsCSV()">CSV (Client-side)</button>
+                        </div>
+                    </div>
                     <button class="registrants-back" onclick="navigateTo('dashboard')">&larr; Back to Dashboard</button>
                 </div>
             </div>
@@ -1687,9 +1877,18 @@
             <div class="registrants-stats" id="registrants-stats"></div>
 
             <div class="registrants-filters">
-                <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or academy..." oninput="filterRegistrants()">
+                <input type="text" class="registrants-search" id="registrants-search" placeholder="Search by name, email, or dojo..." oninput="filterRegistrants()">
                 <select class="registrants-filter-select" id="registrants-event-filter" onchange="filterRegistrants()">
                     <option value="">All Events</option>
+                </select>
+                <select class="registrants-filter-select" id="registrants-payment-filter" onchange="filterRegistrants()">
+                    <option value="">All Statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="waived">Waived</option>
+                    <option value="refunded">Refunded</option>
+                    <option value="disputed">Disputed</option>
                 </select>
             </div>
 
@@ -1708,7 +1907,7 @@
                             <th>#</th>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Academy</th>
+                            <th>Dojo</th>
                             <th>Belt</th>
                             <th>Events</th>
                             <th>Paid</th>
@@ -1850,6 +2049,34 @@
                 </table>
             </div>
 
+            <!-- Invite by Email Section -->
+            <div style="margin-top:24px;padding:20px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);">
+                <h3 style="font-size:16px;margin:0 0 8px;">Invite by Email</h3>
+                <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
+                    Send an invitation to someone's email. If they already have an account, they'll be added automatically.
+                    Otherwise, they'll receive a signup link and be added when they create their account.
+                </p>
+                <form id="invite-form" onsubmit="sendInvitation(event)" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Email</label>
+                        <input type="email" id="invite-email" required placeholder="email@example.com"
+                            style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                    </div>
+                    <div style="min-width:120px;">
+                        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Role</label>
+                        <select id="invite-role"
+                            style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            <option value="coach">Coach</option>
+                            <option value="judge">Judge</option>
+                            <option value="staff">Staff</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:8px 20px;font-size:13px;">Send Invite</button>
+                </form>
+                <div id="invite-msg" style="margin-top:8px;"></div>
+                <div id="invite-list" style="margin-top:14px;"></div>
+            </div>
+
             <!-- Staff Modal -->
             <div id="staff-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
                 <div style="background:var(--bg); border:1px solid var(--glass-border); border-radius:var(--radius); padding:32px; max-width:480px; width:90%; position:relative;">
@@ -1985,6 +2212,7 @@
 
     <!-- ===== AUTH SCRIPT ===== -->
     <script src="/auth.js"></script>
+    <script src="/toast.js"></script>
 
     <!-- ===== APPLICATION SCRIPT ===== -->
     <script>
@@ -2018,21 +2246,6 @@
                 return data;
             });
         }
-
-        // ============================================================
-        // TOAST NOTIFICATIONS
-        // ============================================================
-        function showToast(message, type = 'info') {
-            const container = $('#toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(() => {
-                if (toast.parentNode) toast.remove();
-            }, 3600);
-        }
-        window.showToast = showToast;
 
         // ============================================================
         // ROUTING
@@ -2080,15 +2293,25 @@
                 return;
             }
 
-            // If not logged in, only allow signup view
-            if (!Auth.isLoggedIn() && route !== 'signup') {
-                navigateTo('signup');
+            // Dashboard moved to account.html — redirect
+            if (route === 'dashboard') {
+                window.location.href = '/account.html#tournaments';
                 return;
             }
 
-            // If logged in but on signup, go to dashboard
-            if (Auth.isLoggedIn() && route === 'signup') {
-                navigateTo('dashboard');
+            // Signup moved to landing/register pages — redirect
+            if (route === 'signup') {
+                if (Auth.isLoggedIn()) {
+                    navigateTo('create');
+                } else {
+                    window.location.href = '/';
+                }
+                return;
+            }
+
+            // If not logged in, redirect to landing page
+            if (!Auth.isLoggedIn()) {
+                window.location.href = '/';
                 return;
             }
 
@@ -2152,7 +2375,6 @@
                         firstName: $('#signup-first').value.trim(),
                         lastName: $('#signup-last').value.trim(),
                         organizationName: $('#signup-org').value.trim(),
-                        accountType: 'event_director',
                     }),
                 });
                 msgEl.className = 'auth-message success';
@@ -2253,6 +2475,56 @@
                 warning.classList.remove('visible');
             }
 
+            // Load director analytics stats
+            try {
+                const statsData = await apiFetch('/api/tournaments/director/stats');
+                const s = statsData.stats || {};
+                $('#stat-total-tournaments').textContent = s.totalTournaments || 0;
+                $('#stat-published-count').textContent = s.publishedCount || 0;
+                $('#stat-total-registrants').textContent = s.totalRegistrants || 0;
+                $('#stat-total-revenue').textContent = '$' + (s.totalRevenue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                // Next tournament
+                const next = statsData.nextTournament;
+                if (next) {
+                    $('#stat-next-tournament').textContent = next.name;
+                    const dateStr = next.date ? new Date(typeof next.date === 'string' && next.date.length === 10 ? next.date + 'T12:00:00' : next.date)
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                    const sub = $('#stat-next-tournament-date');
+                    sub.innerHTML = dateStr + (next.slug ? ' &middot; <a href="/tournaments/' + encodeURIComponent(next.slug) + '" target="_blank">View page</a>' : '');
+                } else {
+                    $('#stat-next-tournament').textContent = 'None';
+                    $('#stat-next-tournament-date').textContent = '';
+                }
+
+                // Recent registrations table
+                const recentRegs = statsData.recentRegistrations || [];
+                const regsSection = $('#recent-regs-section');
+                const tbody = $('#recent-regs-tbody');
+                if (recentRegs.length > 0) {
+                    regsSection.style.display = '';
+                    tbody.innerHTML = recentRegs.map(r => {
+                        const name = (r.first_name && r.last_name) ? escapeHtml(r.first_name + ' ' + r.last_name) : 'Unknown';
+                        const tn = r.tournament_name ? escapeHtml(r.tournament_name) : '--';
+                        const amount = r.amount_paid ? '$' + parseFloat(r.amount_paid).toFixed(2) : '$0.00';
+                        const statusClass = r.payment_status === 'paid' ? 'color:#4ade80' : 'color:var(--text-muted)';
+                        const statusLabel = r.payment_status ? r.payment_status.charAt(0).toUpperCase() + r.payment_status.slice(1) : '--';
+                        const dateStr = r.created_at ? formatTimeAgo(r.created_at) : '--';
+                        return '<tr>' +
+                            '<td>' + name + '</td>' +
+                            '<td>' + tn + '</td>' +
+                            '<td>' + amount + '</td>' +
+                            '<td><span style="' + statusClass + '">' + statusLabel + '</span></td>' +
+                            '<td>' + dateStr + '</td>' +
+                            '</tr>';
+                    }).join('');
+                } else {
+                    regsSection.style.display = 'none';
+                }
+            } catch (statsErr) {
+                console.warn('Failed to load director stats:', statsErr);
+            }
+
             // Load tournaments
             const grid = $('#tournaments-grid');
             const loading = $('#tournaments-loading');
@@ -2313,6 +2585,7 @@
                     <a href="#staff?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#128101; Staff</a>
                     <a href="#approvals?tournamentId=${t.id}" class="btn btn-secondary btn-sm">&#9989; Approvals</a>
                     <a href="/tournaments/${slug}" target="_blank" class="btn btn-secondary btn-sm">View</a>
+                    <button class="btn btn-secondary btn-sm" onclick="cloneTournament('${t.id}', this)">&#128203; Clone</button>
                     <button class="toggle-publish ${t.published ? 'published' : ''}" onclick="togglePublish('${t.id}', ${!t.published}, this)">
                         ${t.published ? '&#9679; Published' : '&#9675; Unpublished'}
                     </button>
@@ -2334,6 +2607,28 @@
             } catch (err) {
                 showToast(err.message || 'Failed to update', 'error');
                 btn.disabled = false;
+            }
+        };
+
+        window.cloneTournament = async function(id, btn) {
+            if (!confirm('Clone this tournament? A new draft copy will be created with all events, pricing periods, and staff roles.')) return;
+            btn.disabled = true;
+            btn.textContent = 'Cloning...';
+            try {
+                const data = await apiFetch(`/api/tournaments/${id}/clone`, {
+                    method: 'POST',
+                });
+                showToast('Tournament cloned successfully!', 'success');
+                // Redirect to manage the new tournament
+                if (data.tournament && data.tournament.id) {
+                    window.location.href = `/director/tournaments/${data.tournament.id}/manage`;
+                } else {
+                    loadDashboard();
+                }
+            } catch (err) {
+                showToast(err.message || 'Failed to clone tournament', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '&#128203; Clone';
             }
         };
 
@@ -2975,6 +3270,9 @@
                     </tr>`;
                 }).join('');
 
+                // Load invitations
+                loadInvitations();
+
             } catch (err) {
                 loading.style.display = 'none';
                 showToast(err.message || 'Failed to load staff', 'error');
@@ -3053,6 +3351,85 @@
                 loadStaffView();
             } catch (err) {
                 showToast(err.message || 'Failed to remove', 'error');
+            }
+        };
+
+        // ============================================================
+        // TOURNAMENT INVITATIONS
+        // ============================================================
+        window.sendInvitation = async function(e) {
+            e.preventDefault();
+            const msgEl = $('#invite-msg');
+            const email = $('#invite-email').value.trim();
+            const role = $('#invite-role').value;
+
+            if (!staffTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+
+            msgEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Sending...</span>';
+
+            try {
+                const result = await apiFetch(`/api/tournaments/${staffTournamentId}/invitations`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email, role }),
+                });
+                msgEl.innerHTML = `<span style="color:var(--success);font-size:13px;">${escapeHtml(result.message)}</span>`;
+                $('#invite-email').value = '';
+                loadInvitations();
+                setTimeout(() => { msgEl.innerHTML = ''; }, 4000);
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:var(--danger);font-size:13px;">${escapeHtml(err.error || err.message || 'Failed to send invitation')}</span>`;
+            }
+        };
+
+        async function loadInvitations() {
+            if (!staffTournamentId) return;
+            const listEl = $('#invite-list');
+            if (!listEl) return;
+
+            try {
+                const data = await apiFetch(`/api/tournaments/${staffTournamentId}/invitations`);
+                const invitations = data.invitations || [];
+
+                if (invitations.length === 0) {
+                    listEl.innerHTML = '';
+                    return;
+                }
+
+                const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff' };
+                const statusColors = { pending: 'var(--warning)', accepted: 'var(--success)', expired: 'var(--text-dim)' };
+
+                listEl.innerHTML = `
+                    <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Sent Invitations (${invitations.length})</div>
+                    ${invitations.map(inv => `
+                        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;">
+                            <span style="flex:1;">${escapeHtml(inv.email)}</span>
+                            <span style="color:var(--text-muted);">${roleLabels[inv.role] || inv.role}</span>
+                            <span style="color:${statusColors[inv.status] || 'var(--text-muted)'};font-weight:600;text-transform:uppercase;font-size:11px;">${inv.status}</span>
+                            ${inv.status === 'pending' ? `
+                                <button class="btn btn-secondary btn-sm" onclick="cancelInvitation('${inv.id}')"
+                                    style="font-size:11px;padding:2px 8px;color:var(--danger);">Cancel</button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                `;
+            } catch (err) {
+                listEl.innerHTML = '';
+            }
+        }
+
+        window.cancelInvitation = async function(invitationId) {
+            if (!confirm('Cancel this invitation?')) return;
+            try {
+                await apiFetch(`/api/tournaments/${staffTournamentId}/invitations/${invitationId}`, {
+                    method: 'DELETE',
+                });
+                showToast('Invitation cancelled', 'success');
+                loadInvitations();
+            } catch (err) {
+                showToast(err.error || 'Failed to cancel invitation', 'error');
             }
         };
 
@@ -3206,7 +3583,15 @@
 
                 const paid = parseFloat(reg.amount_paid || 0);
                 const payStatus = (reg.payment_status || 'unpaid').toLowerCase();
-                const statusClass = payStatus === 'paid' ? 'reg-status-paid' : 'reg-status-unpaid';
+                const statusClassMap = {
+                    paid: 'reg-status-paid',
+                    unpaid: 'reg-status-unpaid',
+                    partial: 'reg-status-partial',
+                    waived: 'reg-status-waived',
+                    refunded: 'reg-status-refunded',
+                    disputed: 'reg-status-disputed',
+                };
+                const statusClass = statusClassMap[payStatus] || 'reg-status-unpaid';
 
                 row.innerHTML = `
                     <td style="color:var(--text-dim);">${i + 1}</td>
@@ -3226,6 +3611,7 @@
         window.filterRegistrants = function() {
             const search = ($('#registrants-search').value || '').toLowerCase();
             const eventFilter = $('#registrants-event-filter').value;
+            const paymentFilter = ($('#registrants-payment-filter').value || '').toLowerCase();
 
             const filtered = currentRegistrants.filter(reg => {
                 // Text search
@@ -3244,6 +3630,12 @@
                     if (!hasEvent) return false;
                 }
 
+                // Payment status filter
+                if (paymentFilter) {
+                    const regStatus = (reg.payment_status || 'unpaid').toLowerCase();
+                    if (regStatus !== paymentFilter) return false;
+                }
+
                 return true;
             });
 
@@ -3256,7 +3648,7 @@
                 return;
             }
 
-            const headers = ['Name', 'Email', 'Academy', 'Belt', 'Experience', 'Gender', 'DOB', 'Events', 'Amount Paid', 'Status', 'Registered'];
+            const headers = ['Name', 'Email', 'Dojo', 'Belt', 'Experience', 'Gender', 'DOB', 'Events', 'Amount Paid', 'Status', 'Registered'];
             const rows = currentRegistrants.map(reg => {
                 const name = `${reg.first_name || ''} ${reg.last_name || ''}`.trim();
                 const events = (reg.events || []).filter(e => e.eventName).map(e => e.eventName).join('; ');
@@ -3286,6 +3678,42 @@
             a.click();
             URL.revokeObjectURL(url);
             showToast('CSV downloaded', 'success');
+        };
+
+        // ============================================================
+        // EXPORT DROPDOWN + SERVER EXPORTS
+        // ============================================================
+
+        window.toggleExportDropdown = function(dropdownId) {
+            const wrap = document.getElementById(dropdownId);
+            if (!wrap) return;
+            wrap.classList.toggle('open');
+        };
+
+        // Close any open export dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            document.querySelectorAll('.export-dropdown-wrap.open').forEach(wrap => {
+                if (!wrap.contains(e.target)) {
+                    wrap.classList.remove('open');
+                }
+            });
+        });
+
+        /**
+         * Trigger a server-side export download.
+         * @param {string} type - e.g. 'registrants.csv', 'registrants.pdf', 'results.csv', 'results.pdf', 'checkin.csv'
+         */
+        window.serverExport = function(type) {
+            if (!currentTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+            // Close any open dropdown
+            document.querySelectorAll('.export-dropdown-wrap.open').forEach(w => w.classList.remove('open'));
+
+            // Navigate to the export endpoint (cookie-based auth will authenticate)
+            const url = `/api/tournaments/${currentTournamentId}/export/${type}`;
+            window.open(url, '_blank');
         };
 
         // ============================================================
@@ -3320,7 +3748,12 @@
             }
 
             updateNavbar();
-            if (user) fetchNotifications();
+            if (user) {
+                fetchNotifications();
+                // Poll for new notifications every 60 seconds
+                if (window._notifPollInterval) clearInterval(window._notifPollInterval);
+                window._notifPollInterval = setInterval(fetchNotifications, 60000);
+            }
             handleRoute();
         };
 
@@ -3373,6 +3806,10 @@
                     text = `Your application as <strong>${escNotif(p.role)}</strong> was approved!`;
                 } else if (n.type === 'role_declined') {
                     text = `Your application as <strong>${escNotif(p.role)}</strong> was declined.`;
+                } else if (n.type === 'new_registration') {
+                    text = `<strong>${escNotif(p.competitorName || 'Someone')}</strong> registered` +
+                           (n.tournament_name ? ` for <strong>${escNotif(n.tournament_name)}</strong>` : '') +
+                           (p.eventCount ? ` (${p.eventCount} event${p.eventCount > 1 ? 's' : ''})` : '');
                 } else {
                     text = n.type;
                 }

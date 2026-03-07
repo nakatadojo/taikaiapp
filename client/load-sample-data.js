@@ -8,11 +8,11 @@ function loadSampleData() {
     const clubs = [
         { id: 1, name: 'Dragon Dojo', city: 'Los Angeles', country: 'USA', email: 'info@dragondojo.com' },
         { id: 2, name: 'Rising Sun Karate', city: 'Tokyo', country: 'Japan', email: 'contact@risingsun.jp' },
-        { id: 3, name: 'Eagle Academy', city: 'London', country: 'UK', email: 'info@eagleacademy.uk' },
+        { id: 3, name: 'Eagle Dojo', city: 'London', country: 'UK', email: 'info@eagledojo.uk' },
         { id: 4, name: 'Tiger Elite', city: 'Sydney', country: 'Australia', email: 'info@tigerelite.au' },
         { id: 5, name: 'Phoenix Warriors', city: 'Toronto', country: 'Canada', email: 'info@phoenixwarriors.ca' },
         { id: 6, name: 'Samurai School', city: 'Osaka', country: 'Japan', email: 'contact@samuraischool.jp' },
-        { id: 7, name: 'Black Belt Club', city: 'New York', country: 'USA', email: 'info@blackbeltclub.com' },
+        { id: 7, name: 'Black Belt Dojo', city: 'New York', country: 'USA', email: 'info@blackbeltdojo.com' },
         { id: 8, name: 'Spirit Karate', city: 'Berlin', country: 'Germany', email: 'info@spiritkarate.de' }
     ];
 
@@ -20,8 +20,8 @@ function loadSampleData() {
     const instructors = [
         { id: 1, firstName: 'Sensei', lastName: 'Yamamoto', rank: '7th Dan', club: 'Rising Sun Karate', email: 'yamamoto@risingsun.jp', phone: '+81-3-1234-5678' },
         { id: 2, firstName: 'Master', lastName: 'Chen', rank: '6th Dan', club: 'Dragon Dojo', email: 'chen@dragondojo.com', phone: '+1-310-555-0101' },
-        { id: 3, firstName: 'Sensei', lastName: 'Smith', rank: '5th Dan', club: 'Eagle Academy', email: 'smith@eagleacademy.uk', phone: '+44-20-7946-0958' },
-        { id: 4, firstName: 'Master', lastName: 'Johnson', rank: '6th Dan', club: 'Black Belt Club', email: 'johnson@blackbeltclub.com', phone: '+1-212-555-0102' }
+        { id: 3, firstName: 'Sensei', lastName: 'Smith', rank: '5th Dan', club: 'Eagle Dojo', email: 'smith@eagledojo.uk', phone: '+44-20-7946-0958' },
+        { id: 4, firstName: 'Master', lastName: 'Johnson', rank: '6th Dan', club: 'Black Belt Dojo', email: 'johnson@blackbeltdojo.com', phone: '+1-212-555-0102' }
     ];
 
     // First and last names for generation
@@ -163,14 +163,14 @@ function loadSampleData() {
     localStorage.setItem('divisions', JSON.stringify({}));
     localStorage.setItem('matScoreboards', JSON.stringify({}));
 
-    alert('✅ Sample data loaded successfully!\\n\\n• 100 Competitors\\n• 8 Clubs\\n• 4 Instructors\\n• 1 Division Template\\n• 4 Mats\\n• 20 Scheduled Matches\\n\\nRefresh the page to see the data!');
+    alert('✅ Sample data loaded successfully!\\n\\n• 100 Competitors\\n• 8 Dojos\\n• 4 Instructors\\n• 1 Division Template\\n• 4 Mats\\n• 20 Scheduled Matches\\n\\nRefresh the page to see the data!');
 }
 
 // Auto-load on page load if no data exists
 window.addEventListener('load', () => {
     const competitors = localStorage.getItem('competitors');
     if (!competitors || JSON.parse(competitors).length === 0) {
-        if (confirm('No data found. Would you like to load sample tournament data?\\n\\n(100 competitors, 8 clubs, division template, and scheduled matches)')) {
+        if (confirm('No data found. Would you like to load sample tournament data?\\n\\n(100 competitors, 8 dojos, division template, and scheduled matches)')) {
             loadSampleData();
             window.location.reload();
         }

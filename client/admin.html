@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="viewport" content="width=1200">
+    <title>Taikai — Super Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/taikai-logo.js"></script>
+</head>
+<body>
+    <!-- ===== AUTH GATE (login overlay) ===== -->
+    <div id="auth-gate" class="auth-gate">
+        <div class="auth-gate-card">
+            <div class="auth-gate-header">
+                <img data-taikai-logo alt="Taikai" style="height:48px;width:auto;">
+                <h1>Taikai</h1>
+                <p class="auth-gate-subtitle">Super Admin Portal</p>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="authSwitchTab('login')">Login</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="auth-login-form" class="auth-form" onsubmit="handleAdminLogin(event)">
+                <div id="auth-login-error" class="auth-error hidden"></div>
+                <div class="auth-field">
+                    <label for="auth-login-email">Email</label>
+                    <input type="email" id="auth-login-email" required placeholder="you@example.com" autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="auth-login-password">Password</label>
+                    <input type="password" id="auth-login-password" required placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-login-btn">Sign In</button>
+                <button type="button" class="auth-link" onclick="authSwitchTab('forgot')">Forgot password?</button>
+            </form>
+
+            <!-- Forgot Password Form -->
+            <form id="auth-forgot-form" class="auth-form hidden" onsubmit="handleForgotPassword(event)">
+                <div id="auth-forgot-error" class="auth-error hidden"></div>
+                <div id="auth-forgot-success" class="auth-success hidden"></div>
+                <p class="auth-forgot-text">Enter your email address and we'll send you a link to reset your password.</p>
+                <div class="auth-field">
+                    <label for="auth-forgot-email">Email</label>
+                    <input type="email" id="auth-forgot-email" required placeholder="you@example.com">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-forgot-btn">Send Reset Link</button>
+                <button type="button" class="auth-link" onclick="authSwitchTab('login')">← Back to login</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        <!-- ===== LEFT SIDEBAR ===== -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section-label">Overview</div>
+                <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Dashboard</span>
+                </button>
+
+                <div class="nav-section-label">Management</div>
+                <button class="nav-item" data-view="users" onclick="switchView('users')">
+                    <i data-lucide="users"></i>
+                    <span>Users</span>
+                </button>
+                <button class="nav-item" data-view="dojos" onclick="switchView('dojos')">
+                    <i data-lucide="home"></i>
+                    <span>Dojos</span>
+                </button>
+                <button class="nav-item" data-view="tournaments" onclick="switchView('tournaments')">
+                    <i data-lucide="trophy"></i>
+                    <span>Tournaments</span>
+                </button>
+
+                <div class="nav-section-label">Finance</div>
+                <button class="nav-item" data-view="payments" onclick="switchView('payments')">
+                    <i data-lucide="credit-card"></i>
+                    <span>Payments</span>
+                </button>
+                <button class="nav-item" data-view="discounts" onclick="switchView('discounts')">
+                    <i data-lucide="tag"></i>
+                    <span>Discount Codes</span>
+                </button>
+
+                <div class="nav-section-label">Analytics</div>
+                <button class="nav-item" data-view="judge-analytics" onclick="switchView('judge-analytics')">
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Judge Analytics</span>
+                </button>
+
+                <div class="nav-section-label">Content</div>
+                <button class="nav-item" data-view="templates" onclick="switchView('templates')">
+                    <i data-lucide="file-text"></i>
+                    <span>Templates</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-menu">
+                    <div class="user-avatar" id="sidebar-avatar">SA</div>
+                    <div class="user-info">
+                        <span class="user-name" id="sidebar-name">Super Admin</span>
+                        <span class="user-role">Administrator</span>
+                    </div>
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="handleLogout()" title="Logout">
+                    <i data-lucide="log-out"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+            <main class="content-area" style="padding: 24px;">
+
+                <!-- ═══ DASHBOARD VIEW ═══ -->
+                <section id="dashboard-view" class="admin-view">
+                    <div class="view-header">
+                        <h2>Dashboard</h2>
+                    </div>
+                    <div class="admin-stats-grid" id="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Users</div>
+                            <div class="stat-value" id="stat-users">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Total Dojos</div>
+                            <div class="stat-value" id="stat-dojos">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Active Tournaments</div>
+                            <div class="stat-value" id="stat-active-tournaments">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Total Registrations</div>
+                            <div class="stat-value" id="stat-registrations">—</div>
+                        </div>
+                    </div>
+
+                    <div class="admin-two-col">
+                        <div class="glass-panel">
+                            <h3>Recent Users</h3>
+                            <div id="recent-users-list"><p class="hint">Loading...</p></div>
+                        </div>
+                        <div class="glass-panel">
+                            <h3>Recent Tournaments</h3>
+                            <div id="recent-tournaments-list"><p class="hint">Loading...</p></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══ USERS VIEW ═══ -->
+                <section id="users-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Users</h2>
+                        <div class="view-actions">
+                            <input type="text" class="search-input" id="users-search" placeholder="Search users..." oninput="filterUsers()">
+                        </div>
+                    </div>
+                    <div class="glass-panel">
+                        <div class="table-container">
+                            <table class="data-table" id="users-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Dojo</th>
+                                        <th>Tournaments</th>
+                                        <th>Joined</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p class="hint" id="users-empty" style="display:none;">No users found.</p>
+                    </div>
+
+                    <!-- User detail panel (shown when clicking View) -->
+                    <div class="glass-panel hidden" id="user-detail-panel" style="margin-top:16px;">
+                        <div class="panel-header">
+                            <h3 id="user-detail-name">User Detail</h3>
+                            <button class="btn btn-sm btn-ghost" onclick="hideEl('user-detail-panel')">&times; Close</button>
+                        </div>
+                        <div id="user-detail-content"><p class="hint">Loading...</p></div>
+                    </div>
+                </section>
+
+                <!-- ═══ DOJOS VIEW ═══ -->
+                <section id="dojos-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Dojos</h2>
+                        <div class="view-actions">
+                            <input type="text" class="search-input" id="dojos-search" placeholder="Search dojos..." oninput="filterDojos()">
+                        </div>
+                    </div>
+                    <div class="glass-panel">
+                        <div class="table-container">
+                            <table class="data-table" id="dojos-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Owner</th>
+                                        <th>Location</th>
+                                        <th>Members</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dojos-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p class="hint" id="dojos-empty" style="display:none;">No dojos found.</p>
+                    </div>
+                </section>
+
+                <!-- ═══ TOURNAMENTS VIEW ═══ -->
+                <section id="tournaments-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>All Tournaments</h2>
+                        <div class="view-actions">
+                            <input type="text" class="search-input" id="tournaments-search" placeholder="Search tournaments..." oninput="filterTournaments()">
+                        </div>
+                    </div>
+                    <div class="glass-panel">
+                        <div class="table-container">
+                            <table class="data-table" id="tournaments-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Director</th>
+                                        <th>Status</th>
+                                        <th>Registrations</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tournaments-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p class="hint" id="tournaments-empty" style="display:none;">No tournaments found.</p>
+                    </div>
+                </section>
+
+                <!-- ═══ PAYMENTS VIEW ═══ -->
+                <section id="payments-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Payments & Credits</h2>
+                        <div class="view-actions">
+                            <button class="btn btn-primary btn-sm" onclick="showGrantCreditsModal()">
+                                <i data-lucide="plus"></i> Grant Credits
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Revenue Summary -->
+                    <div class="admin-stats-grid" id="revenue-stats">
+                        <div class="stat-card">
+                            <div class="stat-label">Credits Purchased (All Time)</div>
+                            <div class="stat-value" id="stat-credits-purchased">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Credits Used</div>
+                            <div class="stat-value" id="stat-credits-used">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Credits Granted</div>
+                            <div class="stat-value" id="stat-credits-granted">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Purchases This Month</div>
+                            <div class="stat-value" id="stat-purchases-month">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Credit Packages -->
+                    <div class="glass-panel" style="margin-bottom:20px;">
+                        <div class="panel-header">
+                            <h3>Credit Packages</h3>
+                            <button class="btn btn-sm btn-primary" onclick="showPackageModal()">
+                                <i data-lucide="plus"></i> Add Package
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table" id="packages-table">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>Slug</th>
+                                        <th>Credits</th>
+                                        <th>Price</th>
+                                        <th>Per Credit</th>
+                                        <th>Active</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="packages-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Transaction History -->
+                    <div class="glass-panel">
+                        <h3>Transaction History</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="transactions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>User</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                        <th>Balance After</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactions-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══ DISCOUNT CODES VIEW ═══ -->
+                <section id="discounts-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Discount Codes</h2>
+                        <div class="view-actions">
+                            <button class="btn btn-primary btn-sm" onclick="showDiscountModal()">
+                                <i data-lucide="plus"></i> Create Code
+                            </button>
+                        </div>
+                    </div>
+                    <div class="glass-panel">
+                        <div class="table-container">
+                            <table class="data-table" id="discounts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Type</th>
+                                        <th>Value</th>
+                                        <th>Uses / Max</th>
+                                        <th>Expires</th>
+                                        <th>Active</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="discounts-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p class="hint" id="discounts-empty" style="display:none;">No discount codes found.</p>
+                    </div>
+                </section>
+
+                <!-- ═══ TEMPLATES VIEW ═══ -->
+                <section id="templates-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Templates</h2>
+                    </div>
+
+                    <div class="template-tabs">
+                        <button class="template-tab active" data-ttab="certificates" onclick="switchTemplateTab('certificates')">Certificates</button>
+                        <button class="template-tab" data-ttab="emails" onclick="switchTemplateTab('emails')">Emails</button>
+                        <button class="template-tab" data-ttab="scoreboards" onclick="switchTemplateTab('scoreboards')">Scoreboards</button>
+                    </div>
+
+                    <!-- Certificates Tab -->
+                    <div class="template-panel" id="template-certificates">
+                        <div class="glass-panel">
+                            <h3>Certificate Templates</h3>
+                            <p class="hint">Certificate template management will allow you to upload custom certificate images and configure merge tags (competitor name, rank, tournament name, date, etc.).</p>
+                            <p class="hint" style="margin-top:8px;">Coming soon — certificate template upload and merge-tag editor.</p>
+                        </div>
+                    </div>
+
+                    <!-- Emails Tab -->
+                    <div class="template-panel hidden" id="template-emails">
+                        <div class="glass-panel">
+                            <h3>Email Templates</h3>
+                            <p class="hint">The following email templates are currently in use:</p>
+                            <div class="template-list">
+                                <div class="template-item">
+                                    <strong>Registration Confirmation</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Sent to competitors after successful registration payment.</p>
+                                </div>
+                                <div class="template-item">
+                                    <strong>Account Verification</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Sent to new users upon account creation for email verification.</p>
+                                </div>
+                                <div class="template-item">
+                                    <strong>Password Reset</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Sent when a user requests a password reset.</p>
+                                </div>
+                                <div class="template-item">
+                                    <strong>Tournament Published</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Sent to the director when their tournament goes live.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Scoreboards Tab -->
+                    <div class="template-panel hidden" id="template-scoreboards">
+                        <div class="glass-panel">
+                            <h3>Scoreboard Templates</h3>
+                            <p class="hint">Available scoreboard types used during tournament events:</p>
+                            <div class="template-list">
+                                <div class="template-item">
+                                    <strong>Kata Scoreboard</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Point-based kata scoring with individual judge scores.</p>
+                                </div>
+                                <div class="template-item">
+                                    <strong>Kata Flags Scoreboard</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Flag-based kata scoring (aka/shiro).</p>
+                                </div>
+                                <div class="template-item">
+                                    <strong>Kumite Scoreboard</strong>
+                                    <span class="badge badge-active">Active</span>
+                                    <p class="hint">Real-time kumite match scoring with penalties and timer.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Judge Analytics View -->
+                <section id="judge-analytics-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Judge Performance Analytics</h2>
+                        <p style="color:var(--text-muted);font-size:13px;margin-top:4px;">Cross-tournament aggregate judge statistics</p>
+                    </div>
+
+                    <div id="admin-ja-loading" style="text-align:center;padding:40px;">
+                        <div class="spinner"></div>
+                        <p style="color:var(--text-muted);margin-top:12px;">Loading analytics...</p>
+                    </div>
+
+                    <div id="admin-ja-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);">
+                        <h3>No judge vote data yet</h3>
+                        <p>Judge vote analytics will appear here after tournament directors sync judge voting data.</p>
+                    </div>
+
+                    <div id="admin-ja-content" class="hidden">
+                        <!-- Summary Cards -->
+                        <div class="admin-stats-grid" style="margin-bottom:24px;">
+                            <div class="stat-card">
+                                <div class="stat-label">Total Judges</div>
+                                <div class="stat-value" id="admin-ja-total-judges">--</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Votes</div>
+                                <div class="stat-value" id="admin-ja-total-votes">--</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Overall Consistency</div>
+                                <div class="stat-value" id="admin-ja-overall-consistency">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Per-Judge Table -->
+                        <div class="glass-panel">
+                            <h3 style="margin-bottom:12px;">Per-Judge Breakdown (All Tournaments)</h3>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Judge</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Tournaments</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Total Votes</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Consistency %</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Avg Decision Time</th>
+                                            <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--glass-border);font-size:13px;color:var(--text-muted);">Bias Flags</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-ja-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- ═══ MODALS ═══ -->
+
+    <!-- Grant Credits Modal -->
+    <div class="modal-overlay hidden" id="grant-credits-modal">
+        <div class="modal-card" style="max-width:480px;">
+            <div class="modal-header">
+                <h3>Grant Credits</h3>
+                <button class="modal-close" onclick="closeModal('grant-credits-modal')">&times;</button>
+            </div>
+            <form onsubmit="handleGrantCredits(event)">
+                <div class="form-group">
+                    <label>User</label>
+                    <select id="grant-user-select" required>
+                        <option value="">Select a user...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Credits to Grant</label>
+                    <input type="number" id="grant-amount" min="1" required placeholder="e.g. 10">
+                </div>
+                <div class="form-group">
+                    <label>Description (optional)</label>
+                    <input type="text" id="grant-description" placeholder="Reason for granting credits">
+                </div>
+                <div id="grant-status" class="form-status"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('grant-credits-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="grant-submit-btn">Grant Credits</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Credit Package Modal -->
+    <div class="modal-overlay hidden" id="package-modal">
+        <div class="modal-card" style="max-width:480px;">
+            <div class="modal-header">
+                <h3 id="package-modal-title">Add Credit Package</h3>
+                <button class="modal-close" onclick="closeModal('package-modal')">&times;</button>
+            </div>
+            <form onsubmit="handleSavePackage(event)">
+                <input type="hidden" id="package-edit-id">
+                <div class="form-group">
+                    <label>Slug (ID)</label>
+                    <input type="text" id="package-slug" required placeholder="e.g. starter">
+                </div>
+                <div class="form-group">
+                    <label>Label</label>
+                    <input type="text" id="package-label" required placeholder="e.g. Starter — 50 credits">
+                </div>
+                <div class="form-group">
+                    <label>Credits</label>
+                    <input type="number" id="package-credits" min="1" required placeholder="50">
+                </div>
+                <div class="form-group">
+                    <label>Price (cents)</label>
+                    <input type="number" id="package-price" min="0" required placeholder="4900">
+                    <span class="hint" id="package-price-display"></span>
+                </div>
+                <div class="form-group">
+                    <label>Sort Order</label>
+                    <input type="number" id="package-sort" value="0">
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="package-active" checked>
+                    <label for="package-active" style="margin:0;">Active</label>
+                </div>
+                <div id="package-status" class="form-status"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('package-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Package</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Discount Code Modal -->
+    <div class="modal-overlay hidden" id="discount-modal">
+        <div class="modal-card" style="max-width:480px;">
+            <div class="modal-header">
+                <h3 id="discount-modal-title">Create Discount Code</h3>
+                <button class="modal-close" onclick="closeModal('discount-modal')">&times;</button>
+            </div>
+            <form onsubmit="handleSaveDiscount(event)">
+                <input type="hidden" id="discount-edit-id">
+                <div class="form-group">
+                    <label>Code</label>
+                    <input type="text" id="discount-code" required placeholder="e.g. SUMMER25">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="discount-type" required>
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed ($)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Value</label>
+                    <input type="number" id="discount-value" min="0" step="0.01" required placeholder="25">
+                </div>
+                <div class="form-group">
+                    <label>Max Uses (blank = unlimited)</label>
+                    <input type="number" id="discount-max-uses" min="1" placeholder="100">
+                </div>
+                <div class="form-group">
+                    <label>Expires At (optional)</label>
+                    <input type="date" id="discount-expires">
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+                    <input type="checkbox" id="discount-active" checked>
+                    <label for="discount-active" style="margin:0;">Active</label>
+                </div>
+                <div id="discount-status" class="form-status"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" onclick="closeModal('discount-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="/toast.js"></script>
+    <script src="admin.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

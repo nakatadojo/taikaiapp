@@ -121,6 +121,22 @@ router.put('/settings',
   authController.updateSettings
 );
 
+// POST /api/auth/select-role (new multi-step signup flow)
+router.post('/select-role',
+  requireAuth,
+  [
+    body('role').isIn(['competitor', 'parent', 'coach', 'judge', 'staff']).withMessage('Role must be one of: competitor, parent, coach, judge, staff'),
+  ],
+  validate,
+  authController.selectRole
+);
+
+// PUT /api/auth/complete-profile (new multi-step signup flow)
+router.put('/complete-profile',
+  requireAuth,
+  authController.completeProfile
+);
+
 // POST /api/auth/setup-account (for coach-created passwordless accounts)
 router.post('/setup-account',
   authLimiter,

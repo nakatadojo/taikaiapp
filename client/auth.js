@@ -53,13 +53,46 @@ const Auth = (() => {
     },
 
     /**
-     * Sign up a new user.
+     * Sign up a new user. Sets currentUser from response (auth cookie set server-side).
      */
     async signup({ email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName }) {
       const data = await _fetch(`${API}/signup`, {
         method: 'POST',
         body: JSON.stringify({ email, password, firstName, lastName, phone, dateOfBirth, gender, roles, accountType, organizationName }),
       });
+      // Server sets auth cookie; populate local user state
+      currentUser = data.user;
+      _onAuthChange(currentUser);
+      return data;
+    },
+
+    /**
+     * Select role after account creation (new multi-step signup flow).
+     */
+    async selectRole(role) {
+      const data = await _fetch(`${API}/select-role`, {
+        method: 'POST',
+        body: JSON.stringify({ role }),
+      });
+      if (data.user) {
+        currentUser = { ...currentUser, ...data.user };
+        _onAuthChange(currentUser);
+      }
+      return data;
+    },
+
+    /**
+     * Complete profile after role selection (new multi-step signup flow).
+     */
+    async completeProfile(profileData) {
+      const data = await _fetch(`${API}/complete-profile`, {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+      });
+      if (data.user) {
+        currentUser = { ...currentUser, ...data.user };
+        _onAuthChange(currentUser);
+      }
       return data;
     },
 
