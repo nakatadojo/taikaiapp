@@ -310,13 +310,14 @@ router.post('/impersonate/:userId', async (req, res, next) => {
     }
 
     const targetRoles = await roleQueries.getRolesForUser(userId);
+    const platformRoles = targetRoles.filter(r => ['admin', 'super_admin'].includes(r));
 
     // Build impersonation JWT — target user's identity + impersonation flag
     const jwt = require('jsonwebtoken');
     const payload = {
       id: targetUser.id,
       email: targetUser.email,
-      roles: targetRoles,
+      roles: platformRoles,
       emailVerified: targetUser.email_verified,
       impersonating: true,
       originalUserId: req.user.id,

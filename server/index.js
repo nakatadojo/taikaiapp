@@ -50,6 +50,7 @@ app.use('/api/credits', require('./routes/credits'));
 app.use('/api/super-admin', require('./routes/superAdmin'));
 app.use('/api/email', require('./routes/email'));
 app.use('/api/tournament-members', require('./routes/tournamentMembers'));
+app.use('/api/tournaments', require('./routes/tournamentInvitations'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/my', require('./routes/myTournaments'));
 app.use('/api/waivers', require('./routes/waivers'));

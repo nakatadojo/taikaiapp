@@ -1013,9 +1013,7 @@
                 if (isAdmin) {
                     links += `<a href="/admin.html" class="nav-link">Admin</a>`;
                 }
-                // Dashboard link for all logged-in users (context-based — shows their tournaments)
-                links += `<a href="/director.html" class="nav-link">Dashboard</a>`;
-                links += `<a href="/my-events.html" class="nav-link">My Events</a>`;
+                links += `<a href="/account.html" class="nav-link">My Account</a>`;
 
                 nav.innerHTML = `
                     ${links}
@@ -1459,7 +1457,7 @@
                             </a>`;
                         });
                         html += `</div>
-                            <a href="/director.html" class="dash-link">View all &rarr;</a>
+                            <a href="/account.html#tournaments" class="dash-link">View all &rarr;</a>
                         </div>`;
                     }
                 }
@@ -1476,9 +1474,9 @@
             html += `<div class="dash-card">
                 <h3>Quick Links</h3>
                 <div class="dash-list">
-                    <a href="/my-events.html" class="dash-item"><span class="dash-item-name">My Registrations</span></a>
-                    <a href="/coach.html" class="dash-item"><span class="dash-item-name">Coach Portal</span></a>
-                    <a href="/staff.html" class="dash-item"><span class="dash-item-name">Staff Dashboard</span></a>
+                    <a href="/account.html#events" class="dash-item"><span class="dash-item-name">My Events</span></a>
+                    <a href="/account.html#profiles" class="dash-item"><span class="dash-item-name">My Profiles</span></a>
+                    <a href="/account.html#dojo" class="dash-item"><span class="dash-item-name">My Dojo</span></a>
                 </div>
             </div>`;
 

@@ -2,7 +2,6 @@ const express = require('express');
 const { body, query } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
 const guardianController = require('../controllers/guardianController');
 
 const router = express.Router();
@@ -33,10 +32,9 @@ router.get('/minors',
   guardianController.getMyMinors
 );
 
-// POST /api/guardians/add-parent — coach adds parent/legal guardian for a minor
+// POST /api/guardians/add-parent — add parent/legal guardian for a minor
 router.post('/add-parent',
   requireAuth,
-  requireRole('coach', 'admin'),
   [
     body('minorUserId').isUUID().withMessage('Valid minor user ID is required'),
     body('guardianEmail').isEmail().normalizeEmail().withMessage('Valid guardian email is required'),

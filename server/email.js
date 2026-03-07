@@ -36,6 +36,7 @@ const templates = {
   roleDeclined:             require('./emails/roleDeclined'),
   waiverRequest:            require('./emails/waiverRequest'),
   waiverSigned:             require('./emails/waiverSigned'),
+  tournamentInvite:         require('./emails/tournamentInvite'),
 };
 
 // ── Core send helper ─────────────────────────────────────────────────────────
@@ -164,6 +165,17 @@ async function sendWaiverSignedEmail(coachEmail, opts) {
   return sendEmail(coachEmail, `Waiver Signed — ${opts.competitorName}`, html);
 }
 
+/**
+ * Send tournament invitation email.
+ */
+async function sendTournamentInviteEmail(email, { tournamentName, role, inviterName, hasAccount, token }) {
+  const signupUrl = hasAccount
+    ? `${APP_URL()}/account.html#events`
+    : `${APP_URL()}/register.html?invite=${token}`;
+  const html = templates.tournamentInvite({ tournamentName, role, inviterName, signupUrl, hasAccount });
+  return sendEmail(email, `You're Invited — ${tournamentName}`, html);
+}
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
@@ -175,6 +187,7 @@ module.exports = {
   sendRoleDeclinedEmail,
   sendWaiverRequestEmail,
   sendWaiverSignedEmail,
+  sendTournamentInviteEmail,
   APP_URL,
   EMAIL_FROM,
   templates,

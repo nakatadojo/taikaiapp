@@ -3,7 +3,6 @@ const { body, query } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { requireRole } = require('../middleware/roles');
 const academyController = require('../controllers/academyController');
 const upload = require('../middleware/upload');
 
@@ -49,15 +48,13 @@ router.get('/my',
   academyController.getMyAcademy
 );
 
-// PUT /api/academies/:id — Update academy
+// PUT /api/academies/:id — Update academy (ownership verified in controller)
 router.put('/:id',
-  requireRole('coach', 'admin'),
   academyController.updateAcademy
 );
 
-// POST /api/academies/:id/logo — Upload academy logo (coach only)
+// POST /api/academies/:id/logo — Upload academy logo (ownership verified in controller)
 router.post('/:id/logo',
-  requireRole('coach', 'admin'),
   upload.single('logo'),
   academyController.uploadLogo
 );
@@ -67,9 +64,8 @@ router.get('/:id/members',
   academyController.getMembers
 );
 
-// POST /api/academies/:id/members — Add member (coach only)
+// POST /api/academies/:id/members — Add member (ownership verified in controller)
 router.post('/:id/members',
-  requireRole('coach', 'admin'),
   [
     body('email').optional().isEmail().withMessage('Valid email required'),
     body('role').optional().isIn(['head_coach', 'assistant_coach', 'competitor']).withMessage('Invalid role'),
@@ -78,15 +74,13 @@ router.post('/:id/members',
   academyController.addMember
 );
 
-// DELETE /api/academies/:id/members/:userId — Remove member (coach only)
+// DELETE /api/academies/:id/members/:userId — Remove member (ownership verified in controller)
 router.delete('/:id/members/:userId',
-  requireRole('coach', 'admin'),
   academyController.removeMember
 );
 
-// POST /api/academies/:id/register-competitor — Register competitor member (coach only)
+// POST /api/academies/:id/register-competitor — Register competitor member (ownership verified in controller)
 router.post('/:id/register-competitor',
-  requireRole('coach', 'admin'),
   [
     body('firstName').trim().notEmpty().withMessage('First name is required'),
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
@@ -97,9 +91,8 @@ router.post('/:id/register-competitor',
   academyController.registerCompetitorMember
 );
 
-// POST /api/academies/:id/register-assistant — Register assistant coach (coach only)
+// POST /api/academies/:id/register-assistant — Register assistant coach (ownership verified in controller)
 router.post('/:id/register-assistant',
-  requireRole('coach', 'admin'),
   [
     body('firstName').trim().notEmpty().withMessage('First name is required'),
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
@@ -114,15 +107,13 @@ router.get('/:id/registrations',
   academyController.getAcademyRegistrations
 );
 
-// GET /api/academies/:id/membership-requests — Get pending requests (coach only)
+// GET /api/academies/:id/membership-requests — Get pending requests (ownership verified in controller)
 router.get('/:id/membership-requests',
-  requireRole('coach', 'admin'),
   academyController.getMembershipRequests
 );
 
-// PUT /api/academies/:id/membership-requests/:requestId — Review request (coach only)
+// PUT /api/academies/:id/membership-requests/:requestId — Review request (ownership verified in controller)
 router.put('/:id/membership-requests/:requestId',
-  requireRole('coach', 'admin'),
   [
     body('action').isIn(['approve', 'deny']).withMessage('Action must be "approve" or "deny"'),
   ],
@@ -130,15 +121,28 @@ router.put('/:id/membership-requests/:requestId',
   academyController.reviewMembershipRequest
 );
 
-// POST /api/academies/:id/bulk-register — Bulk register for events (coach only)
+// POST /api/academies/:id/bulk-register — Bulk register for events (ownership verified in controller)
 router.post('/:id/bulk-register',
-  requireRole('coach', 'admin'),
   [
     body('tournamentId').isUUID().withMessage('Valid tournament ID is required'),
     body('registrations').isArray({ min: 1 }).withMessage('At least one registration is required'),
   ],
   validate,
   academyController.bulkRegisterForEvents
+);
+
+// POST /api/academies/:id/transfer — Transfer dojo ownership (ownership verified in controller)
+router.post('/:id/transfer',
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  ],
+  validate,
+  academyController.transferOwnership
+);
+
+// PUT /api/academies/:id/members/:userId/rank — Update member rank (ownership verified in controller)
+router.put('/:id/members/:userId/rank',
+  academyController.updateMemberRank
 );
 
 module.exports = router;

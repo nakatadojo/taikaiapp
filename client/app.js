@@ -18846,16 +18846,8 @@ window.addEventListener('load', () => {
             startSyncPolling();
             applyRoleBasedNavVisibility(user);
 
-            // Show academy nav for coaches
-            if (user.roles.includes('coach') && academyNavGroup) {
-                academyNavGroup.style.display = '';
-                // On first login as coach, check if they have an academy
-                if (!sessionStorage.getItem('academyPromptDismissed')) {
-                    checkCoachAcademySetup();
-                }
-            } else if (academyNavGroup) {
-                academyNavGroup.style.display = 'none';
-            }
+            // Academy nav is hidden — dojo management moved to account.html
+            if (academyNavGroup) academyNavGroup.style.display = 'none';
         } else {
             gate.classList.remove('hidden');
             updateUserMenu(null);

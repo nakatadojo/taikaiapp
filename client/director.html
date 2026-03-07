@@ -2049,6 +2049,34 @@
                 </table>
             </div>
 
+            <!-- Invite by Email Section -->
+            <div style="margin-top:24px;padding:20px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);">
+                <h3 style="font-size:16px;margin:0 0 8px;">Invite by Email</h3>
+                <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
+                    Send an invitation to someone's email. If they already have an account, they'll be added automatically.
+                    Otherwise, they'll receive a signup link and be added when they create their account.
+                </p>
+                <form id="invite-form" onsubmit="sendInvitation(event)" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Email</label>
+                        <input type="email" id="invite-email" required placeholder="email@example.com"
+                            style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                    </div>
+                    <div style="min-width:120px;">
+                        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Role</label>
+                        <select id="invite-role"
+                            style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;">
+                            <option value="coach">Coach</option>
+                            <option value="judge">Judge</option>
+                            <option value="staff">Staff</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:8px 20px;font-size:13px;">Send Invite</button>
+                </form>
+                <div id="invite-msg" style="margin-top:8px;"></div>
+                <div id="invite-list" style="margin-top:14px;"></div>
+            </div>
+
             <!-- Staff Modal -->
             <div id="staff-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
                 <div style="background:var(--bg); border:1px solid var(--glass-border); border-radius:var(--radius); padding:32px; max-width:480px; width:90%; position:relative;">
@@ -2265,15 +2293,25 @@
                 return;
             }
 
-            // If not logged in, only allow signup view
-            if (!Auth.isLoggedIn() && route !== 'signup') {
-                navigateTo('signup');
+            // Dashboard moved to account.html — redirect
+            if (route === 'dashboard') {
+                window.location.href = '/account.html#tournaments';
                 return;
             }
 
-            // If logged in but on signup, go to dashboard
-            if (Auth.isLoggedIn() && route === 'signup') {
-                navigateTo('dashboard');
+            // Signup moved to landing/register pages — redirect
+            if (route === 'signup') {
+                if (Auth.isLoggedIn()) {
+                    navigateTo('create');
+                } else {
+                    window.location.href = '/';
+                }
+                return;
+            }
+
+            // If not logged in, redirect to landing page
+            if (!Auth.isLoggedIn()) {
+                window.location.href = '/';
                 return;
             }
 
@@ -2337,7 +2375,6 @@
                         firstName: $('#signup-first').value.trim(),
                         lastName: $('#signup-last').value.trim(),
                         organizationName: $('#signup-org').value.trim(),
-                        accountType: 'user',
                     }),
                 });
                 msgEl.className = 'auth-message success';
@@ -3233,6 +3270,9 @@
                     </tr>`;
                 }).join('');
 
+                // Load invitations
+                loadInvitations();
+
             } catch (err) {
                 loading.style.display = 'none';
                 showToast(err.message || 'Failed to load staff', 'error');
@@ -3311,6 +3351,85 @@
                 loadStaffView();
             } catch (err) {
                 showToast(err.message || 'Failed to remove', 'error');
+            }
+        };
+
+        // ============================================================
+        // TOURNAMENT INVITATIONS
+        // ============================================================
+        window.sendInvitation = async function(e) {
+            e.preventDefault();
+            const msgEl = $('#invite-msg');
+            const email = $('#invite-email').value.trim();
+            const role = $('#invite-role').value;
+
+            if (!staffTournamentId) {
+                showToast('No tournament selected', 'error');
+                return;
+            }
+
+            msgEl.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Sending...</span>';
+
+            try {
+                const result = await apiFetch(`/api/tournaments/${staffTournamentId}/invitations`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email, role }),
+                });
+                msgEl.innerHTML = `<span style="color:var(--success);font-size:13px;">${escapeHtml(result.message)}</span>`;
+                $('#invite-email').value = '';
+                loadInvitations();
+                setTimeout(() => { msgEl.innerHTML = ''; }, 4000);
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:var(--danger);font-size:13px;">${escapeHtml(err.error || err.message || 'Failed to send invitation')}</span>`;
+            }
+        };
+
+        async function loadInvitations() {
+            if (!staffTournamentId) return;
+            const listEl = $('#invite-list');
+            if (!listEl) return;
+
+            try {
+                const data = await apiFetch(`/api/tournaments/${staffTournamentId}/invitations`);
+                const invitations = data.invitations || [];
+
+                if (invitations.length === 0) {
+                    listEl.innerHTML = '';
+                    return;
+                }
+
+                const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff' };
+                const statusColors = { pending: 'var(--warning)', accepted: 'var(--success)', expired: 'var(--text-dim)' };
+
+                listEl.innerHTML = `
+                    <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">Sent Invitations (${invitations.length})</div>
+                    ${invitations.map(inv => `
+                        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px;">
+                            <span style="flex:1;">${escapeHtml(inv.email)}</span>
+                            <span style="color:var(--text-muted);">${roleLabels[inv.role] || inv.role}</span>
+                            <span style="color:${statusColors[inv.status] || 'var(--text-muted)'};font-weight:600;text-transform:uppercase;font-size:11px;">${inv.status}</span>
+                            ${inv.status === 'pending' ? `
+                                <button class="btn btn-secondary btn-sm" onclick="cancelInvitation('${inv.id}')"
+                                    style="font-size:11px;padding:2px 8px;color:var(--danger);">Cancel</button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                `;
+            } catch (err) {
+                listEl.innerHTML = '';
+            }
+        }
+
+        window.cancelInvitation = async function(invitationId) {
+            if (!confirm('Cancel this invitation?')) return;
+            try {
+                await apiFetch(`/api/tournaments/${staffTournamentId}/invitations/${invitationId}`, {
+                    method: 'DELETE',
+                });
+                showToast('Invitation cancelled', 'success');
+                loadInvitations();
+            } catch (err) {
+                showToast(err.error || 'Failed to cancel invitation', 'error');
             }
         };
 
