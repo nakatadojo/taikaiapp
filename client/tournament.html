@@ -1957,6 +1957,7 @@
         return { firstName: '', lastName: '', dob: '', gender: '', beltRank: '', experienceLevel: '', weight: '', academyName: '', guardianName: '', guardianEmail: '' };
     }
 
+    window.renderRegStep1 = renderRegStep1;
     function renderRegStep1() {
         const content = document.getElementById('reg-modal-content');
         let html = `
@@ -2116,6 +2117,7 @@
     };
 
     // ── Step 2: Event Selection ──
+    window.renderRegStep2 = renderRegStep2;
     function renderRegStep2() {
         const t = currentTournamentData;
         const events = t.events || [];
