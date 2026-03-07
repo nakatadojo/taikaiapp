@@ -830,6 +830,15 @@
             checkAuth();
             fetchTournaments();
             bindEvents();
+            // Show email verified banner
+            if (new URLSearchParams(location.search).get('verified') === '1') {
+                var banner = document.createElement('div');
+                banner.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:999;background:#16a34a;color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:flex;align-items:center;gap:8px;';
+                banner.innerHTML = '<span style="font-size:18px;">&#10003;</span> Email verified! You can now sign in.';
+                document.body.appendChild(banner);
+                setTimeout(function() { banner.style.transition = 'opacity 0.5s'; banner.style.opacity = '0'; setTimeout(function() { banner.remove(); }, 500); }, 5000);
+                history.replaceState(null, '', location.pathname);
+            }
         });
 
         // ── Auth Check ──

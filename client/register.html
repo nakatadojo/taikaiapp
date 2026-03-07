@@ -64,6 +64,11 @@
         align-items: center;
         justify-content: space-between;
         height: 56px;
+        position: relative;
+    }
+    .reg-topbar-brandwrap {
+        display: flex; align-items: center; gap: 10px;
+        min-width: 0; overflow: hidden;
     }
     .reg-topbar-brand {
         font-weight: 700;
@@ -71,6 +76,9 @@
         color: var(--text-primary);
         text-decoration: none;
         letter-spacing: -0.3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .reg-topbar-actions {
         display: flex;
@@ -113,6 +121,34 @@
     .btn-topbar-outline:hover {
         border-color: var(--accent);
         color: var(--accent);
+    }
+
+    /* ── Hamburger Menu ─── */
+    .topbar-hamburger {
+        display: none;
+        background: none; border: none; cursor: pointer;
+        padding: 6px; color: var(--text-secondary);
+    }
+    .topbar-hamburger svg { display: block; }
+    .topbar-hamburger:hover { color: var(--text-primary); }
+    .topbar-menu-dropdown {
+        display: none;
+        position: absolute;
+        top: 100%; right: 0;
+        background: var(--bg-secondary);
+        border: 1px solid var(--glass-border);
+        border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+        padding: 8px;
+        min-width: 180px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        flex-direction: column; gap: 4px;
+        z-index: 201;
+    }
+    .topbar-menu-dropdown.open { display: flex; }
+    .topbar-menu-dropdown .btn-topbar {
+        width: 100%; text-align: center;
+        padding: 10px 16px; font-size: 14px;
+        border-radius: 8px;
     }
 
     /* ── Container / Layout ─────────────────────────────────────────────── */
@@ -1134,6 +1170,10 @@
        Responsive
        ═══════════════════════════════════════════════════════════════════════ */
     @media (max-width: 768px) {
+        .reg-topbar-actions { display: none !important; }
+        .topbar-hamburger { display: block; flex-shrink: 0; }
+        .reg-topbar-brand { font-size: 13px; }
+        .topbar-logo { height: 32px !important; }
         .auth-modal {
             align-items: flex-end;
             padding: 0;
@@ -1245,11 +1285,11 @@
      ════════════════════════════════════════════════════════════════════════ -->
 <header class="reg-topbar">
     <div class="reg-topbar-inner">
-        <div style="display:flex;align-items:center;gap:10px;">
-            <img data-taikai-logo alt="Taikai" style="height:40px;width:auto;">
+        <div class="reg-topbar-brandwrap">
+            <img data-taikai-logo alt="Taikai" style="height:40px;width:auto;" class="topbar-logo">
             <a href="#info" class="reg-topbar-brand" id="topbar-brand">Tournament Registration</a>
         </div>
-        <div class="reg-topbar-actions">
+        <div class="reg-topbar-actions" id="topbar-actions-desktop">
             <div id="topbar-user" class="reg-topbar-user" style="display:none;">
                 <div class="reg-topbar-avatar" id="topbar-avatar"></div>
                 <span id="topbar-username"></span>
@@ -1260,6 +1300,10 @@
             </div>
             <a href="#registrations" class="btn-topbar btn-topbar-outline" id="topbar-my-regs" style="display:none;">My Registrations</a>
         </div>
+        <button class="topbar-hamburger" id="topbar-hamburger" onclick="toggleMobileMenu()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="topbar-menu-dropdown" id="topbar-mobile-menu"></div>
     </div>
 </header>
 
@@ -1841,10 +1885,45 @@
             updateTopbar();
             navigate('dashboard');
         } catch (err) {
-            showError('login-error', err.message || 'Login failed. Please try again.');
+            if (err.code === 'EMAIL_NOT_VERIFIED') {
+                hideEl('login-error');
+                document.getElementById('auth-login-form').innerHTML = ''
+                    + '<div style="text-align:center;padding:16px 0;">'
+                    + '  <div style="font-size:40px;margin-bottom:12px;">📧</div>'
+                    + '  <div style="font-size:18px;font-weight:700;margin-bottom:8px;">Check Your Email</div>'
+                    + '  <div style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:20px;">'
+                    + '    We sent a verification link to <strong>' + esc(email) + '</strong>. Please click the link in your email to verify your account before signing in.'
+                    + '  </div>'
+                    + '  <button type="button" class="btn-accent btn-block" id="resend-verify-btn" onclick="handleResendVerification(\'' + esc(email) + '\')">Resend Verification Email</button>'
+                    + '  <div id="resend-verify-msg" class="msg-success msg-hidden" style="margin-top:12px;"></div>'
+                    + '  <button type="button" onclick="location.reload()" style="display:block;margin:12px auto 0;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;text-decoration:underline;">&larr; Back to login</button>'
+                    + '</div>';
+                return;
+            }
+            showError('login-error', err.error || err.message || 'Login failed. Please try again.');
         } finally {
             btn.disabled = false;
             btn.textContent = 'Sign In';
+        }
+    };
+
+    window.handleResendVerification = async function(email) {
+        var btn = document.getElementById('resend-verify-btn');
+        var msg = document.getElementById('resend-verify-msg');
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        msg.classList.add('msg-hidden');
+        try {
+            await Auth.resendVerification(email);
+            msg.textContent = 'Verification email sent! Check your inbox.';
+            msg.classList.remove('msg-hidden');
+        } catch (err) {
+            msg.textContent = err.error || 'Failed to send. Please try again.';
+            msg.className = 'msg-error';
+            msg.style.marginTop = '12px';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Resend Verification Email';
         }
     };
 
@@ -1930,7 +2009,43 @@
             document.getElementById('topbar-avatar').textContent = initials.toUpperCase();
             document.getElementById('topbar-username').textContent = user.firstName || user.email;
         }
+
+        // Update mobile menu content
+        updateMobileMenu(isLoggedIn, user);
     }
+
+    function updateMobileMenu(isLoggedIn, user) {
+        var menu = document.getElementById('topbar-mobile-menu');
+        if (!menu) return;
+        var html = '';
+        if (isLoggedIn && user) {
+            var name = user.firstName || user.email || '';
+            html += '<div style="padding:8px 12px;font-size:13px;color:var(--text-muted);border-bottom:1px solid var(--glass-border);margin-bottom:4px;">' + esc(name) + '</div>';
+            html += '<a href="#registrations" class="btn-topbar btn-topbar-outline" onclick="closeMobileMenu()">My Registrations</a>';
+            html += '<button class="btn-topbar btn-topbar-outline" onclick="closeMobileMenu();handleLogout()">Logout</button>';
+        } else {
+            html += '<button class="btn-topbar btn-topbar-outline" onclick="closeMobileMenu();openAuthModal()">Login / Sign Up</button>';
+        }
+        menu.innerHTML = html;
+    }
+
+    window.toggleMobileMenu = function() {
+        var menu = document.getElementById('topbar-mobile-menu');
+        menu.classList.toggle('open');
+    };
+
+    window.closeMobileMenu = function() {
+        document.getElementById('topbar-mobile-menu').classList.remove('open');
+    };
+
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', function(e) {
+        var menu = document.getElementById('topbar-mobile-menu');
+        var btn = document.getElementById('topbar-hamburger');
+        if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+            menu.classList.remove('open');
+        }
+    });
 
     /* ══════════════════════════════════════════════════════════════════════
        #info — TOURNAMENT INFO

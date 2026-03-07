@@ -173,9 +173,9 @@ async function verifyEmail(req, res, next) {
       return res.status(400).json({ error: 'Invalid or expired verification token' });
     }
 
-    // Redirect to login page with success flag
+    // Redirect to landing page with success flag
     const appUrl = process.env.APP_URL || '';
-    res.redirect(`${appUrl}/public.html?verified=1`);
+    res.redirect(`${appUrl}/landing.html?verified=1`);
   } catch (err) {
     next(err);
   }
