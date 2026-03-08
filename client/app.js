@@ -12282,8 +12282,14 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         if (bracket.finals) allMatches.push(bracket.finals);
         if (bracket.reset) allMatches.push(bracket.reset);
 
-        // Find next pending match with both corners populated
-        currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner);
+        // Find next pending match — prefer a specific match if the bracket clicked a button
+        if (window.forceLoadMatchId) {
+            currentMatch = allMatches.find(m => m.id === window.forceLoadMatchId);
+            delete window.forceLoadMatchId;
+        }
+        if (!currentMatch) {
+            currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner);
+        }
 
         // Diagnostic: log all pending matches to help debug stuck brackets
         const pendingMatches = allMatches.filter(m => m.status === 'pending');
@@ -16155,17 +16161,18 @@ function openTVDisplayFromOperator() {
     const matId = currentOperatorMat || (activeScoreboardType === 'kata-flags' ? kataFlagsMatId : null);
     if (!matId) return;
     const windowName = `TVDisplay_Mat${matId}`;
+    const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
     if (activeScoreboardType === 'kata-points') {
-        window.open('/kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kata-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
     } else if (activeScoreboardType === 'kumite') {
-        window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kumite-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     } else if (activeScoreboardType === 'kata-flags') {
-        window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kata-flags-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
         updateKataFlagsTVDisplay();
     } else {
         // Default fallback: kumite scoreboard (auto-redirects if type changes)
-        window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kumite-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     }
 }
@@ -17934,26 +17941,27 @@ function selectCompetitor(corner) {
 
 function openTVDisplay(matId) {
     const windowName = matId ? `TVDisplay_Mat${matId}` : 'TVDisplay';
+    const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
 
     // If there's an active operator session for this mat, route to the right scoreboard file
     const activeMatId = currentOperatorMat || (activeScoreboardType === 'kata-flags' ? kataFlagsMatId : null);
     if (matId && matId == activeMatId) {
         if (activeScoreboardType === 'kata-points') {
-            window.open('/kata-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open(`/kata-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
             return;
         } else if (activeScoreboardType === 'kumite') {
-            window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open(`/kumite-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
             updateOperatorTVDisplay();
             return;
         } else if (activeScoreboardType === 'kata-flags') {
-            window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+            window.open(`/kata-flags-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
             updateKataFlagsTVDisplay();
             return;
         }
     }
 
     // Default: kumite scoreboard (auto-redirects if scoreboard type changes)
-    window.open('/kumite-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+    window.open(`/kumite-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
     updateTVDisplay();
 }
 
@@ -19593,17 +19601,18 @@ async function moveSponsor(sponsorId, direction) {
 
 // Simple global function to open TV display - always accessible
 window.openTVDisplay = function() {
+    const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
     if (activeScoreboardType === 'kata-points') {
-        window.open('/kata-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kata-scoreboard.html${tidParam}`, 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     } else if (activeScoreboardType === 'kumite') {
-        window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kumite-scoreboard.html${tidParam}`, 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
         updateOperatorTVDisplay();
     } else if (activeScoreboardType === 'kata-flags') {
-        window.open('/kata-flags-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kata-flags-scoreboard.html${tidParam}`, 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
         updateKataFlagsTVDisplay();
     } else {
         // Default fallback: kumite scoreboard (auto-redirects if type changes)
-        window.open('/kumite-scoreboard.html', 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
+        window.open(`/kumite-scoreboard.html${tidParam}`, 'TVDisplay', 'width=1920,height=1080,fullscreen=yes');
     }
 };
 
