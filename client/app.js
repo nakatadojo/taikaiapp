@@ -6307,6 +6307,12 @@ function loadDivisions() {
             if (updated && updated.generated && Object.keys(updated.generated).length > 0) {
                 const divisions = updated.generated;
                 const divisionKeys = Object.keys(divisions).sort();
+                const clubsFallback = db.load('clubs');
+                const getCountryFallback = (comp) => {
+                    if (comp.country) return comp.country;
+                    const club = clubsFallback.find(c => c.name === comp.club);
+                    return club?.country || '-';
+                };
                 divisionKeys.forEach(divisionName => {
                     const divCompetitors = divisions[divisionName];
                     if (!Array.isArray(divCompetitors) || (hideEmpty && divCompetitors.length === 0)) return;
@@ -6320,7 +6326,7 @@ function loadDivisions() {
                             <td>${comp.weight !== undefined ? comp.weight + ' kg' : '-'}</td>
                             <td>${comp.rank || '-'}</td>
                             <td>${comp.club || '-'}</td>
-                            <td>${comp.country || '-'}</td>
+                            <td>${getCountryFallback(comp)}</td>
                         </tr>`).join('');
                     sheet.innerHTML = `
                         <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
@@ -6351,6 +6357,14 @@ function loadDivisions() {
         container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Add competitors to see divisions appear automatically.</p>';
         return;
     }
+
+    // Load clubs once for live country lookup
+    const clubsForDivision = db.load('clubs');
+    const getCompetitorCountry = (comp) => {
+        if (comp.country) return comp.country;
+        const club = clubsForDivision.find(c => c.name === comp.club);
+        return club?.country || '-';
+    };
 
     let displayedCount = 0;
 
@@ -6385,7 +6399,7 @@ function loadDivisions() {
                 <td>${comp.weight !== undefined ? comp.weight + ' kg' : '-'}</td>
                 <td>${comp.rank || '-'}</td>
                 <td>${comp.club || '-'}</td>
-                <td>${comp.country || '-'}</td>
+                <td>${getCompetitorCountry(comp)}</td>
             </tr>
         `).join('');
 
