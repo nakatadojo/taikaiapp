@@ -12603,7 +12603,8 @@ function openKataFlagsTVDisplay() {
     }
     const windowName = `TVDisplay_Mat${kataFlagsMatId}`;
     console.log('Opening TV display window:', windowName);
-    const newWindow = window.open('/kata-flags-scoreboard.html', windowName, 'width=1920,height=1080,fullscreen=yes');
+    const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
+    const newWindow = window.open(`/kata-flags-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
     if (!newWindow) {
         showToast('Failed to open TV display. Please allow popups for this site.', 'error');
     }
