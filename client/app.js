@@ -935,6 +935,19 @@ function migrateLegacyPricing() {
 migrateLegacyCompetitors();
 migrateLegacyPricing();
 
+/**
+ * Auto-shrinks a stat-number element's font-size so the text always fits
+ * inside its card, regardless of how long the value is.
+ * Keeps max (4em) for short values and scales down proportionally for longer ones.
+ */
+function fitStatNumber(el) {
+    if (!el) return;
+    const len = el.textContent.length;
+    // Hold at 4em up to 5 chars, then scale inversely with length (min 1em)
+    const em = len <= 5 ? 4 : Math.max(1, 4 * (5 / len));
+    el.style.fontSize = em + 'em';
+}
+
 // Dashboard
 function loadDashboard() {
     const allCompetitors = db.load('competitors');
@@ -974,7 +987,10 @@ function loadDashboard() {
         else unpaidCount++;
     });
     const revenueEl = document.getElementById('stat-revenue');
-    if (revenueEl) revenueEl.textContent = `$${totalRevenue.toFixed(2)}`;
+    if (revenueEl) {
+        revenueEl.textContent = `$${totalRevenue.toFixed(2)}`;
+        fitStatNumber(revenueEl);
+    }
     const paidEl = document.getElementById('stat-paid-count');
     if (paidEl) paidEl.textContent = paidCount;
     const unpaidEl = document.getElementById('stat-unpaid-count');
