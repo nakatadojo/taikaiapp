@@ -6092,17 +6092,20 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                 console.log(`      → Weight filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'rank':
+                // Normalize rank by stripping " Belt" suffix (competitor form stores "White",
+                // but saved templates may store "White Belt" — treat both identically)
+                const normalizeRank = r => (r || '').toLowerCase().replace(/ belt$/i, '');
                 if (range.rankMin !== undefined && range.rankMax !== undefined) {
                     // Grouped belt range (WKF/AAU style)
-                    const minIdx = RANK_ORDER.indexOf(range.rankMin.toLowerCase());
-                    const maxIdx = RANK_ORDER.indexOf(range.rankMax.toLowerCase());
+                    const minIdx = RANK_ORDER.indexOf(normalizeRank(range.rankMin));
+                    const maxIdx = RANK_ORDER.indexOf(normalizeRank(range.rankMax));
                     filtered = competitors.filter(c => {
-                        const cIdx = RANK_ORDER.indexOf((c.rank || '').toLowerCase());
+                        const cIdx = RANK_ORDER.indexOf(normalizeRank(c.rank));
                         return cIdx >= minIdx && cIdx <= maxIdx;
                     });
                     console.log(`      → Rank range filter (${range.rankMin}-${range.rankMax}): ${filtered.length} matches`);
                 } else {
-                    filtered = competitors.filter(c => c.rank === range.value);
+                    filtered = competitors.filter(c => normalizeRank(c.rank) === normalizeRank(range.value));
                     console.log(`      → Rank filter (${range.value}): ${filtered.length} matches`);
                 }
                 break;
