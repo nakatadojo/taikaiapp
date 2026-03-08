@@ -219,11 +219,14 @@ function slimBracketForStorage(bracket) {
         if (pool.competitors) pool.competitors = pool.competitors.map(slimCompetitor);
     });
     // Kata rounds (kata-flags / kata-points) — slim each performance's competitor
-    (bracket.rounds || []).forEach(round => {
-        (round.performances || []).forEach(perf => {
-            if (perf.competitor) perf.competitor = slimCompetitor(perf.competitor);
+    // Guard with Array.isArray because round-robin brackets store rounds as an object, not an array
+    if (Array.isArray(bracket.rounds)) {
+        bracket.rounds.forEach(round => {
+            (round.performances || []).forEach(perf => {
+                if (perf.competitor) perf.competitor = slimCompetitor(perf.competitor);
+            });
         });
-    });
+    }
     // Ranking-list entries — slim each entry's competitor
     (bracket.entries || []).forEach(entry => {
         if (entry.competitor) entry.competitor = slimCompetitor(entry.competitor);
