@@ -472,8 +472,9 @@ async function _loadTeamsFromServer() {
 
 // Ordered rank list for grouped belt-range matching (WKF/AAU)
 const RANK_ORDER = [
-    'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
-    'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
+    '10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu',
+    '4th kyu', '3rd kyu', '2nd kyu', '1st kyu',
+    '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
     '6th dan', '7th dan', '8th dan', '9th dan', '10th dan',
 ];
 
@@ -2392,13 +2393,10 @@ function buildAutoSingleDivisionName(competitor, age) {
 
     // Rank group
     const rank = (competitor.rank || '').toLowerCase();
-    const RANK_ORDER_LOCAL = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
-        'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
-        '6th dan', '7th dan', '8th dan', '9th dan', '10th dan'];
-    const rankIdx = RANK_ORDER_LOCAL.indexOf(rank);
+    const rankIdx = RANK_ORDER.indexOf(rank);
     if (rankIdx === -1)     parts.push(competitor.rank || 'Unknown Rank');
-    else if (rankIdx <= 6)  parts.push('Color Belt');
-    else                    parts.push('Black Belt');
+    else if (rankIdx <= 9)  parts.push('Kyu');
+    else                    parts.push('Dan');
 
     return parts.join(' | ');
 }
@@ -5012,9 +5010,16 @@ function updateCriteriaRanges(index) {
     if (type === 'gender') {
         rangesContainer.innerHTML = `
             <p style="color: var(--text-secondary); font-size: 14px;">
-                Divisions will be split by: Male, Female, Open
+                Divisions will be split by: Male, Female
             </p>
         `;
+        return;
+    }
+
+    if (type === 'rank') {
+        rangesContainer.innerHTML = `<div class="rank-ranges-list"></div>
+            <button type="button" class="btn btn-small btn-secondary" onclick="addRankRange(${index})">+ Add Rank Range</button>`;
+        addRankRange(index);
         return;
     }
 
@@ -5081,6 +5086,61 @@ function addRange(criteriaIndex, type) {
     } else {
         rangesContainer.appendChild(rangeDiv);
     }
+}
+
+// Kyu/Dan rank labels for the template builder dropdowns
+const RANK_SELECT_OPTIONS = [
+    { val: '10th kyu', label: '10th Kyu' },
+    { val: '9th kyu',  label: '9th Kyu' },
+    { val: '8th kyu',  label: '8th Kyu' },
+    { val: '7th kyu',  label: '7th Kyu' },
+    { val: '6th kyu',  label: '6th Kyu' },
+    { val: '5th kyu',  label: '5th Kyu' },
+    { val: '4th kyu',  label: '4th Kyu' },
+    { val: '3rd kyu',  label: '3rd Kyu' },
+    { val: '2nd kyu',  label: '2nd Kyu' },
+    { val: '1st kyu',  label: '1st Kyu' },
+    { val: '1st dan',  label: '1st Dan' },
+    { val: '2nd dan',  label: '2nd Dan' },
+    { val: '3rd dan',  label: '3rd Dan' },
+    { val: '4th dan',  label: '4th Dan' },
+    { val: '5th dan',  label: '5th Dan' },
+    { val: '6th dan',  label: '6th Dan' },
+    { val: '7th dan',  label: '7th Dan' },
+    { val: '8th dan',  label: '8th Dan' },
+    { val: '9th dan',  label: '9th Dan' },
+    { val: '10th dan', label: '10th Dan' },
+];
+
+function addRankRange(criteriaIndex, savedMin, savedMax, savedLabel) {
+    const rangesList = document.querySelector(`#ranges-${criteriaIndex} .rank-ranges-list`);
+    if (!rangesList) return;
+
+    const rankOptions = RANK_SELECT_OPTIONS
+        .map(r => `<option value="${r.val}">${r.label}</option>`)
+        .join('');
+
+    const div = document.createElement('div');
+    div.className = 'range-item rank-range-item';
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;';
+    div.innerHTML = `
+        <select class="rank-min-select" style="flex:1;min-width:130px;">${rankOptions}</select>
+        <span style="white-space:nowrap;">to</span>
+        <select class="rank-max-select" style="flex:1;min-width:130px;">${rankOptions}</select>
+        <input type="text" class="rank-label" placeholder="Label (e.g., Kyu)" style="flex:2;min-width:110px;">
+        <button type="button" class="btn btn-small btn-danger" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    const minSelect = div.querySelector('.rank-min-select');
+    const maxSelect = div.querySelector('.rank-max-select');
+    const labelInp  = div.querySelector('.rank-label');
+
+    if (savedMin) minSelect.value = savedMin;
+    if (savedMax) maxSelect.value = savedMax;
+    else maxSelect.value = '1st kyu'; // default: White → 1st Kyu range
+    if (savedLabel) labelInp.value = savedLabel;
+
+    rangesList.appendChild(div);
 }
 
 function saveTemplate() {
@@ -5645,7 +5705,28 @@ function loadTemplateForEditing(templateId) {
             // Populate ranges
             const rangesContainer = document.getElementById(`ranges-${criteriaCounter}`);
 
-            if (criterion.type === 'gender' || criterion.type === 'rank') {
+            if (criterion.type === 'gender') {
+                return;
+            }
+
+            if (criterion.type === 'rank') {
+                // Populate Kyu/Dan range selectors from saved rankMin/rankMax
+                criterion.ranges.forEach((range, i) => {
+                    if (i === 0) {
+                        // First range was already created by updateCriteriaRanges
+                        const firstItem = rangesContainer.querySelector('.rank-range-item');
+                        if (firstItem) {
+                            const minSel = firstItem.querySelector('.rank-min-select');
+                            const maxSel = firstItem.querySelector('.rank-max-select');
+                            const labelInp = firstItem.querySelector('.rank-label');
+                            if (minSel) minSel.value = range.rankMin || '10th kyu';
+                            if (maxSel) maxSel.value = range.rankMax || '1st kyu';
+                            if (labelInp) labelInp.value = range.label || '';
+                        }
+                    } else {
+                        addRankRange(criteriaCounter, range.rankMin, range.rankMax, range.label);
+                    }
+                });
                 return;
             }
 
@@ -5755,8 +5836,26 @@ function loadExistingCriteria() {
         // Populate ranges
         const rangesContainer = document.getElementById(`ranges-${criteriaCounter}`);
 
-        if (criterion.type === 'gender' || criterion.type === 'rank') {
-            // These types have predefined splits, no need to populate
+        if (criterion.type === 'gender') {
+            return;
+        }
+
+        if (criterion.type === 'rank') {
+            criterion.ranges.forEach((range, i) => {
+                if (i === 0) {
+                    const firstItem = rangesContainer.querySelector('.rank-range-item');
+                    if (firstItem) {
+                        const minSel = firstItem.querySelector('.rank-min-select');
+                        const maxSel = firstItem.querySelector('.rank-max-select');
+                        const labelInp = firstItem.querySelector('.rank-label');
+                        if (minSel) minSel.value = range.rankMin || '10th kyu';
+                        if (maxSel) maxSel.value = range.rankMax || '1st kyu';
+                        if (labelInp) labelInp.value = range.label || '';
+                    }
+                } else {
+                    addRankRange(criteriaCounter, range.rankMin, range.rankMax, range.label);
+                }
+            });
             return;
         }
 
@@ -5849,21 +5948,21 @@ function saveDivisionTemplate() {
             return;
         }
 
-        // Handle rank criteria (predefined splits)
+        // Handle rank criteria — read Kyu/Dan ranges from the UI
         if (criteriaType === 'rank') {
-            criteriaObj.ranges = [
-                { value: 'White Belt', label: 'White Belt' },
-                { value: 'Yellow Belt', label: 'Yellow Belt' },
-                { value: 'Orange Belt', label: 'Orange Belt' },
-                { value: 'Green Belt', label: 'Green Belt' },
-                { value: 'Blue Belt', label: 'Blue Belt' },
-                { value: 'Purple Belt', label: 'Purple Belt' },
-                { value: 'Brown Belt', label: 'Brown Belt' },
-                { value: 'Red Belt', label: 'Red Belt' },
-                { value: '1st Dan', label: '1st Dan' },
-                { value: '2nd Dan', label: '2nd Dan' }
-            ];
-            criteria.push(criteriaObj);
+            item.querySelectorAll('.rank-range-item').forEach(rangeItem => {
+                const minSel   = rangeItem.querySelector('.rank-min-select');
+                const maxSel   = rangeItem.querySelector('.rank-max-select');
+                const labelInp = rangeItem.querySelector('.rank-label');
+                if (minSel && maxSel && minSel.value && maxSel.value) {
+                    criteriaObj.ranges.push({
+                        rankMin: minSel.value,
+                        rankMax: maxSel.value,
+                        label: labelInp?.value.trim() || `${minSel.value} – ${maxSel.value}`
+                    });
+                }
+            });
+            if (criteriaObj.ranges.length > 0) criteria.push(criteriaObj);
             return;
         }
 
@@ -6008,20 +6107,12 @@ function generateDivisions() {
         age: comp.dateOfBirth ? calculateAge(comp.dateOfBirth, ageCalculationMethod, eventDate) : (comp.age || 0)
     }));
 
-    console.log('Age calculation method:', ageCalculationMethod);
-    console.log('Event date:', eventDate);
-
-    // DEBUG: Check experience field in competitors
-    console.log('Sample competitor data (first 3):');
-    competitorsWithAge.slice(0, 3).forEach((comp, idx) => {
-        console.log(`  Competitor ${idx}:`, {
-            name: `${comp.firstName} ${comp.lastName}`,
-            age: comp.age,
-            gender: comp.gender,
-            experience: comp.experience,
-            experienceType: typeof comp.experience
-        });
-    });
+    // Warn about competitors with invalid/missing DOB that won't match any age range
+    const invalidAgeComps = competitorsWithAge.filter(c => isNaN(c.age) || c.age < 0);
+    if (invalidAgeComps.length > 0) {
+        const names = invalidAgeComps.map(c => `${c.firstName} ${c.lastName}`).join(', ');
+        showMessage(`⚠️ ${invalidAgeComps.length} competitor(s) have an invalid date of birth and won't be placed in age-based divisions: ${names}. Please fix their DOB.`, 'error');
+    }
 
     // Generate divisions for each template (AAU has multiple age-tier templates)
     console.log('Generating divisions for all templates...');
@@ -6092,9 +6183,18 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                 console.log(`      → Weight filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'rank':
-                // Normalize rank by stripping " Belt" suffix (competitor form stores "White",
-                // but saved templates may store "White Belt" — treat both identically)
-                const normalizeRank = r => (r || '').toLowerCase().replace(/ belt$/i, '');
+                // Normalize rank values from both old (belt colors) and new (Kyu/Dan) formats
+                // to match RANK_ORDER entries (lowercase, e.g. '10th kyu', '1st dan').
+                const normalizeRank = r => {
+                    const s = (r || '').toLowerCase().replace(/ belt$/i, '').trim();
+                    // Map old belt-color values → Kyu equivalents for backwards compatibility
+                    const colorToKyu = {
+                        'white': '10th kyu', 'yellow': '9th kyu', 'orange': '8th kyu',
+                        'green': '7th kyu',  'blue':   '6th kyu', 'purple': '5th kyu',
+                        'brown': '3rd kyu',  'black':  '1st dan',
+                    };
+                    return colorToKyu[s] || s;
+                };
                 if (range.rankMin !== undefined && range.rankMax !== undefined) {
                     // Grouped belt range (WKF/AAU style)
                     const minIdx = RANK_ORDER.indexOf(normalizeRank(range.rankMin));
