@@ -2207,69 +2207,60 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
 
 function autoAssignToDivisions(competitor, competitorId) {
     console.log('=== AUTO-DIVISION ASSIGNMENT START ===');
-    console.log('Competitor:', competitor);
 
     const eventTypes = db.load('eventTypes');
+    const freshDivisions = db.load('divisions');
 
-    // Process all non-default events that have division templates configured.
-    // This matches the behaviour of the manual "Generate Divisions" button, which
-    // assigns every tournament competitor to every event with templates regardless
-    // of which specific events the competitor checked during registration.
-    const allDivisions = db.load('divisions');
-    const eventsWithTemplates = Object.keys(allDivisions).filter(eventId => {
+    // Find all non-default events that have division templates configured
+    const eventsWithTemplates = Object.keys(freshDivisions).filter(eventId => {
         const event = eventTypes.find(e => String(e.id) === String(eventId));
-        return event && !event.isDefault && allDivisions[eventId]?.templates?.length > 0;
+        return event && !event.isDefault && freshDivisions[eventId]?.templates?.length > 0;
     });
-
-    console.log('Events with templates:', eventsWithTemplates);
 
     if (eventsWithTemplates.length === 0) {
         console.log('No division templates configured, skipping auto-division');
         return;
     }
 
-    // Calculate competitor's age
+    // Load all tournament competitors (including the newly saved one) and calculate ages.
+    // This mirrors exactly what the "Generate Divisions" button does so division names
+    // are always consistent — both use buildDivisions() with range.label joining.
+    const allCompetitors = db.load('competitors');
+    const competitors = currentTournamentId
+        ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
+        : allCompetitors;
+
     const tournaments = db.load('tournaments');
     const currentTournament = tournaments.find(t => t.id === currentTournamentId);
     const ageCalculationMethod = currentTournament?.ageCalculationMethod || 'aau-standard';
     const eventDate = currentTournament?.date || new Date();
 
-    const competitorAge = competitor.dateOfBirth ? calculateAge(competitor.dateOfBirth, ageCalculationMethod, eventDate) : 0;
+    const competitorsWithAge = competitors.map(comp => ({
+        ...comp,
+        age: comp.dateOfBirth ? calculateAge(comp.dateOfBirth, ageCalculationMethod, eventDate) : (comp.age || 0)
+    }));
 
-    console.log('Competitor age:', competitorAge);
-
-    // Use the numeric ID that db.add set on the competitor object
-    const compId = competitor.id;
-
-    // Process each event that has templates
+    // Regenerate divisions for every event with templates using the same
+    // buildDivisions() logic as the manual Generate button
     eventsWithTemplates.forEach(eventId => {
         const event = eventTypes.find(e => String(e.id) === String(eventId));
-        console.log(`Processing event: ${event.name}`);
+        const eventData = freshDivisions[eventId];
+        console.log(`Auto-regenerating divisions for: ${event.name}`);
 
-        // Find matching template for this event
-        const matchingTemplate = findMatchingTemplate(eventId, competitor, competitorAge);
+        const generatedDivisions = {};
+        eventData.templates.forEach(template => {
+            const result = buildDivisions(competitorsWithAge, template.criteria);
+            Object.assign(generatedDivisions, result);
+        });
 
-        if (!matchingTemplate) {
-            console.warn(`No matching template found for ${event.name} — using auto-division grouping`);
-
-            // No template match: auto-create a division name from the competitor's own attributes
-            const divisionName = buildAutoSingleDivisionName(competitor, competitorAge);
-            const divisions = db.load('divisions');
-            if (!divisions[eventId]) divisions[eventId] = { templates: [], generated: {} };
-            if (!divisions[eventId].generated) divisions[eventId].generated = {};
-            if (!divisions[eventId].generated[divisionName]) divisions[eventId].generated[divisionName] = [];
-            const divComp = divisions[eventId].generated[divisionName];
-            if (!divComp.find(c => c.id === compId)) divComp.push({ ...competitor });
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
-            return;
-        }
-
-        console.log('Matched template:', matchingTemplate.name);
-
-        // Create/update division and generate bracket
-        assignToDivisionAndGenerateBracket(competitor, compId, eventId, matchingTemplate, competitorAge);
+        freshDivisions[eventId] = {
+            templates: eventData.templates,
+            generated: generatedDivisions,
+            updatedAt: new Date().toISOString()
+        };
     });
 
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
     console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
 }
 
