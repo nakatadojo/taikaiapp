@@ -1591,7 +1591,10 @@
                                 <h3 style="margin: 0 0 8px 0;">Dynamic Timeline</h3>
                                 <p class="hint" style="margin: 0;">Drag divisions from the left to mat columns on the right. Times are calculated automatically.</p>
                             </div>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <select id="schedule-event-filter" onchange="loadScheduleGrid()" style="padding: 6px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border); font-size: 13px;">
+                                    <option value="">All Events</option>
+                                </select>
                                 <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
                                     ⚡ Auto-Schedule All
                                 </button>

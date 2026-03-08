@@ -10319,6 +10319,18 @@ function loadScheduleGrid() {
     const matSchedule = loadMatScheduleData();
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
 
+    // Populate event filter dropdown (once)
+    const filterEl = document.getElementById('schedule-event-filter');
+    if (filterEl && filterEl.options.length <= 1) {
+        eventTypes.forEach(ev => {
+            const opt = document.createElement('option');
+            opt.value = ev.id;
+            opt.textContent = ev.name;
+            filterEl.appendChild(opt);
+        });
+    }
+    const activeEventFilter = filterEl ? String(filterEl.value) : '';
+
     // Clean up empty brackets
     let cleaned = false;
     Object.keys(brackets).forEach(bracketId => {
@@ -10337,6 +10349,9 @@ function loadScheduleGrid() {
         const bracket = brackets[bracketId];
         const event = eventTypes.find(e => e.id == bracket.eventId);
         const divisionName = bracket.division || bracket.divisionName;
+
+        // Apply event filter — skip brackets from other events when a filter is active
+        if (activeEventFilter && String(bracket.eventId) !== activeEventFilter) return;
 
         if (event && divisionName) {
             let competitorCount = bracket.competitors?.length || 0;
@@ -10416,7 +10431,7 @@ function loadScheduleGrid() {
                         <div class="mat-column">
                             <div class="mat-header">${mat.name}</div>
                             <div class="time-slots" data-mat="${mat.id}">
-                                ${generateDynamicTimeline(mat.id)}
+                                ${generateDynamicTimeline(mat.id, activeEventFilter)}
                             </div>
                         </div>
                     `).join('')}
@@ -10443,9 +10458,13 @@ function loadScheduleGrid() {
     });
 }
 
-function generateDynamicTimeline(matId) {
+function generateDynamicTimeline(matId, eventFilter) {
     const schedule = loadMatScheduleData();
-    const matSlots = (schedule[matId] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+    let matSlots = (schedule[matId] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+    // When an event filter is active, only show slots for that event
+    if (eventFilter) {
+        matSlots = matSlots.filter(s => String(s.eventId) === eventFilter);
+    }
     const settings = getScheduleSettings();
 
     if (matSlots.length === 0) {
@@ -11093,7 +11112,13 @@ function removeFromQueue(matId, division) {
 }
 
 function autoScheduleDivisions() {
-    if (!confirm('Automatically schedule all unassigned divisions across all mats? This will distribute divisions evenly.')) {
+    const filterEl = document.getElementById('schedule-event-filter');
+    const activeEventFilter = filterEl ? String(filterEl.value) : '';
+    const filterLabel = activeEventFilter && filterEl
+        ? filterEl.options[filterEl.selectedIndex]?.text
+        : 'all events';
+
+    if (!confirm(`Automatically schedule unassigned divisions (${filterLabel}) across all mats? This will distribute them evenly.`)) {
         return;
     }
 
@@ -11108,6 +11133,9 @@ function autoScheduleDivisions() {
         const bracket = brackets[bracketId];
         const event = eventTypes.find(e => e.id == bracket.eventId);
         const divisionName = bracket.division || bracket.divisionName;
+
+        // Respect event filter
+        if (activeEventFilter && String(bracket.eventId) !== activeEventFilter) return;
 
         if (event && divisionName) {
             let competitorCount = bracket.competitors?.length || 0;
