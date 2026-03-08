@@ -495,10 +495,10 @@
     async function renderOverview(main) {
         try {
             const [ownedRes, regRes, memberRes, profilesRes, dojoRes] = await Promise.all([
-                apiFetch('/api/tournaments/director/mine'),
-                apiFetch('/api/registrations/my'),
-                apiFetch('/api/my/tournaments'),
-                apiFetch('/api/profiles'),
+                apiFetch('/api/tournaments/director/mine').catch(() => null),
+                apiFetch('/api/registrations/my').catch(() => null),
+                apiFetch('/api/my/tournaments').catch(() => null),
+                apiFetch('/api/profiles').catch(() => null),
                 apiFetch('/api/academies/my').catch(() => null),
             ]);
 
