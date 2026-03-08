@@ -6855,7 +6855,6 @@ function deleteCriteria() {
 function showBracketGenerator() {
     console.log('=== SHOW BRACKET GENERATOR ===');
     const modal = document.getElementById('bracket-generator-modal');
-    const select = document.getElementById('bracket-division-select');
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
 
@@ -6959,23 +6958,88 @@ function showBracketGenerator() {
         }
     }
 
-    // Populate division dropdown
-    select.innerHTML = '<option value="">Select a division</option>';
-    Object.keys(eventData.generated).forEach(divName => {
-        const competitors = eventData.generated[divName];
-        if (competitors && competitors.length > 0) {
-            const option = document.createElement('option');
-            option.value = divName;
-            option.textContent = `${divName} (${competitors.length} competitors)`;
-            select.appendChild(option);
-        }
+    // Populate template dropdown
+    const templateSelect = document.getElementById('bracket-template-select');
+    templateSelect.innerHTML = '<option value="">Select a template</option>';
+    (eventData.templates || []).forEach((tmpl, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = tmpl.name || `Template ${idx + 1}`;
+        templateSelect.appendChild(opt);
     });
+    // Reset checklist
+    document.getElementById('bracket-division-checklist').innerHTML = '';
+    document.getElementById('bracket-division-checklist-group').style.display = 'none';
+    // Auto-select if there is exactly one template (common case)
+    if ((eventData.templates || []).length === 1) {
+        templateSelect.value = '0';
+        onBracketTemplateChange();
+    }
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     modal.style.zIndex = '10000';
 
     console.log('Modal should be visible now! Display:', modal.style.display, 'Z-index:', modal.style.zIndex);
+}
+
+/**
+ * Called when the user picks a template in the bracket generator modal.
+ * Rebuilds the division checklist for the selected template by re-running
+ * buildDivisions() with the already-stored competitor pool so the division
+ * name strings match exactly what was generated originally.
+ */
+function onBracketTemplateChange() {
+    const eventId = document.getElementById('division-event-selector')?.value;
+    const templateIdx = parseInt(document.getElementById('bracket-template-select').value, 10);
+    const checklistGroup = document.getElementById('bracket-division-checklist-group');
+    const checklist = document.getElementById('bracket-division-checklist');
+
+    checklist.innerHTML = '';
+    checklistGroup.style.display = 'none';
+    if (isNaN(templateIdx) || !eventId) return;
+
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    const template = eventData?.templates?.[templateIdx];
+    if (!template) return;
+
+    const generated = eventData.generated || {};
+    // Reconstruct division names produced by this template using the already-stored
+    // competitor pool (age already resolved from the original generateDivisions() run)
+    const allCompetitors = Object.values(generated).flat();
+    const templateDivisions = buildDivisions(allCompetitors, template.criteria);
+
+    const matchingNames = Object.keys(templateDivisions).filter(
+        name => generated[name] && generated[name].length > 0
+    );
+
+    if (matchingNames.length === 0) {
+        checklist.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">No divisions with competitors found for this template.</p>';
+        checklistGroup.style.display = 'block';
+        return;
+    }
+
+    matchingNames.forEach(name => {
+        const count = generated[name].length;
+        const label = document.createElement('label');
+        label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'bracket-division';
+        cb.value = name;
+        cb.checked = true;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(`${name} (${count})`));
+        checklist.appendChild(label);
+    });
+
+    checklistGroup.style.display = 'block';
+}
+
+function setBracketDivisionChecks(checked) {
+    document.querySelectorAll('#bracket-division-checklist input[type="checkbox"]')
+        .forEach(cb => cb.checked = checked);
 }
 
 function hideBracketGenerator() {
@@ -7221,32 +7285,23 @@ function generateBrackets(event) {
     console.log('=== GENERATE BRACKETS CALLED ===');
     event.preventDefault();
 
-    const divisionName = document.getElementById('bracket-division-select').value;
-    const bracketType = document.getElementById('bracket-type').value;
+    // Collect checked division names from the checklist
+    const checkedBoxes = [...document.querySelectorAll('#bracket-division-checklist input[type="checkbox"]:checked')];
+    const divisionNames = checkedBoxes.map(cb => cb.value);
+    const bracketType    = document.getElementById('bracket-type').value;
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
-    const seedingMethod = document.getElementById('seeding-method').value;
-    const matchDuration = parseInt(document.getElementById('match-duration').value) || 2;
-    const matAssignment = document.getElementById('mat-assignment')?.value || null;
-    const eventSelector = document.getElementById('division-event-selector');
-    const eventId = eventSelector?.value;
+    const seedingMethod  = document.getElementById('seeding-method').value;
+    const matAssignment  = document.getElementById('mat-assignment')?.value || null;
+    const eventId        = document.getElementById('division-event-selector')?.value;
 
-    console.log('Division:', divisionName);
-    console.log('Bracket Type:', bracketType);
-    console.log('Scoreboard Type:', scoreboardType);
-    console.log('Event ID:', eventId);
-
-    if (!divisionName || !eventId) {
-        console.error('Missing division or event ID');
-        showMessage('Please select a division', 'error');
+    if (divisionNames.length === 0 || !eventId) {
+        showMessage('Please select at least one division', 'error');
         return;
     }
-
-    // Validate required fields
     if (!bracketType) {
         showMessage('Please select a bracket type', 'error');
         return;
     }
-
     if (!scoreboardType) {
         showMessage('Please select a scoreboard type', 'error');
         return;
@@ -7254,7 +7309,6 @@ function generateBrackets(event) {
 
     // Get scoreboard configuration — prefer unified config, fall back to legacy named configs
     const unifiedCfg = getUnifiedScoreboardConfig();
-
     if (!unifiedCfg) {
         showMessage('Please configure your scoreboards first in the Scoreboard Setup tab.', 'error');
         return;
@@ -7262,12 +7316,10 @@ function generateBrackets(event) {
 
     const typeKeyMap = { 'kumite': 'kumite', 'kata-flags': 'kataFlags', 'kata-points': 'kataPoints', 'kobudo': 'kobudo' };
     const typeKey = typeKeyMap[scoreboardType];
-
     let scoreboardConfig = null;
-    let baseType = scoreboardType; // scoreboardType IS the base type now
+    let baseType = scoreboardType;
 
     if (typeKey && unifiedCfg[typeKey]) {
-        // Build a synthetic config object compatible with downstream code
         scoreboardConfig = {
             id:       'unified-' + scoreboardType,
             name:      scoreboardType,
@@ -7275,13 +7327,8 @@ function generateBrackets(event) {
             settings:  unifiedCfg[typeKey],
         };
     } else {
-        // Legacy fallback: try old named scoreboardConfigs array
-        const scoreboardConfigs = db.load('scoreboardConfigs');
-        const legacyCfg = scoreboardConfigs.find(c => c.id == scoreboardType);
-        if (legacyCfg) {
-            scoreboardConfig = legacyCfg;
-            baseType = legacyCfg.baseType;
-        }
+        const legacyCfg = db.load('scoreboardConfigs').find(c => c.id == scoreboardType);
+        if (legacyCfg) { scoreboardConfig = legacyCfg; baseType = legacyCfg.baseType; }
     }
 
     if (!scoreboardConfig) {
@@ -7296,94 +7343,85 @@ function generateBrackets(event) {
         return;
     }
 
-    // Get competitors for this division
+    // Load shared resources once before the loop
     const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
-    const eventData = allDivisions[eventId];
-    let competitors = [...(eventData.generated[divisionName] || [])];
+    const eventData    = allDivisions[eventId];
+    const brackets     = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const matSchedule  = matAssignment ? loadMatScheduleData() : null;
+    let successCount = 0;
+    const skippedNames = [];
 
-    // Deduplicate competitors by ID
-    const seenIds = new Set();
-    competitors = competitors.filter(c => {
-        if (!c || !c.id) return false;
-        if (seenIds.has(c.id)) return false;
-        seenIds.add(c.id);
-        return true;
+    divisionNames.forEach(divisionName => {
+        // Deduplicate competitors by ID
+        const seenIds = new Set();
+        let competitors = (eventData.generated[divisionName] || []).filter(c => {
+            if (!c?.id || seenIds.has(c.id)) return false;
+            seenIds.add(c.id);
+            return true;
+        });
+
+        if (competitors.length < 2) {
+            skippedNames.push(divisionName);
+            return;
+        }
+
+        competitors = seedCompetitors(competitors, seedingMethod);
+
+        let bracket = null;
+        if (bracketType === 'single-elimination')      bracket = generateSingleEliminationBracket(competitors, divisionName, eventId);
+        else if (bracketType === 'double-elimination') bracket = generateDoubleEliminationBracket(competitors, divisionName, eventId);
+        else if (bracketType === 'repechage')          bracket = generateRepechageBracket(competitors, divisionName, eventId);
+        else if (bracketType === 'round-robin')        bracket = generateRoundRobinBracket(competitors, divisionName, eventId);
+        else if (bracketType === 'pool-play')          bracket = generatePoolPlayBracket(competitors, divisionName, eventId);
+        else if (bracketType === 'ranking-list')       bracket = generateRankingListBracket(competitors, divisionName, eventId);
+        if (!bracket) return;
+
+        bracket.scoreboardConfigId = scoreboardType;
+        bracket.scoreboardConfig   = scoreboardConfig;
+        bracket.matchDuration      = getTemplateDurationForEvent(eventId) || null;
+        bracket.timing             = calculateBracketTiming(bracket, scoreboardConfig);
+        bracket.seedingMethod      = seedingMethod;
+        bracket.matAssignment      = matAssignment;
+
+        brackets[`${eventId}_${divisionName}_${generateUniqueId()}`] = bracket;
+
+        // Mat schedule assignment
+        if (matAssignment && matSchedule) {
+            if (!matSchedule[matAssignment]) matSchedule[matAssignment] = [];
+            // Remove any existing slot for this division on any mat (avoid duplicates)
+            Object.keys(matSchedule).forEach(mid => {
+                matSchedule[mid] = (matSchedule[mid] || []).filter(s => s.division !== divisionName);
+            });
+            matSchedule[matAssignment].push({
+                order: matSchedule[matAssignment].length,
+                division: divisionName,
+                eventId: eventId,
+                estimatedDuration: estimateDivisionDuration(divisionName, eventId),
+                durationOverride: null,
+                estimatedStartTime: null,
+                estimatedEndTime: null,
+                actualStartTime: null,
+                actualEndTime: null,
+                status: 'upcoming'
+            });
+        }
+
+        successCount++;
     });
 
-    if (competitors.length < 2) {
-        showMessage('Need at least 2 competitors to create a bracket', 'error');
-        return;
-    }
-
-    // Apply seeding
-    competitors = seedCompetitors(competitors, seedingMethod);
-
-    // Generate bracket structure
-    let bracket = null;
-    if (bracketType === 'single-elimination') {
-        bracket = generateSingleEliminationBracket(competitors, divisionName, eventId);
-    } else if (bracketType === 'double-elimination') {
-        bracket = generateDoubleEliminationBracket(competitors, divisionName, eventId);
-    } else if (bracketType === 'repechage') {
-        bracket = generateRepechageBracket(competitors, divisionName, eventId);
-    } else if (bracketType === 'round-robin') {
-        bracket = generateRoundRobinBracket(competitors, divisionName, eventId);
-    } else if (bracketType === 'pool-play') {
-        bracket = generatePoolPlayBracket(competitors, divisionName, eventId);
-    } else if (bracketType === 'ranking-list') {
-        bracket = generateRankingListBracket(competitors, divisionName, eventId);
-    }
-
-    // Add scoreboard configuration to bracket
-    if (scoreboardType) {
-        bracket.scoreboardConfigId = scoreboardType;
-        bracket.scoreboardConfig = scoreboardConfig;
-    }
-
-    // Store match duration on bracket (seconds)
-    const templateDuration = getTemplateDurationForEvent(eventId);
-    bracket.matchDuration = templateDuration || null;
-
-    // Calculate and add timing estimates
-    const timing = calculateBracketTiming(bracket, scoreboardConfig);
-    bracket.timing = timing;
-    bracket.seedingMethod = seedingMethod;
-    bracket.matAssignment = matAssignment;
-
-    // Save bracket
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
-    const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
-    brackets[bracketId] = bracket;
+    // Save once after the loop
     saveBrackets(brackets);
+    if (matAssignment && matSchedule) saveMatScheduleData(matSchedule);
 
-    // If a mat was assigned, auto-add this division to the mat schedule
-    if (matAssignment) {
-        const matSchedule = loadMatScheduleData();
-        if (!matSchedule[matAssignment]) matSchedule[matAssignment] = [];
-        // Remove any existing slot for this division on any mat (avoid duplicates)
-        Object.keys(matSchedule).forEach(mid => {
-            matSchedule[mid] = (matSchedule[mid] || []).filter(s => s.division !== divisionName);
-        });
-        // Add to the selected mat
-        matSchedule[matAssignment].push({
-            order: matSchedule[matAssignment].length,
-            division: divisionName,
-            eventId: eventId,
-            estimatedDuration: estimateDivisionDuration(divisionName, eventId),
-            durationOverride: null,
-            estimatedStartTime: null,
-            estimatedEndTime: null,
-            actualStartTime: null,
-            actualEndTime: null,
-            status: 'upcoming'
-        });
-        saveMatScheduleData(matSchedule);
-    }
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     hideBracketGenerator();
-    showMessage('Bracket generated successfully!');
+    const skipMsg = skippedNames.length > 0
+        ? ` Skipped ${skippedNames.length} division(s) with fewer than 2 competitors.`
+        : '';
+    showMessage(`Generated ${successCount} bracket(s) successfully!${skipMsg}`);
 
-    // Navigate to schedule view so the user can immediately see the division
+    // Navigate to schedule view so the user can immediately see unassigned divisions
     document.querySelector('[data-view="schedule"]')?.click();
 }
 
