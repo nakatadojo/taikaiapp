@@ -168,6 +168,20 @@ function slimCompetitor(c) {
 }
 
 /**
+ * Re-attach photo and clubLogo to a slim competitor object by looking up the
+ * master competitors list.  Call this when reading competitors OUT of bracket
+ * match slots for display (operator, scoreboard, etc.).
+ */
+function rehydrateCompetitor(c) {
+    if (!c) return c;
+    if (c.photo && c.clubLogo) return c; // already full
+    const allCompetitors = db.load('competitors');
+    const master = allCompetitors.find(m => m.id === c.id);
+    if (!master) return c;
+    return { ...c, photo: master.photo || null, clubLogo: master.clubLogo || null };
+}
+
+/**
  * Central save function for the brackets map.
  * Slims every bracket before writing so base64 photos are never stored in match slots.
  */
@@ -203,6 +217,16 @@ function slimBracketForStorage(bracket) {
     (bracket.pools || []).forEach(pool => {
         (pool.matches || []).forEach(slimSlot);
         if (pool.competitors) pool.competitors = pool.competitors.map(slimCompetitor);
+    });
+    // Kata rounds (kata-flags / kata-points) — slim each performance's competitor
+    (bracket.rounds || []).forEach(round => {
+        (round.performances || []).forEach(perf => {
+            if (perf.competitor) perf.competitor = slimCompetitor(perf.competitor);
+        });
+    });
+    // Ranking-list entries — slim each entry's competitor
+    (bracket.entries || []).forEach(entry => {
+        if (entry.competitor) entry.competitor = slimCompetitor(entry.competitor);
     });
     return bracket;
 }
@@ -12066,11 +12090,11 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         }
     }
 
-    // Auto-load competitors from bracket match
+    // Auto-load competitors from bracket match (rehydrate photos stripped by slimCompetitor)
     if (currentMatch) {
         console.log('Found current match:', currentMatch);
-        operatorRedCompetitor = currentMatch.redCorner;
-        operatorBlueCompetitor = currentMatch.blueCorner;
+        operatorRedCompetitor = rehydrateCompetitor(currentMatch.redCorner);
+        operatorBlueCompetitor = rehydrateCompetitor(currentMatch.blueCorner);
         console.log('Loaded competitors:', { red: operatorRedCompetitor, blue: operatorBlueCompetitor });
 
         // Store current match ID for later use when declaring winner
@@ -12425,6 +12449,14 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             })),
             foundMatch: currentMatch ? { id: currentMatch.id, round: currentMatch.round, position: currentMatch.position } : null
         });
+    }
+    // Rehydrate photos stripped by slimCompetitor before using for display
+    if (currentMatch) {
+        currentMatch = {
+            ...currentMatch,
+            redCorner:  rehydrateCompetitor(currentMatch.redCorner),
+            blueCorner: rehydrateCompetitor(currentMatch.blueCorner),
+        };
     }
     kataFlagsCurrentMatch = currentMatch;
 
@@ -14586,7 +14618,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentKataPerformanceIndex = incompletePerfIndex >= 0 ? incompletePerfIndex : 0;
 
     const performance = currentKataRound.performances[currentKataPerformanceIndex];
-    currentKataCompetitor = performance?.competitor;
+    currentKataCompetitor = rehydrateCompetitor(performance?.competitor);
 
     // Initialize judge scores
     const numJudges = bracket.numJudges || 5;
@@ -15002,7 +15034,7 @@ function updateRankingListTVDisplay(bracket, status) {
     const currentIndex = entries.findIndex(e => e.status === 'pending');
     const scoredCount = entries.filter(e => e.status === 'scored').length;
     const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null;
-    const competitor = currentEntry?.competitor || null;
+    const competitor = rehydrateCompetitor(currentEntry?.competitor || null);
     const numJudges = bracket.scoreboardConfig?.settings?.judges || bracket.numJudges || 5;
     currentRankingListNumJudges = numJudges;
 
