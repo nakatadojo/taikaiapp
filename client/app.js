@@ -2209,17 +2209,22 @@ function autoAssignToDivisions(competitor, competitorId) {
     console.log('=== AUTO-DIVISION ASSIGNMENT START ===');
     console.log('Competitor:', competitor);
 
-    // Get competitor's selected events (excluding default event for division assignment)
     const eventTypes = db.load('eventTypes');
-    const selectedNonDefaultEvents = competitor.events.filter(eventId => {
-        const event = eventTypes.find(e => e.id === eventId);
-        return event && !event.isDefault;
+
+    // Process all non-default events that have division templates configured.
+    // This matches the behaviour of the manual "Generate Divisions" button, which
+    // assigns every tournament competitor to every event with templates regardless
+    // of which specific events the competitor checked during registration.
+    const allDivisions = db.load('divisions');
+    const eventsWithTemplates = Object.keys(allDivisions).filter(eventId => {
+        const event = eventTypes.find(e => String(e.id) === String(eventId));
+        return event && !event.isDefault && allDivisions[eventId]?.templates?.length > 0;
     });
 
-    console.log('Non-default events:', selectedNonDefaultEvents);
+    console.log('Events with templates:', eventsWithTemplates);
 
-    if (selectedNonDefaultEvents.length === 0) {
-        console.log('No non-default events selected, skipping auto-division');
+    if (eventsWithTemplates.length === 0) {
+        console.log('No division templates configured, skipping auto-division');
         return;
     }
 
@@ -2233,9 +2238,12 @@ function autoAssignToDivisions(competitor, competitorId) {
 
     console.log('Competitor age:', competitorAge);
 
-    // Process each event the competitor registered for
-    selectedNonDefaultEvents.forEach(eventId => {
-        const event = eventTypes.find(e => e.id === eventId);
+    // Use the numeric ID that db.add set on the competitor object
+    const compId = competitor.id;
+
+    // Process each event that has templates
+    eventsWithTemplates.forEach(eventId => {
+        const event = eventTypes.find(e => String(e.id) === String(eventId));
         console.log(`Processing event: ${event.name}`);
 
         // Find matching template for this event
@@ -2244,14 +2252,14 @@ function autoAssignToDivisions(competitor, competitorId) {
         if (!matchingTemplate) {
             console.warn(`No matching template found for ${event.name} — using auto-division grouping`);
 
-            // No template: auto-create a division name from the competitor's own attributes
+            // No template match: auto-create a division name from the competitor's own attributes
             const divisionName = buildAutoSingleDivisionName(competitor, competitorAge);
             const divisions = db.load('divisions');
             if (!divisions[eventId]) divisions[eventId] = { templates: [], generated: {} };
             if (!divisions[eventId].generated) divisions[eventId].generated = {};
             if (!divisions[eventId].generated[divisionName]) divisions[eventId].generated[divisionName] = [];
             const divComp = divisions[eventId].generated[divisionName];
-            if (!divComp.find(c => c.id === competitorId)) divComp.push({ ...competitor, id: competitorId });
+            if (!divComp.find(c => c.id === compId)) divComp.push({ ...competitor });
             localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
             return;
         }
@@ -2259,7 +2267,7 @@ function autoAssignToDivisions(competitor, competitorId) {
         console.log('Matched template:', matchingTemplate.name);
 
         // Create/update division and generate bracket
-        assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, matchingTemplate, competitorAge);
+        assignToDivisionAndGenerateBracket(competitor, compId, eventId, matchingTemplate, competitorAge);
     });
 
     console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
