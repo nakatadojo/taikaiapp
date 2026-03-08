@@ -2014,15 +2014,17 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
             oldCompetitor.dateOfBirth !== updatedCompetitor.dateOfBirth ||
             oldCompetitor.gender !== updatedCompetitor.gender ||
             oldCompetitor.rank !== updatedCompetitor.rank ||
-            oldCompetitor.weight !== updatedCompetitor.weight;
+            oldCompetitor.weight !== updatedCompetitor.weight ||
+            oldCompetitor.experience !== updatedCompetitor.experience;
 
         showMessage('Competitor updated successfully!', 'success');
 
         if (divisionFieldsChanged) {
-            showMessage(
-                "Competitor's division criteria changed (age/gender/rank/weight). You may need to regenerate divisions for accurate placement.",
-                'warning'
-            );
+            try {
+                autoAssignToDivisions(updatedCompetitor, editingCompetitorId);
+            } catch (error) {
+                console.error('Auto-division re-assignment failed:', error);
+            }
         }
 
         editingCompetitorId = null;
@@ -2897,9 +2899,9 @@ window.editCompetitor = function(id) {
     document.getElementById('firstName').value = comp.firstName || '';
     document.getElementById('lastName').value = comp.lastName || '';
     document.getElementById('dateOfBirth').value = comp.dateOfBirth || '';
-    document.getElementById('weight').value = comp.weight || '';
+    document.getElementById('weight').value = comp.weight ?? '';
     document.getElementById('rank').value = comp.rank || '';
-    document.getElementById('experience').value = comp.experience || '';
+    document.getElementById('experience').value = comp.experience ?? '';
     document.getElementById('gender').value = comp.gender || '';
 
     // Trigger age display update
