@@ -10392,17 +10392,45 @@ function loadScheduleGrid() {
         }
     });
 
-    // Get list of already scheduled divisions (across all mats)
-    const scheduledDivisions = new Set();
+    // Build a Set of already-scheduled division+event combos (scoped per event to avoid cross-event false matches)
+    const scheduledKeys = new Set();
     Object.keys(matSchedule).forEach(matId => {
-        const matSlots = matSchedule[matId] || [];
-        matSlots.forEach(slot => {
-            scheduledDivisions.add(slot.division);
+        (matSchedule[matId] || []).forEach(slot => {
+            scheduledKeys.add(`${slot.eventId}::${slot.division}`);
         });
     });
 
-    // Filter out divisions that are already scheduled
-    const unassignedDivisions = allDivisionsList.filter(div => !scheduledDivisions.has(div.name));
+    // Filter out divisions that are already scheduled (scoped by eventId+name)
+    const unassignedDivisions = allDivisionsList.filter(
+        div => !scheduledKeys.has(`${div.eventId}::${div.name}`)
+    );
+
+    // Group unassigned by event for display
+    const divisionsByEvent = {};
+    unassignedDivisions.forEach(div => {
+        if (!divisionsByEvent[div.eventId]) divisionsByEvent[div.eventId] = { eventName: div.eventName, divisions: [] };
+        divisionsByEvent[div.eventId].divisions.push(div);
+    });
+
+    const unassignedPoolHTML = Object.keys(divisionsByEvent).length === 0
+        ? '<p class="hint">All divisions have been scheduled!</p>'
+        : Object.keys(divisionsByEvent).map(evId => {
+            const group = divisionsByEvent[evId];
+            return `
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); padding: 4px 0; border-bottom: 1px solid var(--glass-border); margin-bottom: 6px;">${group.eventName}</div>
+                    ${group.divisions.map(div => {
+                        const estDuration = estimateDivisionDuration(div.name, div.eventId);
+                        return `
+                            <div class="division-item" draggable="true" data-division="${div.name}" data-event="${div.eventId}">
+                                <strong>${div.name}</strong>
+                                <span class="division-count">${div.count} competitors | ~${estDuration} min</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }).join('');
 
     scheduleGrid.innerHTML = `
         <div class="schedule-layout">
@@ -10410,22 +10438,12 @@ function loadScheduleGrid() {
                 <h4>Unassigned Divisions</h4>
                 <p class="hint">Drag divisions to mat columns on the right</p>
                 <div class="divisions-list" id="divisions-pool">
-                    ${unassignedDivisions.map(div => {
-                        const estDuration = estimateDivisionDuration(div.name, div.eventId);
-                        return `
-                            <div class="division-item" draggable="true" data-division="${div.name}" data-event="${div.eventId}">
-                                <strong>${div.name}</strong>
-                                <span class="division-count">${div.count} competitors | ~${estDuration} min</span>
-                                <span class="division-event">${div.eventName}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                    ${unassignedDivisions.length === 0 ? '<p class="hint">All divisions have been scheduled!</p>' : ''}
+                    ${unassignedPoolHTML}
                 </div>
             </div>
 
             <div class="schedule-timeline">
-                <h4>Mat Schedule</h4>
+                <h4>Mat Schedule${activeEventFilter ? ` — ${eventTypes.find(e => String(e.id) === activeEventFilter)?.name || ''}` : ''}</h4>
                 <div class="timeline-grid">
                     ${mats.map(mat => `
                         <div class="mat-column">
@@ -10668,8 +10686,10 @@ function handleScheduleDrop(e) {
         schedule[matId] = [];
     }
 
-    // Check if this division is already scheduled on this mat
-    const existingIdx = schedule[matId].findIndex(s => s.division === draggedDivision.name);
+    // Check if this division+event is already scheduled on this mat
+    const existingIdx = schedule[matId].findIndex(
+        s => s.division === draggedDivision.name && String(s.eventId) === String(draggedDivision.eventId)
+    );
     if (existingIdx >= 0) {
         showMessage('Division already scheduled on this mat', 'warning');
         return;
