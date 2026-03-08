@@ -358,21 +358,26 @@
       );
     }
 
+    // ── Resolve the correct localStorage key (scoped by tournament ID) ────────
+    const _tid = new URLSearchParams(window.location.search).get('tid');
+    const _stateKey = _tid ? `t_${_tid}_scoreboard-state` : 'scoreboard-state';
+    const _tidParam = _tid ? `?tid=${_tid}` : '';
+
     // ── Wire to localStorage ──────────────────────────────────────────────────
     function App() {
       const [state, setState] = React.useState(() => {
-        try { return JSON.parse(localStorage.getItem('scoreboard-state') || 'null'); } catch { return null; }
+        try { return JSON.parse(localStorage.getItem(_stateKey) || 'null'); } catch { return null; }
       });
 
       React.useEffect(() => {
         const handler = (e) => {
-          if (e.key === 'scoreboard-state' && e.newValue) {
+          if (e.key === _stateKey && e.newValue) {
             try {
               const newState = JSON.parse(e.newValue);
               // Auto-redirect if scoreboard type changed
               if (newState.scoreboardType && newState.scoreboardType !== 'kata') {
                 const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html' };
-                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType]; return; }
+                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType] + _tidParam; return; }
               }
               setState(newState);
             } catch {}

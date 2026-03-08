@@ -16821,7 +16821,9 @@ function openMatDisplay(matId) {
         if (activeScoreboardType === 'kata-points') url = 'kata-scoreboard.html';
         else if (activeScoreboardType === 'kata-flags') url = 'kata-flags-scoreboard.html';
     }
-    window.open(url, `MatDisplay${matId}`, 'width=1920,height=1080,fullscreen=yes');
+    // Pass tournament ID so the scoreboard reads the correct scoped localStorage key
+    const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
+    window.open(url + tidParam, `MatDisplay${matId}`, 'width=1920,height=1080,fullscreen=yes');
     updateAllMatDisplays();
 }
 
