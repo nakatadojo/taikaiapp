@@ -7121,9 +7121,8 @@ function generateBracketsForAllDivisions() {
     hideBracketGenerator();
     showMessage(`Generated ${successCount} brackets successfully! ${skippedCount > 0 ? `(Skipped ${skippedCount} divisions with less than 2 competitors)` : ''}`);
 
-    // Navigate to brackets view
-    document.querySelector('[data-view="brackets"]')?.click();
-    loadBrackets();
+    // Navigate to schedule view so the user can immediately see unassigned divisions
+    document.querySelector('[data-view="schedule"]')?.click();
 }
 
 function generateBrackets(event) {
@@ -7265,12 +7264,35 @@ function generateBrackets(event) {
     brackets[bracketId] = bracket;
     localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
 
+    // If a mat was assigned, auto-add this division to the mat schedule
+    if (matAssignment) {
+        const matSchedule = loadMatScheduleData();
+        if (!matSchedule[matAssignment]) matSchedule[matAssignment] = [];
+        // Remove any existing slot for this division on any mat (avoid duplicates)
+        Object.keys(matSchedule).forEach(mid => {
+            matSchedule[mid] = (matSchedule[mid] || []).filter(s => s.division !== divisionName);
+        });
+        // Add to the selected mat
+        matSchedule[matAssignment].push({
+            order: matSchedule[matAssignment].length,
+            division: divisionName,
+            eventId: eventId,
+            estimatedDuration: estimateDivisionDuration(divisionName, eventId),
+            durationOverride: null,
+            estimatedStartTime: null,
+            estimatedEndTime: null,
+            actualStartTime: null,
+            actualEndTime: null,
+            status: 'upcoming'
+        });
+        saveMatScheduleData(matSchedule);
+    }
+
     hideBracketGenerator();
     showMessage('Bracket generated successfully!');
 
-    // Navigate to brackets view
-    document.querySelector('[data-view="brackets"]')?.click();
-    loadBrackets();
+    // Navigate to schedule view so the user can immediately see the division
+    document.querySelector('[data-view="schedule"]')?.click();
 }
 
 function seedCompetitors(competitors, method) {
