@@ -2147,6 +2147,9 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         // AUTO-DIVISION GENERATION: Match competitor to templates and auto-create divisions/brackets
         try {
             autoAssignToDivisions(competitor, competitorId);
+            // If a bracket already exists for the competitor's division, regenerate it
+            // automatically so the bracket stays current without manual intervention.
+            autoUpdateBracketsAfterRegistration(competitor);
         } catch (error) {
             console.error('Auto-division assignment failed:', error);
             showMessage(`Competitor registered, but auto-division failed: ${error.message}`, 'warning');
@@ -2360,6 +2363,130 @@ function autoAssignToDivisions(competitor, competitorId) {
 
     localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
     console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
+}
+
+/**
+ * Returns true if any match in the bracket has already been scored or is in progress.
+ * Covers all bracket types: single/double-elimination, repechage, round-robin,
+ * pool-play, ranking-list, kata-flags, and kata-points.
+ */
+function bracketHasScoredMatches(bracket) {
+    // Flat match arrays (single-elim, repechage, double-elim, round-robin)
+    const flatMatches = [
+        ...(bracket.matches    || []),
+        ...(bracket.winners    || []),
+        ...(bracket.losers     || []),
+        ...(bracket.repechageA || []),
+        ...(bracket.repechageB || []),
+    ];
+    if (bracket.finals) flatMatches.push(bracket.finals);
+    if (bracket.reset)  flatMatches.push(bracket.reset);
+    if (flatMatches.some(m => m && (m.status === 'completed' || m.status === 'in-progress'))) return true;
+    // Pool play
+    for (const pool of (bracket.pools || []))
+        if ((pool.matches || []).some(m => m.status === 'completed')) return true;
+    // Ranking list
+    if ((bracket.entries || []).some(e => e.status === 'scored')) return true;
+    // Kata rounds (array for kata-flags / kata-points bracket types)
+    if (Array.isArray(bracket.rounds))
+        for (const round of bracket.rounds)
+            if ((round.performances || []).some(p => p.completed)) return true;
+    return false;
+}
+
+/**
+ * Rebuilds a bracket's match structure using the existing bracket's stored settings
+ * (type, scoreboard config, seeding method, mat assignment, etc.) with a fresh
+ * competitor list. Returns the new bracket — caller saves it.
+ */
+function regenerateBracketFromSettings(existing, freshCompetitors) {
+    const type    = existing.type;
+    const name    = existing.divisionName || existing.division;
+    const eventId = existing.eventId;
+    const seeded  = seedCompetitors([...freshCompetitors], existing.seedingMethod || 'random');
+
+    let newBracket = null;
+    if      (type === 'single-elimination')  newBracket = generateSingleEliminationBracket(seeded, name, eventId);
+    else if (type === 'double-elimination')  newBracket = generateDoubleEliminationBracket(seeded, name, eventId);
+    else if (type === 'repechage')           newBracket = generateRepechageBracket(seeded, name, eventId);
+    else if (type === 'round-robin')         newBracket = generateRoundRobinBracket(seeded, name, eventId);
+    else if (type === 'pool-play')           newBracket = generatePoolPlayBracket(seeded, name, eventId);
+    else if (type === 'ranking-list')        newBracket = generateRankingListBracket(seeded, name, eventId);
+    else if (type === 'kata-flags')          newBracket = generateKataFlagsBracket(seeded, name, eventId);
+    else if (type === 'kata-points')         newBracket = generateKataPointsBracket(seeded, name, eventId);
+    if (!newBracket) return null;
+
+    // Carry over all original settings
+    newBracket.scoreboardConfigId = existing.scoreboardConfigId;
+    newBracket.scoreboardConfig   = existing.scoreboardConfig;
+    newBracket.matchDuration      = existing.matchDuration;
+    newBracket.timing             = calculateBracketTiming(newBracket, existing.scoreboardConfig);
+    newBracket.seedingMethod      = existing.seedingMethod;
+    newBracket.matAssignment      = existing.matAssignment;
+    return newBracket;
+}
+
+/**
+ * After a competitor is registered and divisions are updated, find every bracket
+ * whose division now contains this competitor and auto-regenerate it (if no matches
+ * have been scored). If a bracket's tournament has already started, just warn.
+ */
+function autoUpdateBracketsAfterRegistration(competitor) {
+    const competitorId = competitor.id;
+    if (!competitorId) return;
+
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const brackets     = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    if (Object.keys(brackets).length === 0) return;
+
+    // Build the set of "eventId::divisionName" keys this competitor now belongs to
+    const competitorDivisions = new Set();
+    Object.entries(allDivisions).forEach(([eventId, eventData]) => {
+        Object.entries(eventData.generated || {}).forEach(([divName, comps]) => {
+            if ((comps || []).some(c => c.id === competitorId))
+                competitorDivisions.add(`${eventId}::${divName}`);
+        });
+    });
+    if (competitorDivisions.size === 0) return;
+
+    const updatedNames = [];
+    const lockedNames  = [];
+
+    Object.entries(brackets).forEach(([key, bracket]) => {
+        const divName = bracket.divisionName || bracket.division;
+        const eventId = String(bracket.eventId);
+        if (!competitorDivisions.has(`${eventId}::${divName}`)) return;
+
+        // Idempotency guard: skip if competitor is already in the bracket
+        const bracketCompetitors = [
+            ...(bracket.competitors || []),
+            ...(bracket.matches || []).flatMap(m => [m.redCorner, m.blueCorner]),
+        ].filter(Boolean);
+        if (bracketCompetitors.some(c => c.id === competitorId)) return;
+
+        if (bracketHasScoredMatches(bracket)) {
+            lockedNames.push(divName);
+            return;
+        }
+
+        const freshCompetitors = allDivisions[eventId]?.generated?.[divName] || [];
+        if (freshCompetitors.length < 2) return;
+
+        const newBracket = regenerateBracketFromSettings(bracket, freshCompetitors);
+        if (!newBracket) return;
+
+        brackets[key] = newBracket;
+        updatedNames.push(divName);
+    });
+
+    if (updatedNames.length > 0) {
+        saveBrackets(brackets);
+        _debouncedSync('brackets', _syncBracketsToServer, 2000);
+        showToast(`📋 Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
+    }
+    if (lockedNames.length > 0) {
+        showToast(`⚠️ Matches in progress — bracket not updated: ${lockedNames.join(', ')}`, 'warning');
+    }
 }
 
 function findMatchingTemplate(eventId, competitor, competitorAge) {
