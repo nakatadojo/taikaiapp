@@ -155,6 +155,58 @@ function _scopedKey(key) {
     return key;
 }
 
+/**
+ * Strip large/redundant fields from a competitor object before storing it inside
+ * bracket matches (redCorner, blueCorner, winner).  The photo is the main culprit —
+ * a single base64 photo can be 100 KB+ and gets duplicated into dozens of match slots.
+ * The photo is always available from the master competitors list for display purposes.
+ */
+function slimCompetitor(c) {
+    if (!c) return c;
+    const { photo, clubLogo, ...slim } = c;
+    return slim;
+}
+
+/**
+ * Central save function for the brackets map.
+ * Slims every bracket before writing so base64 photos are never stored in match slots.
+ */
+function saveBrackets(brackets) {
+    const slimmed = {};
+    Object.keys(brackets).forEach(id => {
+        slimmed[id] = slimBracketForStorage(JSON.parse(JSON.stringify(brackets[id])));
+    });
+    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(slimmed));
+}
+
+/**
+ * Walk every match slot in a bracket and slim every competitor reference in-place.
+ * Called before writing brackets to localStorage.
+ */
+function slimBracketForStorage(bracket) {
+    const slimSlot = (m) => {
+        if (!m) return;
+        if (m.redCorner)  m.redCorner  = slimCompetitor(m.redCorner);
+        if (m.blueCorner) m.blueCorner = slimCompetitor(m.blueCorner);
+        if (m.winner)     m.winner     = slimCompetitor(m.winner);
+    };
+    (bracket.matches   || []).forEach(slimSlot);
+    (bracket.winners   || []).forEach(slimSlot);
+    (bracket.losers    || []).forEach(slimSlot);
+    (bracket.repechageA|| []).forEach(slimSlot);
+    (bracket.repechageB|| []).forEach(slimSlot);
+    if (bracket.finals) slimSlot(bracket.finals);
+    if (bracket.reset)  slimSlot(bracket.reset);
+    // Also slim the top-level competitors array
+    if (bracket.competitors) bracket.competitors = bracket.competitors.map(slimCompetitor);
+    // Pool-play pools
+    (bracket.pools || []).forEach(pool => {
+        (pool.matches || []).forEach(slimSlot);
+        if (pool.competitors) pool.competitors = pool.competitors.map(slimCompetitor);
+    });
+    return bracket;
+}
+
 // Database Storage using localStorage
 class Database {
     constructor() {
@@ -2184,7 +2236,7 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
     }
 
     if (changed) {
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+        saveBrackets(brackets);
         console.log(`Updated competitor ${competitorId} in brackets`);
     }
 }
@@ -2554,7 +2606,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     }
 
     brackets[bracketId] = bracket;
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     console.log(`Bracket generated: ${bracketId}`);
 }
@@ -2726,7 +2778,7 @@ function lockBracket(bracketId) {
 
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
@@ -2759,7 +2811,7 @@ function unlockBracket(bracketId) {
 
     bracket.locked = false;
     delete bracket.lockedAt;
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     loadBrackets();
@@ -2778,7 +2830,7 @@ function autoLockBracketOnMatchStart(bracketId) {
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
     bracket.autoLocked = true; // Flag to indicate it was auto-locked
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 }
 
 function loadCompetitors(skipSync = false) {
@@ -3087,7 +3139,7 @@ function generateTestCompetitors() {
         }
     }
     bracketIdsToDelete.forEach(id => delete brackets[id]);
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
     console.log(`  Deleted ${bracketIdsToDelete.length} brackets`);
 
     // Clear teams for current tournament's events
@@ -7110,7 +7162,7 @@ function generateBracketsForAllDivisions() {
             const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
             brackets[bracketId] = bracket;
-            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+            saveBrackets(brackets);
             successCount++;
         }
     });
@@ -7262,7 +7314,7 @@ function generateBrackets(event) {
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
     brackets[bracketId] = bracket;
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // If a mat was assigned, auto-add this division to the mat schedule
     if (matAssignment) {
@@ -8414,7 +8466,7 @@ function loadBrackets() {
 
     // Save if we cleaned anything
     if (cleaned) {
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+        saveBrackets(brackets);
     }
 
     const eventTypes = db.load('eventTypes');
@@ -8809,7 +8861,7 @@ function saveBracketChanges() {
     // Save to localStorage
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     brackets[currentViewingBracket.id] = currentViewingBracket;
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Sync to server (debounced)
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
@@ -9853,7 +9905,7 @@ function transferCompetitor(targetDivisionName, eventId) {
         }
 
         // Save brackets (with deletions)
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(allBrackets));
+        saveBrackets(allBrackets);
         console.log('Brackets saved after deletions');
 
         console.log('=== TRANSFER COMPLETE ===');
@@ -9879,7 +9931,7 @@ function deleteBracket(bracketId) {
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     delete brackets[bracketId];
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Delete from server (fire-and-forget)
     if (currentTournamentId) {
@@ -10340,7 +10392,7 @@ function loadScheduleGrid() {
         }
     });
     if (cleaned) {
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+        saveBrackets(brackets);
     }
 
     // Get all divisions that have brackets with competitors (ready to be scheduled)
@@ -11951,7 +12003,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         if (currentMatch && currentMatch.status === 'pending') {
             currentMatch.status = 'in-progress';
             brackets[window.currentBracketId] = currentBracket;
-            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+            saveBrackets(brackets);
         }
     }
 
@@ -12966,7 +13018,7 @@ function kataFlagsDeclareWinner() {
     }
 
     // Save updated bracket
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Save to results/history
     const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
@@ -14013,7 +14065,7 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
                 }
 
                 // Save updated bracket
-                localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+                saveBrackets(brackets);
             }
         }
     }
@@ -14333,7 +14385,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
     }
 
     // Save updated bracket
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Save to results/history
     const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
@@ -14721,7 +14773,7 @@ function submitKataScores(isFlags) {
             performance.averageScore = finalScore;
             performance.completed = true;
 
-            localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+            saveBrackets(brackets);
             break;
         }
     }
@@ -15129,7 +15181,7 @@ function submitRankingListScore(numJudges) {
     }
 
     // Save
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Sync 'submitted' status to TV (brief hold before transition)
     updateRankingListTVDisplay(bracket, allScored ? 'complete' : 'submitted');
@@ -15960,7 +16012,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
     scored.forEach((e, idx) => { e.rank = idx + 1; });
 
     // Save
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     // Sync TV display
     if (currentRankingListBracket) {
@@ -16218,7 +16270,7 @@ function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
     }
 
     // Save
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
 
     showMessage(`Match result updated`, 'success');
 
