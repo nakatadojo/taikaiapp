@@ -7204,6 +7204,8 @@ function deleteTemplate(templateId) {
 }
 
 function saveDivisionTemplate() {
+    if (!ensureTournamentSelected()) return;
+
     const eventSelector = document.getElementById('division-event-selector');
     // Accept eventId from the Events-tab context (_currentBuilderEventId) or the Divisions-tab selector
     const eventId = _currentBuilderEventId || eventSelector?.value;

@@ -2938,12 +2938,15 @@
             const data = await res.json();
             const t = data.tournament;
 
-            // Inject tournament into localStorage so app.js can use it
+            // Inject tournament into localStorage so app.js can use it.
+            // Always use the URL's tournamentId as the key (not t.id which may be a
+            // different format from the DB), so all localStorage scoping stays consistent
+            // with what _initFromURL set for currentTournamentId.
             const tournaments = JSON.parse(localStorage.getItem('tournaments') || '[]');
-            const existing = tournaments.find(x => String(x.id) === String(t.id));
+            const existing = tournaments.find(x => String(x.id) === String(tournamentId) || String(x.id) === String(t.id));
             if (!existing) {
                 tournaments.push({
-                    id: t.id,
+                    id: tournamentId,  // use the URL's ID — must match currentTournamentId
                     name: t.name,
                     date: t.date,
                     location: t.location || t.venue_name || '',
@@ -3080,16 +3083,26 @@
                 console.warn('Could not load server data:', e.message);
             }
 
-            // Reload the tournament selector and auto-select
+            // Reload the tournament selector and auto-select.
+            // Use tournamentId (from URL) as the selector value — this must match
+            // currentTournamentId that _initFromURL already set, so no scope shift occurs.
             loadTournamentSelector();
             const select = document.getElementById('active-tournament');
-            select.value = t.id;
+            // Ensure an option exists for the URL's tournamentId (selector was built from
+            // localStorage tournaments which now uses tournamentId as the id)
+            if (select && !Array.from(select.options).some(o => o.value === tournamentId)) {
+                const opt = document.createElement('option');
+                opt.value = tournamentId;
+                opt.textContent = t.name || tournamentId;
+                select.appendChild(opt);
+            }
+            select.value = tournamentId;
             switchTournament();
 
             // Auto-generate scoreboard config from sanctioning body (after switchTournament sets currentTournamentId)
             if (t.sanctioning_body && typeof autoGenerateScoreboardConfig === 'function') {
                 const existing = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null');
-                if (!existing || String(existing.tournamentId) !== String(t.id)) {
+                if (!existing || (String(existing.tournamentId) !== String(t.id) && String(existing.tournamentId) !== String(tournamentId))) {
                     autoGenerateScoreboardConfig(t.sanctioning_body);
                 }
                 // Load it into the Scoreboard Setup form
