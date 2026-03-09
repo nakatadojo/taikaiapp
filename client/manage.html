@@ -377,12 +377,13 @@
                     <div class="nav-group-label">Tournament</div>
                     <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
                     <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
-                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Instructors</button>
+                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
+                    <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> Officials</button>
+                    <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> Staff</button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
                     <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> Staging</button>
-                    <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
                     <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
                     <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
@@ -847,16 +848,16 @@
                 </div>
             </section>
 
-            <!-- Instructors View -->
+            <!-- Coaches View -->
             <section id="instructors-view" class="view">
-                <h2>Instructors</h2>
+                <h2>Coaches</h2>
                 <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                    <button class="btn btn-primary" onclick="showInstructorForm()">+ Add Instructor</button>
-                    <button class="btn btn-danger btn-small" onclick="clearAllInstructors()">🗑️ Clear All Instructors</button>
+                    <button class="btn btn-primary" onclick="showInstructorForm()">+ Add Coach</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllInstructors()">🗑️ Clear All Coaches</button>
                 </div>
 
                 <div id="instructor-form-container" class="glass-panel hidden">
-                    <h3>Instructor Registration</h3>
+                    <h3>Coach Registration</h3>
                     <form id="instructor-form">
                         <div class="form-grid">
                             <div class="form-group">
@@ -903,14 +904,14 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">Save Instructor</button>
+                            <button type="submit" class="btn btn-primary">Save Coach</button>
                             <button type="button" class="btn btn-secondary" onclick="hideInstructorForm()">Cancel</button>
                         </div>
                     </form>
                 </div>
 
                 <div class="table-container">
-                    <input type="text" id="instructor-search" placeholder="Search instructors..." onkeyup="filterInstructors()">
+                    <input type="text" id="instructor-search" placeholder="Search coaches..." onkeyup="filterInstructors()">
                     <table id="instructors-table">
                         <thead>
                             <tr>
@@ -2462,6 +2463,226 @@
                                 <input type="radio" name="staging-divisions-per-slide" value="next5" onchange="saveStagingSettings()">
                                 <span><strong>Next 5 divisions</strong><br><span class="hint" style="font-size:12px;">Shows up to 5 divisions from the current position.</span></span>
                             </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===== OFFICIALS VIEW ===== -->
+            <section id="officials-view" class="view">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h2 style="margin-bottom:4px;">Officials</h2>
+                        <p class="hint" style="margin:0;">Manage tournament officials, assignments, and badges.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-secondary" onclick="printAllOfficialBadges()">🖨 Print All Badges</button>
+                        <button class="btn btn-primary" onclick="showOfficialForm()">+ Add Official</button>
+                    </div>
+                </div>
+                <input type="text" id="official-search" placeholder="Search officials..." oninput="filterOfficials()" style="margin-bottom:16px;width:100%;max-width:400px;display:block;">
+
+                <!-- Add/Edit Form -->
+                <div id="official-form-panel" class="glass-panel hidden" style="margin-bottom:20px;">
+                    <h3 id="official-form-title" style="margin-bottom:16px;">Add Official</h3>
+                    <form id="official-form" onsubmit="saveOfficial(event)">
+                        <input type="hidden" id="official-edit-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>First Name *</label>
+                                <input type="text" id="official-first-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Last Name *</label>
+                                <input type="text" id="official-last-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Dojo / Affiliation</label>
+                                <input type="text" id="official-dojo">
+                            </div>
+                            <div class="form-group">
+                                <label>Certification Level</label>
+                                <select id="official-cert-level">
+                                    <option value="">Select level</option>
+                                    <option>Local</option>
+                                    <option>Regional</option>
+                                    <option>National</option>
+                                    <option>International</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="official-email">
+                            </div>
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="official-phone">
+                            </div>
+                            <div class="form-group">
+                                <label>Photo</label>
+                                <input type="file" id="official-photo" accept="image/*" onchange="onOfficialPhotoChange(event)">
+                                <div id="official-photo-preview" class="photo-preview hidden">
+                                    <img id="official-photo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearOfficialPhoto()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Official</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideOfficialForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Officials Card Grid -->
+                <div id="officials-grid" class="personnel-grid"></div>
+
+                <!-- Assignment Modal -->
+                <div id="official-assignment-modal" class="modal hidden">
+                    <div class="modal-content" style="max-width:600px;">
+                        <h3 id="official-assignment-title" style="margin-bottom:16px;">Assignments</h3>
+                        <input type="hidden" id="official-assignment-person-id">
+                        <div id="official-assignment-list" style="margin-bottom:16px;"></div>
+                        <div class="glass-panel" style="margin-bottom:16px;">
+                            <h4 style="margin-bottom:12px;">Add Assignment</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Mat</label>
+                                    <select id="official-assign-mat"><option value="">Select mat</option></select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Role</label>
+                                    <select id="official-assign-role">
+                                        <option value="">Select role</option>
+                                        <option>Chief Official</option>
+                                        <option>Center Official</option>
+                                        <option>Corner Official</option>
+                                        <option>Arbitrator</option>
+                                        <option>Referee</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Time Slot</label>
+                                    <input type="text" id="official-assign-time" placeholder="e.g. Morning, 9:00–12:00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Event / Division (optional)</label>
+                                    <input type="text" id="official-assign-division" placeholder="e.g. Male Kumite -75kg">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-small" onclick="addOfficialAssignment()" style="margin-top:8px;">Add</button>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-secondary" onclick="closeOfficialAssignmentModal()">Done</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===== STAFF VIEW ===== -->
+            <section id="staff-view" class="view">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h2 style="margin-bottom:4px;">Staff</h2>
+                        <p class="hint" style="margin:0;">Manage tournament staff, assignments, and badges.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-secondary" onclick="printAllStaffBadges()">🖨 Print All Badges</button>
+                        <button class="btn btn-primary" onclick="showStaffForm()">+ Add Staff</button>
+                    </div>
+                </div>
+                <input type="text" id="staff-search" placeholder="Search staff..." oninput="filterStaff()" style="margin-bottom:16px;width:100%;max-width:400px;display:block;">
+
+                <!-- Add/Edit Form -->
+                <div id="staff-form-panel" class="glass-panel hidden" style="margin-bottom:20px;">
+                    <h3 id="staff-form-title" style="margin-bottom:16px;">Add Staff Member</h3>
+                    <form id="staff-form" onsubmit="saveStaff(event)">
+                        <input type="hidden" id="staff-edit-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>First Name *</label>
+                                <input type="text" id="staff-first-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Last Name *</label>
+                                <input type="text" id="staff-last-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Dojo / Affiliation</label>
+                                <input type="text" id="staff-dojo">
+                            </div>
+                            <div class="form-group">
+                                <label>Position</label>
+                                <select id="staff-position">
+                                    <option value="">Select position</option>
+                                    <option>Table Official</option>
+                                    <option>Timekeeper</option>
+                                    <option>Announcer</option>
+                                    <option>Medical</option>
+                                    <option>General Staff</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="staff-email">
+                            </div>
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="tel" id="staff-phone">
+                            </div>
+                            <div class="form-group">
+                                <label>Photo</label>
+                                <input type="file" id="staff-photo" accept="image/*" onchange="onStaffPhotoChange(event)">
+                                <div id="staff-photo-preview" class="photo-preview hidden">
+                                    <img id="staff-photo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearStaffPhoto()">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Save Staff</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideStaffForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Staff Card Grid -->
+                <div id="staff-grid" class="personnel-grid"></div>
+
+                <!-- Assignment Modal -->
+                <div id="staff-assignment-modal" class="modal hidden">
+                    <div class="modal-content" style="max-width:600px;">
+                        <h3 id="staff-assignment-title" style="margin-bottom:16px;">Assignments</h3>
+                        <input type="hidden" id="staff-assignment-person-id">
+                        <div id="staff-assignment-list" style="margin-bottom:16px;"></div>
+                        <div class="glass-panel" style="margin-bottom:16px;">
+                            <h4 style="margin-bottom:12px;">Add Assignment</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Mat / Area</label>
+                                    <select id="staff-assign-mat"><option value="">Select mat</option></select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Role</label>
+                                    <select id="staff-assign-role">
+                                        <option value="">Select role</option>
+                                        <option>Table Official</option>
+                                        <option>Timekeeper</option>
+                                        <option>Scorekeeper</option>
+                                        <option>Announcer</option>
+                                        <option>Medical</option>
+                                        <option>General Staff</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Time Slot</label>
+                                    <input type="text" id="staff-assign-time" placeholder="e.g. All Day, 9:00–13:00">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-small" onclick="addStaffAssignment()" style="margin-top:8px;">Add</button>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-secondary" onclick="closeStaffAssignmentModal()">Done</button>
                         </div>
                     </div>
                 </div>

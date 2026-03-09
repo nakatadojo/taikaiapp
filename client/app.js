@@ -1285,6 +1285,12 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'staging-settings') {
             loadStagingSettings();
         }
+        if (view === 'officials') {
+            loadOfficials();
+        }
+        if (view === 'staff') {
+            loadStaff();
+        }
     });
 });
 
@@ -1359,6 +1365,8 @@ function compressImage(dataUrl, maxWidth, maxHeight, quality) {
 
 // Photo preview
 let currentPhotoData = null;
+let currentOfficialPhotoData = null;
+let currentStaffPhotoData = null;
 
 // Competitor edit mode (mirrors club pattern: editingClubId)
 let editingCompetitorId = null; // null = add mode, number = edit mode
@@ -4083,7 +4091,7 @@ if (instructorForm) {
         }
 
         db.add('instructors', instructor);
-        showMessage('Instructor registered successfully!');
+        showMessage('Coach registered successfully!');
         hideInstructorForm();
         loadInstructors();
         loadClubDropdown(); // Refresh club dropdown for competitors
@@ -4120,7 +4128,7 @@ function deleteInstructor(id) {
         db.delete('instructors', id);
         loadInstructors();
         loadClubDropdown(); // Refresh club dropdown
-        showMessage('Instructor deleted successfully!');
+        showMessage('Coach deleted successfully!');
     }
 }
 
@@ -10726,6 +10734,541 @@ function loadStagingView() {
 }
 
 // ─── End Staging View ─────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OFFICIALS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function _renderPersonnelAssignmentList(containerId, personId, assignments, deleteFunc, labelField) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!assignments || assignments.length === 0) {
+        container.innerHTML = '<p class="hint">No assignments yet.</p>';
+        return;
+    }
+    container.innerHTML = assignments.map((a, i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--glass-border);">
+            <div style="flex:1;">
+                <span style="font-weight:600;">${a.matName || 'All Mats'}</span>
+                <span style="color:var(--text-secondary);margin-left:8px;">${a.role || ''}</span>
+                ${a.timeSlot ? `<span style="color:var(--text-secondary);margin-left:8px;">· ${a.timeSlot}</span>` : ''}
+                ${a[labelField] ? `<span style="color:var(--text-secondary);margin-left:8px;">· ${a[labelField]}</span>` : ''}
+            </div>
+            <button class="btn btn-small btn-danger" onclick="${deleteFunc}(${personId}, ${i})">Remove</button>
+        </div>`).join('');
+}
+
+// ── Load / Render ─────────────────────────────────────────────────────────────
+function _renderPersonnelCard(person, type) {
+    const name = `${person.firstName} ${person.lastName}`;
+    const roleLabel = type === 'official' ? (person.certificationLevel || '') : (person.position || '');
+    const photoHTML = person.photo
+        ? `<img class="personnel-thumb" src="${person.photo}" alt="${name}">`
+        : `<div class="personnel-thumb-placeholder">👤</div>`;
+    const assignCount = (person.assignments || []).length;
+    const printFn = type === 'official' ? 'printOfficialBadge' : 'printStaffBadge';
+    const editFn   = type === 'official' ? 'showOfficialForm'  : 'showStaffForm';
+    const assignFn = type === 'official' ? 'showOfficialAssignments' : 'showStaffAssignments';
+    const deleteFn = type === 'official' ? 'deleteOfficial'    : 'deleteStaff';
+
+    return `<div class="personnel-card" data-id="${person.id}" data-search="${name.toLowerCase()} ${(person.dojo||'').toLowerCase()} ${roleLabel.toLowerCase()}">
+        <div class="personnel-card-header">
+            ${photoHTML}
+            <div style="flex:1;min-width:0;">
+                <div class="personnel-name">${name}</div>
+                ${roleLabel ? `<div class="personnel-role">${roleLabel}</div>` : ''}
+                ${person.dojo ? `<div class="personnel-dojo">${person.dojo}</div>` : ''}
+            </div>
+        </div>
+        ${assignCount > 0 ? `<div style="font-size:0.78rem;color:var(--text-secondary);">${assignCount} assignment${assignCount !== 1 ? 's' : ''}</div>` : ''}
+        <div class="personnel-actions">
+            <button class="btn btn-small btn-secondary" onclick="${editFn}(${person.id})">Edit</button>
+            <button class="btn btn-small btn-secondary" onclick="${assignFn}(${person.id})">📋 Assign</button>
+            <button class="btn btn-small btn-secondary" onclick="${printFn}(${person.id})">🖨 Badge</button>
+            <button class="btn btn-small btn-danger" onclick="${deleteFn}(${person.id})">Delete</button>
+        </div>
+    </div>`;
+}
+
+function loadOfficials() {
+    const grid = document.getElementById('officials-grid');
+    if (!grid) return;
+    const all = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
+    if (all.length === 0) {
+        grid.innerHTML = '<p class="hint" style="padding:20px 0;">No officials added yet.</p>';
+        return;
+    }
+    grid.innerHTML = all.map(o => _renderPersonnelCard(o, 'official')).join('');
+}
+
+function loadStaff() {
+    const grid = document.getElementById('staff-grid');
+    if (!grid) return;
+    const all = db.load('staffMembers').filter(s => !currentTournamentId || s.tournamentId === currentTournamentId);
+    if (all.length === 0) {
+        grid.innerHTML = '<p class="hint" style="padding:20px 0;">No staff added yet.</p>';
+        return;
+    }
+    grid.innerHTML = all.map(s => _renderPersonnelCard(s, 'staff')).join('');
+}
+
+// ── Form show/hide ────────────────────────────────────────────────────────────
+function showOfficialForm(id) {
+    currentOfficialPhotoData = null;
+    document.getElementById('official-edit-id').value = id || '';
+    document.getElementById('official-first-name').value = '';
+    document.getElementById('official-last-name').value = '';
+    document.getElementById('official-dojo').value = '';
+    document.getElementById('official-cert-level').value = '';
+    document.getElementById('official-email').value = '';
+    document.getElementById('official-phone').value = '';
+    document.getElementById('official-photo').value = '';
+    document.getElementById('official-photo-preview').classList.add('hidden');
+    document.getElementById('official-form-title').textContent = id ? 'Edit Official' : 'Add Official';
+
+    if (id) {
+        const official = db.load('officials').find(o => o.id == id);
+        if (official) {
+            document.getElementById('official-first-name').value = official.firstName || '';
+            document.getElementById('official-last-name').value  = official.lastName  || '';
+            document.getElementById('official-dojo').value       = official.dojo      || '';
+            document.getElementById('official-cert-level').value = official.certificationLevel || '';
+            document.getElementById('official-email').value      = official.email     || '';
+            document.getElementById('official-phone').value      = official.phone     || '';
+            if (official.photo) {
+                currentOfficialPhotoData = official.photo;
+                document.getElementById('official-photo-preview-img').src = official.photo;
+                document.getElementById('official-photo-preview').classList.remove('hidden');
+            }
+        }
+    }
+    document.getElementById('official-form-panel').classList.remove('hidden');
+    document.getElementById('official-form-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideOfficialForm() {
+    document.getElementById('official-form-panel').classList.add('hidden');
+    currentOfficialPhotoData = null;
+}
+
+function showStaffForm(id) {
+    currentStaffPhotoData = null;
+    document.getElementById('staff-edit-id').value = id || '';
+    document.getElementById('staff-first-name').value = '';
+    document.getElementById('staff-last-name').value  = '';
+    document.getElementById('staff-dojo').value       = '';
+    document.getElementById('staff-position').value   = '';
+    document.getElementById('staff-email').value      = '';
+    document.getElementById('staff-phone').value      = '';
+    document.getElementById('staff-photo').value      = '';
+    document.getElementById('staff-photo-preview').classList.add('hidden');
+    document.getElementById('staff-form-title').textContent = id ? 'Edit Staff Member' : 'Add Staff Member';
+
+    if (id) {
+        const member = db.load('staffMembers').find(s => s.id == id);
+        if (member) {
+            document.getElementById('staff-first-name').value = member.firstName || '';
+            document.getElementById('staff-last-name').value  = member.lastName  || '';
+            document.getElementById('staff-dojo').value       = member.dojo      || '';
+            document.getElementById('staff-position').value   = member.position  || '';
+            document.getElementById('staff-email').value      = member.email     || '';
+            document.getElementById('staff-phone').value      = member.phone     || '';
+            if (member.photo) {
+                currentStaffPhotoData = member.photo;
+                document.getElementById('staff-photo-preview-img').src = member.photo;
+                document.getElementById('staff-photo-preview').classList.remove('hidden');
+            }
+        }
+    }
+    document.getElementById('staff-form-panel').classList.remove('hidden');
+    document.getElementById('staff-form-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideStaffForm() {
+    document.getElementById('staff-form-panel').classList.add('hidden');
+    currentStaffPhotoData = null;
+}
+
+// ── Photo upload ──────────────────────────────────────────────────────────────
+function onOfficialPhotoChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        compressImage(e.target.result, 200, 200, 0.85).then(compressed => {
+            currentOfficialPhotoData = compressed;
+            document.getElementById('official-photo-preview-img').src = compressed;
+            document.getElementById('official-photo-preview').classList.remove('hidden');
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearOfficialPhoto() {
+    currentOfficialPhotoData = null;
+    document.getElementById('official-photo').value = '';
+    document.getElementById('official-photo-preview').classList.add('hidden');
+}
+
+function onStaffPhotoChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        compressImage(e.target.result, 200, 200, 0.85).then(compressed => {
+            currentStaffPhotoData = compressed;
+            document.getElementById('staff-photo-preview-img').src = compressed;
+            document.getElementById('staff-photo-preview').classList.remove('hidden');
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearStaffPhoto() {
+    currentStaffPhotoData = null;
+    document.getElementById('staff-photo').value = '';
+    document.getElementById('staff-photo-preview').classList.add('hidden');
+}
+
+// ── Save / Delete ─────────────────────────────────────────────────────────────
+function saveOfficial(event) {
+    event.preventDefault();
+    const editId = document.getElementById('official-edit-id').value;
+    const data = {
+        tournamentId:       currentTournamentId,
+        firstName:          document.getElementById('official-first-name').value.trim(),
+        lastName:           document.getElementById('official-last-name').value.trim(),
+        dojo:               document.getElementById('official-dojo').value.trim(),
+        certificationLevel: document.getElementById('official-cert-level').value,
+        email:              document.getElementById('official-email').value.trim(),
+        phone:              document.getElementById('official-phone').value.trim() || null,
+        photo:              currentOfficialPhotoData || null,
+    };
+
+    if (editId) {
+        const records = db.load('officials');
+        const idx = records.findIndex(o => o.id == editId);
+        if (idx >= 0) {
+            records[idx] = { ...records[idx], ...data };
+            db.save('officials', records);
+        }
+    } else {
+        data.assignments = [];
+        db.add('officials', data);
+    }
+
+    hideOfficialForm();
+    loadOfficials();
+    showToast(editId ? 'Official updated' : 'Official added', 'success');
+}
+
+function deleteOfficial(id) {
+    if (!confirm('Remove this official?')) return;
+    const records = db.load('officials').filter(o => o.id != id);
+    db.save('officials', records);
+    loadOfficials();
+    showToast('Official removed', 'success');
+}
+
+function saveStaff(event) {
+    event.preventDefault();
+    const editId = document.getElementById('staff-edit-id').value;
+    const data = {
+        tournamentId: currentTournamentId,
+        firstName:    document.getElementById('staff-first-name').value.trim(),
+        lastName:     document.getElementById('staff-last-name').value.trim(),
+        dojo:         document.getElementById('staff-dojo').value.trim(),
+        position:     document.getElementById('staff-position').value,
+        email:        document.getElementById('staff-email').value.trim(),
+        phone:        document.getElementById('staff-phone').value.trim() || null,
+        photo:        currentStaffPhotoData || null,
+    };
+
+    if (editId) {
+        const records = db.load('staffMembers');
+        const idx = records.findIndex(s => s.id == editId);
+        if (idx >= 0) {
+            records[idx] = { ...records[idx], ...data };
+            db.save('staffMembers', records);
+        }
+    } else {
+        data.assignments = [];
+        db.add('staffMembers', data);
+    }
+
+    hideStaffForm();
+    loadStaff();
+    showToast(editId ? 'Staff updated' : 'Staff member added', 'success');
+}
+
+function deleteStaff(id) {
+    if (!confirm('Remove this staff member?')) return;
+    const records = db.load('staffMembers').filter(s => s.id != id);
+    db.save('staffMembers', records);
+    loadStaff();
+    showToast('Staff member removed', 'success');
+}
+
+// ── Search / Filter ───────────────────────────────────────────────────────────
+function filterOfficials() {
+    const q = (document.getElementById('official-search')?.value || '').toLowerCase();
+    document.querySelectorAll('#officials-grid .personnel-card').forEach(card => {
+        card.style.display = !q || card.dataset.search.includes(q) ? '' : 'none';
+    });
+}
+
+function filterStaff() {
+    const q = (document.getElementById('staff-search')?.value || '').toLowerCase();
+    document.querySelectorAll('#staff-grid .personnel-card').forEach(card => {
+        card.style.display = !q || card.dataset.search.includes(q) ? '' : 'none';
+    });
+}
+
+// ── Assignments ───────────────────────────────────────────────────────────────
+function _populateMatSelect(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const mats = db.load('mats') || [];
+    select.innerHTML = '<option value="">Select mat</option>' +
+        mats.map(m => `<option value="${m.id}" data-name="${m.name}">${m.name}</option>`).join('');
+}
+
+function showOfficialAssignments(officialId) {
+    const official = db.load('officials').find(o => o.id == officialId);
+    if (!official) return;
+    document.getElementById('official-assignment-person-id').value = officialId;
+    document.getElementById('official-assignment-title').textContent =
+        `Assignments — ${official.firstName} ${official.lastName}`;
+    _renderPersonnelAssignmentList('official-assignment-list', officialId,
+        official.assignments || [], 'deleteOfficialAssignment', 'divisionName');
+    _populateMatSelect('official-assign-mat');
+    document.getElementById('official-assign-role').value = '';
+    document.getElementById('official-assign-time').value = '';
+    document.getElementById('official-assign-division').value = '';
+    document.getElementById('official-assignment-modal').classList.remove('hidden');
+}
+
+function addOfficialAssignment() {
+    const id     = document.getElementById('official-assignment-person-id').value;
+    const matSel = document.getElementById('official-assign-mat');
+    const matId  = matSel.value;
+    const matName = matId ? (matSel.options[matSel.selectedIndex]?.dataset.name || matId) : 'All Mats';
+    const role   = document.getElementById('official-assign-role').value;
+    const time   = document.getElementById('official-assign-time').value.trim();
+    const div    = document.getElementById('official-assign-division').value.trim();
+
+    const records = db.load('officials');
+    const idx = records.findIndex(o => o.id == id);
+    if (idx < 0) return;
+    if (!records[idx].assignments) records[idx].assignments = [];
+    records[idx].assignments.push({ matId, matName, role, timeSlot: time, divisionName: div });
+    db.save('officials', records);
+
+    _renderPersonnelAssignmentList('official-assignment-list', id,
+        records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
+    document.getElementById('official-assign-mat').value  = '';
+    document.getElementById('official-assign-role').value = '';
+    document.getElementById('official-assign-time').value = '';
+    document.getElementById('official-assign-division').value = '';
+    loadOfficials();
+}
+
+function deleteOfficialAssignment(officialId, index) {
+    const records = db.load('officials');
+    const idx = records.findIndex(o => o.id == officialId);
+    if (idx < 0) return;
+    records[idx].assignments.splice(index, 1);
+    db.save('officials', records);
+    _renderPersonnelAssignmentList('official-assignment-list', officialId,
+        records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
+    loadOfficials();
+}
+
+function closeOfficialAssignmentModal() {
+    document.getElementById('official-assignment-modal').classList.add('hidden');
+}
+
+function showStaffAssignments(staffId) {
+    const member = db.load('staffMembers').find(s => s.id == staffId);
+    if (!member) return;
+    document.getElementById('staff-assignment-person-id').value = staffId;
+    document.getElementById('staff-assignment-title').textContent =
+        `Assignments — ${member.firstName} ${member.lastName}`;
+    _renderPersonnelAssignmentList('staff-assignment-list', staffId,
+        member.assignments || [], 'deleteStaffAssignment', 'area');
+    _populateMatSelect('staff-assign-mat');
+    document.getElementById('staff-assign-role').value = '';
+    document.getElementById('staff-assign-time').value = '';
+    document.getElementById('staff-assignment-modal').classList.remove('hidden');
+}
+
+function addStaffAssignment() {
+    const id     = document.getElementById('staff-assignment-person-id').value;
+    const matSel = document.getElementById('staff-assign-mat');
+    const matId  = matSel.value;
+    const matName = matId ? (matSel.options[matSel.selectedIndex]?.dataset.name || matId) : 'All Areas';
+    const role   = document.getElementById('staff-assign-role').value;
+    const time   = document.getElementById('staff-assign-time').value.trim();
+
+    const records = db.load('staffMembers');
+    const idx = records.findIndex(s => s.id == id);
+    if (idx < 0) return;
+    if (!records[idx].assignments) records[idx].assignments = [];
+    records[idx].assignments.push({ matId, matName, role, timeSlot: time });
+    db.save('staffMembers', records);
+
+    _renderPersonnelAssignmentList('staff-assignment-list', id,
+        records[idx].assignments, 'deleteStaffAssignment', 'area');
+    document.getElementById('staff-assign-mat').value  = '';
+    document.getElementById('staff-assign-role').value = '';
+    document.getElementById('staff-assign-time').value = '';
+    loadStaff();
+}
+
+function deleteStaffAssignment(staffId, index) {
+    const records = db.load('staffMembers');
+    const idx = records.findIndex(s => s.id == staffId);
+    if (idx < 0) return;
+    records[idx].assignments.splice(index, 1);
+    db.save('staffMembers', records);
+    _renderPersonnelAssignmentList('staff-assignment-list', staffId,
+        records[idx].assignments, 'deleteStaffAssignment', 'area');
+    loadStaff();
+}
+
+function closeStaffAssignmentModal() {
+    document.getElementById('staff-assignment-modal').classList.add('hidden');
+}
+
+// ── Badge Printing ─────────────────────────────────────────────────────────────
+function _getBadgePrintCSS() {
+    return `
+        @page { size: letter portrait; margin: 0.4in; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; }
+        .badge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; }
+        .badge-card {
+            width: 3.4in; height: 4.3in;
+            border: 2px solid #222; border-radius: 10px;
+            padding: 0.18in;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            page-break-inside: avoid; break-inside: avoid; overflow: hidden;
+        }
+        .badge-logo { height: 30px; width: auto; margin-bottom: 6px; }
+        .badge-divider { width: 90%; height: 1px; background: #ccc; margin: 5px 0; }
+        .badge-photo {
+            width: 88px; height: 88px; border-radius: 50%;
+            object-fit: cover; border: 2px solid #333;
+            background: #eee; margin: 8px 0;
+        }
+        .badge-photo-placeholder {
+            width: 88px; height: 88px; border-radius: 50%;
+            background: #eee; display: flex; align-items: center;
+            justify-content: center; font-size: 2rem; margin: 8px 0; color: #aaa;
+        }
+        .badge-name { font-size: 0.95rem; font-weight: 700; margin-bottom: 3px; line-height: 1.2; }
+        .badge-role { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #444; margin-bottom: 2px; }
+        .badge-dojo { font-size: 0.7rem; color: #666; }
+        .badge-footer { margin-top: auto; padding-top: 8px; display: flex; align-items: center; gap: 8px; width: 100%; }
+        .badge-qr { width: 58px; height: 58px; flex-shrink: 0; }
+        .badge-tournament { font-size: 0.6rem; color: #888; text-align: left; flex: 1; line-height: 1.4; }
+    `;
+}
+
+function _generateBadgeCardHTML(person, roleLabel, tournamentName) {
+    const fullName = `${person.firstName} ${person.lastName}`;
+    const qrData   = encodeURIComponent(`${fullName} | ${roleLabel} | ${tournamentName}`);
+    const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${qrData}`;
+
+    const photoHTML = person.photo
+        ? `<img class="badge-photo" src="${person.photo}" alt="${fullName}">`
+        : `<div class="badge-photo-placeholder">👤</div>`;
+
+    return `<div class="badge-card">
+        <img class="badge-logo" data-taikai-logo alt="Taikai">
+        <div class="badge-divider"></div>
+        ${photoHTML}
+        <div class="badge-name">${fullName}</div>
+        ${roleLabel ? `<div class="badge-role">${roleLabel}</div>` : ''}
+        ${person.dojo ? `<div class="badge-dojo">${person.dojo}</div>` : ''}
+        <div class="badge-footer">
+            <img class="badge-qr" src="${qrSrc}" alt="QR">
+            <div class="badge-tournament">${tournamentName}</div>
+        </div>
+    </div>`;
+}
+
+function _openBadgePrintWindow(cardsHTML, tournamentName) {
+    // Get the taikai logo base64 from window.TAIKAI_LOGO (set by taikai-logo.js)
+    const logoScript = window.TAIKAI_LOGO
+        ? `<script>window.TAIKAI_LOGO = '${window.TAIKAI_LOGO}';<\/script>
+           <script>document.querySelectorAll('[data-taikai-logo]').forEach(el=>{el.src=window.TAIKAI_LOGO;});<\/script>`
+        : '';
+
+    const html = `<!DOCTYPE html><html><head>
+        <meta charset="UTF-8">
+        <title>Badges — ${tournamentName}</title>
+        <style>${_getBadgePrintCSS()}</style>
+    </head><body>
+        <div class="badge-grid">${cardsHTML}</div>
+        ${logoScript}
+        <script>
+            // Populate taikai logos
+            if (window.TAIKAI_LOGO) {
+                document.querySelectorAll('[data-taikai-logo]').forEach(el => { el.src = window.TAIKAI_LOGO; });
+            }
+            // Wait for images then print
+            window.addEventListener('load', function() { setTimeout(function(){ window.print(); }, 500); });
+        <\/script>
+    </body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=700,noopener');
+    if (!w) { showToast('Allow popups to print badges', 'warning'); return; }
+    w.document.write(html);
+    w.document.close();
+}
+
+function _getTournamentName() {
+    const tournaments = db.load ? db.load('tournaments') : [];
+    const t = (tournaments || []).find(t => t.id === currentTournamentId);
+    return t ? t.name : 'Tournament';
+}
+
+function printOfficialBadge(id) {
+    const official = db.load('officials').find(o => o.id == id);
+    if (!official) return;
+    const role = official.certificationLevel || 'Official';
+    const card = _generateBadgeCardHTML(official, role, _getTournamentName());
+    _openBadgePrintWindow(card, _getTournamentName());
+}
+
+function printAllOfficialBadges() {
+    const officials = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
+    if (officials.length === 0) { showToast('No officials to print', 'warning'); return; }
+    const tName = _getTournamentName();
+    const cards = officials.map(o => _generateBadgeCardHTML(o, o.certificationLevel || 'Official', tName)).join('');
+    _openBadgePrintWindow(cards, tName);
+}
+
+function printStaffBadge(id) {
+    const member = db.load('staffMembers').find(s => s.id == id);
+    if (!member) return;
+    const role = member.position || 'Staff';
+    const card = _generateBadgeCardHTML(member, role, _getTournamentName());
+    _openBadgePrintWindow(card, _getTournamentName());
+}
+
+function printAllStaffBadges() {
+    const members = db.load('staffMembers').filter(s => !currentTournamentId || s.tournamentId === currentTournamentId);
+    if (members.length === 0) { showToast('No staff to print', 'warning'); return; }
+    const tName = _getTournamentName();
+    const cards = members.map(s => _generateBadgeCardHTML(s, s.position || 'Staff', tName)).join('');
+    _openBadgePrintWindow(cards, tName);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END OFFICIALS & STAFF
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // Drag and Drop Schedule Grid with Dynamic Timeline
 function loadScheduleGrid() {
