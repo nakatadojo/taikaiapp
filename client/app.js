@@ -563,6 +563,31 @@ async function _hydrateEventTypesFromServer() {
             price: e.price_override != null ? parseFloat(e.price_override) : null,
         }));
         db.save('eventTypes', mapped);
+
+        // Also hydrate division templates from server criteriaTemplates so
+        // autoAssignToDivisions() can find templates for wizard-created events.
+        const currentDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        let divisionsUpdated = false;
+        serverEvents.forEach(e => {
+            if (e.is_default) return; // default event has no division templates
+            let templates = e.criteria_templates || [];
+            if (typeof templates === 'string') {
+                try { templates = JSON.parse(templates); } catch(_) { templates = []; }
+            }
+            if (templates.length > 0) {
+                if (!currentDivisions[e.id]) {
+                    currentDivisions[e.id] = { templates: [], generated: {} };
+                }
+                // Server always wins on templates (wizard is the canonical source)
+                currentDivisions[e.id].templates = templates;
+                divisionsUpdated = true;
+                console.log(`[sync] Hydrated ${templates.length} template(s) for event: ${e.name}`);
+            }
+        });
+        if (divisionsUpdated) {
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+        }
+
         if (typeof loadEventTypes === 'function') loadEventTypes();
         if (typeof loadEventTypeSelector === 'function') loadEventTypeSelector();
     } catch (e) {
@@ -814,11 +839,10 @@ async function _loadTeamsFromServer() {
         });
         if (!res.ok) return; // silently skip if server not available
         const data = await res.json();
-        if (data.teams && Object.keys(data.teams).length > 0) {
-            const localTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
-            // Only overwrite if local is empty (server is source of truth for initial load)
-            if (Object.keys(localTeams).length === 0) {
-                localStorage.setItem(_scopedKey('teams'), JSON.stringify(data.teams));
+        if (data.teams) {
+            // Server always wins — always overwrite local so data is consistent across browsers
+            localStorage.setItem(_scopedKey('teams'), JSON.stringify(data.teams));
+            if (Object.keys(data.teams).length > 0) {
                 console.log(`[sync] Loaded ${Object.keys(data.teams).length} team(s) from server`);
             }
         }
@@ -853,8 +877,7 @@ async function _loadBracketsFromServer() {
 }
 
 /**
- * Load results from the server into localStorage.
- * Only hydrates when local is empty — server is the authoritative backup.
+ * Load results from the server. Server always wins.
  */
 async function _loadResultsFromServer() {
     if (!currentTournamentId) return;
@@ -865,15 +888,50 @@ async function _loadResultsFromServer() {
         if (!res.ok) return;
         const data = await res.json();
         const serverResults = data.results || [];
+        // Server always wins — write regardless of local state
+        db.save('results', serverResults);
         if (serverResults.length > 0) {
-            const localResults = db.load('results');
-            if (!localResults || localResults.length === 0) {
-                db.save('results', serverResults);
-                console.log(`[sync] Loaded ${serverResults.length} result(s) from server`);
-            }
+            console.log(`[sync] Loaded ${serverResults.length} result(s) from server`);
         }
     } catch (err) {
         console.warn('[sync] Failed to load results from server:', err.message);
+    }
+}
+
+/**
+ * Load generated divisions from the server and merge with local division templates.
+ * Templates come from _hydrateEventTypesFromServer (criteria_templates on tournament_events).
+ * Generated divisions come from this function (generated_divisions on tournaments).
+ * Together they give autoAssignToDivisions() everything it needs.
+ */
+async function _loadDivisionsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverGenerated = data.generatedDivisions || {};
+        if (Object.keys(serverGenerated).length === 0) return;
+
+        // Merge server generatedDivisions into local divisions
+        // (templates already hydrated by _hydrateEventTypesFromServer)
+        const currentDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        Object.keys(serverGenerated).forEach(eventId => {
+            if (!currentDivisions[eventId]) {
+                currentDivisions[eventId] = { templates: [], generated: {} };
+            }
+            // Server generated is authoritative for the division groupings
+            currentDivisions[eventId].generated = serverGenerated[eventId]?.generated || serverGenerated[eventId] || {};
+            if (serverGenerated[eventId]?.updatedAt) {
+                currentDivisions[eventId].updatedAt = serverGenerated[eventId].updatedAt;
+            }
+        });
+        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+        console.log(`[sync] Loaded generated divisions for ${Object.keys(serverGenerated).length} event(s) from server`);
+    } catch (err) {
+        console.warn('[sync] Failed to load divisions from server:', err.message);
     }
 }
 
@@ -1266,10 +1324,16 @@ loadTournamentSelector();
         _migrateUnscopedData();
         db.init();
         document.getElementById('main-nav')?.classList.remove('hidden');
-        // Hydrate from server — server is source of truth for event types + competitors
+        // Hydrate from server — server is source of truth for all data.
+        // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
+        // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
         _hydrateEventTypesFromServer().then(() => {
             loadCompetitors();
             loadDashboard();
+            // Load generated divisions AFTER templates are hydrated from event types
+            return _loadDivisionsFromServer();
+        }).then(() => {
+            if (typeof loadDivisions === 'function') loadDivisions();
         });
         _loadCompetitorsFromServer().then(() => {
             loadCompetitors();
@@ -3103,6 +3167,8 @@ function autoAssignToDivisions(competitor, competitorId) {
     });
 
     localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
+    // Persist auto-generated divisions to server so they survive page refreshes
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
     console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
 }
 
