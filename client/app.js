@@ -4490,8 +4490,13 @@ function clearAllCompetitors() {
             // Clear competitors
             db.clear('competitors');
 
-            // Clear all divisions for current tournament
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify({}));
+            // Clear generated divisions but PRESERVE templates — wiping to {} would
+            // delete division templates that the director spent time configuring.
+            const divisions = db.load('divisions');
+            for (const eventId of Object.keys(divisions)) {
+                if (divisions[eventId]) divisions[eventId].generated = {};
+            }
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
 
             // Clear mat schedule
             localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify({}));
