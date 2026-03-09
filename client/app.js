@@ -787,6 +787,38 @@ function switchTournament() {
         loadCompetitors();
         loadDashboard();
         _loadTeamsFromServer();
+
+        // Reload whichever view is currently active so it shows the new tournament's data
+        const activeView = document.querySelector('.view.active');
+        if (activeView) {
+            const viewName = activeView.id.replace(/-view$/, '');
+            const viewLoaders = {
+                'divisions':               () => { loadEventTypeSelector(); loadTemplateSelector(); loadDivisions(); },
+                'brackets':                () => loadBrackets(),
+                'schedule':                () => { displayMats(); loadMatSchedule(); },
+                'events':                  () => { loadEventTypes(); loadEventTypeSelector(); },
+                'clubs':                   () => loadClubs(),
+                'instructors':             () => loadInstructors(),
+                'officials':               () => loadOfficials(),
+                'staff':                   () => loadStaff(),
+                'results':                 () => loadResults(),
+                'settings':                () => loadSettings(),
+                'settings-tournament-info':() => loadTournamentInfoView(),
+                'settings-pricing':        () => loadPricingView(),
+                'settings-certificates':   () => loadCertificatesView(),
+                'settings-sponsors':       () => loadSponsorsView(),
+                'settings-feedback':       () => loadFeedbackView(),
+                'staging':                 () => loadStagingView(),
+                'staging-settings':        () => loadStagingSettings(),
+                'checkin':                 () => loadCheckinView(),
+                'judge-analytics':         () => loadJudgeAnalyticsView(),
+                'medical-incidents':       () => loadMedicalIncidents(),
+                'scoreboard-configs':      () => loadUnifiedScoreboardConfig(),
+                'academy':                 () => loadAcademyView(),
+            };
+            const loader = viewLoaders[viewName];
+            if (loader) loader();
+        }
     } else {
         document.getElementById('main-nav').classList.add('hidden');
     }
@@ -19727,14 +19759,18 @@ function loadTournamentInfoView() {
         return;
     }
 
-    // Fetch live registration_open status from server, then render
-    fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' })
-        .then(r => r.ok ? r.json() : null)
-        .then(serverT => {
-            const regOpen = serverT ? serverT.registration_open : (t.registration_open || false);
-            _renderTournamentInfoContent(t, regOpen);
-        })
-        .catch(() => _renderTournamentInfoContent(t, t.registration_open || false));
+    // Fetch live registration_open status from server (UUID tournaments only), then render
+    if (_isServerTournamentId(currentTournamentId)) {
+        fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(serverT => {
+                const regOpen = serverT ? serverT.registration_open : (t.registration_open || false);
+                _renderTournamentInfoContent(t, regOpen);
+            })
+            .catch(() => _renderTournamentInfoContent(t, t.registration_open || false));
+    } else {
+        _renderTournamentInfoContent(t, t.registration_open || false);
+    }
 
     if (deleteNameEl) {
         deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
@@ -21564,6 +21600,9 @@ async function handleReviewRequest(requestId, action) {
 let syncInterval = null;
 
 async function syncRegistrationsFromServer() {
+    // Skip for localStorage-only (non-UUID) tournament IDs — server doesn't know them
+    if (currentTournamentId && !_isServerTournamentId(currentTournamentId)) return;
+
     const btn = document.getElementById('sync-server-btn');
     const status = document.getElementById('sync-status');
     if (btn) { btn.disabled = true; btn.textContent = '🔄 Syncing...'; }
