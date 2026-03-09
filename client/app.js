@@ -528,8 +528,14 @@ async function _syncJudgeVotesToServer() {
     }
 }
 
+/** Returns true if id is a proper UUID (server-created). Timestamp/localStorage IDs fail. */
+function _isServerTournamentId(id) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 async function _loadTeamsFromServer() {
     if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return; // localStorage-only tournament
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/teams`, {
             credentials: 'include',

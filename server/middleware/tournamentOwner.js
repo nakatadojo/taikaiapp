@@ -9,10 +9,16 @@ const pool = require('../db/pool');
  * Reads tournament ID from req.params.tournamentId or req.params.id.
  * Attaches req.tournament and req.isTournamentOwner to the request.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function requireTournamentOwner(req, res, next) {
   const tournamentId = req.params.tournamentId || req.params.id;
   if (!tournamentId) {
     return res.status(400).json({ error: 'Tournament ID required' });
+  }
+  // Reject non-UUID IDs immediately — prevents Postgres type errors (e.g. localStorage timestamp IDs)
+  if (!UUID_RE.test(tournamentId)) {
+    return res.status(404).json({ error: 'Tournament not found' });
   }
 
   // Use async IIFE to keep middleware signature clean
