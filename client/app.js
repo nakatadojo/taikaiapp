@@ -5330,8 +5330,14 @@ function loadEventTypes() {
 }
 
 function deleteEventType(id) {
-    if (confirm('Are you sure you want to delete this event type?')) {
+    if (confirm('Are you sure you want to delete this event type? Any division templates configured for this event will also be removed.')) {
         db.delete('eventTypes', id);
+        // Also clean up any division templates/generated data stored for this event
+        const divisions = db.load('divisions');
+        if (divisions[id]) {
+            delete divisions[id];
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+        }
         loadEventTypes();
         loadEventTypeSelector();
         showMessage('Event type deleted successfully!');
