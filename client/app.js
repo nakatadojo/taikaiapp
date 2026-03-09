@@ -1260,6 +1260,9 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'settings-tournament-info') {
             loadTournamentInfoView();
         }
+        if (view === 'settings-pricing') {
+            loadPricingView();
+        }
         if (view === 'settings-certificates') {
             loadCertificatesView();
         }
@@ -1732,6 +1735,39 @@ function updatePriceSummary() {
 
     const { breakdown, total } = calculatePricingBreakdown(selectedEventOrder, eventTypes, tournament);
 
+    // Calculate discount amount
+    let discountAmount = 0;
+    let discountLine = '';
+    if (_activeDiscount) {
+        const d = _activeDiscount;
+        if (d.scope === 'event' && d.event_id) {
+            // Discount applies only to a specific event
+            const eventItem = breakdown.find(item => String(item.eventId) === String(d.event_id));
+            if (eventItem) {
+                discountAmount = d.discount_type === 'percentage'
+                    ? eventItem.price * (d.discount_value / 100)
+                    : Math.min(d.discount_value, eventItem.price);
+            }
+        } else {
+            // Discount applies to full total
+            discountAmount = d.discount_type === 'percentage'
+                ? total * (d.discount_value / 100)
+                : Math.min(d.discount_value, total);
+        }
+        discountAmount = Math.round(discountAmount * 100) / 100;
+        const label = d.discount_type === 'percentage'
+            ? `${d.discount_value}% off`
+            : `$${parseFloat(d.discount_value).toFixed(2)} off`;
+        discountLine = `
+            <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:14px; color:#22c55e;">
+                <span>🏷 Discount (${_escapeHtml(d.code)} — ${label})</span>
+                <span style="font-weight:600;">−$${discountAmount.toFixed(2)}</span>
+            </div>
+        `;
+    }
+
+    const finalTotal = Math.max(0, total - discountAmount);
+
     breakdownEl.innerHTML = breakdown.map(item => `
         <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px;">
             <span>
@@ -1741,9 +1777,63 @@ function updatePriceSummary() {
             </span>
             <span style="font-weight: 600;">$${item.price.toFixed(2)}</span>
         </div>
-    `).join('');
+    `).join('') + discountLine;
 
-    totalEl.innerHTML = `Total: $${total.toFixed(2)}`;
+    totalEl.innerHTML = discountAmount > 0
+        ? `<span style="text-decoration:line-through; opacity:0.5; font-size:14px;">$${total.toFixed(2)}</span>&nbsp; Total: $${finalTotal.toFixed(2)}`
+        : `Total: $${total.toFixed(2)}`;
+}
+
+// ── Registration form discount code ──────────────────────────────────────────
+
+async function applyDiscountCode() {
+    const codeInput = document.getElementById('discount-code-input');
+    const infoEl    = document.getElementById('discount-code-info');
+    const removeBtn = document.getElementById('discount-remove-btn');
+    const code = codeInput?.value.trim().toUpperCase();
+
+    if (!code) { showToast('Enter a discount code first', 'error'); return; }
+    if (!currentTournamentId) { showToast('No tournament selected', 'error'); return; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/discount-codes/validate`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+        });
+        if (!res.ok) {
+            const d = await res.json();
+            if (infoEl) infoEl.innerHTML = `<span style="color:#ef4444;">✗ ${d.error || 'Invalid code'}</span>`;
+            _activeDiscount = null;
+            updatePriceSummary();
+            return;
+        }
+        const d = await res.json();
+        _activeDiscount = d;
+        const discLabel = d.discount_type === 'percentage'
+            ? `${d.discount_value}% off`
+            : `$${parseFloat(d.discount_value).toFixed(2)} off`;
+        const scopeLabel = d.scope === 'event' && d.event_name
+            ? ` on ${d.event_name}`
+            : ' your total';
+        if (infoEl) infoEl.innerHTML = `<span style="color:#22c55e; font-weight:600;">✓ ${code} — ${discLabel}${scopeLabel} applied</span>`;
+        if (removeBtn) removeBtn.style.display = '';
+        if (codeInput) codeInput.disabled = true;
+        updatePriceSummary();
+    } catch(e) {
+        if (infoEl) infoEl.innerHTML = `<span style="color:#ef4444;">✗ Could not validate code</span>`;
+    }
+}
+
+function removeDiscountCode() {
+    _activeDiscount = null;
+    const codeInput = document.getElementById('discount-code-input');
+    const infoEl    = document.getElementById('discount-code-info');
+    const removeBtn = document.getElementById('discount-remove-btn');
+    if (codeInput) { codeInput.value = ''; codeInput.disabled = false; }
+    if (infoEl) infoEl.innerHTML = '';
+    if (removeBtn) removeBtn.style.display = 'none';
+    updatePriceSummary();
 }
 
 function handleEventSelection() {
@@ -1835,6 +1925,9 @@ function handleEventSelection() {
     updateEventBadges?.();
     updatePriceSummary?.();
 }
+
+// ─── Active discount code applied in the registration form ────────────────────
+let _activeDiscount = null; // { id, code, discount_type, discount_value, scope, event_id }
 
 // ─── Team name search / autocomplete (replaces old team-code flow) ────────────
 let _selectedTeamData = null; // { code, name, memberCount, isNew }
@@ -1973,6 +2066,9 @@ function generateTeamCode() {
 
 function hideCompetitorForm() {
     editingCompetitorId = null; // Reset edit mode
+    // Reset discount code state
+    removeDiscountCode();
+    _activeDiscount = null;
     const container = document.getElementById('competitor-form-container');
     const form = document.getElementById('competitor-form');
     if (container) container.classList.add('hidden');
@@ -2251,7 +2347,21 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         pricing: calculatePricingBreakdown(selectedEvents, eventTypes, tournament),
         paymentStatus: document.getElementById('payment-status')?.value || 'unpaid',
         teamCode: teamCode,
-        teamName: teamName
+        teamName: teamName,
+        discountCodeId:   _activeDiscount?.id   || null,
+        discountCode:     _activeDiscount?.code  || null,
+        discountAmount:   _activeDiscount ? (() => {
+            const { breakdown, total } = calculatePricingBreakdown(selectedEvents, eventTypes, tournament);
+            const d = _activeDiscount;
+            let amt = 0;
+            if (d.scope === 'event' && d.event_id) {
+                const item = breakdown.find(b => String(b.eventId) === String(d.event_id));
+                if (item) amt = d.discount_type === 'percentage' ? item.price * (d.discount_value / 100) : Math.min(d.discount_value, item.price);
+            } else {
+                amt = d.discount_type === 'percentage' ? total * (d.discount_value / 100) : Math.min(d.discount_value, total);
+            }
+            return Math.round(amt * 100) / 100;
+        })() : 0,
     };
 
     if (editingCompetitorId) {
@@ -18797,6 +18907,342 @@ function openStagingDisplay() {
 function loadSettings() {
     // Settings view now contains only Staff Roles — no additional loading needed
     // Staff roles render via createStaffRole()/etc. on demand
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRICING SETTINGS — Pricing Periods + Discount Codes
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function loadPricingView() {
+    if (!currentTournamentId) return;
+    await Promise.all([loadPricingPeriods(), loadDiscountCodes()]);
+}
+
+// ── Pricing Periods ──────────────────────────────────────────────────────────
+
+async function loadPricingPeriods() {
+    if (!currentTournamentId) return;
+    const container = document.getElementById('pricing-periods-list');
+    if (!container) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/pricing-periods`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load');
+        const { periods, activeId } = await res.json();
+
+        if (!periods || periods.length === 0) {
+            container.innerHTML = '<p class="hint">No pricing periods set — event type prices apply at all times.</p>';
+            return;
+        }
+
+        container.innerHTML = periods.map(p => {
+            const isActive = p.id === activeId;
+            const start = new Date(p.start_date).toLocaleDateString();
+            const end   = new Date(p.end_date).toLocaleDateString();
+            const activeBadge = isActive
+                ? `<span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;margin-left:8px;">ACTIVE NOW</span>`
+                : '';
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--bg-primary);border-radius:8px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
+                    <div style="flex:1; min-width:200px;">
+                        <div style="font-weight:600;">${_escapeHtml(p.name)}${activeBadge}</div>
+                        <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${start} → ${end}</div>
+                        <div style="font-size:0.85rem;margin-top:4px;">
+                            Primary: <strong>$${parseFloat(p.base_event_price).toFixed(2)}</strong>
+                            &nbsp;&nbsp;Add-on: <strong>$${parseFloat(p.addon_event_price).toFixed(2)}</strong>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-shrink:0;">
+                        <button class="btn btn-small" onclick="editPricingPeriod('${p.id}','${_escapeHtml(p.name)}','${p.start_date}','${p.end_date}',${p.base_event_price},${p.addon_event_price})">Edit</button>
+                        <button class="btn btn-small btn-danger" onclick="deletePricingPeriod('${p.id}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch(e) {
+        if (container) container.innerHTML = '<p class="hint" style="color:var(--danger);">Failed to load pricing periods.</p>';
+    }
+}
+
+function showPricingPeriodForm() {
+    document.getElementById('pp-edit-id').value = '';
+    document.getElementById('pp-name').value = '';
+    document.getElementById('pp-start').value = '';
+    document.getElementById('pp-end').value = '';
+    document.getElementById('pp-base').value = '';
+    document.getElementById('pp-addon').value = '';
+    document.getElementById('pricing-period-form-title').textContent = 'New Pricing Period';
+    document.getElementById('pricing-period-form-wrap').classList.remove('hidden');
+    document.getElementById('pp-name').focus();
+}
+
+function hidePricingPeriodForm() {
+    document.getElementById('pricing-period-form-wrap').classList.add('hidden');
+}
+
+function editPricingPeriod(id, name, startDate, endDate, base, addon) {
+    document.getElementById('pp-edit-id').value = id;
+    document.getElementById('pp-name').value = name;
+    // Format ISO dates to datetime-local format (YYYY-MM-DDTHH:MM)
+    document.getElementById('pp-start').value = startDate ? startDate.slice(0,16) : '';
+    document.getElementById('pp-end').value   = endDate   ? endDate.slice(0,16)   : '';
+    document.getElementById('pp-base').value  = base;
+    document.getElementById('pp-addon').value = addon;
+    document.getElementById('pricing-period-form-title').textContent = 'Edit Pricing Period';
+    document.getElementById('pricing-period-form-wrap').classList.remove('hidden');
+    document.getElementById('pp-name').focus();
+}
+
+async function savePricingPeriod() {
+    const id      = document.getElementById('pp-edit-id').value;
+    const name    = document.getElementById('pp-name').value.trim();
+    const start   = document.getElementById('pp-start').value;
+    const end     = document.getElementById('pp-end').value;
+    const base    = document.getElementById('pp-base').value;
+    const addon   = document.getElementById('pp-addon').value;
+
+    if (!name || !start || !end || base === '' || addon === '') {
+        showToast('All fields are required', 'error'); return;
+    }
+    if (new Date(end) <= new Date(start)) {
+        showToast('End date must be after start date', 'error'); return;
+    }
+
+    const body = {
+        name,
+        start_date: new Date(start).toISOString(),
+        end_date:   new Date(end).toISOString(),
+        base_event_price:  parseFloat(base),
+        addon_event_price: parseFloat(addon),
+    };
+
+    try {
+        const url = id
+            ? `/api/tournaments/${currentTournamentId}/pricing-periods/${id}`
+            : `/api/tournaments/${currentTournamentId}/pricing-periods`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method, credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Save failed', 'error'); return; }
+        hidePricingPeriodForm();
+        showToast(id ? 'Pricing period updated' : 'Pricing period created', 'success');
+        loadPricingPeriods();
+    } catch(e) { showToast('Save failed', 'error'); }
+}
+
+async function deletePricingPeriod(id) {
+    if (!confirm('Delete this pricing period?')) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/pricing-periods/${id}`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        if (!res.ok) { showToast('Delete failed', 'error'); return; }
+        showToast('Pricing period deleted', 'success');
+        loadPricingPeriods();
+    } catch(e) { showToast('Delete failed', 'error'); }
+}
+
+// ── Discount Codes ────────────────────────────────────────────────────────────
+
+async function loadDiscountCodes() {
+    if (!currentTournamentId) return;
+    const container = document.getElementById('discount-codes-list');
+    if (!container) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/discount-codes`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load');
+        const { codes } = await res.json();
+
+        if (!codes || codes.length === 0) {
+            container.innerHTML = '<p class="hint">No discount codes created yet.</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--glass-border);text-align:left;">
+                        <th style="padding:8px 12px;">Code</th>
+                        <th style="padding:8px 12px;">Discount</th>
+                        <th style="padding:8px 12px;">Applies To</th>
+                        <th style="padding:8px 12px;">Uses</th>
+                        <th style="padding:8px 12px;">Valid</th>
+                        <th style="padding:8px 12px;">Status</th>
+                        <th style="padding:8px 12px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${codes.map(dc => {
+                        const discountLabel = dc.discount_type === 'percentage'
+                            ? `${parseFloat(dc.discount_value).toFixed(0)}% off`
+                            : `$${parseFloat(dc.discount_value).toFixed(2)} off`;
+                        const scopeLabel = dc.scope === 'event'
+                            ? (dc.event_name || 'Specific event')
+                            : 'Total';
+                        const usageLabel = dc.max_uses
+                            ? `${dc.current_uses} / ${dc.max_uses}`
+                            : `${dc.current_uses} (unlimited)`;
+                        const validLabel = dc.valid_from || dc.valid_until
+                            ? `${dc.valid_from ? new Date(dc.valid_from).toLocaleDateString() : '∞'} → ${dc.valid_until ? new Date(dc.valid_until).toLocaleDateString() : '∞'}`
+                            : 'Always';
+                        const statusBadge = dc.is_active
+                            ? `<span style="color:#22c55e;font-weight:600;">Active</span>`
+                            : `<span style="color:#ef4444;font-weight:600;">Inactive</span>`;
+                        return `
+                            <tr style="border-bottom:1px solid var(--glass-border);">
+                                <td style="padding:8px 12px;font-weight:700;font-family:monospace;">${_escapeHtml(dc.code)}</td>
+                                <td style="padding:8px 12px;">${discountLabel}</td>
+                                <td style="padding:8px 12px;">${_escapeHtml(scopeLabel)}</td>
+                                <td style="padding:8px 12px;">${usageLabel}</td>
+                                <td style="padding:8px 12px;font-size:0.8rem;">${validLabel}</td>
+                                <td style="padding:8px 12px;">${statusBadge}</td>
+                                <td style="padding:8px 12px;white-space:nowrap;">
+                                    <button class="btn btn-small" onclick="editDiscountCode(${JSON.stringify(dc).replace(/"/g,'&quot;')})">Edit</button>
+                                    <button class="btn btn-small btn-danger" onclick="deleteDiscountCode('${dc.id}')">Delete</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>
+        `;
+    } catch(e) {
+        if (container) container.innerHTML = '<p class="hint" style="color:var(--danger);">Failed to load discount codes.</p>';
+    }
+}
+
+function showDiscountCodeForm() {
+    document.getElementById('dc-edit-id').value = '';
+    document.getElementById('dc-code').value = '';
+    document.getElementById('dc-description').value = '';
+    document.getElementById('dc-type').value = 'percentage';
+    document.getElementById('dc-value').value = '';
+    document.getElementById('dc-value-label').textContent = 'Discount % *';
+    document.getElementById('dc-scope').value = 'total';
+    document.getElementById('dc-event-group').style.display = 'none';
+    document.getElementById('dc-max-uses').value = '';
+    document.getElementById('dc-valid-from').value = '';
+    document.getElementById('dc-valid-until').value = '';
+    document.getElementById('discount-code-form-title').textContent = 'New Discount Code';
+    document.getElementById('discount-code-form-wrap').classList.remove('hidden');
+
+    // Populate event dropdown
+    _populateDcEventDropdown();
+    document.getElementById('dc-code').focus();
+}
+
+function hideDiscountCodeForm() {
+    document.getElementById('discount-code-form-wrap').classList.add('hidden');
+}
+
+function _populateDcEventDropdown(selectedEventId) {
+    const sel = document.getElementById('dc-event');
+    if (!sel) return;
+    const eventTypes = db.load('eventTypes');
+    sel.innerHTML = '<option value="">Select event…</option>';
+    eventTypes.forEach(ev => {
+        const opt = document.createElement('option');
+        opt.value = ev.id;
+        opt.textContent = ev.name;
+        if (selectedEventId && String(ev.id) === String(selectedEventId)) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function handleDiscountTypeChange() {
+    const type = document.getElementById('dc-type').value;
+    const label = document.getElementById('dc-value-label');
+    const input = document.getElementById('dc-value');
+    if (type === 'percentage') {
+        label.textContent = 'Discount % *';
+        input.max = 100;
+        input.placeholder = 'e.g. 20 (for 20%)';
+    } else {
+        label.textContent = 'Discount Amount ($) *';
+        input.removeAttribute('max');
+        input.placeholder = 'e.g. 10.00';
+    }
+}
+
+function handleDiscountScopeChange() {
+    const scope = document.getElementById('dc-scope').value;
+    const eventGroup = document.getElementById('dc-event-group');
+    eventGroup.style.display = scope === 'event' ? '' : 'none';
+}
+
+function editDiscountCode(dc) {
+    if (typeof dc === 'string') dc = JSON.parse(dc);
+    document.getElementById('dc-edit-id').value = dc.id;
+    document.getElementById('dc-code').value = dc.code;
+    document.getElementById('dc-description').value = dc.description || '';
+    document.getElementById('dc-type').value = dc.discount_type;
+    document.getElementById('dc-value').value = dc.discount_value;
+    document.getElementById('dc-scope').value = dc.scope;
+    document.getElementById('dc-max-uses').value = dc.max_uses || '';
+    document.getElementById('dc-valid-from').value = dc.valid_from ? dc.valid_from.slice(0,16) : '';
+    document.getElementById('dc-valid-until').value = dc.valid_until ? dc.valid_until.slice(0,16) : '';
+    document.getElementById('discount-code-form-title').textContent = 'Edit Discount Code';
+    document.getElementById('discount-code-form-wrap').classList.remove('hidden');
+    handleDiscountTypeChange();
+    _populateDcEventDropdown(dc.event_id);
+    handleDiscountScopeChange();
+}
+
+async function saveDiscountCode() {
+    const id            = document.getElementById('dc-edit-id').value;
+    const code          = document.getElementById('dc-code').value.trim().toUpperCase();
+    const description   = document.getElementById('dc-description').value.trim();
+    const discount_type = document.getElementById('dc-type').value;
+    const discount_value= parseFloat(document.getElementById('dc-value').value);
+    const scope         = document.getElementById('dc-scope').value;
+    const event_id      = document.getElementById('dc-event').value || null;
+    const max_uses      = document.getElementById('dc-max-uses').value ? parseInt(document.getElementById('dc-max-uses').value) : null;
+    const valid_from    = document.getElementById('dc-valid-from').value ? new Date(document.getElementById('dc-valid-from').value).toISOString() : null;
+    const valid_until   = document.getElementById('dc-valid-until').value ? new Date(document.getElementById('dc-valid-until').value).toISOString() : null;
+
+    if (!code || !discount_type || isNaN(discount_value) || discount_value <= 0) {
+        showToast('Code, type, and a valid discount value are required', 'error'); return;
+    }
+    if (discount_type === 'percentage' && discount_value > 100) {
+        showToast('Percentage cannot exceed 100', 'error'); return;
+    }
+    if (scope === 'event' && !event_id) {
+        showToast('Select which event this discount applies to', 'error'); return;
+    }
+
+    const body = { code, description, discount_type, discount_value, scope, event_id, max_uses, valid_from, valid_until };
+
+    try {
+        const url = id
+            ? `/api/tournaments/${currentTournamentId}/discount-codes/${id}`
+            : `/api/tournaments/${currentTournamentId}/discount-codes`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method, credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) { const d = await res.json(); showToast(d.error || 'Save failed', 'error'); return; }
+        hideDiscountCodeForm();
+        showToast(id ? 'Discount code updated' : 'Discount code created', 'success');
+        loadDiscountCodes();
+    } catch(e) { showToast('Save failed', 'error'); }
+}
+
+async function deleteDiscountCode(id) {
+    if (!confirm('Delete this discount code? This cannot be undone.')) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/discount-codes/${id}`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        if (!res.ok) { showToast('Delete failed', 'error'); return; }
+        showToast('Discount code deleted', 'success');
+        loadDiscountCodes();
+    } catch(e) { showToast('Delete failed', 'error'); }
 }
 
 function loadTournamentInfoView() {

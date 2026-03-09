@@ -405,6 +405,7 @@
                         <button class="nav-sub-btn" data-view="scoreboard-configs">Scoreboard Setup</button>
                         <button class="nav-sub-btn" data-view="staging-settings">Staging Setup</button>
                         <button class="nav-sub-btn" data-view="public-site">Public Site</button>
+                        <button class="nav-sub-btn" data-view="settings-pricing">Pricing</button>
                         <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
                         <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
                         <button class="nav-sub-btn" data-view="settings-feedback">Feedback</button>
@@ -731,6 +732,17 @@
                                 <div id="team-selection-info" class="hidden" style="margin-top:8px; padding:10px 12px; background:var(--bg-primary); border-radius:8px; font-size:0.875rem;"></div>
                                 <p class="hint" style="margin-top:6px;">Search for an existing team to join, or type a new name to create one. Teammates search by team name — no codes needed.</p>
                             </div>
+                        </div>
+
+                        <!-- Discount Code -->
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="discount-code-input">Discount Code (optional)</label>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <input type="text" id="discount-code-input" placeholder="Enter code…" style="text-transform:uppercase; flex:1;" oninput="this.value=this.value.toUpperCase()">
+                                <button type="button" class="btn btn-secondary btn-small" onclick="applyDiscountCode()">Apply</button>
+                                <button type="button" class="btn btn-small btn-danger" id="discount-remove-btn" onclick="removeDiscountCode()" style="display:none;">Remove</button>
+                            </div>
+                            <div id="discount-code-info" style="margin-top:6px; font-size:0.85rem;"></div>
                         </div>
 
                         <div class="form-group" id="payment-status-group" style="grid-column: 1 / -1;">
@@ -1883,6 +1895,136 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ Pricing View (Settings sub-page) ═══ -->
+            <section id="settings-pricing-view" class="view">
+                <h2>Pricing</h2>
+
+                <!-- ── Pricing Periods ── -->
+                <div class="glass-panel" style="margin-bottom: 24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 style="margin:0 0 4px 0;">Pricing Periods</h3>
+                            <p class="hint" style="margin:0;">Set exact prices for defined date windows (Early Bird, Regular, Late). When a period is active its prices override event type prices. When no period is active, the event type prices apply.</p>
+                        </div>
+                        <button class="btn btn-primary btn-small" onclick="showPricingPeriodForm()">+ Add Period</button>
+                    </div>
+
+                    <!-- Add / Edit form (hidden by default) -->
+                    <div id="pricing-period-form-wrap" class="hidden" style="background:var(--bg-secondary); border-radius:10px; padding:16px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 14px 0;" id="pricing-period-form-title">New Pricing Period</h4>
+                        <input type="hidden" id="pp-edit-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="pp-name">Period Name *</label>
+                                <input type="text" id="pp-name" placeholder="e.g. Early Bird, Regular, Late">
+                            </div>
+                            <div class="form-group"><!-- spacer --></div>
+                            <div class="form-group">
+                                <label for="pp-start">Start Date *</label>
+                                <input type="datetime-local" id="pp-start">
+                            </div>
+                            <div class="form-group">
+                                <label for="pp-end">End Date *</label>
+                                <input type="datetime-local" id="pp-end">
+                            </div>
+                            <div class="form-group">
+                                <label for="pp-base">Primary Event Price ($) *</label>
+                                <input type="number" id="pp-base" min="0" step="0.01" placeholder="e.g. 40.00">
+                                <p class="hint">Price when this is the first (primary) event selected.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="pp-addon">Add-On Event Price ($) *</label>
+                                <input type="number" id="pp-addon" min="0" step="0.01" placeholder="e.g. 20.00">
+                                <p class="hint">Price for each additional event added to the cart.</p>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="savePricingPeriod()">Save Period</button>
+                            <button class="btn btn-secondary" onclick="hidePricingPeriodForm()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Timeline / list -->
+                    <div id="pricing-periods-list">
+                        <p class="hint">No pricing periods set — event type prices apply at all times.</p>
+                    </div>
+                </div>
+
+                <!-- ── Discount Codes ── -->
+                <div class="glass-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 style="margin:0 0 4px 0;">Discount Codes</h3>
+                            <p class="hint" style="margin:0;">Create codes that registrants enter at checkout. Supports flat-dollar and percentage discounts, applied to the full total or a specific event.</p>
+                        </div>
+                        <button class="btn btn-primary btn-small" onclick="showDiscountCodeForm()">+ Add Code</button>
+                    </div>
+
+                    <!-- Add / Edit form -->
+                    <div id="discount-code-form-wrap" class="hidden" style="background:var(--bg-secondary); border-radius:10px; padding:16px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 14px 0;" id="discount-code-form-title">New Discount Code</h4>
+                        <input type="hidden" id="dc-edit-id">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="dc-code">Code *</label>
+                                <input type="text" id="dc-code" placeholder="e.g. COACH2025" style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+                                <p class="hint">Registrants type this exactly. Automatically uppercased.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-description">Description (internal)</label>
+                                <input type="text" id="dc-description" placeholder="e.g. Coach discount — 20% off">
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-type">Discount Type *</label>
+                                <select id="dc-type" onchange="handleDiscountTypeChange()">
+                                    <option value="percentage">Percentage off (%)</option>
+                                    <option value="flat">Flat amount off ($)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-value" id="dc-value-label">Discount % *</label>
+                                <input type="number" id="dc-value" min="0.01" step="0.01" placeholder="e.g. 20">
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-scope">Applies To *</label>
+                                <select id="dc-scope" onchange="handleDiscountScopeChange()">
+                                    <option value="total">Entire registration total</option>
+                                    <option value="event">Specific event only</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="dc-event-group" style="display:none;">
+                                <label for="dc-event">Event *</label>
+                                <select id="dc-event">
+                                    <option value="">Select event…</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-max-uses">Max Uses (optional)</label>
+                                <input type="number" id="dc-max-uses" min="1" step="1" placeholder="Leave blank = unlimited">
+                            </div>
+                            <div class="form-group"><!-- spacer --></div>
+                            <div class="form-group">
+                                <label for="dc-valid-from">Valid From (optional)</label>
+                                <input type="datetime-local" id="dc-valid-from">
+                            </div>
+                            <div class="form-group">
+                                <label for="dc-valid-until">Valid Until (optional)</label>
+                                <input type="datetime-local" id="dc-valid-until">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="saveDiscountCode()">Save Code</button>
+                            <button class="btn btn-secondary" onclick="hideDiscountCodeForm()">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Codes table -->
+                    <div id="discount-codes-list">
+                        <p class="hint">No discount codes created yet.</p>
                     </div>
                 </div>
             </section>
