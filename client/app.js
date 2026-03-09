@@ -15838,9 +15838,10 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // Store for later use - find bracket ID by matching bracket properties
     window.currentMatchId = currentMatch.id;
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const bracketDiv = bracket.division || bracket.divisionName;
     window.currentBracketId = Object.keys(brackets).find(id => {
         const b = brackets[id];
-        return (b.division === bracket.division || b.divisionName === bracket.division) && b.eventId == bracket.eventId;
+        return (b.division === bracketDiv || b.divisionName === bracketDiv) && b.eventId == bracket.eventId;
     });
 
     console.log('Stored bracket ID:', window.currentBracketId);
