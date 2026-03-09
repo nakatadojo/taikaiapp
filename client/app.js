@@ -21513,6 +21513,102 @@ function generateAllCertificates() {
     generateNext();
 }
 
+/**
+ * Print certificates for a single division (called from Awards cards).
+ * Looks up the division across all events, gets top-3 results, and
+ * downloads one certificate PNG per placement.
+ */
+function printCertificatesForDivision(divisionName) {
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    if (!template) {
+        showMessage('Please upload a certificate template first in Settings → Certificates', 'error');
+        return;
+    }
+
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    if (!config) {
+        showMessage('Please configure merge tag positions in Settings → Certificates first', 'error');
+        return;
+    }
+
+    const divisions = db.load('divisions');
+
+    // Find the eventId that contains this division
+    let foundEventId = null;
+    Object.keys(divisions).forEach(eventId => {
+        const eventData = divisions[eventId];
+        if (!eventData || !eventData.generated) return;
+        if (eventData.generated[divisionName]) {
+            foundEventId = eventId;
+        }
+    });
+
+    if (!foundEventId) {
+        showMessage(`Division "${divisionName}" not found. Make sure divisions are generated.`, 'error');
+        return;
+    }
+
+    const results = getDivisionResults(divisionName, foundEventId);
+    if (!results || results.length === 0) {
+        showMessage(`No results found for "${divisionName}".`, 'error');
+        return;
+    }
+
+    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
+    const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
+    const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
+
+    const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
+    const certificates = [];
+    results.forEach((result, idx) => {
+        if (idx > 2) return;
+        certificates.push({
+            name: result.name,
+            place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
+            division: divisionName,
+            tournament: tournamentName,
+            date: tournamentDate,
+            club: result.club || ''
+        });
+    });
+
+    if (certificates.length === 0) {
+        showMessage(`No placements to print for "${divisionName}".`, 'error');
+        return;
+    }
+
+    showMessage(`Generating ${certificates.length} certificate(s) for ${divisionName}...`, 'info');
+
+    let generated = 0;
+    const offscreenCanvas = document.createElement('canvas');
+
+    function generateNext() {
+        if (generated >= certificates.length) {
+            showMessage(`Downloaded ${generated} certificate(s) for ${divisionName}!`);
+            return;
+        }
+
+        const certData = certificates[generated];
+        renderCertificateOnCanvas(offscreenCanvas, certData, function(canvas) {
+            if (!canvas) {
+                generated++;
+                setTimeout(generateNext, 50);
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.download = `certificate_${certData.name.replace(/\s+/g, '_')}_${certData.division.replace(/\s+/g, '_')}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+
+            generated++;
+            setTimeout(generateNext, 300);
+        });
+    }
+
+    generateNext();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CERTIFICATE SERVER SYNC
 // ═══════════════════════════════════════════════════════════════════════════

@@ -3317,9 +3317,10 @@
                 ).join('');
 
                 const actions = status === 'pending'
-                    ? `<button class="btn btn-sm" style="background:var(--success);color:#fff;" onclick="publishDivisionResult('${r.id}')">Publish</button>
+                    ? `<button class="btn btn-sm" style="background:var(--success);color:#fff;" onclick="publishDivisionResult('${r.id}', this)">Publish</button>
                        <button class="btn btn-sm" onclick="printDivisionCertificate('${escapeHtml(r.division_name)}')">Print Certificates</button>`
-                    : `<button class="btn btn-sm" style="background:var(--text-muted);color:#fff;" onclick="unpublishDivisionResult('${r.id}')">Unpublish</button>`;
+                    : `<button class="btn btn-sm" onclick="printDivisionCertificate('${escapeHtml(r.division_name)}')">Print Certificates</button>
+                       <button class="btn btn-sm" style="background:var(--text-muted);color:#fff;" onclick="unpublishDivisionResult('${r.id}')">Unpublish</button>`;
 
                 return `<div class="awards-card">
                     <div class="awards-card-header">
@@ -3341,7 +3342,7 @@
         }
 
         // ── Publish / Unpublish actions ───────────────────────────────
-        window.publishDivisionResult = async function(resultId) {
+        window.publishDivisionResult = async function(resultId, btnEl) {
             const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
             if (!tid) return;
             try {
@@ -3349,7 +3350,22 @@
                     method: 'PUT', credentials: 'include',
                 });
                 if (!res.ok) throw new Error('Publish failed');
-                loadAwardsDashboard();
+
+                // Fade-out the card for smooth visual feedback
+                const card = btnEl ? btnEl.closest('.awards-card') : null;
+                if (card) {
+                    card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateX(40px)';
+                    await new Promise(r => setTimeout(r, 350));
+                }
+
+                await loadAwardsDashboard();
+
+                // Auto-switch to Published tab if no more pending items
+                if (awardsCounts && awardsCounts.pending === 0) {
+                    switchAwardsTab('published');
+                }
             } catch (err) { console.error(err); alert('Failed to publish: ' + err.message); }
         };
 
