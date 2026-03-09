@@ -365,32 +365,14 @@ class Database {
 
 const db = new Database();
 
-// One-time migration: move unscoped localStorage data under tournament prefix
+// Clean up unscoped localStorage keys left over from before the scoped-key system.
+// We no longer migrate (copy) unscoped data into the current tournament because
+// unscoped data is now always orphaned from old/deleted tournaments — copying it
+// contaminates new tournaments with another tournament's brackets, competitors, etc.
+// Server sync is the authoritative source for all server-backed data.
 function _migrateUnscopedData() {
     if (!currentTournamentId) return;
-    const keysToMigrate = [..._SCOPED_KEYS];
-    for (const key of keysToMigrate) {
-        const scopedKey = `t_${currentTournamentId}_${key}`;
-        // Only migrate if scoped key doesn't exist yet but unscoped does
-        if (!localStorage.getItem(scopedKey) && localStorage.getItem(key)) {
-            const data = localStorage.getItem(key);
-            if (data && data !== '[]' && data !== '{}' && data !== 'null') {
-                try {
-                    localStorage.setItem(scopedKey, data);
-                    console.log(`[migration] Moved ${key} → ${scopedKey}`);
-                } catch (e) {
-                    // Quota exceeded — try to free space by removing old unscoped keys
-                    console.warn(`[migration] Quota exceeded migrating ${key}, cleaning up stale data...`);
-                    _cleanupLocalStorage();
-                    try {
-                        localStorage.setItem(scopedKey, data);
-                    } catch (e2) {
-                        console.warn(`[migration] Still cannot migrate ${key}, skipping`);
-                    }
-                }
-            }
-        }
-    }
+    _cleanupLocalStorage();
 }
 
 // Clean up stale/orphaned localStorage data to free space
@@ -842,7 +824,9 @@ async function _loadTeamsFromServer() {
 
 /**
  * Load brackets from the server into localStorage.
- * Only hydrates when local is empty — server is the authoritative backup.
+ * Server is always authoritative on activation — always overwrites local so
+ * that stale/contaminated local data (e.g. from the unscoped migration) can
+ * never persist across tournaments.
  */
 async function _loadBracketsFromServer() {
     if (!currentTournamentId) return;
@@ -853,12 +837,10 @@ async function _loadBracketsFromServer() {
         if (!res.ok) return;
         const data = await res.json();
         const serverBrackets = data.brackets || {};
+        // Always write server response (even empty {}) so contaminated local data is cleared.
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(serverBrackets));
         if (Object.keys(serverBrackets).length > 0) {
-            const localBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
-            if (Object.keys(localBrackets).length === 0) {
-                localStorage.setItem(_scopedKey('brackets'), JSON.stringify(serverBrackets));
-                console.log(`[sync] Loaded ${Object.keys(serverBrackets).length} bracket(s) from server`);
-            }
+            console.log(`[sync] Loaded ${Object.keys(serverBrackets).length} bracket(s) from server`);
         }
     } catch (err) {
         console.warn('[sync] Failed to load brackets from server:', err.message);
@@ -1350,14 +1332,24 @@ function migrateLegacyCompetitors() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
-        console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
+        try {
+            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+            console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
+        } catch (e) {
+            console.warn('[migration] Could not save migrateLegacyCompetitors — quota exceeded, skipping.');
+        }
     }
 }
 
 // Migration: Calculate pricing for legacy competitors that lack pricing data
 function migrateLegacyPricing() {
     const competitors = db.load('competitors');
+    // Skip entirely if every competitor already has both fields — avoid a needless bulk save
+    const needsMigration = competitors.some(
+        c => (c.events && c.events.length > 0 && !c.pricing) || !c.paymentStatus
+    );
+    if (!needsMigration) return;
+
     const eventTypes = db.load('eventTypes');
     const tournament = getCurrentTournament();
     let migrated = 0;
@@ -1377,8 +1369,12 @@ function migrateLegacyPricing() {
     });
 
     if (migrated > 0) {
-        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
-        console.log(`Migrated pricing data for ${migrated} competitors`);
+        try {
+            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+            console.log(`Migrated pricing data for ${migrated} competitors`);
+        } catch (e) {
+            console.warn('[migration] Could not save migrateLegacyPricing — quota exceeded, skipping.');
+        }
     }
 }
 
