@@ -830,6 +830,56 @@ async function _loadTeamsFromServer() {
     }
 }
 
+/**
+ * Load brackets from the server into localStorage.
+ * Only hydrates when local is empty — server is the authoritative backup.
+ */
+async function _loadBracketsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverBrackets = data.brackets || {};
+        if (Object.keys(serverBrackets).length > 0) {
+            const localBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+            if (Object.keys(localBrackets).length === 0) {
+                localStorage.setItem(_scopedKey('brackets'), JSON.stringify(serverBrackets));
+                console.log(`[sync] Loaded ${Object.keys(serverBrackets).length} bracket(s) from server`);
+            }
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load brackets from server:', err.message);
+    }
+}
+
+/**
+ * Load results from the server into localStorage.
+ * Only hydrates when local is empty — server is the authoritative backup.
+ */
+async function _loadResultsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/results`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverResults = data.results || [];
+        if (serverResults.length > 0) {
+            const localResults = db.load('results');
+            if (!localResults || localResults.length === 0) {
+                db.save('results', serverResults);
+                console.log(`[sync] Loaded ${serverResults.length} result(s) from server`);
+            }
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load results from server:', err.message);
+    }
+}
+
 // Ordered rank list for grouped belt-range matching (WKF/AAU)
 const RANK_ORDER = [
     '10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu',
@@ -1233,6 +1283,12 @@ loadTournamentSelector();
             if (typeof loadInstructors === 'function') loadInstructors();
         });
         _loadTeamsFromServer();
+        _loadBracketsFromServer().then(() => {
+            if (typeof loadBrackets === 'function') loadBrackets();
+        });
+        _loadResultsFromServer().then(() => {
+            if (typeof loadResults === 'function') loadResults();
+        });
     }
 
     // Try localStorage first (instant, no network)
