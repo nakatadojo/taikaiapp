@@ -33,6 +33,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       // unpkg.com for lucide-icons, html5-qrcode; unsafe-eval for Babel on scoreboard pages
       scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'"],
+      // HTML files use inline event handlers (onchange, onclick, etc.) — must allow them
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       // Socket.IO and API connections; unpkg.com for source-map fetches (.js.map)
