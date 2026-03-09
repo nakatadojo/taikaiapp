@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staging Display</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: #080c14;
+    color: #e8edf5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+}
+
+#slide {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 36px 48px 80px;
+}
+
+.slide-mat-name {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #f59e0b;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+}
+
+.slide-subtitle {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 28px;
+}
+
+.slide-divisions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.div-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    padding: 18px 24px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.div-card.live {
+    border-color: rgba(34,197,94,0.6);
+    background: rgba(34,197,94,0.04);
+    box-shadow: 0 0 0 2px rgba(34,197,94,0.15);
+}
+
+.div-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
+}
+
+.div-card-name {
+    font-size: 1.35rem;
+    font-weight: 700;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.div-card-time {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f59e0b;
+    white-space: nowrap;
+}
+
+.live-badge {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #22c55e;
+    animation: pulse-glow 1.5s ease-in-out infinite;
+    white-space: nowrap;
+}
+
+.match-list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1;
+}
+
+.match-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.match-row:last-child { border-bottom: none; }
+
+.match-label {
+    color: rgba(255,255,255,0.35);
+    min-width: 100px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.match-names {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vs-sep { color: rgba(255,255,255,0.25); margin: 0 4px; }
+
+.badge {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-live {
+    background: rgba(34,197,94,0.12);
+    color: #22c55e;
+    border: 1px solid rgba(34,197,94,0.4);
+}
+
+.badge-done {
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.badge-up {
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.45);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.no-data {
+    color: rgba(255,255,255,0.25);
+    font-size: 0.9rem;
+    padding: 8px 0;
+}
+
+/* Progress dots */
+#progress-dots {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.18);
+    transition: background 0.3s, transform 0.3s;
+}
+
+.dot.active {
+    background: #f59e0b;
+    transform: scale(1.3);
+}
+
+/* Timer bar */
+#timer-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #f59e0b, #fb923c);
+    transition: width linear;
+}
+
+/* Empty state */
+#no-mats {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    flex-direction: column;
+    gap: 16px;
+    color: rgba(255,255,255,0.3);
+}
+
+#no-mats h2 { font-size: 1.5rem; font-weight: 600; }
+#no-mats p  { font-size: 0.9rem; }
+
+@keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+}
+</style>
+</head>
+<body>
+
+<div id="slide"></div>
+<div id="progress-dots"></div>
+<div id="timer-bar" style="width:100%;"></div>
+
+<script>
+(function () {
+    'use strict';
+
+    const params = new URLSearchParams(location.search);
+    const tid    = params.get('tid') || '';
+    const sk     = k => `t_${tid}_${k}`;
+
+    /* ── Data helpers ─────────────────────────────────────────────────── */
+    function getSettings() {
+        try { return JSON.parse(localStorage.getItem(sk('stagingSettings')) || '{}'); }
+        catch { return {}; }
+    }
+
+    function getMats() {
+        try { return JSON.parse(localStorage.getItem(sk('mats')) || '[]'); }
+        catch { return []; }
+    }
+
+    function getSchedule() {
+        // The mat schedule key includes tournament ID in a special format
+        // Try the scoped key first, then fall back to scanning for the key
+        const direct = localStorage.getItem(sk('matSchedule'));
+        if (direct) { try { return JSON.parse(direct); } catch {} }
+        // Scan for any key containing the tournament id and matSchedule
+        for (const k of Object.keys(localStorage)) {
+            if (k.includes(tid) && k.toLowerCase().includes('matschedule')) {
+                try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch {}
+            }
+        }
+        return {};
+    }
+
+    function getBrackets() {
+        try { return JSON.parse(localStorage.getItem(sk('brackets')) || '{}'); }
+        catch { return {}; }
+    }
+
+    /* ── Match extraction ─────────────────────────────────────────────── */
+    function extractMatches(bracket) {
+        if (!bracket) return [];
+        const rows = [];
+        const name = c => c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'TBD' : 'TBD';
+
+        const addMatch = (m, rl, mi) => {
+            if (!m) return;
+            rows.push({ rl, ml: `Match ${mi + 1}`, red: name(m.redCorner), blue: name(m.blueCorner), status: m.status || 'upcoming' });
+        };
+
+        if (bracket.type === 'double-elimination') {
+            (bracket.winners || []).forEach((m, i) => addMatch(m, 'Winners', i));
+            (bracket.losers  || []).forEach((m, i) => addMatch(m, 'Losers',  i));
+            if (bracket.finals) addMatch(bracket.finals, 'Finals', 0);
+            if (bracket.reset)  addMatch(bracket.reset,  'Reset',  0);
+        } else if (bracket.type === 'pool-play') {
+            (bracket.pools || []).forEach((pool, pi) =>
+                (pool.matches || []).forEach((m, i) => addMatch(m, `Pool ${pi + 1}`, i)));
+        } else if (bracket.type === 'ranking-list') {
+            (bracket.entries || []).forEach((e, i) => {
+                const c = e.competitor;
+                rows.push({ rl: 'Entry', ml: `#${i + 1}`, red: name(c), blue: '', status: e.status === 'scored' ? 'completed' : 'upcoming' });
+            });
+        } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
+            if (Array.isArray(bracket.rounds)) {
+                bracket.rounds.forEach((r, ri) =>
+                    (r.performances || []).forEach((p, pi) => rows.push({
+                        rl: `Round ${ri + 1}`, ml: `Perf ${pi + 1}`,
+                        red: p.competitor ? name(p.competitor) : 'TBD', blue: '',
+                        status: p.completed ? 'completed' : 'upcoming',
+                    })));
+            }
+        } else {
+            (bracket.matches    || []).forEach((m, i) => addMatch(m, 'Round', i));
+            (bracket.repechageA || []).forEach((m, i) => addMatch(m, 'Rep A', i));
+            (bracket.repechageB || []).forEach((m, i) => addMatch(m, 'Rep B', i));
+            if (bracket.finals) addMatch(bracket.finals, 'Finals', 0);
+        }
+        return rows;
+    }
+
+    /* ── Render ───────────────────────────────────────────────────────── */
+    let currentMatIdx = 0;
+    let rotateTimer   = null;
+
+    function renderSlide(matIdx) {
+        const mats     = getMats();
+        const schedule = getSchedule();
+        const brackets = getBrackets();
+        const settings = getSettings();
+        const dps      = settings.divisionsPerSlide || 'next5';
+
+        if (mats.length === 0) {
+            document.getElementById('slide').innerHTML = `
+                <div id="no-mats">
+                    <h2>No mats configured</h2>
+                    <p>Go to Schedule in the tournament manager to set up mats.</p>
+                </div>`;
+            document.getElementById('progress-dots').innerHTML = '';
+            return;
+        }
+
+        const mat   = mats[matIdx % mats.length];
+        const slots = (schedule[mat.id] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        // Determine which slots to show based on divisionsPerSlide setting
+        let showSlots = [];
+        const liveIdx = slots.findIndex(s => s.status === 'in-progress');
+        const startIdx = liveIdx >= 0 ? liveIdx : 0;
+
+        if (dps === 'current') {
+            const live = liveIdx >= 0 ? slots[liveIdx] : (slots[0] || null);
+            if (live) showSlots = [live];
+        } else if (dps === 'next2') {
+            showSlots = slots.slice(startIdx, startIdx + 2);
+        } else {
+            showSlots = slots.slice(startIdx, startIdx + 5);
+        }
+
+        // Build bracket lookup: "eventId::divisionName" → bracket
+        const bracketByDiv = {};
+        Object.values(brackets).forEach(b => {
+            const key = `${b.eventId}::${b.divisionName || b.division}`;
+            bracketByDiv[key] = b;
+        });
+
+        // Build division cards
+        const divsHTML = showSlots.length === 0
+            ? `<div class="no-data">No divisions scheduled on this mat.</div>`
+            : showSlots.map(slot => {
+                const isLive = slot.status === 'in-progress';
+                const bk     = bracketByDiv[`${slot.eventId}::${slot.division}`];
+                const allMatches = extractMatches(bk);
+
+                // Limit matches shown: show in-progress first, then upcoming, then done
+                const inProgress = allMatches.filter(m => m.status === 'in-progress');
+                const upcoming   = allMatches.filter(m => m.status === 'upcoming');
+                const completed  = allMatches.filter(m => m.status === 'completed');
+                const ordered    = [...inProgress, ...upcoming, ...completed].slice(0, 8);
+
+                const matchHTML = ordered.length === 0
+                    ? `<div class="no-data">No bracket generated yet.</div>`
+                    : ordered.map(m => {
+                        const badgeCls = m.status === 'in-progress' ? 'badge-live'
+                                       : m.status === 'completed'   ? 'badge-done' : 'badge-up';
+                        const namesHTML = m.blue
+                            ? `${m.red} <span class="vs-sep">vs</span> ${m.blue}`
+                            : m.red;
+                        return `<div class="match-row">
+                            <span class="match-label">${m.rl} · ${m.ml}</span>
+                            <span class="match-names">${namesHTML}</span>
+                            <span class="badge ${badgeCls}">${m.status}</span>
+                        </div>`;
+                    }).join('');
+
+                return `<div class="div-card${isLive ? ' live' : ''}">
+                    <div class="div-card-header">
+                        <span class="div-card-name">${slot.division}</span>
+                        <span class="div-card-time">${slot.estimatedStartTime || '--:--'}</span>
+                        ${isLive ? '<span class="live-badge">● LIVE</span>' : ''}
+                    </div>
+                    <div class="match-list">${matchHTML}</div>
+                </div>`;
+            }).join('');
+
+        // Render slide
+        document.getElementById('slide').innerHTML = `
+            <div class="slide-mat-name">${mat.name}</div>
+            <div class="slide-subtitle">${slots.length} division${slots.length !== 1 ? 's' : ''} scheduled</div>
+            <div class="slide-divisions">${divsHTML}</div>`;
+
+        // Progress dots
+        document.getElementById('progress-dots').innerHTML =
+            mats.map((_, i) => `<div class="dot${i === matIdx % mats.length ? ' active' : ''}"></div>`).join('');
+    }
+
+    function startTimerBar(durationMs) {
+        const bar = document.getElementById('timer-bar');
+        // Reset bar width instantly then animate
+        bar.style.transition = 'none';
+        bar.style.width = '100%';
+        // Force reflow so the transition reset takes effect
+        void bar.offsetWidth;
+        bar.style.transition = `width ${durationMs}ms linear`;
+        bar.style.width = '0%';
+    }
+
+    function rotate() {
+        const mats = getMats();
+        if (mats.length === 0) return;
+        currentMatIdx = (currentMatIdx + 1) % mats.length;
+        renderSlide(currentMatIdx);
+        scheduleNext();
+    }
+
+    function scheduleNext() {
+        const settings     = getSettings();
+        const intervalMs   = Math.max(5, (settings.rotationInterval || 20)) * 1000;
+        clearTimeout(rotateTimer);
+        startTimerBar(intervalMs);
+        rotateTimer = setTimeout(rotate, intervalMs);
+    }
+
+    // Initial render
+    renderSlide(0);
+    scheduleNext();
+})();
+</script>
+
+</body>
+</html>

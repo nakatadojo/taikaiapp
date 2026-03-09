@@ -381,6 +381,7 @@
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
+                    <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> Staging</button>
                     <button class="nav-btn" data-view="scoreboards"><i data-lucide="monitor" class="nav-icon"></i> Scoreboards</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
                     <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
@@ -400,6 +401,7 @@
                         <button class="nav-sub-btn" data-view="settings-tournament-info">Tournament Info</button>
                         <button class="nav-sub-btn" data-view="events">Event Types</button>
                         <button class="nav-sub-btn" data-view="scoreboard-configs">Scoreboard Setup</button>
+                        <button class="nav-sub-btn" data-view="staging-settings">Staging Setup</button>
                         <button class="nav-sub-btn" data-view="public-site">Public Site</button>
                         <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
                         <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
@@ -581,17 +583,6 @@
                                 <h4>Schedule to Mats</h4>
                                 <p>Drag divisions to time slots on mats</p>
                                 <button class="btn btn-secondary btn-small" onclick="navigateTo('schedule')">Go to Schedule</button>
-                            </div>
-                        </div>
-                        <div class="workflow-step">
-                            <div class="step-number">6</div>
-                            <div class="step-content">
-                                <h4>Start Tournament</h4>
-                                <p>Open scoreboards and staging displays</p>
-                                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                    <button class="btn btn-success btn-small" onclick="openAllScoreboards()">📺 Open Scoreboards</button>
-                                    <button class="btn btn-success btn-small" onclick="openStagingDisplay()">📋 Staging Display</button>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -2429,6 +2420,48 @@
                             <div id="academy-requests-list">
                                 <p class="hint">No pending requests.</p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===== STAGING VIEW ===== -->
+            <section id="staging-view" class="view">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h2 style="margin-bottom:4px;">📋 Staging</h2>
+                        <p class="hint" style="margin:0;">Live match detail by mat. Refreshes automatically every 5 seconds.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openStagingDisplay()">📺 Open TV Display</button>
+                </div>
+                <div id="staging-mat-grid" class="timeline-grid"></div>
+            </section>
+
+            <!-- ===== STAGING SETTINGS VIEW ===== -->
+            <section id="staging-settings-view" class="view">
+                <h2 style="margin-bottom:20px;">Staging Display Settings</h2>
+                <div class="glass-panel" style="max-width:500px;">
+                    <div class="form-group">
+                        <label for="staging-rotation-interval">TV Rotation Interval (seconds)</label>
+                        <input type="number" id="staging-rotation-interval" min="5" max="300" value="20"
+                               style="width:120px;" onchange="saveStagingSettings()">
+                        <p class="hint" style="margin-top:6px;">How long each mat slide is shown before rotating. Default: 20s.</p>
+                    </div>
+                    <div class="form-group" style="margin-top:20px;">
+                        <label>Divisions to show per mat slide</label>
+                        <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                                <input type="radio" name="staging-divisions-per-slide" value="current" onchange="saveStagingSettings()">
+                                <span><strong>Current division only</strong><br><span class="hint" style="font-size:12px;">Shows only the division currently being scored.</span></span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                                <input type="radio" name="staging-divisions-per-slide" value="next2" onchange="saveStagingSettings()">
+                                <span><strong>Current + Next division</strong><br><span class="hint" style="font-size:12px;">Shows the active division and the one coming up.</span></span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                                <input type="radio" name="staging-divisions-per-slide" value="next5" onchange="saveStagingSettings()">
+                                <span><strong>Next 5 divisions</strong><br><span class="hint" style="font-size:12px;">Shows up to 5 divisions from the current position.</span></span>
+                            </label>
                         </div>
                     </div>
                 </div>

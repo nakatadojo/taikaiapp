@@ -1212,6 +1212,10 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
             }
         }
 
+        // Clear staging auto-refresh when switching views
+        clearInterval(_stagingRefreshTimer);
+        _stagingRefreshTimer = null;
+
         // Update active view
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById(`${view}-view`).classList.add('active');
@@ -1273,6 +1277,13 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         }
         if (view === 'judge-analytics') {
             loadJudgeAnalyticsView();
+        }
+        if (view === 'staging') {
+            loadStagingView();
+            _stagingRefreshTimer = setInterval(loadStagingView, 5000);
+        }
+        if (view === 'staging-settings') {
+            loadStagingSettings();
         }
     });
 });
@@ -10569,6 +10580,153 @@ function loadMatSchedule() {
     loadScheduleGrid();
 }
 
+// ─── Staging View ─────────────────────────────────────────────────────────────
+
+function getStagingSettings() {
+    try {
+        return JSON.parse(localStorage.getItem(_scopedKey('stagingSettings')) || '{"rotationInterval":20,"divisionsPerSlide":"next5"}');
+    } catch { return { rotationInterval: 20, divisionsPerSlide: 'next5' }; }
+}
+
+function saveStagingSettings() {
+    const interval = parseInt(document.getElementById('staging-rotation-interval')?.value, 10) || 20;
+    const dpsEl = document.querySelector('input[name="staging-divisions-per-slide"]:checked');
+    const dps = dpsEl ? dpsEl.value : 'next5';
+    const settings = { rotationInterval: interval, divisionsPerSlide: dps };
+    localStorage.setItem(_scopedKey('stagingSettings'), JSON.stringify(settings));
+    showToast('Staging settings saved', 'success');
+}
+
+function loadStagingSettings() {
+    const s = getStagingSettings();
+    const ri = document.getElementById('staging-rotation-interval');
+    if (ri) ri.value = s.rotationInterval || 20;
+    const dps = s.divisionsPerSlide || 'next5';
+    const rb = document.querySelector(`input[name="staging-divisions-per-slide"][value="${dps}"]`);
+    if (rb) rb.checked = true;
+}
+
+function extractBracketMatchesForStaging(bracket) {
+    const rows = [];
+    const addMatch = (m, roundLabel, matchIdx) => {
+        if (!m) return;
+        const name = c => c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() : 'TBD';
+        rows.push({
+            roundLabel,
+            matchLabel: `Match ${matchIdx + 1}`,
+            red:    name(m.redCorner),
+            blue:   name(m.blueCorner),
+            status: m.status || 'upcoming',
+        });
+    };
+
+    if (bracket.type === 'double-elimination') {
+        (bracket.winners || []).forEach((m, i) => addMatch(m, 'Winners', i));
+        (bracket.losers  || []).forEach((m, i) => addMatch(m, 'Losers',  i));
+        if (bracket.finals) addMatch(bracket.finals, 'Finals', 0);
+        if (bracket.reset)  addMatch(bracket.reset,  'Reset',  0);
+    } else if (bracket.type === 'pool-play') {
+        (bracket.pools || []).forEach((pool, pi) =>
+            (pool.matches || []).forEach((m, i) => addMatch(m, `Pool ${pi + 1}`, i)));
+    } else if (bracket.type === 'ranking-list') {
+        (bracket.entries || []).forEach((e, i) => {
+            const c = e.competitor;
+            rows.push({
+                roundLabel: 'Entry', matchLabel: `#${i + 1}`,
+                red: c ? `${c.firstName || ''} ${c.lastName || ''}`.trim() : 'TBD',
+                blue: '', status: e.status === 'scored' ? 'completed' : 'upcoming',
+            });
+        });
+    } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
+        if (Array.isArray(bracket.rounds)) {
+            bracket.rounds.forEach((round, ri) =>
+                (round.performances || []).forEach((p, pi) => rows.push({
+                    roundLabel: `Round ${ri + 1}`, matchLabel: `Perf ${pi + 1}`,
+                    red: p.competitor ? `${p.competitor.firstName || ''} ${p.competitor.lastName || ''}`.trim() : 'TBD',
+                    blue: '', status: p.completed ? 'completed' : 'upcoming',
+                })));
+        }
+    } else {
+        // single-elimination, repechage, round-robin
+        (bracket.matches    || []).forEach((m, i) => addMatch(m, 'Round', i));
+        (bracket.repechageA || []).forEach((m, i) => addMatch(m, 'Rep A', i));
+        (bracket.repechageB || []).forEach((m, i) => addMatch(m, 'Rep B', i));
+        if (bracket.finals) addMatch(bracket.finals, 'Finals', 0);
+    }
+    return rows;
+}
+
+function loadStagingView() {
+    const grid = document.getElementById('staging-mat-grid');
+    if (!grid) return;
+
+    const mats     = db.load('mats') || [];
+    const schedule = loadMatScheduleData();
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+
+    // Build lookup: "eventId::divisionName" → bracket
+    const bracketByDiv = {};
+    Object.values(brackets).forEach(b => {
+        const key = `${b.eventId}::${b.divisionName || b.division}`;
+        bracketByDiv[key] = b;
+    });
+
+    if (mats.length === 0) {
+        grid.innerHTML = '<p class="hint" style="padding:40px;">No mats configured. Go to Schedule to set up mats first.</p>';
+        return;
+    }
+
+    grid.innerHTML = mats.map(mat => {
+        const slots = (schedule[mat.id] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        const divisionsHTML = slots.length === 0
+            ? '<p class="hint" style="padding:20px 12px;">No divisions scheduled on this mat.</p>'
+            : slots.map(slot => {
+                const isActive = currentOperatorMat === mat.id && currentOperatorDivision === slot.division;
+                const bracket  = bracketByDiv[`${slot.eventId}::${slot.division}`];
+                const matches  = bracket ? extractBracketMatchesForStaging(bracket) : [];
+
+                const slotStatusColors = {
+                    completed:    '#22c55e',
+                    'in-progress':'#f59e0b',
+                    behind:       '#ef4444',
+                    ahead:        '#3b82f6',
+                };
+                const timeColor = slotStatusColors[slot.status] || 'var(--text-secondary)';
+
+                const matchRowsHTML = matches.length === 0
+                    ? '<p class="hint" style="padding:6px 0;margin:0;font-size:0.82rem;">No bracket generated yet.</p>'
+                    : matches.slice(0, 20).map(m => {
+                        const badgeClass = m.status === 'completed'    ? 'status-completed'
+                                         : m.status === 'in-progress'  ? 'status-in-progress'
+                                         :                               'status-upcoming';
+                        const nameStr = m.blue ? `${m.red} vs ${m.blue}` : m.red;
+                        return `<div class="staging-match-row">
+                            <span class="staging-match-label">${m.roundLabel} · ${m.matchLabel}</span>
+                            <span class="staging-match-names">${nameStr}</span>
+                            <span class="status-badge ${badgeClass}">${m.status}</span>
+                        </div>`;
+                    }).join('');
+
+                return `<div class="staging-division-card${isActive ? ' staging-current' : ''}">
+                    <div class="staging-div-header">
+                        <span class="staging-div-name">${slot.division}</span>
+                        <span class="staging-div-time" style="color:${timeColor};">${slot.estimatedStartTime || '--:--'}</span>
+                        ${isActive ? '<span class="staging-live-badge">● LIVE</span>' : ''}
+                    </div>
+                    <div class="staging-match-list">${matchRowsHTML}</div>
+                </div>`;
+            }).join('');
+
+        return `<div class="mat-column">
+            <div class="mat-header">${mat.name}</div>
+            ${divisionsHTML}
+        </div>`;
+    }).join('');
+}
+
+// ─── End Staging View ─────────────────────────────────────────────────────────
+
 // Drag and Drop Schedule Grid with Dynamic Timeline
 function loadScheduleGrid() {
     const scheduleGrid = document.getElementById('schedule-grid');
@@ -11672,6 +11830,9 @@ let currentOperatorDivision = null;
 let currentOperatorEventId = null;
 // Active scoreboard type tracker - prevents multiple scoreboards from conflicting
 let activeScoreboardType = null; // 'kumite', 'kata-flags', 'kata-points', 'standalone', null
+
+// Staging view auto-refresh timer
+let _stagingRefreshTimer = null;
 
 // ── Kumite Dual Ruleset Definitions ─────────────────────────────────────────
 const KUMITE_RULESETS = {
@@ -17421,7 +17582,8 @@ function updateMatName(matId, newName) {
 
 // Display Functions
 function openStagingDisplay() {
-    showMessage('Staging display coming soon — this feature is under development.', 'info');
+    if (!currentTournamentId) { showToast('No tournament selected', 'warning'); return; }
+    window.open(`/staging-display.html?tid=${currentTournamentId}`, '_blank', 'noopener');
 }
 
 // Certificate Functions
