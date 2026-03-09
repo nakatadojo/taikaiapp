@@ -607,7 +607,7 @@
                         <div class="empty-state-icon">&#127942;</div>
                         <div class="empty-state-title">No tournaments yet</div>
                         <div class="empty-state-text">
-                            Ready to host your first tournament? <a href="/director.html#create">Create one now</a>.
+                            Ready to host your first tournament? <a href="/director/tournaments/new">Create one now</a>.
                         </div>
                     </div>
                 `;
@@ -620,7 +620,7 @@
                         <h1 class="section-title">My Tournaments</h1>
                         <p class="section-subtitle" style="margin-bottom:0;">Tournaments you've created and manage.</p>
                     </div>
-                    <a href="/director.html" class="btn btn-primary" style="text-decoration:none;">+ Create Tournament</a>
+                    <a href="/director/tournaments/new" class="btn btn-primary" style="text-decoration:none;">+ Create Tournament</a>
                 </div>
                 <div class="card-list">
                     ${tournaments.map(t => renderTournamentCard(t)).join('')}
