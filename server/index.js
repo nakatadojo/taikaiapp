@@ -4,7 +4,18 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { errorHandler } = require('./middleware/errorHandler');
+
+// ── Startup Environment Validation ────────────────────────────────────────────
+if (!process.env.JWT_SECRET) {
+  const msg = 'FATAL: JWT_SECRET environment variable is not set. Authentication will not work.';
+  console.error(msg);
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}
+if (!process.env.STRIPE_WEBHOOK_SECRET && process.env.NODE_ENV === 'production') {
+  console.warn('WARNING: STRIPE_WEBHOOK_SECRET is not set. Stripe webhooks will be rejected.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,10 +24,45 @@ const PORT = process.env.PORT || 3000;
 const CLIENT_DIR = path.join(__dirname, '..', 'client');
 const sendOpts = { root: CLIENT_DIR };
 
-// Security headers (CSP disabled — scoreboards use inline React/Babel from CDN)
+// ── Security Headers (CSP) ────────────────────────────────────────────────────
+// Scoreboard pages use React/Babel from unpkg.com with inline transpilation (needs unsafe-eval).
+// All other pages only allow scripts from 'self' and unpkg.com.
 app.use(helmet({
-  contentSecurityPolicy: false
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      // unpkg.com for lucide-icons, html5-qrcode; unsafe-eval for Babel on scoreboard pages
+      scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      // Socket.IO and API connections
+      connectSrc: ["'self'", 'ws:', 'wss:'],
+      fontSrc: ["'self'", 'https:'],
+      // Block Flash/plugin attacks
+      objectSrc: ["'none'"],
+      // Prevent clickjacking — only allow framing from same origin
+      frameAncestors: ["'self'"],
+    },
+  },
 }));
+
+// ── Rate Limiting ─────────────────────────────────────────────────────────────
+// Payment endpoints: 10 requests per minute per IP
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a moment and try again.' },
+});
+// General API endpoints: 200 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+});
 
 // Stripe webhook — must be mounted BEFORE express.json() so the raw body
 // is available for signature verification
@@ -38,12 +84,15 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // ── API Routes ──────────────────────────────────────────────────────────────
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', apiLimiter, require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/academies', require('./routes/academies'));
 app.use('/api/tournaments', require('./routes/tournaments'));
 app.use('/api/profiles', require('./routes/profiles'));
 app.use('/api/profiles', require('./routes/documents'));
+// Payment checkout endpoints: strict rate limit
+app.use('/api/registrations/checkout', paymentLimiter);
+app.use('/api/credits/checkout', paymentLimiter);
 app.use('/api/registrations', require('./routes/registrations'));
 app.use('/api/guardians', require('./routes/guardians'));
 app.use('/api/credits', require('./routes/credits'));

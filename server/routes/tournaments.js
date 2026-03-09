@@ -4,6 +4,7 @@ const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const upload = require('../middleware/upload');
+const { validateImageBytes } = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
 
 const router = express.Router();
@@ -126,6 +127,7 @@ router.post('/:id/cover-image',
   requireAuth,
   requireTournamentOwner,
   upload.single('coverImage'),
+  validateImageBytes,
   tournamentController.uploadCoverImage
 );
 

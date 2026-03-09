@@ -175,12 +175,22 @@ const _SCOPED_KEYS = new Set([
     'certificateTemplate', 'certificateConfig', 'publicSiteConfig',
     'scoreboard-state', 'scoreEditLog', 'operatorSidesSwapped',
     'officials', 'staffMembers', // officials/staff were missing — caused cross-tournament data leak
+    'judgeVoteLog', // judge analytics — must be scoped or analytics bleed across tournaments
 ]);
 
 // Keys that must remain global (shared across all tournaments)
 // 'tournaments' — the list of all tournaments
 // 'mat-update-trigger' — cross-tab signaling
 // 'scheduleSettings_*' / 'matSchedule_*' — already tournament-scoped
+
+// ── Bracket Status Constants ─────────────────────────────────────────────────
+// Use these instead of raw string literals to prevent silent typo bugs.
+const BRACKET_STATUS = Object.freeze({
+    PENDING:     'pending',
+    COMPLETED:   'completed',
+    IN_PROGRESS: 'in-progress',
+    BYE:         'bye',
+});
 
 function _scopedKey(key) {
     if (currentTournamentId && _SCOPED_KEYS.has(key)) {
@@ -12833,6 +12843,10 @@ async function loadCheckinView() {
         document.getElementById('ci-list-competitors').innerHTML = '<p class="hint" style="padding:16px;">No tournament selected.</p>';
         return;
     }
+    // Reset stale state from any previous tournament before loading fresh data
+    _checkinData = [];
+    _checkinDirectorData = [];
+    _checkinMembers = [];
     // Reset detail panel
     document.getElementById('checkin-detail-panel').style.display = 'none';
 

@@ -5,6 +5,7 @@ const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const academyController = require('../controllers/academyController');
 const upload = require('../middleware/upload');
+const { validateImageBytes } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -56,6 +57,7 @@ router.put('/:id',
 // POST /api/academies/:id/logo — Upload academy logo (ownership verified in controller)
 router.post('/:id/logo',
   upload.single('logo'),
+  validateImageBytes,
   academyController.uploadLogo
 );
 

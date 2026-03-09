@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const upload = require('../middleware/upload');
+const { validateImageBytes } = require('../middleware/upload');
 const certificateController = require('../controllers/certificateController');
 
 const router = express.Router();
@@ -15,6 +16,7 @@ router.post('/:id/certificate-template',
   requireAuth,
   requireTournamentOwner,
   upload.single('template'),
+  validateImageBytes,
   certificateController.uploadTemplate
 );
 

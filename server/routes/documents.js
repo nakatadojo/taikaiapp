@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { validateImageBytes } = require('../middleware/upload');
 const documentController = require('../controllers/documentController');
 
 const router = express.Router();
@@ -12,6 +13,7 @@ const documentUpload = upload.single('file');
 router.post('/:profileId/documents',
   requireAuth,
   documentUpload,
+  validateImageBytes,
   documentController.uploadDocument
 );
 
@@ -31,6 +33,7 @@ router.delete('/:profileId/documents/:docId',
 router.post('/:profileId/photo',
   requireAuth,
   upload.single('photo'),
+  validateImageBytes,
   documentController.uploadPhoto
 );
 

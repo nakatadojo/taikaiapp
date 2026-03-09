@@ -52,22 +52,17 @@ router.post(
 
     let event;
 
-    // Verify webhook signature if secret is configured
-    if (process.env.STRIPE_WEBHOOK_SECRET) {
-      try {
-        event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-      } catch (err) {
-        console.warn('⚠ Webhook signature verification failed:', err.message);
-        return res.status(400).json({ error: 'Webhook signature verification failed' });
-      }
-    } else {
-      // No webhook secret — parse body directly (dev mode only)
-      try {
-        event = JSON.parse(req.body.toString());
-        console.warn('⚠ Webhook received without signature verification (STRIPE_WEBHOOK_SECRET not set)');
-      } catch (err) {
-        return res.status(400).json({ error: 'Invalid JSON body' });
-      }
+    // STRIPE_WEBHOOK_SECRET is required — reject all webhooks without it
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('STRIPE_WEBHOOK_SECRET not configured — rejecting incoming webhook');
+      return res.status(400).json({ error: 'Webhook not configured' });
+    }
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.warn('⚠ Webhook signature verification failed:', err.message);
+      return res.status(400).json({ error: 'Webhook signature verification failed' });
     }
 
     // Skip events we don't handle
@@ -118,9 +113,12 @@ router.post(
       }
     } catch (err) {
       console.error('Webhook processing error:', err);
-      // Return 200 so Stripe doesn't retry for errors we've logged
-      // (e.g., idempotent duplicates throw unique constraint violations)
-      return res.json({ received: true, handled: false, error: err.message });
+      // Idempotent duplicates (unique constraint = 23505) are expected on retries — ack with 200
+      // All other errors return 500 so Stripe will retry delivery
+      if (err.code === '23505') {
+        return res.json({ received: true, handled: false, error: 'duplicate' });
+      }
+      return res.status(500).json({ error: 'Internal webhook processing error' });
     }
   }
 );
@@ -187,18 +185,28 @@ async function handleRegistrationPayment(session, metadata) {
   const cartData = JSON.parse(metadata.cartData);
   const tournament = await tournamentQueries.findById(tournamentId);
 
-  // Get discount data if applicable
-  let discountData = null;
-  if (discountCode) {
-    discountData = await discountQueries.findByCode(discountCode);
-  }
-
-  // Create registrations in a transaction
+  // Create registrations + deduct credits in a single atomic transaction
   const client = await pool.connect();
   const registrationIds = [];
   try {
     await client.query('BEGIN');
 
+    // ── Discount code: lock row first to prevent concurrent over-use ───────
+    let discountData = null;
+    if (discountCode) {
+      const dcResult = await client.query(
+        'SELECT * FROM discount_codes WHERE code = LOWER($1) FOR UPDATE',
+        [discountCode]
+      );
+      discountData = dcResult.rows[0] || null;
+      // If already at max_uses, skip this code (concurrent request beat us)
+      if (discountData && discountData.max_uses !== null && discountData.times_used >= discountData.max_uses) {
+        console.warn(`Webhook: Discount code ${discountCode} already at max_uses=${discountData.max_uses}, skipping increment`);
+        discountData = null;
+      }
+    }
+
+    // ── Insert registrations ───────────────────────────────────────────────
     for (const comp of cartData.competitors) {
       const regResult = await client.query(
         `INSERT INTO registrations
@@ -229,7 +237,7 @@ async function handleRegistrationPayment(session, metadata) {
       }
     }
 
-    // Increment discount code usage
+    // ── Increment discount code usage (locked above) ───────────────────────
     if (discountData?.id) {
       await client.query(
         'UPDATE discount_codes SET times_used = times_used + 1 WHERE id = $1',
@@ -237,7 +245,7 @@ async function handleRegistrationPayment(session, metadata) {
       );
     }
 
-    // Mark payment as completed and store payment_intent_id
+    // ── Mark payment as completed ──────────────────────────────────────────
     await client.query(
       `UPDATE payment_transactions
          SET status = 'completed', completed_at = NOW(),
@@ -246,25 +254,40 @@ async function handleRegistrationPayment(session, metadata) {
       [sessionId, paymentIntentId]
     );
 
+    // ── Deduct director credits atomically (inside same transaction) ───────
+    if (tournament && tournament.created_by && registrationIds.length > 0) {
+      const description = `Registration (webhook): ${cartData.competitors.map(c => c.name).join(', ')} for ${tournament.name}`;
+      // Lock director's user row
+      const userResult = await client.query(
+        'SELECT credit_balance FROM users WHERE id = $1 FOR UPDATE',
+        [tournament.created_by]
+      );
+      const currentBalance = userResult.rows[0]?.credit_balance || 0;
+      if (currentBalance >= registrationIds.length) {
+        const newBalance = currentBalance - registrationIds.length;
+        await client.query(
+          'UPDATE users SET credit_balance = $1 WHERE id = $2',
+          [newBalance, tournament.created_by]
+        );
+        for (let i = 0; i < registrationIds.length; i++) {
+          await client.query(
+            `INSERT INTO credit_transactions
+              (user_id, amount, balance_after, type, description, tournament_id, registration_id)
+             VALUES ($1, -1, $2, 'usage', $3, $4, $5)`,
+            [tournament.created_by, currentBalance - (i + 1), description, tournamentId, registrationIds[i]]
+          );
+        }
+      } else {
+        console.warn(`Webhook: Insufficient credits for director ${tournament.created_by} (need ${registrationIds.length}, have ${currentBalance})`);
+      }
+    }
+
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
-  }
-
-  // Deduct credits from Event Director
-  if (tournament && tournament.created_by && registrationIds.length > 0) {
-    try {
-      await creditQueries.deductForRegistration(
-        tournament.created_by, registrationIds.length, tournamentId,
-        registrationIds,
-        `Registration (webhook): ${cartData.competitors.map(c => c.name).join(', ')} for ${tournament.name}`
-      );
-    } catch (creditErr) {
-      console.warn('Webhook: Credit deduction failed:', creditErr.message);
-    }
   }
 
   // Send confirmation email

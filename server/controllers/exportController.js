@@ -118,8 +118,10 @@ async function exportRegistrantsCSV(req, res, next) {
         .filter(e => e.eventName)
         .map(e => e.eventName)
         .join('; ');
+      // Use timeZone:'UTC' to prevent node-postgres DATE values (midnight UTC)
+      // from shifting to the previous day in non-UTC server timezones
       const dob = r.date_of_birth
-        ? new Date(r.date_of_birth).toLocaleDateString('en-US')
+        ? new Date(r.date_of_birth).toLocaleDateString('en-US', { timeZone: 'UTC' })
         : '';
       const regDate = r.registered_at
         ? new Date(r.registered_at).toLocaleDateString('en-US')

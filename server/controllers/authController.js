@@ -6,8 +6,11 @@ const roleQueries = require('../db/queries/roles');
 const pool = require('../db/pool');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../email');
 
-const BCRYPT_ROUNDS = 12;
-const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
+// Read from environment — allows tuning without code changes
+// Default: 12 rounds (good balance of security vs. speed; increase in .env for higher security)
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
+// Default: 8h (shorter than 24h to limit exposure window if a token is stolen)
+const JWT_EXPIRY = process.env.JWT_EXPIRY || '8h';
 
 /**
  * Build JWT payload and set httpOnly cookie.
@@ -42,10 +45,10 @@ async function signup(req, res, next) {
   try {
     const { email, password, firstName, lastName, phone, organizationName } = req.body;
 
-    // Check for existing user
+    // Check for existing user — return a generic message to avoid email enumeration
     const existing = await userQueries.findByEmail(email);
     if (existing) {
-      return res.status(409).json({ error: 'An account with this email already exists' });
+      return res.status(409).json({ error: 'Unable to create account. Please try a different email address, or log in if you already have an account.' });
     }
 
     // Hash password

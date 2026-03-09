@@ -238,7 +238,7 @@ async function getRegistrations(req, res, next) {
 
 /**
  * PUT /api/registrations/:id/activate
- * Force-activate a pending registration (coach/admin override for expired guardian links).
+ * Force-activate a pending registration (tournament director or registration owner only).
  */
 async function activateRegistration(req, res, next) {
   try {
@@ -247,6 +247,19 @@ async function activateRegistration(req, res, next) {
     const registration = await registrationQueries.findById(id);
     if (!registration) {
       return res.status(404).json({ error: 'Registration not found' });
+    }
+
+    // Ownership check: must be the registration owner OR the tournament director OR an admin
+    const isRegOwner = registration.registered_by === req.user.id || registration.user_id === req.user.id;
+    const userRoles = req.user.roles || [];
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+
+    if (!isRegOwner && !isAdmin) {
+      const tournament = await tournamentQueries.findById(registration.tournament_id);
+      const isTournamentOwner = tournament && tournament.created_by === req.user.id;
+      if (!isTournamentOwner) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
     }
 
     const updated = await registrationQueries.updateStatus(id, 'active');

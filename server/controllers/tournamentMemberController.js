@@ -263,9 +263,20 @@ async function listPublic(req, res, next) {
 /**
  * PATCH /api/tournament-members/:id/checkin
  * Mark a member (official/staff/coach) as checked in on event day.
+ * Requires: authenticated user must own the tournament the member belongs to.
  */
 async function checkIn(req, res, next) {
   try {
+    // Look up member first to get the tournament_id, then verify ownership
+    const existing = await tournamentMemberQueries.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const tournament = await tournamentQueries.findById(existing.tournament_id);
+    if (!tournament || tournament.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     const member = await tournamentMemberQueries.checkIn(req.params.id, req.user.id);
     if (!member) {
       return res.status(404).json({ error: 'Member not found or not approved' });
@@ -279,9 +290,20 @@ async function checkIn(req, res, next) {
 /**
  * DELETE /api/tournament-members/:id/checkin
  * Undo a member check-in.
+ * Requires: authenticated user must own the tournament the member belongs to.
  */
 async function undoCheckIn(req, res, next) {
   try {
+    // Look up member first to get the tournament_id, then verify ownership
+    const existing = await tournamentMemberQueries.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    const tournament = await tournamentQueries.findById(existing.tournament_id);
+    if (!tournament || tournament.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
     const member = await tournamentMemberQueries.undoCheckIn(req.params.id);
     if (!member) {
       return res.status(404).json({ error: 'Member not found' });

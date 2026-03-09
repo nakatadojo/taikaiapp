@@ -6,7 +6,12 @@ if (process.env.RESEND_API_KEY) {
   resend = new Resend(process.env.RESEND_API_KEY);
   console.log('✓ Resend email service configured');
 } else {
-  console.log('ℹ RESEND_API_KEY not set — email links will be logged to console');
+  const msg = 'RESEND_API_KEY not set — email links will be logged to console';
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`WARNING: ${msg}. Registration confirmations, password resets, and guardian emails will NOT be sent.`);
+  } else {
+    console.log(`ℹ ${msg}`);
+  }
 }
 
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Tournament Manager <noreply@tournament.local>';
