@@ -234,7 +234,12 @@ function saveBrackets(brackets) {
     Object.keys(brackets).forEach(id => {
         slimmed[id] = slimBracketForStorage(JSON.parse(JSON.stringify(brackets[id])));
     });
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify(slimmed));
+    try {
+        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(slimmed));
+    } catch (e) {
+        console.error('[saveBrackets] localStorage quota exceeded — brackets not saved locally. Server sync will still be attempted.', e);
+        showMessage('Warning: local storage is full. Brackets will be saved to the server but may not persist offline.', 'warning');
+    }
 }
 
 /**
@@ -8535,8 +8540,9 @@ function showBracketGenerator() {
 
     // Populate template dropdown
     const templateSelect = document.getElementById('bracket-template-select');
+    const templates = eventData.templates || [];
     templateSelect.innerHTML = '<option value="">Select a template</option>';
-    (eventData.templates || []).forEach((tmpl, idx) => {
+    templates.forEach((tmpl, idx) => {
         const opt = document.createElement('option');
         opt.value = idx;
         opt.textContent = tmpl.name || `Template ${idx + 1}`;
@@ -8545,8 +8551,18 @@ function showBracketGenerator() {
     // Reset checklist
     document.getElementById('bracket-division-checklist').innerHTML = '';
     document.getElementById('bracket-division-checklist-group').style.display = 'none';
-    // Auto-select if there is exactly one template (common case)
-    if ((eventData.templates || []).length === 1) {
+
+    const generated = eventData.generated || {};
+    const generatedNames = Object.keys(generated).filter(n => (generated[n] || []).length > 0);
+
+    if (templates.length === 0 && generatedNames.length > 0) {
+        // No templates saved — populate checklist directly from generated divisions
+        // so the user doesn't get stuck with an empty, non-functional template dropdown.
+        templateSelect.closest?.('.form-group')
+            ? (templateSelect.closest('.form-group').style.display = 'none') : null;
+        _populateBracketChecklist(generatedNames, generated);
+    } else if (templates.length === 1) {
+        // Auto-select if there is exactly one template (common case)
         templateSelect.value = '0';
         onBracketTemplateChange();
     }
@@ -8559,6 +8575,34 @@ function showBracketGenerator() {
 }
 
 /**
+ * Render a list of division names as checked checkboxes in the bracket checklist.
+ */
+function _populateBracketChecklist(names, generated) {
+    const checklist = document.getElementById('bracket-division-checklist');
+    const checklistGroup = document.getElementById('bracket-division-checklist-group');
+    checklist.innerHTML = '';
+    if (names.length === 0) {
+        checklist.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">No divisions with competitors found.</p>';
+        checklistGroup.style.display = 'block';
+        return;
+    }
+    names.forEach(name => {
+        const count = (generated[name] || []).length;
+        const label = document.createElement('label');
+        label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'bracket-division';
+        cb.value = name;
+        cb.checked = true;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(`${name} (${count})`));
+        checklist.appendChild(label);
+    });
+    checklistGroup.style.display = 'block';
+}
+
+/**
  * Called when the user picks a template in the bracket generator modal.
  * Rebuilds the division checklist for the selected template by re-running
  * buildDivisions() with the already-stored competitor pool so the division
@@ -8567,8 +8611,8 @@ function showBracketGenerator() {
 function onBracketTemplateChange() {
     const eventId = document.getElementById('division-event-selector')?.value;
     const templateIdx = parseInt(document.getElementById('bracket-template-select').value, 10);
-    const checklistGroup = document.getElementById('bracket-division-checklist-group');
     const checklist = document.getElementById('bracket-division-checklist');
+    const checklistGroup = document.getElementById('bracket-division-checklist-group');
 
     checklist.innerHTML = '';
     checklistGroup.style.display = 'none';
@@ -8585,31 +8629,17 @@ function onBracketTemplateChange() {
     const allCompetitors = Object.values(generated).flat();
     const templateDivisions = buildDivisions(allCompetitors, template.criteria);
 
-    const matchingNames = Object.keys(templateDivisions).filter(
+    let matchingNames = Object.keys(templateDivisions).filter(
         name => generated[name] && generated[name].length > 0
     );
 
+    // Fallback: if template-based names produce no matches (e.g. age shifted since
+    // generation), show all generated divisions so the user isn't left with nothing.
     if (matchingNames.length === 0) {
-        checklist.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">No divisions with competitors found for this template.</p>';
-        checklistGroup.style.display = 'block';
-        return;
+        matchingNames = Object.keys(generated).filter(n => (generated[n] || []).length > 0);
     }
 
-    matchingNames.forEach(name => {
-        const count = generated[name].length;
-        const label = document.createElement('label');
-        label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.name = 'bracket-division';
-        cb.value = name;
-        cb.checked = true;
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(`${name} (${count})`));
-        checklist.appendChild(label);
-    });
-
-    checklistGroup.style.display = 'block';
+    _populateBracketChecklist(matchingNames, generated);
 }
 
 function setBracketDivisionChecks(checked) {
