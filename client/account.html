@@ -1459,7 +1459,7 @@
                     }[tx.type] || tx.type;
                     return `<tr>
                         <td>${date}</td>
-                        <td><span style="font-size:0.75rem;background:var(--surface);padding:2px 8px;border-radius:10px;">${typeLabel}</span></td>
+                        <td><span style="font-size:0.75rem;background:var(--glass);padding:2px 8px;border-radius:10px;">${typeLabel}</span></td>
                         <td style="color:${color};font-weight:600;">${sign}${tx.amount}</td>
                         <td style="color:var(--text-muted);font-size:13px;">${esc(tx.description || tx.tournament_name || '—')}</td>
                     </tr>`;
@@ -1494,7 +1494,7 @@
                 <h1 class="section-title">Credits</h1>
                 <p class="section-subtitle">One credit = one competitor registration. Credits never expire and work across all your tournaments.</p>
 
-                <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;text-align:center;margin-bottom:32px;max-width:280px;">
+                <div style="background:var(--bg-secondary);border:1px solid var(--glass-border);border-radius:14px;padding:28px;text-align:center;margin-bottom:32px;max-width:280px;">
                     <div style="font-size:3rem;font-weight:800;line-height:1;">${balance}</div>
                     <div style="font-size:0.9rem;color:var(--text-muted);margin-top:6px;">Credits Available</div>
                     ${balance === 0 ? `<div style="font-size:0.8rem;color:#f59e0b;margin-top:8px;">⚠ Incoming registrations will be held as pending until you add credits.</div>` : ''}
@@ -1507,7 +1507,7 @@
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:14px;">
                         <thead>
-                            <tr style="border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">
+                            <tr style="border-bottom:1px solid var(--glass-border);color:var(--text-muted);font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">
                                 <th style="padding:8px 0;text-align:left;font-weight:600;">Date</th>
                                 <th style="padding:8px 0;text-align:left;font-weight:600;">Type</th>
                                 <th style="padding:8px 0;text-align:left;font-weight:600;">Amount</th>

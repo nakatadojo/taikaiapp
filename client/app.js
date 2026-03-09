@@ -3363,9 +3363,12 @@ function loadCompetitors(skipSync = false) {
         const totalDue = comp.pricing?.total != null ? `$${comp.pricing.total.toFixed(2)}` : '-';
         const paymentBadge = getPaymentStatusBadge(comp.paymentStatus || 'unpaid');
 
+        const testBadge = comp.is_test
+            ? `<span style="background:rgba(245,158,11,0.2);color:#f59e0b;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-right:5px;vertical-align:middle;">TEST</span>`
+            : '';
         tr.innerHTML = `
             <td>${photoHtml}</td>
-            <td>${comp.firstName} ${comp.lastName}</td>
+            <td>${testBadge}${comp.firstName} ${comp.lastName}</td>
             <td>${ageDisplay}</td>
             <td>${comp.gender || '-'}</td>
             <td>${comp.weight} kg</td>
@@ -3375,7 +3378,7 @@ function loadCompetitors(skipSync = false) {
             <td style="font-size: 13px; font-weight: 600;">${totalDue}</td>
             <td style="cursor: pointer;" onclick="togglePaymentStatus(${comp.id})">${paymentBadge}</td>
             <td>
-                <button class="btn btn-small" onclick="editCompetitor(${comp.id})">Edit</button>
+                ${comp.is_test ? '' : `<button class="btn btn-small" onclick="editCompetitor(${comp.id})">Edit</button>`}
                 <button class="btn btn-small btn-danger" onclick="deleteCompetitor(${comp.id})">Delete</button>
             </td>
         `;
@@ -3478,6 +3481,459 @@ window.editCompetitor = function(id) {
     // Scroll form into view
     document.getElementById('competitor-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST DATA MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _tdmGroups = [];
+
+const _ALL_RANKS = ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', '1st Dan', '2nd Dan', '3rd Dan'];
+
+const _defaultDojoPool = [
+    'Rising Sun Karate', 'Midwest Martial Arts', 'Heartland Dojo',
+    'Sakura Karate', 'Iron Fist Martial Arts', 'Pacific Coast Karate',
+    'Dragon Spirit Dojo', 'Mountain View Karate', 'Thunder Bay MA', 'Golden Tiger Dojo'
+];
+
+function openTestDataModal() {
+    if (!currentTournamentId) {
+        showMessage('Please select a tournament first.', 'error');
+        return;
+    }
+    _tdmGroups = [{
+        id: Date.now(),
+        count: 20,
+        rankFrom: 'White',
+        rankTo: 'Purple',
+        ageMin: 8,
+        ageMax: 18,
+        weightMin: 25,
+        weightMax: 80,
+        gender: 'mixed',
+    }];
+    _showTdmModal();
+}
+
+function _tdmGroupHTML(g, idx) {
+    const rankOpts = (sel) => _ALL_RANKS.map(r => `<option value="${r}"${r === sel ? ' selected' : ''}>${r}</option>`).join('');
+    const genderOpts = ['mixed', 'male', 'female'].map(gv =>
+        `<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;margin-right:10px;">
+            <input type="radio" name="tdm-gender-${g.id}" value="${gv}" ${g.gender === gv ? 'checked' : ''} onchange="_tdmUpdate(${g.id},'gender',this.value)">
+            ${gv.charAt(0).toUpperCase() + gv.slice(1)}
+        </label>`
+    ).join('');
+    return `
+        <div class="tdm-group-card" data-gid="${g.id}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);">Group ${idx + 1}</span>
+                ${_tdmGroups.length > 1 ? `<button class="btn btn-small btn-danger" onclick="_tdmRemoveGroup(${g.id})">Remove</button>` : ''}
+            </div>
+            <div class="tdm-fields">
+                <div class="tdm-field">
+                    <label class="tdm-label">Competitors</label>
+                    <input type="number" min="1" max="500" value="${g.count}" class="tdm-input" oninput="_tdmUpdate(${g.id},'count',+this.value)">
+                </div>
+                <div class="tdm-field">
+                    <label class="tdm-label">Belt range</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <select class="tdm-input" onchange="_tdmUpdate(${g.id},'rankFrom',this.value)">${rankOpts(g.rankFrom)}</select>
+                        <span style="color:var(--text-muted);font-size:11px;">→</span>
+                        <select class="tdm-input" onchange="_tdmUpdate(${g.id},'rankTo',this.value)">${rankOpts(g.rankTo)}</select>
+                    </div>
+                </div>
+                <div class="tdm-field">
+                    <label class="tdm-label">Age (years)</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input type="number" min="4" max="99" value="${g.ageMin}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'ageMin',+this.value)">
+                        <span style="color:var(--text-muted);font-size:11px;">–</span>
+                        <input type="number" min="4" max="99" value="${g.ageMax}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'ageMax',+this.value)">
+                    </div>
+                </div>
+                <div class="tdm-field">
+                    <label class="tdm-label">Weight (kg)</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input type="number" min="10" max="200" value="${g.weightMin}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'weightMin',+this.value)">
+                        <span style="color:var(--text-muted);font-size:11px;">–</span>
+                        <input type="number" min="10" max="200" value="${g.weightMax}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'weightMax',+this.value)">
+                    </div>
+                </div>
+                <div class="tdm-field">
+                    <label class="tdm-label">Gender</label>
+                    <div style="display:flex;flex-wrap:wrap;">${genderOpts}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function _showTdmModal() {
+    document.getElementById('test-data-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'test-data-modal';
+    modal.className = 'modal';
+    modal.style.cssText = 'z-index:10001;';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:560px;max-height:88vh;overflow-y:auto;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                <h2 style="margin:0;">🧪 Generate Test Competitors</h2>
+                <button class="btn btn-secondary btn-small" onclick="document.getElementById('test-data-modal').remove()">✕</button>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:10px;">Competitor Groups</div>
+                <div id="tdm-groups-container">${_tdmGroups.map((g, i) => _tdmGroupHTML(g, i)).join('')}</div>
+                <button class="btn btn-secondary btn-small" style="margin-top:10px;" onclick="_tdmAddGroup()">+ Add Group</button>
+            </div>
+
+            <div style="border-top:1px solid var(--glass-border);padding-top:16px;margin-bottom:16px;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:10px;">Dojos</div>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;margin-bottom:10px;">
+                    <input type="checkbox" id="tdm-multi-dojos" checked onchange="document.getElementById('tdm-dojo-section').style.display=this.checked?'block':'none'">
+                    Distribute across multiple dojos
+                </label>
+                <div id="tdm-dojo-section">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">One dojo name per line:</div>
+                    <textarea id="tdm-dojo-names" rows="5" style="width:100%;background:var(--glass-bg,rgba(255,255,255,0.04));border:1px solid var(--glass-border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;resize:vertical;font-family:inherit;">${_defaultDojoPool.join('\n')}</textarea>
+                    <button class="btn btn-secondary btn-small" style="margin-top:6px;" onclick="_tdmLoadSystemDojos(event)">⬇ Load from system</button>
+                </div>
+            </div>
+
+            <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:#f59e0b;margin-bottom:20px;">
+                ⚠ Test competitors are flagged and excluded from credit deduction. They flow into divisions normally and can be bulk-deleted anytime.
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('test-data-modal').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="_tdmExecute()">🧪 Generate</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+window._tdmAddGroup = function() {
+    _tdmGroups.push({ id: Date.now(), count: 10, rankFrom: 'White', rankTo: 'Blue', ageMin: 8, ageMax: 18, weightMin: 25, weightMax: 80, gender: 'mixed' });
+    const c = document.getElementById('tdm-groups-container');
+    if (c) c.innerHTML = _tdmGroups.map((g, i) => _tdmGroupHTML(g, i)).join('');
+};
+
+window._tdmRemoveGroup = function(gid) {
+    _tdmGroups = _tdmGroups.filter(g => g.id !== gid);
+    const c = document.getElementById('tdm-groups-container');
+    if (c) c.innerHTML = _tdmGroups.map((g, i) => _tdmGroupHTML(g, i)).join('');
+};
+
+window._tdmUpdate = function(gid, field, value) {
+    const g = _tdmGroups.find(x => x.id === gid);
+    if (g) g[field] = value;
+};
+
+window._tdmLoadSystemDojos = async function(evt) {
+    const btn = evt?.target;
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    try {
+        const queries = ['a', 'do', 'ka', 'ma'];
+        const results = await Promise.all(
+            queries.map(q => fetch(`/api/academies/search?q=${encodeURIComponent(q)}`, { credentials: 'include' })
+                .then(r => r.ok ? r.json() : [])
+                .catch(() => []))
+        );
+        const seen = new Set();
+        const names = [];
+        for (const result of results) {
+            const arr = Array.isArray(result) ? result : (result.academies || result.data || []);
+            for (const a of arr) {
+                const name = a.name || a.academy_name || a.dojo_name;
+                if (name && !seen.has(name)) { seen.add(name); names.push(name); }
+            }
+        }
+        if (names.length > 0) {
+            const ta = document.getElementById('tdm-dojo-names');
+            if (ta) ta.value = names.slice(0, 20).join('\n');
+            showMessage(`Loaded ${Math.min(names.length, 20)} dojos from system.`);
+        } else {
+            showMessage('No dojos found in system. Using default names.', 'warning');
+        }
+    } catch (e) {
+        showMessage('Could not load dojos from system.', 'error');
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load from system'; }
+};
+
+window._tdmExecute = function() {
+    const useMultiDojos = document.getElementById('tdm-multi-dojos')?.checked;
+    const dojos = useMultiDojos
+        ? (document.getElementById('tdm-dojo-names')?.value || '').split('\n').map(s => s.trim()).filter(Boolean)
+        : null;
+    document.getElementById('test-data-modal')?.remove();
+    executeTestGeneration({ groups: _tdmGroups, dojos });
+};
+
+/**
+ * Generate test competitors from modal configuration.
+ * Marks all as is_test: true; replaces existing test data (not real competitors).
+ */
+function executeTestGeneration(config) {
+    const { groups, dojos } = config;
+
+    if (!currentTournamentId) {
+        showMessage('Please select a tournament first.', 'error');
+        return;
+    }
+
+    const dojoPool = (dojos && dojos.length > 0) ? dojos : _defaultDojoPool;
+
+    // ── Step 1: Clear existing test competitors (not real) ──
+    const allCompetitors = db.load('competitors');
+    allCompetitors.filter(c => c.is_test && c.tournamentId === currentTournamentId)
+        .forEach(c => db.delete('competitors', c.id));
+
+    // Clear generated divisions (keep templates)
+    const divisions = db.load('divisions');
+    const eventTypes = db.load('eventTypes');
+    const nonDefaultEvents = eventTypes.filter(e => !e.isDefault);
+    const defaultEvent = eventTypes.find(e => e.isDefault);
+
+    const eventIds = nonDefaultEvents.map(e => e.id);
+    for (const event of nonDefaultEvents) {
+        if (divisions[event.id]) divisions[event.id].generated = {};
+    }
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+
+    // Clear brackets and teams for these events
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    Object.keys(brackets).forEach(id => { if (eventIds.includes(brackets[id]?.eventId)) delete brackets[id]; });
+    saveBrackets(brackets);
+
+    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    Object.keys(teams).forEach(code => { if (eventIds.includes(teams[code]?.eventId)) delete teams[code]; });
+    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+
+    // ── Step 2: Tournament info for DOB generation ──
+    const tournaments = db.load('tournaments');
+    const currentTournament = tournaments.find(t => t.id === currentTournamentId);
+    const ageMethod = currentTournament?.ageCalculationMethod || 'aau-standard';
+    const eventDate = currentTournament?.date || new Date().toISOString();
+
+    function genDOB(targetAge) {
+        const safeEvt = (typeof eventDate === 'string' && eventDate.length === 10)
+            ? new Date(eventDate + 'T12:00:00') : new Date(eventDate);
+        const refDate = ageMethod === 'wkf-standard'
+            ? new Date(safeEvt.getFullYear(), 11, 31) : safeEvt;
+        const birthYear = refDate.getFullYear() - targetAge;
+        const m = Math.floor(Math.random() * 10) + 1;
+        const d = Math.floor(Math.random() * 28) + 1;
+        const dob = `${birthYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const computed = calculateAge(dob, ageMethod, eventDate);
+        if (computed !== targetAge) {
+            return `${birthYear + (computed - targetAge)}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        return dob;
+    }
+
+    // ── Step 3: Ensure dojo clubs exist ──
+    let existingClubs = db.load('clubs');
+    const existingClubNames = new Set(existingClubs.map(c => c.name));
+    for (const name of dojoPool) {
+        if (!existingClubNames.has(name)) {
+            db.add('clubs', { name, logo: null, country: '', createdAt: new Date().toISOString() });
+            existingClubNames.add(name);
+        }
+    }
+
+    // ── Step 4: Determine which events to register for ──
+    const eventsWithTemplates = nonDefaultEvents.filter(e => {
+        const d = divisions[e.id];
+        return d && d.templates && d.templates.length > 0;
+    });
+    const registerEventIds = (eventsWithTemplates.length > 0 ? eventsWithTemplates : nonDefaultEvents).map(e => e.id);
+    if (defaultEvent && !registerEventIds.includes(defaultEvent.id)) registerEventIds.push(defaultEvent.id);
+
+    // ── Step 5: Name pool ──
+    const tdmFirstNames = [
+        'Aiden','Akira','Alejandro','Amara','Anika','Arjun','Ava','Benjamin','Camila','Carlos',
+        'Charlotte','Chen','Chloe','Daniel','Davi','Diana','Elena','Elijah','Emilia','Ethan',
+        'Fatima','Gabriel','Hana','Haruto','Hiroshi','Hugo','Ibrahim','Isabella','Isla','Jack',
+        'James','Jasmine','Jayden','Jin','Kai','Kaito','Kara','Kenji','Layla','Leo',
+        'Liam','Lily','Logan','Lucas','Luna','Malik','Maria','Mia','Mohammed','Nadia',
+        'Nathan','Nia','Noah','Nora','Oliver','Omar','Owen','Priya','Rafael','Rin',
+        'Riya','Rosa','Ryan','Sakura','Samuel','Sara','Sebastian','Sofia','Sora','Takeshi',
+        'Tariq','Thomas','Victoria','William','Yuki','Zara','Adriana','Andre','Beatriz','Blake',
+        'Caleb','Carmen','Dante','Dina','Eric','Eva','Felix','Grace','Hannah','Ian',
+        'Jade','Jordan','Kira','Leah','Marco','Maya','Naomi','Oscar','Paola','Quinn',
+        'Reese','Riley','Sami','Tara','Uma','Victor','Wendy','Xavier','Yara','Zoe',
+        'Abel','Bianca','Cruz','Daphne','Eli','Fiona','Gavin','Helena','Ivan','Julia',
+        'Khalil','Lucia','Mateo','Nina','Orion','Petra','Ramon','Selena','Theo','Ursula',
+        'Vivian','Wesley','Ximena','Yosef','Zuri','Amir','Briana','Cyrus','Dahlia','Elio',
+        'Freya','Gage','Hector','Ingrid','Javier','Kaya','Lorenzo','Mika','Nico','Olive',
+        'Paloma','River','Rowan','Sienna','Tobias','Uma','Valentina','Wade','Xena','Yolanda',
+        'Zane','Aria','Beckett','Celeste','Diego','Ember','Finn','Gaia','Hugo','Irene',
+        'Jasper','Kiara','Lennox','Miriam','Nico','Ophelia','Pierce','Quinn','Rafaela','Seth',
+        'Talia','Ulric','Vera','Wolf','Xiomara','Yasmin','Zander','Athena','Bruno','Cleo'
+    ];
+    const tdmLastNames = [
+        'Nakamura','Gonzalez','Kim','Patel','Santos','Schmidt','Wang','Johnson','Garcia','Williams',
+        'Brown','Lee','Martinez','Anderson','Thomas','Taylor','Moore','Jackson','Martin','Tanaka',
+        'Muller','Silva','Johansson','Chen','Ali','Rossi','Fernandez','Dubois','Ivanov','Yamamoto',
+        'Cruz','Park','Nguyen','Singh','Sato','Costa','Petrov','Hansen','Larsen','Rivera',
+        'Torres','Takahashi','Meyer','Berg','Eriksson','Lopez','Morales','Suzuki','Fischer','Okafor',
+        'Reyes','Volkov','Becker','Ortiz','Hoffman','Diaz','Reed','Brooks','Kelly','Ruiz',
+        'Cox','Ward','Long','Murphy','Sullivan','Bennett','Cooper','Hart','West','Stone',
+        'Fox','Delgado','Vega','Ishida','Watanabe','Kato','Shimizu','Morita','Choi','Pham',
+        'Dubois','Nkosi','Ferreira','Andersen','Christoffersen','Yamada','Kobayashi','Hayashi','Inoue','Kimura',
+        'O\'Brien','MacLeod','Fitzgerald','O\'Connor','Ramos','Herrera','Jimenez','Romero','Flores','Moreno',
+        'Molina','Gutierrez','Dominguez','Perez','Vargas','Castillo','Mendez','Aguilar','Guerrero','Medina',
+        'Chávez','Reeves','Quinn','Doyle','Walsh','Ryan','Burke','McCarthy','Gallagher','Kennedy',
+        'Aoki','Fujita','Ogawa','Nishimura','Saito','Ito','Abe','Matsumoto','Ikeda','Hasegawa',
+        'Obinna','Adeyemi','Mensah','Diallo','Camara','Traore','Keita','Coulibaly','Diarra','Bah',
+        'Petersen','Johansen','Andersen','Svensson','Lindqvist','Bergström','Holm','Nilsson','Persson','Eriksen',
+        'Popov','Sokolov','Kuznetsov','Fedorov','Orlov','Lebedev','Morozov','Novak','Kovalev','Kowalski'
+    ];
+
+    function shuffle(arr) {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+    }
+
+    const sFirst = shuffle(tdmFirstNames);
+    const sLast = shuffle(tdmLastNames);
+    const usedNames = new Set();
+    let nameIdx = 0;
+
+    function getUniqueName() {
+        for (let attempt = 0; attempt < 500; attempt++) {
+            const fi = (nameIdx + attempt) % sFirst.length;
+            const li = Math.floor((nameIdx + attempt) / sFirst.length + attempt) % sLast.length;
+            const key = `${sFirst[fi]}|${sLast[li]}`;
+            if (!usedNames.has(key)) {
+                usedNames.add(key);
+                nameIdx++;
+                return { firstName: sFirst[fi], lastName: sLast[li] };
+            }
+        }
+        nameIdx++;
+        return { firstName: sFirst[nameIdx % sFirst.length], lastName: sLast[nameIdx % sLast.length] + nameIdx };
+    }
+
+    // ── Step 6: Build competitors from groups ──
+    const competitorsToCreate = [];
+    for (const group of groups) {
+        const fromIdx = _ALL_RANKS.indexOf(group.rankFrom);
+        const toIdx = _ALL_RANKS.indexOf(group.rankTo);
+        const validFrom = fromIdx >= 0 ? fromIdx : 0;
+        const validTo = toIdx >= validFrom ? toIdx : validFrom;
+        const groupRanks = _ALL_RANKS.slice(validFrom, validTo + 1);
+
+        const genders = group.gender === 'mixed' ? ['Male', 'Female']
+            : group.gender === 'male' ? ['Male'] : ['Female'];
+
+        for (let i = 0; i < group.count; i++) {
+            const { firstName, lastName } = getUniqueName();
+            const rank = groupRanks[Math.floor(Math.random() * groupRanks.length)];
+            const gender = genders[i % genders.length];
+            const age = Math.floor(Math.random() * (group.ageMax - group.ageMin + 1)) + group.ageMin;
+            const weight = parseFloat((group.weightMin + Math.random() * (group.weightMax - group.weightMin)).toFixed(1));
+            const club = dojoPool[Math.floor(Math.random() * dojoPool.length)];
+            const dateOfBirth = genDOB(age);
+            const rankIdx = _ALL_RANKS.indexOf(rank);
+            const experience = parseFloat((Math.max(0, rankIdx * 0.8 + Math.random() * 1.5 - 0.5)).toFixed(1));
+
+            competitorsToCreate.push({
+                firstName, lastName, dateOfBirth, weight, rank, experience,
+                gender, club, clubLogo: null, photo: null,
+                events: [...registerEventIds],
+                teamCode: null, teamName: null,
+                registrationDate: new Date().toISOString(),
+                tournamentId: currentTournamentId,
+                is_test: true,
+                paymentStatus: 'paid',
+            });
+        }
+    }
+
+    // ── Step 7: Save and auto-assign ──
+    let successCount = 0;
+    let failCount = 0;
+    for (const comp of competitorsToCreate) {
+        const competitorId = db.add('competitors', comp);
+        try { autoAssignToDivisions(comp, competitorId); successCount++; }
+        catch (e) { failCount++; }
+    }
+
+    // Also re-assign any existing real competitors so their divisions are correct
+    const realCompetitors = db.load('competitors').filter(c => !c.is_test && c.tournamentId === currentTournamentId);
+    for (const comp of realCompetitors) {
+        try { autoAssignToDivisions(comp, comp.id); } catch (e) { /* ignore */ }
+    }
+
+    // ── Step 8: Refresh UI ──
+    syncCompetitorClubsToTable();
+    loadCompetitors(true);
+    loadClubs(true);
+    loadDashboard();
+
+    const total = competitorsToCreate.length;
+    showMessage(
+        `✓ Generated ${total} test competitor${total !== 1 ? 's' : ''} across ${groups.length} group${groups.length !== 1 ? 's' : ''}.${failCount > 0 ? ` (${failCount} assignment issues)` : ''}`,
+        'success'
+    );
+}
+
+/**
+ * Delete all test competitors for the current tournament.
+ * Real competitors are unaffected. Clears test-occupied division slots and re-assigns real competitors.
+ */
+function clearTestData() {
+    if (!currentTournamentId) {
+        showMessage('Please select a tournament first.', 'error');
+        return;
+    }
+    const allCompetitors = db.load('competitors');
+    const testCompetitors = allCompetitors.filter(c => c.is_test && c.tournamentId === currentTournamentId);
+    if (testCompetitors.length === 0) {
+        showMessage('No test competitors found for this tournament.', 'warning');
+        return;
+    }
+    if (!confirm(`Delete ${testCompetitors.length} test competitor${testCompetitors.length !== 1 ? 's' : ''}? Real competitors will not be affected.`)) return;
+
+    // Remove test competitors
+    testCompetitors.forEach(c => db.delete('competitors', c.id));
+
+    // Clear generated divisions
+    const divisions = db.load('divisions');
+    const eventTypes = db.load('eventTypes');
+    const nonDefaultEvents = eventTypes.filter(e => !e.isDefault);
+    const eventIds = nonDefaultEvents.map(e => e.id);
+    for (const event of nonDefaultEvents) {
+        if (divisions[event.id]) divisions[event.id].generated = {};
+    }
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+
+    // Clear brackets
+    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    Object.keys(brackets).forEach(id => { if (eventIds.includes(brackets[id]?.eventId)) delete brackets[id]; });
+    saveBrackets(brackets);
+
+    // Re-assign real competitors
+    const realCompetitors = db.load('competitors').filter(c => !c.is_test && c.tournamentId === currentTournamentId);
+    for (const comp of realCompetitors) {
+        try { autoAssignToDivisions(comp, comp.id); } catch (e) { /* ignore */ }
+    }
+
+    syncCompetitorClubsToTable();
+    loadCompetitors(true);
+    loadDashboard();
+    showMessage(`Cleared ${testCompetitors.length} test competitor${testCompetitors.length !== 1 ? 's' : ''}.`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// END TEST DATA MODAL
+// ─────────────────────────────────────────────────────────────────────────────
 
 function generateTestCompetitors() {
     // ═══════════════════════════════════════════════════════════════════════
@@ -3907,7 +4363,9 @@ function generateTestCompetitors() {
             teamCode: teamCode || null,
             teamName: teamName || null,
             registrationDate: new Date().toISOString(),
-            tournamentId: currentTournamentId
+            tournamentId: currentTournamentId,
+            is_test: true,
+            paymentStatus: 'paid',
         };
     }
 
