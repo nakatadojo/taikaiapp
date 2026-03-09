@@ -692,6 +692,53 @@ async function syncDirectorClubs(tournamentId, clubs) {
   );
 }
 
+// ── Director Officials / Staff / Instructors (JSONB) ─────────────────────────
+
+async function getDirectorOfficials(tournamentId) {
+  const { rows } = await pool.query(
+    'SELECT director_officials FROM tournaments WHERE id = $1',
+    [tournamentId]
+  );
+  return rows[0]?.director_officials || [];
+}
+
+async function syncDirectorOfficials(tournamentId, officials) {
+  await pool.query(
+    'UPDATE tournaments SET director_officials = $1::jsonb WHERE id = $2',
+    [JSON.stringify(officials || []), tournamentId]
+  );
+}
+
+async function getDirectorStaff(tournamentId) {
+  const { rows } = await pool.query(
+    'SELECT director_staff FROM tournaments WHERE id = $1',
+    [tournamentId]
+  );
+  return rows[0]?.director_staff || [];
+}
+
+async function syncDirectorStaff(tournamentId, staff) {
+  await pool.query(
+    'UPDATE tournaments SET director_staff = $1::jsonb WHERE id = $2',
+    [JSON.stringify(staff || []), tournamentId]
+  );
+}
+
+async function getDirectorInstructors(tournamentId) {
+  const { rows } = await pool.query(
+    'SELECT director_instructors FROM tournaments WHERE id = $1',
+    [tournamentId]
+  );
+  return rows[0]?.director_instructors || [];
+}
+
+async function syncDirectorInstructors(tournamentId, instructors) {
+  await pool.query(
+    'UPDATE tournaments SET director_instructors = $1::jsonb WHERE id = $2',
+    [JSON.stringify(instructors || []), tournamentId]
+  );
+}
+
 module.exports = {
   generateSlug,
   generateUniqueSlug,
@@ -717,4 +764,10 @@ module.exports = {
   syncDirectorCompetitors,
   getDirectorClubs,
   syncDirectorClubs,
+  getDirectorOfficials,
+  syncDirectorOfficials,
+  getDirectorStaff,
+  syncDirectorStaff,
+  getDirectorInstructors,
+  syncDirectorInstructors,
 };

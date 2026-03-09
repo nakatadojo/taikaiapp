@@ -194,6 +194,26 @@ router.get('/:id/clubs', requireAuth, requireTournamentOwner, tournamentControll
 // POST /api/tournaments/:id/clubs/sync
 router.post('/:id/clubs/sync', requireAuth, requireTournamentOwner, tournamentController.syncClubs);
 
+// ── Director Officials / Staff / Instructors (JSONB sync) ────────────────────
+
+// GET /api/tournaments/:id/officials
+router.get('/:id/officials', requireAuth, requireTournamentOwner, tournamentController.getOfficials);
+
+// POST /api/tournaments/:id/officials/sync
+router.post('/:id/officials/sync', requireAuth, requireTournamentOwner, tournamentController.syncOfficials);
+
+// GET /api/tournaments/:id/staff
+router.get('/:id/staff', requireAuth, requireTournamentOwner, tournamentController.getStaff);
+
+// POST /api/tournaments/:id/staff/sync
+router.post('/:id/staff/sync', requireAuth, requireTournamentOwner, tournamentController.syncStaff);
+
+// GET /api/tournaments/:id/instructors
+router.get('/:id/instructors', requireAuth, requireTournamentOwner, tournamentController.getInstructors);
+
+// POST /api/tournaments/:id/instructors/sync
+router.post('/:id/instructors/sync', requireAuth, requireTournamentOwner, tournamentController.syncInstructors);
+
 // ── Director Discount Codes ──────────────────────────────────────────────
 const discountQueries = require('../db/queries/discounts');
 

@@ -174,6 +174,7 @@ const _SCOPED_KEYS = new Set([
     'teams', 'results', 'scoreboardConfig', 'scoreboardSettings', 'scoreboardConfigs',
     'certificateTemplate', 'certificateConfig', 'publicSiteConfig',
     'scoreboard-state', 'scoreEditLog', 'operatorSidesSwapped',
+    'officials', 'staffMembers', // officials/staff were missing — caused cross-tournament data leak
 ]);
 
 // Keys that must remain global (shared across all tournaments)
@@ -570,6 +571,96 @@ async function _hydrateEventTypesFromServer() {
     } catch (e) {
         console.warn('[sync] hydrate event types failed:', e.message);
     }
+}
+
+// ── Officials / Staff / Instructors Server Sync ───────────────────────────────
+
+let _officialsSyncTimer = null;
+let _staffSyncTimer = null;
+let _instructorsSyncTimer = null;
+
+function _queueOfficialsSync() {
+    clearTimeout(_officialsSyncTimer);
+    _officialsSyncTimer = setTimeout(_syncOfficialsToServer, 3000);
+}
+
+async function _syncOfficialsToServer() {
+    if (!currentTournamentId) return;
+    try {
+        // Exclude stubs auto-added from tournament_members (source='registered') — those come from the DB already
+        const officials = db.load('officials').filter(o =>
+            (!o.tournamentId || o.tournamentId === currentTournamentId) && o.source !== 'registered'
+        );
+        await fetch(`/api/tournaments/${currentTournamentId}/officials/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ officials }),
+        });
+    } catch (e) { console.warn('[sync] officials failed:', e.message); }
+}
+
+function _queueStaffSync() {
+    clearTimeout(_staffSyncTimer);
+    _staffSyncTimer = setTimeout(_syncStaffToServer, 3000);
+}
+
+async function _syncStaffToServer() {
+    if (!currentTournamentId) return;
+    try {
+        // Exclude stubs auto-added from tournament_members (source='registered')
+        const staff = db.load('staffMembers').filter(s =>
+            (!s.tournamentId || s.tournamentId === currentTournamentId) && s.source !== 'registered'
+        );
+        await fetch(`/api/tournaments/${currentTournamentId}/staff/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staff }),
+        });
+    } catch (e) { console.warn('[sync] staff failed:', e.message); }
+}
+
+function _queueInstructorsSync() {
+    clearTimeout(_instructorsSyncTimer);
+    _instructorsSyncTimer = setTimeout(_syncInstructorsToServer, 3000);
+}
+
+async function _syncInstructorsToServer() {
+    if (!currentTournamentId) return;
+    try {
+        const instructors = db.load('instructors').filter(i => !i.tournamentId || i.tournamentId === currentTournamentId);
+        await fetch(`/api/tournaments/${currentTournamentId}/instructors/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instructors }),
+        });
+    } catch (e) { console.warn('[sync] instructors failed:', e.message); }
+}
+
+/**
+ * Load manually-added officials, staff, and instructors from server on tournament init.
+ * Server wins over stale localStorage data.
+ */
+async function _loadPersonnelFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const [offRes, stfRes, insRes] = await Promise.all([
+            fetch(`/api/tournaments/${currentTournamentId}/officials`, { credentials: 'include' }),
+            fetch(`/api/tournaments/${currentTournamentId}/staff`, { credentials: 'include' }),
+            fetch(`/api/tournaments/${currentTournamentId}/instructors`, { credentials: 'include' }),
+        ]);
+        if (offRes.ok) {
+            const { officials } = await offRes.json();
+            if (Array.isArray(officials) && officials.length) db.save('officials', officials);
+        }
+        if (stfRes.ok) {
+            const { staff } = await stfRes.json();
+            if (Array.isArray(staff) && staff.length) db.save('staffMembers', staff);
+        }
+        if (insRes.ok) {
+            const { instructors } = await insRes.json();
+            if (Array.isArray(instructors) && instructors.length) db.save('instructors', instructors);
+        }
+    } catch (e) { console.warn('[sync] load personnel failed:', e.message); }
 }
 
 function setSyncIndicator(state) {
@@ -1135,6 +1226,11 @@ loadTournamentSelector();
         });
         _loadCompetitorsFromServer().then(() => {
             loadCompetitors();
+        });
+        _loadPersonnelFromServer().then(() => {
+            if (typeof loadOfficials === 'function') loadOfficials();
+            if (typeof loadStaff === 'function') loadStaff();
+            if (typeof loadInstructors === 'function') loadInstructors();
         });
         _loadTeamsFromServer();
     }
@@ -5130,6 +5226,7 @@ if (instructorForm) {
         }
 
         db.add('instructors', instructor);
+        _queueInstructorsSync();
         showMessage('Coach registered successfully!');
         hideInstructorForm();
         loadInstructors();
@@ -5183,6 +5280,7 @@ async function loadInstructors() {
 function deleteInstructor(id) {
     if (confirm('Are you sure you want to delete this instructor?')) {
         db.delete('instructors', id);
+        _queueInstructorsSync();
         loadInstructors();
         loadClubDropdown(); // Refresh club dropdown
         showMessage('Coach deleted successfully!');
@@ -12258,6 +12356,7 @@ function saveOfficial(event) {
         data.assignments = [];
         db.add('officials', data);
     }
+    _queueOfficialsSync();
 
     hideOfficialForm();
     loadOfficials();
@@ -12268,6 +12367,7 @@ function deleteOfficial(id) {
     if (!confirm('Remove this official?')) return;
     const records = db.load('officials').filter(o => o.id != id);
     db.save('officials', records);
+    _queueOfficialsSync();
     loadOfficials();
     showToast('Official removed', 'success');
 }
@@ -12297,6 +12397,7 @@ function saveStaff(event) {
         data.assignments = [];
         db.add('staffMembers', data);
     }
+    _queueStaffSync();
 
     hideStaffForm();
     loadStaff();
@@ -12307,6 +12408,7 @@ function deleteStaff(id) {
     if (!confirm('Remove this staff member?')) return;
     const records = db.load('staffMembers').filter(s => s.id != id);
     db.save('staffMembers', records);
+    _queueStaffSync();
     loadStaff();
     showToast('Staff member removed', 'success');
 }
@@ -12365,6 +12467,7 @@ function addOfficialAssignment() {
     if (!records[idx].assignments) records[idx].assignments = [];
     records[idx].assignments.push({ matId, matName, role, timeSlot: time, divisionName: div });
     db.save('officials', records);
+    _queueOfficialsSync();
 
     _renderPersonnelAssignmentList('official-assignment-list', id,
         records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
@@ -12381,6 +12484,7 @@ function deleteOfficialAssignment(officialId, index) {
     if (idx < 0) return;
     records[idx].assignments.splice(index, 1);
     db.save('officials', records);
+    _queueOfficialsSync();
     _renderPersonnelAssignmentList('official-assignment-list', officialId,
         records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
     loadOfficials();
@@ -12418,6 +12522,7 @@ function addStaffAssignment() {
     if (!records[idx].assignments) records[idx].assignments = [];
     records[idx].assignments.push({ matId, matName, role, timeSlot: time });
     db.save('staffMembers', records);
+    _queueStaffSync();
 
     _renderPersonnelAssignmentList('staff-assignment-list', id,
         records[idx].assignments, 'deleteStaffAssignment', 'area');
@@ -12433,6 +12538,7 @@ function deleteStaffAssignment(staffId, index) {
     if (idx < 0) return;
     records[idx].assignments.splice(index, 1);
     db.save('staffMembers', records);
+    _queueStaffSync();
     _renderPersonnelAssignmentList('staff-assignment-list', staffId,
         records[idx].assignments, 'deleteStaffAssignment', 'area');
     loadStaff();
