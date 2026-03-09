@@ -2998,8 +2998,28 @@
                 });
             }
 
-            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify(eventTypes));
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+            // Merge server events with locally-created event types.
+            // Server events are authoritative for IDs they know about.
+            // Locally-created events (timestamp IDs, 10+ digits) are preserved
+            // so they survive page reloads until synced/deleted.
+            const existingLocalEventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+            const serverEventIds = new Set(eventTypes.map(e => String(e.id)));
+            const localOnlyEventTypes = existingLocalEventTypes.filter(e => !serverEventIds.has(String(e.id)));
+            const mergedEventTypes = [...eventTypes, ...localOnlyEventTypes];
+            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify(mergedEventTypes));
+
+            // Merge server division templates with locally-configured ones.
+            // Locally-created template entries (for local event IDs) are preserved.
+            const existingLocalDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+            const mergedDivisions = Object.assign({}, existingLocalDivisions);
+            Object.keys(allDivisions).forEach(evId => {
+                if (!mergedDivisions[evId] || !mergedDivisions[evId].templates?.length) {
+                    // Server has templates for this event, and we have none locally — use server's
+                    mergedDivisions[evId] = allDivisions[evId];
+                }
+                // If we already have local templates, keep them (don't overwrite with server's presets)
+            });
+            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(mergedDivisions));
 
             // Load schedule, divisions, and brackets from server (parallel)
             try {
