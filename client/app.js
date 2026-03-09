@@ -648,15 +648,7 @@ function addTournamentCompetitor(competitor, tournamentId = currentTournamentId)
 
 function ensureTournamentSelected() {
     if (!currentTournamentId) {
-        showMessage('⚠️ Please select a tournament first', 'error');
-        // Highlight tournament selector
-        const selector = document.getElementById('active-tournament');
-        if (selector) {
-            selector.style.border = '2px solid #ef4444';
-            setTimeout(() => {
-                selector.style.border = '';
-            }, 2000);
-        }
+        showMessage('⚠️ No tournament selected. Please go back to your account and open a tournament.', 'error');
         return false;
     }
     return true;
@@ -931,10 +923,6 @@ loadTournamentSelector();
     if (!match) return;
 
     const urlTournamentId = match[1];
-
-    // Show the "← My Tournaments" back link in the sidebar
-    const backLink = document.getElementById('back-to-tournaments-link');
-    if (backLink) backLink.classList.remove('hidden');
 
     // Helper to activate the detected tournament
     function _activateTournament(name) {

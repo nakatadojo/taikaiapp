@@ -31,8 +31,8 @@
     .awards-badge.published { background:var(--success); color:#fff; }
 
     /* Back-to-tournaments sidebar link */
-    .back-to-tournaments { display:block; font-size:11px; color:var(--text-secondary); text-decoration:none; margin-top:6px; opacity:0.75; transition:opacity 0.15s; }
-    .back-to-tournaments:hover { opacity:1; color:var(--text-primary); }
+    .back-to-tournaments { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); text-decoration:none; margin-top:8px; padding:5px 8px; border-radius:6px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.03); transition:all 0.15s; }
+    .back-to-tournaments:hover { color:var(--text-primary); background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.25); }
 
     /* Event type — division templates accordion */
     .event-templates-section { margin-top: 12px; border-top: 1px solid var(--glass-border); padding-top: 10px; }
@@ -390,7 +390,7 @@
         <aside class="sidebar" id="app-sidebar">
             <div class="sidebar-header">
                 <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
-                <a id="back-to-tournaments-link" href="/account.html#tournaments" class="back-to-tournaments hidden">← My Tournaments</a>
+                <a id="back-to-tournaments-link" href="/account.html#tournaments" class="back-to-tournaments">← My Tournaments</a>
             </div>
 
             <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
@@ -2059,19 +2059,21 @@
                 </div>
             </section>
 
+            <!-- Hidden select preserved for JS compatibility — not shown in UI -->
+            <select id="active-tournament" style="display:none;" onchange="switchTournament()">
+                <option value="">Select Tournament</option>
+            </select>
+
             <!-- Tournament Info View (Settings sub-page) -->
             <section id="settings-tournament-info-view" class="view">
                 <h2>Tournament Info</h2>
 
-                <div class="glass-panel">
-                    <h3>Active Tournament</h3>
-                    <p class="hint">Select which tournament to manage, or create a new one.</p>
-                    <div style="display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap;">
-                        <select id="active-tournament" onchange="switchTournament()" style="flex: 1; min-width: 200px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); font-size: 14px;">
-                            <option value="">Select Tournament</option>
-                        </select>
-                        <button class="btn btn-primary btn-small" onclick="showTournamentForm()">+ New Tournament</button>
+                <div class="glass-panel" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
+                    <div>
+                        <h3 style="margin:0 0 4px 0;">Switch Tournament</h3>
+                        <p class="hint" style="margin:0;">To manage a different tournament, return to your account page.</p>
                     </div>
+                    <a href="/account.html#tournaments" class="btn btn-secondary" style="white-space:nowrap;">← Back to My Account</a>
                 </div>
 
                 <div class="glass-panel" id="tournament-info-details">

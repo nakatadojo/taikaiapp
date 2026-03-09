@@ -463,7 +463,7 @@
         }
         // Set initial tab from hash
         const hash = window.location.hash.replace('#', '');
-        if (hash && ['overview','tournaments','events','profiles','dojo','settings'].includes(hash)) {
+        if (hash && ['overview','tournaments','events','profiles','dojo','credits','settings'].includes(hash)) {
             currentTab = hash;
         }
         setActiveTab(currentTab);
@@ -474,7 +474,7 @@
     // ── Hash navigation ──
     window.addEventListener('hashchange', () => {
         const hash = window.location.hash.replace('#', '');
-        if (hash && ['overview','tournaments','events','profiles','dojo','settings'].includes(hash)) {
+        if (hash && ['overview','tournaments','events','profiles','dojo','credits','settings'].includes(hash)) {
             currentTab = hash;
             setActiveTab(currentTab);
             loadTab(currentTab);
