@@ -3523,6 +3523,7 @@ window.editCompetitor = function(id) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _tdmGroups = [];
+let _currentBuilderEventId = null; // set when builder is opened from Events tab
 
 const _ALL_RANKS = ['10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu', '4th kyu', '3rd kyu', '2nd kyu', '1st kyu', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan'];
 
@@ -5052,7 +5053,16 @@ function updateClubSelects() {
 
 // Event Type Management
 function showEventForm(editId) {
-    document.getElementById('event-form-container').classList.remove('hidden');
+    const container = document.getElementById('event-form-container');
+    const form = document.getElementById('event-form');
+
+    // Reset first so previous edit state is cleared
+    if (form) form.reset();
+    delete container.dataset.editId;
+
+    // Set title based on mode
+    const titleEl = container.querySelector('h3');
+    if (titleEl) titleEl.textContent = editId ? 'Edit Event Type' : 'Event Type Configuration';
 
     // Populate prerequisite dropdown with existing event types
     const prereqSelect = document.getElementById('event-prerequisite');
@@ -5060,7 +5070,7 @@ function showEventForm(editId) {
         const eventTypes = db.load('eventTypes');
         prereqSelect.innerHTML = '<option value="">None — this event has no prerequisite</option>';
         eventTypes.forEach(et => {
-            if (et.id !== editId) { // don't offer self as prerequisite
+            if (String(et.id) !== String(editId)) { // don't offer self as prerequisite
                 const opt = document.createElement('option');
                 opt.value = et.id;
                 opt.textContent = et.name + (et.teamSize > 1 ? ` (Team of ${et.teamSize})` : ' (Individual)');
@@ -5068,12 +5078,37 @@ function showEventForm(editId) {
             }
         });
     }
+
+    // If editing, pre-populate all fields
+    if (editId) {
+        const et = db.load('eventTypes').find(e => String(e.id) === String(editId));
+        if (et) {
+            document.getElementById('event-name').value = et.name || '';
+            document.getElementById('event-description').value = et.description || '';
+            document.getElementById('event-team-size').value = et.teamSize || 1;
+            if (prereqSelect) prereqSelect.value = et.prerequisiteEventId || '';
+            const bp = document.getElementById('event-base-price');
+            const ap = document.getElementById('event-addon-price');
+            if (bp) bp.value = et.basePrice != null ? et.basePrice : '';
+            if (ap) ap.value = et.addOnPrice != null ? et.addOnPrice : '';
+            document.getElementById('event-is-default').checked = !!et.isDefault;
+            container.dataset.editId = editId;
+        }
+    }
+
+    container.classList.remove('hidden');
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function hideEventForm() {
     const container = document.getElementById('event-form-container');
     const form = document.getElementById('event-form');
-    if (container) container.classList.add('hidden');
+    if (container) {
+        container.classList.add('hidden');
+        delete container.dataset.editId;
+        const titleEl = container.querySelector('h3');
+        if (titleEl) titleEl.textContent = 'Event Type Configuration';
+    }
     if (form) form.reset();
 }
 
@@ -5123,27 +5158,37 @@ if (eventForm) {
         const addOnPriceVal = document.getElementById('event-addon-price')?.value;
 
         const prereqVal = document.getElementById('event-prerequisite')?.value || '';
-        const eventType = {
+        const editId = document.getElementById('event-form-container').dataset.editId;
+
+        const fields = {
             name: document.getElementById('event-name').value,
             description: document.getElementById('event-description').value || '',
             teamSize: parseInt(document.getElementById('event-team-size').value) || 1,
             prerequisiteEventId: prereqVal || null,
-            // Tiered pricing overrides (null = use tournament default)
             basePrice: basePriceVal !== '' && basePriceVal != null ? parseFloat(basePriceVal) : null,
             addOnPrice: addOnPriceVal !== '' && addOnPriceVal != null ? parseFloat(addOnPriceVal) : null,
-            // Legacy price field for backward compat
             price: basePriceVal !== '' && basePriceVal != null ? parseFloat(basePriceVal) : 0,
             isDefault: isDefault,
-            createdAt: new Date().toISOString()
         };
 
-        // Initialize event types storage if needed
-        if (!localStorage.getItem(_scopedKey('eventTypes'))) {
-            localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
+        if (editId) {
+            // UPDATE existing event type
+            const eventTypes = db.load('eventTypes');
+            const idx = eventTypes.findIndex(e => String(e.id) === String(editId));
+            if (idx !== -1) {
+                eventTypes[idx] = { ...eventTypes[idx], ...fields };
+                db.save('eventTypes', eventTypes);
+            }
+            showMessage('Event type updated!');
+        } else {
+            // CREATE new event type
+            if (!localStorage.getItem(_scopedKey('eventTypes'))) {
+                localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
+            }
+            db.add('eventTypes', { ...fields, createdAt: new Date().toISOString() });
+            showMessage('Event type created successfully!');
         }
 
-        db.add('eventTypes', eventType);
-        showMessage('Event type created successfully!');
         hideEventForm();
         loadEventTypes();
         loadEventTypeSelector();
@@ -5196,6 +5241,9 @@ function loadEventTypes() {
             </div>`;
         }
 
+        const divisions = db.load('divisions');
+        const templateCount = divisions[event.id]?.templates?.length || 0;
+
         card.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: start;">
                 <h3>${event.name}${event.isDefault ? ' <span style="background: var(--accent); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; margin-left: 8px;">DEFAULT</span>' : ''}</h3>
@@ -5206,8 +5254,17 @@ function loadEventTypes() {
             ${prereqHtml}
             ${event.isDefault ? '<div class="event-detail" style="color: var(--accent);"><strong>Type:</strong> Base Registration Fee (auto-included for all competitors)</div>' : '<div class="event-detail"><strong>Type:</strong> Add-on Event (optional)</div>'}
             <div class="event-actions">
+                <button class="btn btn-small" onclick="showEventForm('${event.id}')">Edit</button>
                 <button class="btn btn-small btn-danger" onclick="deleteEventType(${event.id})">Delete</button>
             </div>
+            ${event.isDefault ? '' : `
+            <div class="event-templates-section">
+                <button class="event-templates-toggle" onclick="_toggleEventTemplates('${event.id}')">
+                    Division Templates <span class="tmpl-badge">${templateCount}</span>
+                </button>
+                <div id="event-tmpl-${event.id}" class="event-templates-body hidden"></div>
+            </div>
+            `}
         `;
 
         container.appendChild(card);
@@ -5221,6 +5278,44 @@ function deleteEventType(id) {
         loadEventTypeSelector();
         showMessage('Event type deleted successfully!');
     }
+}
+
+function _toggleEventTemplates(eventId) {
+    const body = document.getElementById(`event-tmpl-${eventId}`);
+    if (!body) return;
+    const isOpen = !body.classList.contains('hidden');
+    if (isOpen) { body.classList.add('hidden'); return; }
+    body.classList.remove('hidden');
+    _renderEventTemplates(eventId);
+}
+
+function _renderEventTemplates(eventId) {
+    const body = document.getElementById(`event-tmpl-${eventId}`);
+    if (!body) return;
+    const divisions = db.load('divisions');
+    const templates = divisions[eventId]?.templates || [];
+    body.innerHTML = (templates.length === 0
+        ? `<p style="font-size:13px;color:var(--text-secondary);margin:6px 0 10px;">No templates yet.</p>`
+        : templates.map(t => `
+            <div class="event-tmpl-row">
+                <span style="font-size:13px;">${t.name}</span>
+                <span class="event-tmpl-actions">
+                    <button class="btn btn-small" onclick="showDivisionBuilder('${t.id}','${eventId}')">Edit</button>
+                    <button class="btn btn-small btn-danger" onclick="_deleteTemplateFromEvent('${t.id}','${eventId}')">Delete</button>
+                </span>
+            </div>`).join('')
+    ) + `<button class="btn btn-secondary" style="margin-top:8px;width:100%;font-size:13px;" onclick="showDivisionBuilder(null,'${eventId}')">+ Add Template</button>`;
+}
+
+function _deleteTemplateFromEvent(templateId, eventId) {
+    const divisions = db.load('divisions');
+    if (!divisions[eventId]?.templates) return;
+    const tmpl = divisions[eventId].templates.find(t => t.id === templateId);
+    if (!tmpl || !confirm(`Delete template "${tmpl.name}"?`)) return;
+    divisions[eventId].templates = divisions[eventId].templates.filter(t => t.id !== templateId);
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _renderEventTemplates(eventId);
+    loadEventTypes();   // refresh badge count
 }
 
 function loadEventTypeSelector() {
@@ -6706,7 +6801,9 @@ function validateDivisionSizes(divisions, template) {
 }
 
 // Division Builder Functions
-function showDivisionBuilder(templateId = null) {
+function showDivisionBuilder(templateId = null, eventId = null) {
+    if (eventId) _currentBuilderEventId = eventId;
+
     const builder = document.getElementById('division-builder');
     const builderTitle = document.getElementById('builder-title');
 
@@ -6733,6 +6830,21 @@ function showDivisionBuilder(templateId = null) {
     }
 
     builder.classList.remove('hidden');
+
+    // When opened from the Events tab, show as a floating modal overlay
+    if (_currentBuilderEventId) {
+        builder.classList.add('division-builder-modal');
+        let backdrop = document.getElementById('division-builder-backdrop');
+        if (!backdrop) {
+            backdrop = document.createElement('div');
+            backdrop.id = 'division-builder-backdrop';
+            backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:999;';
+            backdrop.onclick = hideDivisionBuilder;
+            document.body.appendChild(backdrop);
+        }
+        backdrop.style.display = 'block';
+        builder.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function loadTemplateForEditing(templateId) {
@@ -6944,7 +7056,11 @@ function hideDivisionBuilder() {
     const builder = document.getElementById('division-builder');
     if (builder) {
         builder.classList.add('hidden');
+        builder.classList.remove('division-builder-modal');
     }
+    const backdrop = document.getElementById('division-builder-backdrop');
+    if (backdrop) backdrop.style.display = 'none';
+    _currentBuilderEventId = null;
     currentTemplateId = null;
 }
 
@@ -6972,12 +7088,12 @@ function deleteTemplate(templateId) {
 
 function saveDivisionTemplate() {
     const eventSelector = document.getElementById('division-event-selector');
-    if (!eventSelector || !eventSelector.value) {
+    // Accept eventId from the Events-tab context (_currentBuilderEventId) or the Divisions-tab selector
+    const eventId = _currentBuilderEventId || eventSelector?.value;
+    if (!eventId) {
         showMessage('Please select an event type first', 'error');
         return;
     }
-
-    const eventId = eventSelector.value;
 
     // Get template-level settings
     const templateName = document.getElementById('template-name').value.trim();
@@ -7102,6 +7218,15 @@ function saveDivisionTemplate() {
     _debouncedSync(`templates_${syncEventId}`, () => _syncTemplateToServer(syncEventId, syncTemplates), 1000);
 
     showMessage(currentTemplateId ? 'Template updated successfully!' : 'Template created successfully!');
+
+    if (_currentBuilderEventId) {
+        // Opened from the Events tab — refresh accordion, not the Divisions-tab list
+        const eid = _currentBuilderEventId;
+        hideDivisionBuilder();           // clears _currentBuilderEventId
+        _renderEventTemplates(eid);
+        loadEventTypes();                // refresh badge count on card
+        return;
+    }
 
     hideDivisionBuilder();
     loadTemplatesList();
