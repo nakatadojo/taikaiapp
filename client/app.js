@@ -922,6 +922,76 @@ function loadTournamentSelector() {
 // Load tournaments on page load
 loadTournamentSelector();
 
+// ── Auto-detect tournament from URL path ────────────────────────────────────
+// When manage.html is served at /director/tournaments/:id/manage the tournament
+// ID is embedded in the URL. Read it, add it to the dropdown (fetching the name
+// from the server if it isn't in localStorage), and auto-initialize that tournament.
+(function _initFromURL() {
+    const match = window.location.pathname.match(/\/director\/tournaments\/([^/]+)\/manage/);
+    if (!match) return;
+
+    const urlTournamentId = match[1];
+
+    // Show the "← My Tournaments" back link in the sidebar
+    const backLink = document.getElementById('back-to-tournaments-link');
+    if (backLink) backLink.classList.remove('hidden');
+
+    // Helper to activate the detected tournament
+    function _activateTournament(name) {
+        const select = document.getElementById('active-tournament');
+        // Ensure an option exists for this ID (it may already be there from localStorage)
+        if (select && !Array.from(select.options).some(o => o.value === urlTournamentId)) {
+            const opt = document.createElement('option');
+            opt.value = urlTournamentId;
+            opt.textContent = name || urlTournamentId;
+            select.appendChild(opt);
+        } else if (select && name) {
+            // Update text if we now have the real name
+            const existing = Array.from(select.options).find(o => o.value === urlTournamentId);
+            if (existing && existing.textContent !== name) existing.textContent = name;
+        }
+        if (select) select.value = urlTournamentId;
+
+        currentTournamentId = urlTournamentId;
+        _migrateUnscopedData();
+        db.init();
+        document.getElementById('main-nav')?.classList.remove('hidden');
+        loadCompetitors();
+        loadDashboard();
+        _loadTeamsFromServer();
+    }
+
+    // Try localStorage first (instant, no network)
+    const localTournaments = db.load('tournaments');
+    const localT = localTournaments.find(t => String(t.id) === urlTournamentId);
+    if (localT) {
+        _activateTournament(`${localT.name} - ${new Date(typeof localT.date === 'string' && localT.date.length === 10 ? localT.date + 'T12:00:00' : localT.date).toLocaleDateString()}`);
+        return;
+    }
+
+    // Not in localStorage (server-only tournament) — activate with placeholder, then
+    // fetch the real name and update the dropdown + banner.
+    _activateTournament('Loading…');
+    if (_isServerTournamentId(urlTournamentId)) {
+        fetch(`/api/tournaments/${urlTournamentId}`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                const name = data?.name || data?.tournament?.name;
+                if (!name) return;
+                // Update dropdown option text
+                const select = document.getElementById('active-tournament');
+                const opt = select && Array.from(select.options).find(o => o.value === urlTournamentId);
+                if (opt) opt.textContent = name;
+                // Update competitors banner
+                const banner = document.getElementById('tournament-filter-banner');
+                if (banner && !banner.classList.contains('hidden')) {
+                    banner.textContent = `Showing competitors for: ${name}`;
+                }
+            })
+            .catch(() => {});
+    }
+})();
+
 // Migration: Assign legacy competitors to current/first tournament
 function migrateLegacyCompetitors() {
     const competitors = db.load('competitors');
