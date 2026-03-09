@@ -1453,7 +1453,7 @@
                         owned.slice(0, 5).forEach(t => {
                             html += `<a href="/director/tournaments/${t.id}/manage" class="dash-item">
                                 <span class="dash-item-name">${t.name}</span>
-                                <span class="dash-item-meta">${t.date ? dateFmt.format(new Date(t.date)) : 'No date'}</span>
+                                <span class="dash-item-meta">${t.date ? dateFmt.format(new Date(t.date.length === 10 ? t.date + 'T12:00:00' : t.date)) : 'No date'}</span>
                             </a>`;
                         });
                         html += `</div>

@@ -19350,6 +19350,22 @@ function showTournamentEditForm() {
                 </select>
             </div>
             <div class="form-group">
+                <label class="form-label">Timezone</label>
+                <select id="ti-edit-timezone" class="form-input">
+                    <option value="America/New_York" ${(t.timezone||'America/New_York')==='America/New_York'?'selected':''}>Eastern Time (ET) — New York / Miami</option>
+                    <option value="America/Chicago" ${t.timezone==='America/Chicago'?'selected':''}>Central Time (CT) — Chicago / Dallas</option>
+                    <option value="America/Denver" ${t.timezone==='America/Denver'?'selected':''}>Mountain Time (MT) — Denver / Phoenix</option>
+                    <option value="America/Los_Angeles" ${t.timezone==='America/Los_Angeles'?'selected':''}>Pacific Time (PT) — Los Angeles / Seattle</option>
+                    <option value="America/Anchorage" ${t.timezone==='America/Anchorage'?'selected':''}>Alaska Time (AKT)</option>
+                    <option value="America/Honolulu" ${t.timezone==='America/Honolulu'?'selected':''}>Hawaii Time (HT)</option>
+                    <option value="America/Puerto_Rico" ${t.timezone==='America/Puerto_Rico'?'selected':''}>Atlantic Time (AT) — Puerto Rico</option>
+                    <option value="Europe/London" ${t.timezone==='Europe/London'?'selected':''}>GMT/BST — London</option>
+                    <option value="Europe/Paris" ${t.timezone==='Europe/Paris'?'selected':''}>CET/CEST — Paris / Berlin / Rome</option>
+                    <option value="Asia/Tokyo" ${t.timezone==='Asia/Tokyo'?'selected':''}>JST — Tokyo</option>
+                    <option value="Australia/Sydney" ${t.timezone==='Australia/Sydney'?'selected':''}>AEST — Sydney</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label class="form-label">Visibility</label>
                 <select id="ti-edit-published" class="form-input">
                     <option value="false" ${!t.published ? 'selected' : ''}>Draft — not visible to public</option>
@@ -19373,6 +19389,7 @@ async function saveTournamentEdit() {
     const date = document.getElementById('ti-edit-date')?.value || undefined;
     const location = document.getElementById('ti-edit-location')?.value.trim();
     const sanctioningBody = document.getElementById('ti-edit-sanctioning')?.value || undefined;
+    const timezone = document.getElementById('ti-edit-timezone')?.value || undefined;
     const published = document.getElementById('ti-edit-published')?.value === 'true';
 
     if (!name) { showToast('Tournament name is required', 'error'); return; }
@@ -19385,7 +19402,7 @@ async function saveTournamentEdit() {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, location, sanctioningBody, published }),
+            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, published }),
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -19403,6 +19420,7 @@ async function saveTournamentEdit() {
                 date: saved.date,
                 location: saved.location,
                 sanctioningBody: saved.sanctioning_body,
+                timezone: saved.timezone,
                 published: saved.published,
             };
             db.save('tournaments', tournaments);
