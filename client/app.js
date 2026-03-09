@@ -6236,9 +6236,18 @@ function updateCriteriaRanges(index) {
 
     if (type === 'gender') {
         rangesContainer.innerHTML = `
-            <p style="color: var(--text-secondary); font-size: 14px;">
-                Divisions will be split by: Male, Female
-            </p>
+            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 8px;">Select which gender(s) are eligible for this division:</p>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+                    <input type="checkbox" value="Male"> Male
+                </label>
+                <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+                    <input type="checkbox" value="Female"> Female
+                </label>
+                <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+                    <input type="checkbox" value="Open"> Open / Mixed
+                </label>
+            </div>
         `;
         return;
     }
@@ -6761,13 +6770,12 @@ function loadDivisionPreset() {
 
         const rangesContainer = document.getElementById(`ranges-${criteriaCounter}`);
 
-        // For gender, select the appropriate checkbox
+        // For gender, uncheck all then check only the preset's gender(s)
         if (criterion.type === 'gender') {
+            rangesContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
             criterion.ranges.forEach(range => {
                 const checkbox = rangesContainer.querySelector(`input[value="${range.value}"]`);
-                if (checkbox) {
-                    checkbox.checked = true;
-                }
+                if (checkbox) checkbox.checked = true;
             });
         }
         // For age, weight, experience, rank - add custom ranges
@@ -6964,6 +6972,12 @@ function loadTemplateForEditing(templateId) {
             const rangesContainer = document.getElementById(`ranges-${criteriaCounter}`);
 
             if (criterion.type === 'gender') {
+                // Uncheck all first, then restore saved selections
+                rangesContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                criterion.ranges.forEach(range => {
+                    const checkbox = rangesContainer.querySelector(`input[value="${range.value}"]`);
+                    if (checkbox) checkbox.checked = true;
+                });
                 return;
             }
 
@@ -7206,13 +7220,20 @@ function saveDivisionTemplate() {
         const criteriaType = typeSelect.value;
         const criteriaObj = { type: criteriaType, ranges: [] };
 
-        // Handle gender criteria (predefined splits)
+        // Handle gender criteria — read which boxes are checked
         if (criteriaType === 'gender') {
-            criteriaObj.ranges = [
-                { value: 'Male', label: 'Male' },
-                { value: 'Female', label: 'Female' },
-                { value: 'Open', label: 'Open' }
-            ];
+            const rangesContainer = item.querySelector('[id^="ranges-"]');
+            const genderRanges = [];
+            if (rangesContainer) {
+                rangesContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+                    genderRanges.push({ value: cb.value, label: cb.value });
+                });
+            }
+            if (genderRanges.length === 0) {
+                // Fall back to both if nothing checked (shouldn't happen)
+                genderRanges.push({ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' });
+            }
+            criteriaObj.ranges = genderRanges;
             criteria.push(criteriaObj);
             return;
         }
