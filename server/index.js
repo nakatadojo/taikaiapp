@@ -35,8 +35,8 @@ app.use(helmet({
       scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      // Socket.IO and API connections
-      connectSrc: ["'self'", 'ws:', 'wss:'],
+      // Socket.IO and API connections; unpkg.com for source-map fetches (.js.map)
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://unpkg.com'],
       fontSrc: ["'self'", 'https:'],
       // Block Flash/plugin attacks
       objectSrc: ["'none'"],
