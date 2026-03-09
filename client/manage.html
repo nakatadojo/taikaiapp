@@ -9,6 +9,9 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="/taikai-logo.js"></script>
     <style>
+    /* Prevent flash of login screen on refresh — revealed after auth resolves */
+    body { visibility: hidden; }
+
     /* Awards Dashboard */
     .awards-tab { background:none; border:none; color:var(--text-muted); padding:10px 20px; cursor:pointer; font-size:14px; font-weight:600; border-bottom:2px solid transparent; margin-bottom:-2px; }
     .awards-tab.active { color:var(--primary); border-bottom-color:var(--primary); }

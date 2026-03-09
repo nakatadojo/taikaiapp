@@ -19284,14 +19284,20 @@ function _renderTournamentInfoContent(t, regOpen) {
     const regBadge = regOpen
         ? `<span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Open</span>`
         : `<span style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Closed</span>`;
+    const statusBadge = t.published
+        ? `<span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Published</span>`
+        : `<span style="background:rgba(251,191,36,0.15);color:#f59e0b;border:1px solid rgba(251,191,36,0.4);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Draft</span>`;
     content.innerHTML = `
         <div style="display: grid; gap: 12px; font-size: 14px;">
-            <div><strong>Name:</strong> ${t.name || '\u2014'}</div>
+            <div style="display:flex;justify-content:flex-end;">
+                <button class="btn btn-small btn-secondary" onclick="showTournamentEditForm()">Edit</button>
+            </div>
+            <div><strong>Name:</strong> ${_escapeHtml(t.name || '') || '\u2014'}</div>
             <div><strong>Date:</strong> ${dateStr}</div>
-            <div><strong>Location:</strong> ${t.location || t.venue || '\u2014'}</div>
+            <div><strong>Location:</strong> ${_escapeHtml(t.location || t.venue || '') || '\u2014'}</div>
             <div><strong>Sanctioning Body:</strong> ${t.sanctioningBody ? t.sanctioningBody.toUpperCase() : '\u2014'}</div>
-            <div><strong>Status:</strong> ${t.published ? 'Published' : 'Draft'}</div>
-            <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><strong>Status:</strong> ${statusBadge}</div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:4px;flex-wrap:wrap;">
                 <strong>Registration:</strong>
                 ${regBadge}
                 <button class="btn btn-small ${regOpen ? 'btn-danger' : 'btn-primary'}"
@@ -19301,6 +19307,116 @@ function _renderTournamentInfoContent(t, regOpen) {
             </div>
         </div>
     `;
+}
+
+function showTournamentEditForm() {
+    if (!currentTournamentId) return;
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    if (!t) return;
+
+    const content = document.getElementById('tournament-info-content');
+    if (!content) return;
+
+    // Format date as YYYY-MM-DD for the date input
+    let dateVal = '';
+    if (t.date) {
+        const d = new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date);
+        if (!isNaN(d)) dateVal = d.toISOString().split('T')[0];
+    }
+
+    content.innerHTML = `
+        <div style="display:grid;gap:14px;font-size:14px;">
+            <div class="form-group">
+                <label class="form-label">Tournament Name</label>
+                <input type="text" id="ti-edit-name" class="form-input" value="${_escapeHtml(t.name || '')}" placeholder="Tournament name">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date</label>
+                <input type="date" id="ti-edit-date" class="form-input" value="${dateVal}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Location / Venue</label>
+                <input type="text" id="ti-edit-location" class="form-input" value="${_escapeHtml(t.location || t.venue || '')}" placeholder="City, venue name…">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Sanctioning Body</label>
+                <select id="ti-edit-sanctioning" class="form-input">
+                    <option value="">— None —</option>
+                    <option value="aau" ${t.sanctioningBody === 'aau' ? 'selected' : ''}>AAU</option>
+                    <option value="wkf" ${t.sanctioningBody === 'wkf' ? 'selected' : ''}>WKF</option>
+                    <option value="simple" ${t.sanctioningBody === 'simple' ? 'selected' : ''}>Simple</option>
+                    <option value="custom" ${t.sanctioningBody === 'custom' ? 'selected' : ''}>Custom</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Visibility</label>
+                <select id="ti-edit-published" class="form-input">
+                    <option value="false" ${!t.published ? 'selected' : ''}>Draft — not visible to public</option>
+                    <option value="true" ${t.published ? 'selected' : ''}>Published — open to public</option>
+                </select>
+                <p class="hint" style="margin-top:4px;">Draft tournaments are hidden from public registration pages until published.</p>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+                <button class="btn btn-primary" onclick="saveTournamentEdit()">Save Changes</button>
+                <button class="btn btn-secondary" onclick="loadTournamentInfoView()">Cancel</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('ti-edit-name')?.focus();
+}
+
+async function saveTournamentEdit() {
+    if (!currentTournamentId) return;
+
+    const name = document.getElementById('ti-edit-name')?.value.trim();
+    const date = document.getElementById('ti-edit-date')?.value || undefined;
+    const location = document.getElementById('ti-edit-location')?.value.trim();
+    const sanctioningBody = document.getElementById('ti-edit-sanctioning')?.value || undefined;
+    const published = document.getElementById('ti-edit-published')?.value === 'true';
+
+    if (!name) { showToast('Tournament name is required', 'error'); return; }
+
+    const saveBtn = document.querySelector('#tournament-info-content .btn-primary');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, date, location, sanctioningBody, published }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to save changes');
+        }
+        const { tournament: saved } = await res.json();
+
+        // Update localStorage with server-confirmed values
+        const tournaments = db.load('tournaments');
+        const idx = tournaments.findIndex(t => String(t.id) === String(currentTournamentId));
+        if (idx >= 0) {
+            tournaments[idx] = {
+                ...tournaments[idx],
+                name: saved.name,
+                date: saved.date,
+                location: saved.location,
+                sanctioningBody: saved.sanctioning_body,
+                published: saved.published,
+            };
+            db.save('tournaments', tournaments);
+        }
+
+        // Refresh the tournament selector in case the name changed
+        loadTournamentSelector();
+
+        showToast('Tournament updated successfully', 'success');
+        loadTournamentInfoView();
+    } catch (err) {
+        showToast(err.message || 'Failed to save', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+    }
 }
 
 async function toggleRegistrationOpen(currentlyOpen) {
@@ -21280,6 +21396,8 @@ window.addEventListener('load', () => {
 
     // Auth initialization
     Auth.onAuthChange = (user) => {
+        // Reveal the page now that auth state is known (prevents login-screen flash on refresh)
+        document.body.style.visibility = 'visible';
         const gate = document.getElementById('auth-gate');
         const academyNavGroup = document.getElementById('academy-nav-group');
         if (user) {
