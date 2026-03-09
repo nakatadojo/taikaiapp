@@ -571,9 +571,9 @@ async function _hydrateEventTypesFromServer() {
             description: e.description || '',
             teamSize: e.team_size || null,
             isDefault: e.is_default || false,
-            basePrice: e.price_override || null,
-            addOnPrice: e.addon_price_override || null,
-            price: e.price_override || null,
+            basePrice: e.price_override != null ? parseFloat(e.price_override) : null,
+            addOnPrice: e.addon_price_override != null ? parseFloat(e.addon_price_override) : null,
+            price: e.price_override != null ? parseFloat(e.price_override) : null,
         }));
         db.save('eventTypes', mapped);
         if (typeof loadEventTypes === 'function') loadEventTypes();
@@ -5654,8 +5654,9 @@ function loadEventTypes() {
         const teamSizeLabel = event.teamSize > 1 ? `Team of ${event.teamSize}` : 'Individual';
 
         // Show resolved prices (per-event override or tournament default)
-        const resolvedBase = event.basePrice != null ? event.basePrice : globalBase;
-        const resolvedAddOn = event.addOnPrice != null ? event.addOnPrice : globalAddOn;
+        // Coerce to Number — server may return price strings from PostgreSQL numeric columns
+        const resolvedBase = Number(event.basePrice != null ? event.basePrice : globalBase);
+        const resolvedAddOn = Number(event.addOnPrice != null ? event.addOnPrice : globalAddOn);
         const hasOverride = event.basePrice != null || event.addOnPrice != null;
         const priceHtml = `
             <div class="event-detail">
