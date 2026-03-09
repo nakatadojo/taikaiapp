@@ -55,7 +55,7 @@ async function getMyAcademy(req, res, next) {
   try {
     const academy = await academyQueries.findByCoach(req.user.id);
     if (!academy) {
-      return res.status(404).json({ error: 'No dojo found. Create one first.' });
+      return res.json({ academy: null, members: [] });
     }
 
     const members = await academyQueries.getMembers(academy.id);
