@@ -11,6 +11,14 @@ const { sendVerificationEmail, sendPasswordResetEmail } = require('../email');
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
 // Default: 8h (shorter than 24h to limit exposure window if a token is stolen)
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '8h';
+// Parse JWT_EXPIRY string into milliseconds so the cookie maxAge matches exactly.
+// Supports h (hours), d (days), m (minutes). Defaults to 8h if format is unrecognised.
+const JWT_EXPIRY_MS = (() => {
+  const m = JWT_EXPIRY.match(/^(\d+)(h|d|m)$/);
+  if (!m) return 8 * 60 * 60 * 1000;
+  const n = parseInt(m[1], 10);
+  return m[2] === 'h' ? n * 3_600_000 : m[2] === 'd' ? n * 86_400_000 : n * 60_000;
+})();
 
 /**
  * Build JWT payload and set httpOnly cookie.
@@ -31,7 +39,7 @@ function setAuthCookie(res, user, roles, extra = {}) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: JWT_EXPIRY_MS, // matches JWT expiry so stale cookies auto-clear
   });
 
   return payload;
