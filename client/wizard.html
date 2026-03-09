@@ -349,6 +349,78 @@
             color: var(--text-muted);
         }
 
+        /* ===== EVENT CONFIG PANEL (Step 2) ===== */
+        .event-config-section {
+            margin-top: 28px;
+        }
+        .event-config-section h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 14px;
+        }
+        .event-config-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            margin-bottom: 12px;
+        }
+        .event-config-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .event-config-icon { font-size: 20px; }
+        .event-config-badge {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent);
+            background: rgba(220,38,38,0.12);
+            border-radius: 20px;
+            padding: 2px 10px;
+            letter-spacing: 0.03em;
+        }
+        .event-config-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .event-config-full { grid-column: 1 / -1; }
+        .event-config-fields .form-group { margin: 0; }
+        .event-config-fields .form-label { font-size: 12px; margin-bottom: 5px; }
+        .event-config-fields .form-input,
+        .event-config-fields select.form-input {
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+        .event-config-default-row {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .event-config-default-row input[type="radio"] {
+            accent-color: var(--accent);
+            width: 16px; height: 16px;
+            cursor: pointer;
+        }
+        .event-config-default-row label {
+            font-size: 13px;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        .event-config-default-row label span {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
         /* ===== PRESET SELECTION (Step 3) ===== */
         .preset-grid {
             display: grid;
@@ -1138,6 +1210,12 @@
         <div id="no-events-warning" class="empty-state" style="display:none;">
             <p style="color: var(--warning);">Please select at least one event type to continue.</p>
         </div>
+
+        <!-- Per-event configuration — appears when at least one event is selected -->
+        <div id="event-config-section" class="event-config-section" style="display:none;">
+            <h3>Configure Selected Events</h3>
+            <div id="event-configs"></div>
+        </div>
     </div>
 
     <!-- ============================================================ -->
@@ -1365,6 +1443,8 @@ let wizardData = {
     },
     // Step 2: Event types
     eventTypes: [],
+    // Per-event config: { [et]: { name, description, teamSize, isDefault } }
+    eventConfigs: {},
     // Step 3: Division Rules
     sanctioningBody: '',
     // Step 4: Pricing
@@ -1375,11 +1455,109 @@ let wizardData = {
 };
 
 const EVENT_TYPE_INFO = {
-    kata:      { label: 'Kata',      icon: '\u{1F94B}' },
-    kumite:    { label: 'Kumite',    icon: '\u{1F94A}' },
-    weapons:   { label: 'Weapons',   icon: '\u{1F5E1}' },
-    'team-kata': { label: 'Team Kata', icon: '\u{1F465}' },
+    kata:        { label: 'Kata',      icon: '\u{1F94B}', defaultTeamSize: 1 },
+    kumite:      { label: 'Kumite',    icon: '\u{1F94A}', defaultTeamSize: 1 },
+    weapons:     { label: 'Weapons',   icon: '\u{1F5E1}', defaultTeamSize: 1 },
+    'team-kata': { label: 'Team Kata', icon: '\u{1F465}', defaultTeamSize: 3 },
 };
+
+// ============================================================
+// EVENT CONFIG PANEL
+// ============================================================
+function renderEventConfigs() {
+    const selected = Array.from(document.querySelectorAll('.event-type-card.selected'))
+        .map(c => c.dataset.event);
+
+    const section = $('#event-config-section');
+    const container = $('#event-configs');
+
+    if (selected.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    section.style.display = 'block';
+    container.innerHTML = '';
+
+    selected.forEach(et => {
+        const info = EVENT_TYPE_INFO[et] || { label: et, icon: '🏆', defaultTeamSize: 1 };
+        // Initialise config if not already set
+        if (!wizardData.eventConfigs[et]) {
+            wizardData.eventConfigs[et] = {
+                name: info.label,
+                description: '',
+                teamSize: info.defaultTeamSize || 1,
+                isDefault: false,
+            };
+        }
+        const cfg = wizardData.eventConfigs[et];
+
+        const card = document.createElement('div');
+        card.className = 'event-config-card';
+        card.innerHTML = `
+            <div class="event-config-header">
+                <span class="event-config-icon">${info.icon}</span>
+                <span class="event-config-badge">${info.label}</span>
+            </div>
+            <div class="event-config-fields">
+                <div class="form-group event-config-full">
+                    <label class="form-label">Event Name *</label>
+                    <input type="text" class="form-input" id="cfg-name-${et}"
+                           value="${escapeHtml(cfg.name)}" placeholder="e.g., Kata">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Team Size</label>
+                    <select class="form-input" id="cfg-teamsize-${et}">
+                        <option value="1" ${cfg.teamSize === 1 ? 'selected' : ''}>Individual (1)</option>
+                        <option value="2" ${cfg.teamSize === 2 ? 'selected' : ''}>Team of 2</option>
+                        <option value="3" ${cfg.teamSize === 3 ? 'selected' : ''}>Team of 3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description <span style="color:var(--text-dim)">(optional)</span></label>
+                    <input type="text" class="form-input" id="cfg-desc-${et}"
+                           value="${escapeHtml(cfg.description || '')}" placeholder="Brief description…">
+                </div>
+                <div class="event-config-default-row">
+                    <input type="radio" name="wizard-default-event" id="cfg-default-${et}"
+                           value="${et}" ${cfg.isDefault ? 'checked' : ''}
+                           onchange="onDefaultEventChange('${et}')">
+                    <label for="cfg-default-${et}">
+                        Mark as <span>Default Event</span>
+                        <span style="color:var(--text-dim);font-weight:400;font-size:12px;"> — base registration fee, auto-included</span>
+                    </label>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function onDefaultEventChange(selectedEt) {
+    // Update wizardData — only one event can be default
+    Object.keys(wizardData.eventConfigs).forEach(et => {
+        wizardData.eventConfigs[et].isDefault = (et === selectedEt);
+    });
+}
+
+function collectEventConfigs() {
+    const selected = Array.from(document.querySelectorAll('.event-type-card.selected'))
+        .map(c => c.dataset.event);
+    selected.forEach(et => {
+        const nameEl = $(`#cfg-name-${et}`);
+        const tsEl = $(`#cfg-teamsize-${et}`);
+        const descEl = $(`#cfg-desc-${et}`);
+        const defEl = $(`#cfg-default-${et}`);
+        if (!wizardData.eventConfigs[et]) wizardData.eventConfigs[et] = {};
+        if (nameEl) wizardData.eventConfigs[et].name = nameEl.value.trim() || EVENT_TYPE_INFO[et]?.label || et;
+        if (tsEl)   wizardData.eventConfigs[et].teamSize = parseInt(tsEl.value, 10) || 1;
+        if (descEl) wizardData.eventConfigs[et].description = descEl.value.trim();
+        if (defEl)  wizardData.eventConfigs[et].isDefault = defEl.checked;
+    });
+    // Clean up configs for deselected events
+    Object.keys(wizardData.eventConfigs).forEach(et => {
+        if (!selected.includes(et)) delete wizardData.eventConfigs[et];
+    });
+}
 
 // ============================================================
 // INITIALIZATION
@@ -1575,21 +1753,29 @@ async function loadExistingTournament() {
             summaryEl.style.display = 'block';
         }
 
-        // Load existing events to determine event types
+        // Load existing events to determine event types + restore per-event configs
         const events = t.events || [];
         if (events.length > 0) {
             const types = new Set();
             events.forEach(e => {
                 const et = e.event_type || 'kata';
                 types.add(et);
+                // Restore config from server data so editing the wizard reflects real values
+                wizardData.eventConfigs[et] = {
+                    name: e.name || EVENT_TYPE_INFO[et]?.label || et,
+                    description: e.description || '',
+                    teamSize: e.team_size || EVENT_TYPE_INFO[et]?.defaultTeamSize || 1,
+                    isDefault: e.is_default || false,
+                };
             });
             wizardData.eventTypes = [...types];
 
-            // Select event type cards
+            // Select event type cards and render config panel
             wizardData.eventTypes.forEach(et => {
                 const card = document.querySelector(`.event-type-card[data-event="${et}"]`);
                 if (card) card.classList.add('selected');
             });
+            renderEventConfigs();
         }
 
         showToast('Tournament loaded', 'success');
@@ -1760,6 +1946,7 @@ function collectStepData(step) {
     if (step === 2) {
         const selected = document.querySelectorAll('.event-type-card.selected');
         wizardData.eventTypes = Array.from(selected).map(c => c.dataset.event);
+        collectEventConfigs(); // capture name, teamSize, description, isDefault
     }
 
     if (step === 4) {
@@ -1823,7 +2010,15 @@ function applyDirectorDurationOverrides(templates) {
  */
 function buildEventsForSync() {
     return wizardData.eventTypes.map(et => {
-        const typeLabel = (CRITERIA_PRESETS.EVENT_TYPE_LABELS[et] || et);
+        const info = EVENT_TYPE_INFO[et] || { label: et, defaultTeamSize: 1 };
+        const cfg = wizardData.eventConfigs[et] || {};
+
+        // Name comes from user config (editable in Step 2), fallback to preset label
+        const eventName = cfg.name || info.label || et;
+        const teamSize = cfg.teamSize != null ? cfg.teamSize : (info.defaultTeamSize || 1);
+        const isDefault = cfg.isDefault || false;
+        const description = cfg.description || null;
+
         const templates = CRITERIA_PRESETS.buildTemplates(wizardData.sanctioningBody, et);
 
         // Apply director's per-age-group duration overrides
@@ -1839,11 +2034,14 @@ function buildEventsForSync() {
         }
 
         return {
-            name: typeLabel,
+            name: eventName,
             eventType: et,
             isEventType: true,
             criteriaTemplates: templates,
             matchDurationSeconds: eventDuration,
+            teamSize,
+            isDefault,
+            description,
         };
     });
 }
@@ -2084,8 +2282,11 @@ async function saveDraft() {
 // STEP 2: EVENT TYPE SELECTION
 // ============================================================
 function toggleEventType(card) {
+    // Save current config values before toggling (so inputs aren't lost on re-render)
+    collectEventConfigs();
     card.classList.toggle('selected');
     $('#no-events-warning').style.display = 'none';
+    renderEventConfigs();
 }
 
 // ============================================================
@@ -2187,6 +2388,8 @@ function renderPricingOverrides() {
 
     wizardData.eventTypes.forEach(et => {
         const info = EVENT_TYPE_INFO[et] || { label: et };
+        // Use user-configured name (from Step 2) if available
+        const displayName = wizardData.eventConfigs[et]?.name || info.label || et;
         const override = wizardData.eventPriceOverrides[et] || {};
 
         const row = document.createElement('div');
@@ -2194,7 +2397,7 @@ function renderPricingOverrides() {
         row.style.marginBottom = '16px';
         row.innerHTML = `
             <div class="form-group">
-                <label class="form-label">${info.label} - Base Price Override</label>
+                <label class="form-label">${escapeHtml(displayName)} — Base Price Override</label>
                 <div class="price-input-group">
                     <span class="currency">$</span>
                     <input type="number" class="form-input" id="override-base-${et}"
@@ -2203,7 +2406,7 @@ function renderPricingOverrides() {
                 </div>
             </div>
             <div class="form-group">
-                <label class="form-label">${info.label} - Add-on Price Override</label>
+                <label class="form-label">${escapeHtml(displayName)} — Add-on Price Override</label>
                 <div class="price-input-group">
                     <span class="currency">$</span>
                     <input type="number" class="form-input" id="override-addon-${et}"
@@ -2349,8 +2552,15 @@ function renderReview() {
     eventsHtml += `<p style="color: var(--text-muted); font-size: 14px; margin-bottom: 12px;">${wizardData.eventTypes.length} event type${wizardData.eventTypes.length !== 1 ? 's' : ''}</p>`;
     wizardData.eventTypes.forEach(et => {
         const info = EVENT_TYPE_INFO[et] || { label: et };
+        const cfg = wizardData.eventConfigs[et] || {};
+        const displayName = cfg.name || info.label || et;
+        const teamLabel = cfg.teamSize > 1 ? ` · Team of ${cfg.teamSize}` : ' · Individual';
+        const defaultLabel = cfg.isDefault ? ' · <strong style="color:var(--accent)">Default Event</strong>' : '';
+        const descLabel = cfg.description ? `<div style="font-size:12px;color:var(--text-dim);margin-top:3px;">${escapeHtml(cfg.description)}</div>` : '';
         eventsHtml += `<div class="review-event-item">
-            <span class="review-event-type-badge ${et}">${info.icon || ''} ${info.label}</span>
+            <span class="review-event-type-badge ${et}">${info.icon || ''} ${escapeHtml(displayName)}</span>
+            <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">${teamLabel}${defaultLabel}</span>
+            ${descLabel}
         </div>`;
     });
 

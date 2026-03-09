@@ -391,6 +391,9 @@ async function syncEvents(tournamentId, events) {
       const criteriaJson = evt.criteriaTemplates ? JSON.stringify(evt.criteriaTemplates) : null;
       const isEventType = evt.isEventType || false;
       const matchDuration = evt.matchDurationSeconds || null;
+      const teamSize = evt.teamSize != null ? parseInt(evt.teamSize, 10) : null;
+      const isDefault = evt.isDefault || false;
+      const description = evt.description || null;
 
       if (evt.id && existingIds.has(evt.id)) {
         incomingIds.add(evt.id);
@@ -400,14 +403,16 @@ async function syncEvents(tournamentId, events) {
             age_min = $5, age_max = $6, rank_min = $7, rank_max = $8,
             price_override = $9, addon_price_override = $10, max_competitors = $11,
             criteria_templates = $12, is_event_type = $13, match_duration_seconds = $14,
+            team_size = $15, is_default = $16, description = $17,
             updated_at = NOW()
-           WHERE id = $15 AND tournament_id = $16
+           WHERE id = $18 AND tournament_id = $19
            RETURNING *`,
           [
             evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
             criteriaJson, isEventType, matchDuration,
+            teamSize, isDefault, description,
             evt.id, tournamentId,
           ]
         );
@@ -418,14 +423,16 @@ async function syncEvents(tournamentId, events) {
             (tournament_id, name, event_type, division, gender,
              age_min, age_max, rank_min, rank_max,
              price_override, addon_price_override, max_competitors,
-             criteria_templates, is_event_type, match_duration_seconds)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+             criteria_templates, is_event_type, match_duration_seconds,
+             team_size, is_default, description)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
            RETURNING *`,
           [
             tournamentId, evt.name, evt.eventType || null, evt.division || null, evt.gender || null,
             evt.ageMin || null, evt.ageMax || null, evt.rankMin || null, evt.rankMax || null,
             evt.priceOverride || null, evt.addonPriceOverride || null, evt.maxCompetitors || null,
             criteriaJson, isEventType, matchDuration,
+            teamSize, isDefault, description,
           ]
         );
         if (inserted.rows[0]) results.push(inserted.rows[0]);
