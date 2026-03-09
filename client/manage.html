@@ -390,7 +390,6 @@
         <aside class="sidebar" id="app-sidebar">
             <div class="sidebar-header">
                 <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
-                <a id="back-to-tournaments-link" href="/account.html#tournaments" class="back-to-tournaments">← My Tournaments</a>
             </div>
 
             <span id="server-sync-indicator" class="sync-indicator" title="Server sync status" style="display:none;">
@@ -422,6 +421,10 @@
                     <div class="nav-group-label">Dojo</div>
                     <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Dojo</button>
                 </div>
+                <div class="nav-group" id="account-nav-group">
+                    <div class="nav-group-label">Account</div>
+                    <a href="/account.html" class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:8px;"><i data-lucide="circle-user-round" class="nav-icon"></i> My Account</a>
+                </div>
                 <div class="nav-group" id="settings-nav-group">
                     <div class="nav-group-label">Admin</div>
                     <button class="nav-settings-toggle" id="settings-toggle" onclick="toggleSettingsNav()">
@@ -444,7 +447,6 @@
             </nav>
 
             <div class="sidebar-footer">
-                <a href="/account.html" style="display:block;padding:8px 12px;margin:0 8px 8px;border-radius:8px;font-size:13px;color:rgba(255,255,255,0.6);text-decoration:none;transition:all 0.15s;text-align:center;border:1px solid rgba(255,255,255,0.08);" onmouseover="this.style.background='rgba(255,255,255,0.06)';this.style.color='#fff'" onmouseout="this.style.background='';this.style.color='rgba(255,255,255,0.6)'">My Account</a>
                 <div id="user-menu" class="user-menu hidden">
                     <div class="user-menu-info">
                         <div class="user-avatar" id="user-avatar">?</div>
