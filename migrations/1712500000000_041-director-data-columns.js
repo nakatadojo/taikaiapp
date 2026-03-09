@@ -17,12 +17,12 @@ exports.up = (pgm) => {
     director_competitors: {
       type: 'jsonb',
       nullable: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
     director_clubs: {
       type: 'jsonb',
       nullable: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
   });
 };

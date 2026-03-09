@@ -10,17 +10,17 @@ exports.up = (pgm) => {
     director_officials: {
       type: 'jsonb',
       nullable: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
     director_staff: {
       type: 'jsonb',
       nullable: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
     director_instructors: {
       type: 'jsonb',
       nullable: true,
-      default: "'[]'::jsonb",
+      default: pgm.func("'[]'::jsonb"),
     },
   });
 };
