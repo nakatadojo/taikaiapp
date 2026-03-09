@@ -1342,6 +1342,25 @@
     .hidden { display: none !important; }
     </style>
     <script src="/taikai-logo.js"></script>
+    <!-- Google Translate -->
+    <script type="text/javascript">
+    function googleTranslateElementInit() {
+        new google.translate.TranslateElement({
+            pageLanguage: 'en',
+            includedLanguages: 'en,es,ja,pt,fr,de,it,zh-CN,ko,ar',
+            layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+            autoDisplay: false
+        }, 'google_translate_element');
+    }
+    </script>
+    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <style>
+    #google_translate_element { display:inline-block; vertical-align:middle; margin-right:8px; }
+    #google_translate_element .goog-te-gadget { font-size:0; }
+    #google_translate_element .goog-te-gadget .goog-te-combo { font-size:13px; padding:4px 8px; border-radius:6px; border:1px solid var(--glass-border,#444); background:var(--glass-bg,#1a1a2e); color:var(--text-primary,#fff); cursor:pointer; }
+    .goog-te-banner-frame { display:none !important; }
+    body { top:0 !important; }
+    </style>
 </head>
 <body>
 
@@ -1355,6 +1374,7 @@
             <a href="#info" class="reg-topbar-brand" id="topbar-brand">Tournament Registration</a>
         </div>
         <div class="reg-topbar-actions" id="topbar-actions-desktop">
+            <div id="google_translate_element"></div>
             <div id="topbar-user" class="reg-topbar-user" style="display:none;">
                 <div class="reg-topbar-avatar" id="topbar-avatar"></div>
                 <span id="topbar-username"></span>
@@ -1485,7 +1505,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="pf-weight">Weight (lbs)</label>
+                            <label for="pf-weight" id="pf-weight-label">Weight (kg)</label>
                             <input type="number" id="pf-weight" step="0.1" min="0" placeholder="Optional">
                         </div>
                         <div class="form-group" id="tshirt-group" style="display:none;">
@@ -2709,15 +2729,17 @@
             });
         }
 
-        // Weight required
+        // Weight required — use tournament weight_unit setting
         const weightInput = document.getElementById('pf-weight');
         const weightLabel = weightInput?.parentElement?.querySelector('label');
+        const t_data = state.tournament?.tournament || state.tournament || {};
+        const wUnit = t_data.weight_unit || t_data.weightUnit || 'kg';
         if (regSettings.weightRequired) {
             weightInput.required = true;
-            if (weightLabel) weightLabel.textContent = 'Weight (lbs) *';
+            if (weightLabel) weightLabel.textContent = `Weight (${wUnit}) *`;
         } else {
             weightInput.required = false;
-            if (weightLabel) weightLabel.textContent = 'Weight (lbs)';
+            if (weightLabel) weightLabel.textContent = `Weight (${wUnit})`;
         }
 
         // Custom document uploads
@@ -2970,7 +2992,7 @@
                 <div class="event-card-badge ${badgeClass}">${badgeText}</div>
                 <div class="event-card-name">${esc(ev.name || ev.eventName)}</div>
                 <div class="event-card-meta">${esc(ev.type || ev.eventType || '')}${ev.division ? ' &middot; ' + esc(ev.division) : ''}</div>
-                <div class="event-card-price">$${price.toFixed(2)}</div>
+                <div class="event-card-price">${fmtPrice(price)}</div>
             </div>`;
         }
         html += '</div>';
@@ -3000,7 +3022,7 @@
             const ev = eligibleEvents.find(e => (e._id || e.id) === evId);
             if (ev) subtotal += (typeof ev.price === 'number' ? ev.price : (ev.fee || 0));
         }
-        document.getElementById('events-subtotal').textContent = '$' + subtotal.toFixed(2);
+        document.getElementById('events-subtotal').textContent = fmtPrice(subtotal);
         const addBtn = document.getElementById('events-add-btn');
         addBtn.disabled = selectedEventIds.size === 0;
         addBtn.textContent = selectedEventIds.size === 0 ? 'Select Events' : `Add ${selectedEventIds.size} Event${selectedEventIds.size > 1 ? 's' : ''} to Cart`;
@@ -3073,12 +3095,12 @@
                 competitorSubtotal += ev.price;
                 html += `<div class="cart-event-row">
                     <span class="cart-event-name">${esc(ev.name)}${ev.division ? ' <span class="text-muted text-sm">' + esc(ev.division) + '</span>' : ''}</span>
-                    <span class="cart-event-price">$${ev.price.toFixed(2)}</span>
+                    <span class="cart-event-price">${fmtPrice(ev.price)}</span>
                     <button class="cart-event-remove" onclick="removeEventFromCart('${item.profileId}','${ev.id}')" title="Remove">&times;</button>
                 </div>`;
             }
 
-            html += `<div class="cart-competitor-subtotal">Subtotal: $${competitorSubtotal.toFixed(2)}</div>`;
+            html += `<div class="cart-competitor-subtotal">Subtotal: ${fmtPrice(competitorSubtotal)}</div>`;
             html += `</div>`;
         }
 
@@ -3109,11 +3131,11 @@
             : state.cart.discountAmount;
         const total = Math.max(0, subtotal - discount);
 
-        let html = `<div class="cart-total-row"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>`;
+        let html = `<div class="cart-total-row"><span>Subtotal</span><span>${fmtPrice(subtotal)}</span></div>`;
         if (discount > 0) {
-            html += `<div class="cart-total-row"><span>Discount${state.cart.discountCode ? ' (' + esc(state.cart.discountCode) + ')' : ''}</span><span class="discount-amount">-$${discount.toFixed(2)}</span></div>`;
+            html += `<div class="cart-total-row"><span>Discount${state.cart.discountCode ? ' (' + esc(state.cart.discountCode) + ')' : ''}</span><span class="discount-amount">-${fmtPrice(discount)}</span></div>`;
         }
-        html += `<div class="cart-total-row grand"><span>Total</span><span>$${total.toFixed(2)}</span></div>`;
+        html += `<div class="cart-total-row grand"><span>Total</span><span>${fmtPrice(total)}</span></div>`;
 
         document.getElementById('cart-totals').innerHTML = html;
     }
@@ -3230,7 +3252,7 @@
             summaryHTML += `<div class="glass-card glass-card-sm mb-8">
                 <div class="font-bold mb-8">${esc(item.profileName)}</div>`;
             for (const ev of item.events) {
-                summaryHTML += `<div class="text-sm text-secondary">${esc(ev.name)} — $${ev.price.toFixed(2)}</div>`;
+                summaryHTML += `<div class="text-sm text-secondary">${esc(ev.name)} — ${fmtPrice(ev.price)}</div>`;
             }
             summaryHTML += '</div>';
         }
@@ -3366,6 +3388,19 @@
         const div = document.createElement('div');
         div.textContent = String(str);
         return div.innerHTML;
+    }
+
+    function getCurrSym() {
+        const t = state.tournament?.tournament || state.tournament || {};
+        const code = (t.currency || 'USD').toUpperCase();
+        const map = { USD:'$', MXN:'$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'C$', AUD:'A$', ARS:'$', COP:'$' };
+        return map[code] || '$';
+    }
+    function fmtPrice(amount) {
+        const sym = getCurrSym();
+        const t = state.tournament?.tournament || state.tournament || {};
+        const dec = (t.currency||'USD') === 'JPY' ? 0 : 2;
+        return `${sym}${parseFloat(amount).toFixed(dec)}`;
     }
 
     function capitalize(s) {
