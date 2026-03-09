@@ -479,6 +479,11 @@ async function _syncDivisionsToServer() {
 
 async function _syncTemplateToServer(eventId, templates) {
     if (!currentTournamentId || !eventId) return;
+    // localStorage event IDs are Date.now() timestamps (13 digits).
+    // Server tournament_events use small sequential integers or UUIDs.
+    // Skip the sync if this is a localStorage-only event type — the server
+    // has no matching row and the UPDATE would 500.
+    if (/^\d{10,}$/.test(String(eventId))) return;
     const res = await fetch(
         `/api/tournaments/${currentTournamentId}/events/${eventId}/templates/sync`,
         {
