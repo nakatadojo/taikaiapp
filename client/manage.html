@@ -1268,16 +1268,6 @@
                 </div>
 
                 <div id="division-template-container" class="hidden">
-                    <!-- Template List — templates are now configured from the Events tab -->
-                    <div class="glass-panel">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h3>Division Templates</h3>
-                            <span style="font-size:12px;color:var(--text-secondary);">Configure templates on the <strong>Events</strong> tab</span>
-                        </div>
-                        <div id="templates-list">
-                            <p class="hint">No templates yet. Go to the Events tab, expand an event's "Division Templates" section and click "+ Add Template".</p>
-                        </div>
-                    </div>
 
                     <!-- Template Builder (hidden by default) -->
                     <div id="division-builder" class="glass-panel hidden">
@@ -1345,7 +1335,6 @@
                         <button class="btn btn-primary" onclick="generateDivisions()">Generate Divisions</button>
                         <button class="btn btn-secondary" onclick="showBracketGenerator()">📊 Generate Brackets</button>
                         <button class="btn btn-danger" onclick="deleteDivisions()">🗑️ Delete Generated Divisions</button>
-                        <button class="btn btn-danger" onclick="deleteCriteria()">🗑️ Delete Criteria Template</button>
                         <label class="checkbox-label">
                             <input type="checkbox" id="hide-empty-divisions" checked onchange="renderDivisions()">
                             Show only divisions with competitors

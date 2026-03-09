@@ -6469,9 +6469,6 @@ function loadDivisionTemplate() {
     // Show the division template container
     container.classList.remove('hidden');
 
-    // Load templates list for this event
-    loadTemplatesList();
-
     // Load existing divisions if any
     const divisions = db.load('divisions');
     const eventData = divisions[eventId];
