@@ -199,7 +199,7 @@ async function updateTournament(req, res, next) {
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
       sanctioningBody, collectTshirtSizes, registrationSettings, timezone,
-      currency, weightUnit,
+      currency, weightUnit, publicSiteConfig,
     } = req.body;
 
     const updates = {};
@@ -223,6 +223,12 @@ async function updateTournament(req, res, next) {
     if (timezone !== undefined) updates.timezone = timezone;
     if (currency !== undefined) updates.currency = currency;
     if (weightUnit !== undefined) updates.weight_unit = weightUnit;
+    if (publicSiteConfig !== undefined) {
+      if (typeof publicSiteConfig !== 'object' || publicSiteConfig === null) {
+        return res.status(400).json({ error: 'publicSiteConfig must be an object' });
+      }
+      updates.public_site_config = JSON.stringify(publicSiteConfig);
+    }
     if (registrationSettings !== undefined) {
       // Validate structure
       if (typeof registrationSettings !== 'object' || registrationSettings === null) {

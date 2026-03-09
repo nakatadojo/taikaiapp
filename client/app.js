@@ -898,6 +898,85 @@ async function _loadResultsFromServer() {
     }
 }
 
+// ── Scoreboard Config Server Sync ────────────────────────────────────────
+async function _syncScoreboardConfigToServer(config) {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config }),
+        });
+        if (res.ok) {
+            console.log('[sync] Scoreboard config saved to server');
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to sync scoreboard config:', err.message);
+    }
+}
+
+async function _loadScoreboardConfigFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-config`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.config) {
+            localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(data.config));
+            // Also mirror kumite corner settings to legacy key
+            if (data.config.kumite) {
+                localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
+                    corner1Name:   data.config.kumite.corner1Name,
+                    corner2Name:   data.config.kumite.corner2Name,
+                    corner1Custom: data.config.kumite.corner1Color,
+                    corner2Custom: data.config.kumite.corner2Color,
+                }));
+            }
+            console.log('[sync] Loaded scoreboard config from server');
+            if (typeof loadUnifiedScoreboardConfig === 'function') loadUnifiedScoreboardConfig();
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load scoreboard config:', err.message);
+    }
+}
+
+// ── Public Site Config Server Sync ────────────────────────────────────────
+async function _syncPublicSiteConfigToServer(config) {
+    if (!currentTournamentId) return;
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicSiteConfig: config }),
+        });
+        console.log('[sync] Public site config saved to server');
+    } catch (err) {
+        console.warn('[sync] Failed to sync public site config:', err.message);
+    }
+}
+
+async function _loadPublicSiteConfigFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverConfig = data.tournament?.public_site_config;
+        if (serverConfig && Object.keys(serverConfig).length > 0) {
+            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(serverConfig));
+            console.log('[sync] Loaded public site config from server');
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load public site config:', err.message);
+    }
+}
+
 /**
  * Load generated divisions from the server and merge with local division templates.
  * Templates come from _hydrateEventTypesFromServer (criteria_templates on tournament_events).
@@ -1350,6 +1429,12 @@ loadTournamentSelector();
         _loadResultsFromServer().then(() => {
             if (typeof loadResults === 'function') loadResults();
         });
+        // Auto-load certificate template + config from server
+        loadCertificateTemplateFromServer().catch(e => console.warn('[sync] Certificate template load:', e.message));
+        // Auto-load scoreboard config from server
+        _loadScoreboardConfigFromServer().catch(e => console.warn('[sync] Scoreboard config load:', e.message));
+        // Auto-load public site config from server
+        _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
     }
 
     // Try localStorage first (instant, no network)
@@ -6299,6 +6384,9 @@ function saveUnifiedScoreboardConfig() {
 
     updateScoreboardConfigStatus();
     showMessage('Scoreboard configuration saved!');
+
+    // Sync to server
+    _syncScoreboardConfigToServer(config);
 }
 
 function loadUnifiedScoreboardConfig() {
@@ -22249,6 +22337,9 @@ if (publicSiteForm) {
 
             localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(config));
             showMessage('Public site configuration saved successfully!');
+
+            // Sync to server
+            _syncPublicSiteConfigToServer(config);
 
             // Trigger storage event for public.html to update
             window.dispatchEvent(new Event('storage'));

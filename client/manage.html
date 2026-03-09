@@ -3181,8 +3181,9 @@
                 }
 
                 // Extract results from completed brackets
+                // brackets is an object keyed by ID, not an array — use Object.values()
                 const syncData = [];
-                for (const bracket of brackets) {
+                for (const bracket of Object.values(brackets)) {
                     if (!bracket.matches || !bracket.matches.length) continue;
                     // Check if bracket has any completed matches
                     const completed = bracket.matches.filter(m => m.status === 'completed' || m.winner);
@@ -3251,8 +3252,7 @@
         function extractPlacementsFromBracket(bracket) {
             const placements = [];
             const matches = bracket.matches || [];
-            // Find the final match (no match references it as a source)
-            const matchIds = new Set(matches.map(m => m.id || m.matchNumber));
+            // Find the final match
             let finalMatch = null;
             for (const m of matches) {
                 if (m.round === 'final' || m.round === 'Final' || m.isFinal) {
@@ -3261,14 +3261,30 @@
                 }
             }
             if (!finalMatch) {
-                // Last match by round number
+                // Last match by highest round number
                 finalMatch = matches.reduce((best, m) => (!best || (m.round || 0) > (best.round || 0)) ? m : best, null);
             }
             if (finalMatch && finalMatch.winner) {
-                placements.push({ rank: 1, name: finalMatch.winner.name || finalMatch.winner, club: finalMatch.winner.club || '' });
-                const loser = finalMatch.competitor1 === finalMatch.winner ? finalMatch.competitor2 : finalMatch.competitor1;
+                const winnerObj = typeof finalMatch.winner === 'object' ? finalMatch.winner : null;
+                const winnerName = winnerObj ? (winnerObj.firstName ? `${winnerObj.firstName} ${winnerObj.lastName || ''}`.trim() : winnerObj.name) : finalMatch.winner;
+                placements.push({ rank: 1, name: winnerName || 'Unknown', club: winnerObj ? winnerObj.club || '' : '' });
+
+                // Get loser — brackets use redCorner/blueCorner OR competitor1/competitor2
+                const c1 = finalMatch.redCorner || finalMatch.competitor1;
+                const c2 = finalMatch.blueCorner || finalMatch.competitor2;
+                let loser = null;
+                if (c1 && c2) {
+                    // Determine which corner lost by comparing IDs or names to the winner
+                    const winnerId = winnerObj ? winnerObj.id : null;
+                    if (winnerId) {
+                        loser = (c1.id === winnerId) ? c2 : c1;
+                    } else {
+                        loser = (c1.name === winnerName || `${c1.firstName || ''} ${c1.lastName || ''}`.trim() === winnerName) ? c2 : c1;
+                    }
+                }
                 if (loser) {
-                    placements.push({ rank: 2, name: typeof loser === 'object' ? loser.name : loser, club: typeof loser === 'object' ? loser.club || '' : '' });
+                    const loserName = loser.firstName ? `${loser.firstName} ${loser.lastName || ''}`.trim() : (loser.name || 'Unknown');
+                    placements.push({ rank: 2, name: loserName, club: loser.club || '' });
                 }
             }
             return placements;
