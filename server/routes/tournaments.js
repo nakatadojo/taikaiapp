@@ -180,6 +180,20 @@ router.post('/:id/sync',
   tournamentController.syncEvents
 );
 
+// ── Director Competitors / Clubs (JSONB sync) ────────────────────────────────
+
+// GET /api/tournaments/:id/competitors
+router.get('/:id/competitors', requireAuth, requireTournamentOwner, tournamentController.getCompetitors);
+
+// POST /api/tournaments/:id/competitors/sync
+router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
+
+// GET /api/tournaments/:id/clubs
+router.get('/:id/clubs', requireAuth, requireTournamentOwner, tournamentController.getClubs);
+
+// POST /api/tournaments/:id/clubs/sync
+router.post('/:id/clubs/sync', requireAuth, requireTournamentOwner, tournamentController.syncClubs);
+
 // ── Director Discount Codes ──────────────────────────────────────────────
 const discountQueries = require('../db/queries/discounts');
 

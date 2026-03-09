@@ -333,6 +333,7 @@ async function createEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
+      isDefault, teamSize, description,
     } = req.body;
 
     const event = await tournamentQueries.createEvent({
@@ -340,6 +341,7 @@ async function createEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
+      isDefault, teamSize, description,
     });
     res.status(201).json({ event });
   } catch (err) {
@@ -363,6 +365,7 @@ async function updateEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
+      isDefault, teamSize, description,
     } = req.body;
 
     const updates = {};
@@ -377,6 +380,9 @@ async function updateEvent(req, res, next) {
     if (priceOverride !== undefined) updates.price_override = priceOverride;
     if (addonPriceOverride !== undefined) updates.addon_price_override = addonPriceOverride;
     if (maxCompetitors !== undefined) updates.max_competitors = maxCompetitors;
+    if (isDefault !== undefined) updates.is_default = isDefault;
+    if (teamSize !== undefined) updates.team_size = teamSize;
+    if (description !== undefined) updates.description = description;
 
     const event = await tournamentQueries.updateEvent(req.params.eventId, updates);
     if (!event) {
@@ -621,6 +627,62 @@ async function cloneTournament(req, res, next) {
   }
 }
 
+// ── Director Competitors / Clubs ─────────────────────────────────────────────
+
+/**
+ * GET /api/tournaments/:id/competitors
+ * Returns the director_competitors JSONB array.
+ */
+async function getCompetitors(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+    const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
+    res.json({ competitors });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/tournaments/:id/competitors/sync
+ * Replaces the director_competitors JSONB array (full replace).
+ */
+async function syncCompetitors(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+    const { competitors } = req.body;
+    await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors || []);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/tournaments/:id/clubs
+ * Returns the director_clubs JSONB array.
+ */
+async function getClubs(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+    const clubs = await tournamentQueries.getDirectorClubs(req.params.id);
+    res.json({ clubs });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/tournaments/:id/clubs/sync
+ * Replaces the director_clubs JSONB array (full replace).
+ */
+async function syncClubs(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+    const { clubs } = req.body;
+    await tournamentQueries.syncDirectorClubs(req.params.id, clubs || []);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -640,4 +702,8 @@ module.exports = {
   syncEvents,
   getRegistrants,
   cloneTournament,
+  getCompetitors,
+  syncCompetitors,
+  getClubs,
+  syncClubs,
 };

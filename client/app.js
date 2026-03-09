@@ -133,6 +133,39 @@ function generateUniqueId() {
 // Active tournament — declared early so scoped-storage helpers can reference it.
 let currentTournamentId = null;
 
+// ── Server Persistence Helpers ───────────────────────────────────────────────
+let _competitorsSyncTimer = null;
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _isServerEventId(id) { return _UUID_RE.test(String(id || '')); }
+
+/**
+ * Replace all references to a temp event ID (Date.now) with the real server UUID.
+ * Called after a POST /api/tournaments/:id/events returns the new UUID.
+ */
+function _replaceEventId(oldId, newId) {
+    // 1. eventTypes array
+    const eventTypes = db.load('eventTypes');
+    const idx = eventTypes.findIndex(e => String(e.id) === String(oldId));
+    if (idx !== -1) { eventTypes[idx].id = newId; db.save('eventTypes', eventTypes); }
+    // 2. divisions object keys
+    const divisions = db.load('divisions');
+    if (divisions[oldId]) {
+        divisions[newId] = divisions[oldId];
+        delete divisions[oldId];
+        db.save('divisions', divisions);
+    }
+    // 3. competitor.events arrays
+    const competitors = db.load('competitors');
+    let changed = false;
+    competitors.forEach(c => {
+        if (Array.isArray(c.events)) {
+            c.events = c.events.map(e => String(e) === String(oldId) ? newId : e);
+            changed = true;
+        }
+    });
+    if (changed) db.save('competitors', competitors);
+}
+
 // ── Tournament-Scoped Storage ───────────────────────────────────────────────
 // Keys that should be isolated per tournament to prevent cross-tournament data corruption.
 const _SCOPED_KEYS = new Set([
@@ -391,6 +424,152 @@ function _debouncedSync(key, fn, delayMs = 1500) {
     _syncDebounceTimers[key] = setTimeout(() => {
         fn().catch(err => console.warn(`[sync] ${key} failed:`, err.message));
     }, delayMs);
+}
+
+// ── Event Type Server Sync ────────────────────────────────────────────────────
+
+/**
+ * Fire-and-forget: POST (create) or PUT (update) an event type to the server.
+ * On create, replaces the temp localStorage ID with the server UUID.
+ */
+async function _syncEventTypeToServer(eventType, method = 'POST') {
+    if (!currentTournamentId) return;
+    const url = method === 'POST'
+        ? `/api/tournaments/${currentTournamentId}/events`
+        : `/api/tournaments/${currentTournamentId}/events/${eventType.id}`;
+    try {
+        const res = await fetch(url, {
+            method,
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: eventType.name || 'Unnamed Event',
+                description: eventType.description || null,
+                teamSize: eventType.teamSize || null,
+                isDefault: eventType.isDefault || false,
+                priceOverride: eventType.basePrice || null,
+                addonPriceOverride: eventType.addOnPrice || null,
+            }),
+        });
+        if (res.ok && method === 'POST') {
+            const data = await res.json();
+            const serverId = data.event?.id || data.id;
+            if (serverId && !_isServerEventId(eventType.id)) {
+                _replaceEventId(eventType.id, serverId);
+                // Refresh UI so IDs are consistent
+                loadEventTypes();
+                loadEventTypeSelector();
+            }
+        }
+    } catch (e) {
+        console.warn('[sync] event type failed:', e.message);
+    }
+}
+
+/**
+ * Fire-and-forget: DELETE an event type from the server.
+ * Only fires if the event already has a real server UUID.
+ */
+async function _deleteEventTypeFromServer(eventId) {
+    if (!currentTournamentId || !_isServerEventId(String(eventId))) return;
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+    } catch (e) {
+        console.warn('[sync] event type delete failed:', e.message);
+    }
+}
+
+// ── Competitor / Club Server Sync ─────────────────────────────────────────────
+
+/**
+ * Queue a debounced full-replace sync of competitors + clubs to the server.
+ */
+function _queueCompetitorsSync() {
+    clearTimeout(_competitorsSyncTimer);
+    _competitorsSyncTimer = setTimeout(_syncCompetitorsToServer, 3000);
+}
+
+async function _syncCompetitorsToServer() {
+    if (!currentTournamentId) return;
+    try {
+        await Promise.all([
+            fetch(`/api/tournaments/${currentTournamentId}/competitors/sync`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ competitors: db.load('competitors') }),
+            }),
+            fetch(`/api/tournaments/${currentTournamentId}/clubs/sync`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clubs: db.load('clubs') }),
+            }),
+        ]);
+    } catch (e) {
+        console.warn('[sync] competitors/clubs failed:', e.message);
+    }
+}
+
+/**
+ * Load competitors and clubs from the server on tournament init.
+ * Server wins over any stale localStorage data.
+ */
+async function _loadCompetitorsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const [compRes, clubsRes] = await Promise.all([
+            fetch(`/api/tournaments/${currentTournamentId}/competitors`, { credentials: 'include' }),
+            fetch(`/api/tournaments/${currentTournamentId}/clubs`, { credentials: 'include' }),
+        ]);
+        if (compRes.ok) {
+            const { competitors } = await compRes.json();
+            if (Array.isArray(competitors) && competitors.length) {
+                db.save('competitors', competitors);
+            }
+        }
+        if (clubsRes.ok) {
+            const { clubs } = await clubsRes.json();
+            if (Array.isArray(clubs) && clubs.length) {
+                db.save('clubs', clubs);
+            }
+        }
+    } catch (e) {
+        console.warn('[sync] load competitors/clubs failed:', e.message);
+    }
+}
+
+/**
+ * Hydrate event types from server on tournament init.
+ * Server data replaces localStorage so we have canonical UUIDs and latest state.
+ */
+async function _hydrateEventTypesFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverEvents = data.tournament?.events || data.events || [];
+        if (!serverEvents.length) return;
+        const mapped = serverEvents.map(e => ({
+            id: e.id,
+            name: e.name,
+            description: e.description || '',
+            teamSize: e.team_size || null,
+            isDefault: e.is_default || false,
+            basePrice: e.price_override || null,
+            addOnPrice: e.addon_price_override || null,
+            price: e.price_override || null,
+        }));
+        db.save('eventTypes', mapped);
+        if (typeof loadEventTypes === 'function') loadEventTypes();
+        if (typeof loadEventTypeSelector === 'function') loadEventTypeSelector();
+    } catch (e) {
+        console.warn('[sync] hydrate event types failed:', e.message);
+    }
 }
 
 function setSyncIndicator(state) {
@@ -949,8 +1128,14 @@ loadTournamentSelector();
         _migrateUnscopedData();
         db.init();
         document.getElementById('main-nav')?.classList.remove('hidden');
-        loadCompetitors();
-        loadDashboard();
+        // Hydrate from server — server is source of truth for event types + competitors
+        _hydrateEventTypesFromServer().then(() => {
+            loadCompetitors();
+            loadDashboard();
+        });
+        _loadCompetitorsFromServer().then(() => {
+            loadCompetitors();
+        });
         _loadTeamsFromServer();
     }
 
@@ -2247,9 +2432,11 @@ function saveClubData(clubName, clubLogo) {
             logo: clubLogo,
             createdAt: new Date().toISOString()
         });
+        _queueCompetitorsSync();
     } else if (existingClub && clubLogo && !existingClub.logo) {
         // Update existing club with logo if it doesn't have one
         db.update('clubs', existingClub.id, { logo: clubLogo });
+        _queueCompetitorsSync();
     }
 }
 
@@ -2491,6 +2678,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
 
         const updatedCompetitor = allCompetitors[compIndex];
         localStorage.setItem(_scopedKey('competitors'), JSON.stringify(allCompetitors));
+        _queueCompetitorsSync();
 
         // Update competitor data embedded in brackets (they store full objects, not IDs)
         updateCompetitorInBrackets(editingCompetitorId, updatedCompetitor);
@@ -2523,6 +2711,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         };
 
         const competitorId = db.add('competitors', competitor);
+        _queueCompetitorsSync();
 
         // Add competitor to team members list
         if (teamCode) {
@@ -3491,6 +3680,7 @@ function loadCompetitors(skipSync = false) {
 function deleteCompetitor(id) {
     if (confirm('Are you sure you want to delete this competitor?')) {
         db.delete('competitors', id);
+        _queueCompetitorsSync();
         loadCompetitors();
         loadDashboard();
         showMessage('Competitor deleted successfully!');
@@ -4755,6 +4945,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         showMessage('Dojo added successfully!');
     }
 
+    _queueCompetitorsSync();
     hideClubForm();
     loadClubs();
     loadClubDropdown(); // Refresh dropdown in competitor form
@@ -4852,6 +5043,7 @@ function deleteClub(id) {
 
     if (confirm(confirmMsg)) {
         db.delete('clubs', id);
+        _queueCompetitorsSync();
         loadClubs();
         loadClubDropdown();
         showMessage('Dojo deleted successfully!');
@@ -5254,6 +5446,7 @@ if (eventForm) {
             if (idx !== -1) {
                 eventTypes[idx] = { ...eventTypes[idx], ...fields };
                 db.save('eventTypes', eventTypes);
+                _syncEventTypeToServer(eventTypes[idx], 'PUT');
             }
             showMessage('Event type updated!');
         } else {
@@ -5261,7 +5454,9 @@ if (eventForm) {
             if (!localStorage.getItem(_scopedKey('eventTypes'))) {
                 localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
             }
-            db.add('eventTypes', { ...fields, createdAt: new Date().toISOString() });
+            const newEventType = { ...fields, createdAt: new Date().toISOString() };
+            db.add('eventTypes', newEventType);
+            _syncEventTypeToServer(newEventType, 'POST');
             showMessage('Event type created successfully!');
         }
 
@@ -5349,6 +5544,7 @@ function loadEventTypes() {
 
 function deleteEventType(id) {
     if (confirm('Are you sure you want to delete this event type? Any division templates configured for this event will also be removed.')) {
+        _deleteEventTypeFromServer(id); // fire-and-forget before local delete
         db.delete('eventTypes', id);
         // Also clean up any division templates/generated data stored for this event
         const divisions = db.load('divisions');
