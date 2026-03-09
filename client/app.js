@@ -5189,6 +5189,8 @@ if (eventForm) {
     eventForm.addEventListener('submit', (e) => {
         e.preventDefault();
 
+        if (!ensureTournamentSelected()) return;
+
         const isDefault = document.getElementById('event-is-default').checked;
 
         // If this is being set as default, check if another event is already default
@@ -6893,6 +6895,7 @@ function showDivisionBuilder(templateId = null, eventId = null) {
         builderTitle.textContent = 'New Division Template';
     }
 
+    builder.style.display = '';    // clear any inline display:none from hideDivisionBuilder
     builder.classList.remove('hidden');
 
     // When opened from the Events tab, show as a floating modal overlay.
@@ -6925,7 +6928,8 @@ function showDivisionBuilder(templateId = null, eventId = null) {
 
 function loadTemplateForEditing(templateId) {
     const eventSelector = document.getElementById('division-event-selector');
-    const eventId = eventSelector?.value;
+    // When opened from Events tab, _currentBuilderEventId is set; Divisions tab uses selector
+    const eventId = _currentBuilderEventId || eventSelector?.value;
     if (!eventId) return;
 
     const allDivisions = db.load('divisions');
@@ -7137,6 +7141,7 @@ function hideDivisionBuilder() {
             placeholder.parentElement.insertBefore(builder, placeholder);
             placeholder.remove();
         }
+        builder.style.display = 'none';          // explicit: beats position:fixed !important
         builder.classList.add('hidden');
         builder.classList.remove('division-builder-modal');
     }
@@ -7302,11 +7307,11 @@ function saveDivisionTemplate() {
     showMessage(currentTemplateId ? 'Template updated successfully!' : 'Template created successfully!');
 
     if (_currentBuilderEventId) {
-        // Opened from the Events tab — refresh accordion, not the Divisions-tab list
+        // Opened from the Events tab — close modal, refresh cards, auto-open accordion
         const eid = _currentBuilderEventId;
-        hideDivisionBuilder();           // clears _currentBuilderEventId
-        _renderEventTemplates(eid);
-        loadEventTypes();                // refresh badge count on card
+        hideDivisionBuilder();           // clears _currentBuilderEventId; explicit display:none
+        loadEventTypes();                // re-render all cards with updated badge count
+        _toggleEventTemplates(eid);     // auto-open this event's accordion so template is visible
         return;
     }
 
