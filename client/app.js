@@ -12754,10 +12754,23 @@ function printAllStaffBadges() {
 // CHECK-IN SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let _checkinScanner  = null;   // Html5Qrcode instance
-let _checkinData     = [];     // loaded competitor registrations
-let _checkinMembers  = [];     // loaded approved members
-let _checkinTab      = 'competitors'; // active tab
+let _checkinScanner      = null;   // Html5Qrcode instance
+let _checkinData         = [];     // loaded competitor registrations (from registrations table)
+let _checkinDirectorData = [];     // loaded director-added competitors (from director_competitors JSONB)
+let _checkinMembers      = [];     // loaded approved members
+let _checkinTab          = 'competitors'; // active tab
+
+/**
+ * Compute combined check-in stats covering both registered and director-added competitors.
+ */
+function _computeCheckinStats() {
+    const total     = _checkinData.length + _checkinDirectorData.length;
+    const checkedIn = _checkinData.filter(c => c.checkin_id).length
+                    + _checkinDirectorData.filter(c => c.checkedIn).length;
+    const onMat     = _checkinData.filter(c => c.mat_called_at).length;
+    const missing   = total - checkedIn;
+    return { total, checked_in: checkedIn, missing, on_mat: onMat };
+}
 
 async function loadCheckinView() {
     if (!currentTournamentId) {
@@ -12767,16 +12780,26 @@ async function loadCheckinView() {
     // Reset detail panel
     document.getElementById('checkin-detail-panel').style.display = 'none';
 
-    // Fetch competitors
+    // Fetch registered competitors (from checkins table)
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, { credentials: 'include' });
         if (res.ok) {
             const data = await res.json();
             _checkinData = data.competitors || [];
-            _renderCheckinStats(data.stats || {});
         }
     } catch(e) {
         _checkinData = [];
+    }
+
+    // Fetch director-added competitors (from director_competitors JSONB)
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            _checkinDirectorData = data.competitors || [];
+        }
+    } catch(e) {
+        _checkinDirectorData = [];
     }
 
     // Fetch approved members
@@ -12790,6 +12813,7 @@ async function loadCheckinView() {
         _checkinMembers = [];
     }
 
+    _renderCheckinStats(_computeCheckinStats());
     _renderCheckinList();
 }
 
@@ -12803,22 +12827,40 @@ function _renderCheckinStats(stats) {
 
 function _renderCheckinList() {
     const search = (document.getElementById('ci-search')?.value || '').toLowerCase();
-    // Competitors
+    // Competitors (registered + director-added)
     const compList = document.getElementById('ci-list-competitors');
     if (compList) {
-        const filtered = _checkinData.filter(c => {
+        // Registered competitors (from registrations table)
+        const filteredReg = _checkinData.filter(c => {
             const name = `${c.first_name} ${c.last_name}`.toLowerCase();
             return !search || name.includes(search);
         });
-        compList.innerHTML = filtered.length === 0
+        // Director-added competitors (from director_competitors JSONB)
+        const filteredDir = _checkinDirectorData.filter(c => {
+            const name = `${c.firstName} ${c.lastName}`.toLowerCase();
+            return !search || name.includes(search);
+        });
+
+        const regHTML = filteredReg.map(c => {
+            const checked = !!c.checkin_id;
+            return `<div class="checkin-list-item" onclick="renderCheckinDetail('${c.registration_id}', 'competitor')">
+                <span>${c.first_name} ${c.last_name}<br><small style="color:var(--text-secondary);">${c.academy_name || ''}</small></span>
+                <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
+            </div>`;
+        }).join('');
+
+        const dirHTML = filteredDir.map(c => {
+            const checked = !!c.checkedIn;
+            return `<div class="checkin-list-item" onclick="renderDirectorCompetitorCheckinDetail('${c.id}')">
+                <span>${c.firstName} ${c.lastName}<br><small style="color:var(--text-secondary);">${c.club || ''}</small></span>
+                <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
+            </div>`;
+        }).join('');
+
+        const totalFiltered = filteredReg.length + filteredDir.length;
+        compList.innerHTML = totalFiltered === 0
             ? '<p class="hint" style="padding:16px;">No competitors found.</p>'
-            : filtered.map(c => {
-                const checked = !!c.checkin_id;
-                return `<div class="checkin-list-item" onclick="renderCheckinDetail('${c.registration_id}', 'competitor')">
-                    <span>${c.first_name} ${c.last_name}<br><small style="color:var(--text-secondary);">${c.academy_name || ''}</small></span>
-                    <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
-                </div>`;
-            }).join('');
+            : regHTML + dirHTML;
     }
     // Members
     const memList = document.getElementById('ci-list-members');
@@ -12913,10 +12955,12 @@ function handleQRScan(text) {
         renderMemberCheckinDetail(mid);
         return;
     }
-    // Fallback: fuzzy name search
+    // Fallback: fuzzy name search (registered competitors, then director-added, then members)
     const lower = text.toLowerCase();
     const match = _checkinData.find(c => `${c.first_name} ${c.last_name}`.toLowerCase().includes(lower));
     if (match) { renderCheckinDetail(match.registration_id, 'competitor'); return; }
+    const dirMatch = _checkinDirectorData.find(c => `${c.firstName} ${c.lastName}`.toLowerCase().includes(lower));
+    if (dirMatch) { renderDirectorCompetitorCheckinDetail(dirMatch.id); return; }
     const mMatch = _checkinMembers.find(m => `${m.first_name} ${m.last_name}`.toLowerCase().includes(lower));
     if (mMatch) { renderMemberCheckinDetail(mMatch.id); return; }
     showToast('QR code not recognized — try searching by name', 'warning');
@@ -13006,7 +13050,7 @@ async function performCheckin(registrationId) {
         // Update local data
         const idx = _checkinData.findIndex(c => c.registration_id === registrationId);
         if (idx >= 0) { _checkinData[idx] = { ..._checkinData[idx], checkin_id: data.checkin?.id, checked_in_at: data.checkin?.checked_in_at }; }
-        _renderCheckinStats(data.stats || {});
+        _renderCheckinStats(_computeCheckinStats());
         _renderCheckinList();
         renderCheckinDetail(registrationId, 'competitor');
         showToast('Checked in!', 'success');
@@ -13026,9 +13070,132 @@ async function undoCheckin(registrationId) {
         if (!res.ok) { showToast(data.error || 'Cannot undo', 'error'); return; }
         const idx = _checkinData.findIndex(c => c.registration_id === registrationId);
         if (idx >= 0) { _checkinData[idx] = { ..._checkinData[idx], checkin_id: null, checked_in_at: null }; }
-        _renderCheckinStats(data.stats || {});
+        _renderCheckinStats(_computeCheckinStats());
         _renderCheckinList();
         renderCheckinDetail(registrationId, 'competitor');
+        showToast('Check-in undone', 'success');
+    } catch(err) { showToast('Network error', 'error'); }
+}
+
+// ── Director Competitor Detail Panel ────────────────────────────────────────
+
+function renderDirectorCompetitorCheckinDetail(competitorId) {
+    const record = _checkinDirectorData.find(c => String(c.id) === String(competitorId));
+    if (!record) { showToast('Competitor not found', 'warning'); return; }
+
+    const panel = document.getElementById('checkin-detail-panel');
+    const content = document.getElementById('ci-detail-content');
+    panel.style.display = '';
+
+    const checked = !!record.checkedIn;
+    const eventTypes = db.load('eventTypes');
+    const eventNames = (record.events || []).map(eid => {
+        const et = eventTypes.find(e => String(e.id) === String(eid));
+        return et ? et.name : null;
+    }).filter(Boolean).join(', ') || '—';
+    const registeredWeight = record.weight ? `${record.weight} kg` : '—';
+
+    const photoHTML = record.photo
+        ? `<img src="${record.photo}" class="ci-photo" alt="">`
+        : `<div class="ci-photo" style="background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">👤</div>`;
+
+    const actionHTML = checked ? `
+        <div style="margin-bottom:16px;padding:10px 14px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;color:#22c55e;font-weight:600;">
+            ✓ Checked In ${record.checkedInAt ? '· ' + new Date(record.checkedInAt).toLocaleTimeString() : ''}
+        </div>
+        <button class="btn btn-secondary btn-small" onclick="undoDirectorCompetitorCheckin('${competitorId}')">↩ Undo Check-In</button>
+    ` : `
+        <div style="margin-bottom:16px;">
+            <div class="checkin-doc-row" style="flex-wrap:wrap;gap:8px;">
+                <span style="flex:1;">Weight · Registered: <strong>${registeredWeight}</strong></span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="number" id="ci-actual-weight" placeholder="Actual kg" step="0.1" min="0" max="300"
+                        style="width:90px;padding:4px 8px;border-radius:6px;border:1px solid var(--glass-border);background:var(--bg-secondary);color:var(--text-primary);">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="ci-weight-verified"> Verified
+                    </label>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="performDirectorCompetitorCheckin('${competitorId}')">✓ Check In</button>
+    `;
+
+    content.innerHTML = `
+        <div class="ci-person-header">
+            ${photoHTML}
+            <div>
+                <div style="font-weight:700;font-size:1.05rem;">${record.firstName} ${record.lastName}</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);">${record.club || ''}</div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">Events: ${eventNames}</div>
+            </div>
+        </div>
+        ${actionHTML}
+    `;
+    // Ensure we're on the competitors tab
+    if (_checkinTab !== 'competitors') switchCheckinTab('competitors');
+}
+
+async function performDirectorCompetitorCheckin(competitorId) {
+    const btn = document.querySelector('#ci-detail-content .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking in…'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${competitorId}/checkin`, {
+            method: 'POST', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Check-in failed', 'error'); if (btn) { btn.disabled = false; btn.textContent = '✓ Check In'; } return; }
+
+        // Update in-memory director data
+        const idx = _checkinDirectorData.findIndex(c => String(c.id) === String(competitorId));
+        if (idx >= 0) { _checkinDirectorData[idx] = { ..._checkinDirectorData[idx], checkedIn: true, checkedInAt: data.competitor?.checkedInAt || new Date().toISOString() }; }
+
+        // Also persist to localStorage + queue sync so next competitor load is consistent
+        const localCompetitors = db.load('competitors');
+        const localIdx = localCompetitors.findIndex(c => String(c.id) === String(competitorId));
+        if (localIdx >= 0) {
+            localCompetitors[localIdx].checkedIn = true;
+            localCompetitors[localIdx].checkedInAt = _checkinDirectorData[idx]?.checkedInAt;
+            db.save('competitors', localCompetitors);
+            _queueCompetitorsSync();
+        }
+
+        _renderCheckinStats(_computeCheckinStats());
+        _renderCheckinList();
+        renderDirectorCompetitorCheckinDetail(competitorId);
+        showToast('Checked in!', 'success');
+    } catch(err) {
+        showToast('Network error', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Check In'; }
+    }
+}
+
+async function undoDirectorCompetitorCheckin(competitorId) {
+    if (!confirm('Undo this check-in?')) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${competitorId}/checkin`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Cannot undo', 'error'); return; }
+
+        // Update in-memory director data
+        const idx = _checkinDirectorData.findIndex(c => String(c.id) === String(competitorId));
+        if (idx >= 0) { _checkinDirectorData[idx] = { ..._checkinDirectorData[idx], checkedIn: false, checkedInAt: null }; }
+
+        // Persist to localStorage + queue sync
+        const localCompetitors = db.load('competitors');
+        const localIdx = localCompetitors.findIndex(c => String(c.id) === String(competitorId));
+        if (localIdx >= 0) {
+            localCompetitors[localIdx].checkedIn = false;
+            localCompetitors[localIdx].checkedInAt = null;
+            db.save('competitors', localCompetitors);
+            _queueCompetitorsSync();
+        }
+
+        _renderCheckinStats(_computeCheckinStats());
+        _renderCheckinList();
+        renderDirectorCompetitorCheckinDetail(competitorId);
         showToast('Check-in undone', 'success');
     } catch(err) { showToast('Network error', 'error'); }
 }

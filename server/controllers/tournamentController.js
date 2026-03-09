@@ -683,6 +683,52 @@ async function syncClubs(req, res, next) {
   } catch (err) { next(err); }
 }
 
+/**
+ * POST /api/tournaments/:id/competitors/:competitorId/checkin
+ * Mark a director-added competitor as checked in.
+ */
+async function checkInDirectorCompetitor(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+
+    const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
+    const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
+    if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+
+    competitors[idx] = {
+      ...competitors[idx],
+      checkedIn: true,
+      checkedInAt: new Date().toISOString(),
+    };
+    await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
+    res.json({ competitor: competitors[idx] });
+  } catch (err) { next(err); }
+}
+
+/**
+ * DELETE /api/tournaments/:id/competitors/:competitorId/checkin
+ * Undo check-in for a director-added competitor.
+ */
+async function undoCheckInDirectorCompetitor(req, res, next) {
+  try {
+    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+
+    const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
+    const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
+    if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+
+    competitors[idx] = {
+      ...competitors[idx],
+      checkedIn: false,
+      checkedInAt: null,
+    };
+    await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
+    res.json({ competitor: competitors[idx] });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -706,6 +752,8 @@ module.exports = {
   syncCompetitors,
   getClubs,
   syncClubs,
+  checkInDirectorCompetitor,
+  undoCheckInDirectorCompetitor,
   getOfficials,
   syncOfficials,
   getStaff,

@@ -188,6 +188,12 @@ router.get('/:id/competitors', requireAuth, requireTournamentOwner, tournamentCo
 // POST /api/tournaments/:id/competitors/sync
 router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
 
+// POST /api/tournaments/:id/competitors/:competitorId/checkin — check in a director-added competitor
+router.post('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentOwner, tournamentController.checkInDirectorCompetitor);
+
+// DELETE /api/tournaments/:id/competitors/:competitorId/checkin — undo check-in
+router.delete('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentOwner, tournamentController.undoCheckInDirectorCompetitor);
+
 // GET /api/tournaments/:id/clubs
 router.get('/:id/clubs', requireAuth, requireTournamentOwner, tournamentController.getClubs);
 
