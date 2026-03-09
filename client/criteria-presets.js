@@ -24,6 +24,7 @@ const CRITERIA_PRESETS = (() => {
     kumite:      'Kumite',
     weapons:     'Weapons',
     'team-kata': 'Team Kata',
+    'team-kumite': 'Team Kumite',
   };
 
   /* ═══════════════════════════════════════════════════════════════════

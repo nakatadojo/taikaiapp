@@ -43,7 +43,7 @@ function matchCriteria(competitor, criteria) {
         break;
 
       case 'gender':
-        if (competitor.gender === range.value) {
+        if ((competitor.gender || '').toLowerCase() === (range.value || '').toLowerCase()) {
           return range.label;
         }
         break;

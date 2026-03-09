@@ -2218,13 +2218,13 @@ function updateEventBadges() {
             if (row) row.style.border = '1px solid transparent';
         } else if (orderIndex === 0) {
             const price = getEventPrice(event, false, tournament);
-            badge.textContent = `PRIMARY — $${price.toFixed(2)}`;
+            badge.textContent = `PRIMARY — ${formatPrice(price, getTournamentCurrency())}`;
             badge.style.background = 'var(--accent)';
             badge.style.color = '#fff';
             if (row) row.style.border = '1px solid var(--accent)';
         } else {
             const price = getEventPrice(event, true, tournament);
-            badge.textContent = `ADD-ON — $${price.toFixed(2)}`;
+            badge.textContent = `ADD-ON — ${formatPrice(price, getTournamentCurrency())}`;
             badge.style.background = 'rgba(255,255,255,0.1)';
             badge.style.color = 'var(--text-secondary)';
             if (row) row.style.border = '1px solid var(--glass-border)';
@@ -2288,7 +2288,7 @@ function updatePriceSummary() {
                 ${item.eventName}
                 <span style="color: var(--text-secondary); font-size: 12px;">(${item.type === 'primary' ? 'Primary' : 'Add-on'})</span>
             </span>
-            <span style="font-weight: 600;">$${item.price.toFixed(2)}</span>
+            <span style="font-weight: 600;">${formatPrice(item.price, getTournamentCurrency())}</span>
         </div>
     `).join('') + discountLine;
 
@@ -2447,6 +2447,33 @@ let _selectedTeamData = null; // { code, name, memberCount, isNew }
 
 function _escapeHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Currency & Weight helpers ───────────────────────── */
+function getCurrencySymbol(code) {
+    const map = { USD:'$', MXN:'$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'C$', AUD:'A$', ARS:'$', COP:'$' };
+    return map[(code||'USD').toUpperCase()] || '$';
+}
+
+function formatPrice(amount, currencyCode) {
+    const sym = getCurrencySymbol(currencyCode);
+    const num = parseFloat(amount);
+    if (isNaN(num)) return `${sym}0`;
+    return `${sym}${num.toFixed(currencyCode === 'JPY' ? 0 : 2)}`;
+}
+
+function getTournamentWeightUnit() {
+    if (!currentTournamentId) return 'kg';
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    return t?.weight_unit || t?.weightUnit || 'kg';
+}
+
+function getTournamentCurrency() {
+    if (!currentTournamentId) return 'USD';
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    return t?.currency || 'USD';
 }
 
 async function searchTeams(query) {
@@ -3470,8 +3497,8 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
                     parts.push(weightRange.label);
                 } else {
                     // Competitor weight doesn't match any range
-                    parts.push(`${competitor.weight || '?'}kg`);
-                    console.warn(`Competitor ${competitor.firstName} ${competitor.lastName} weight ${competitor.weight}kg doesn't match any weight range`);
+                    parts.push(`${competitor.weight || '?'}${getTournamentWeightUnit()}`);
+                    console.warn(`Competitor ${competitor.firstName} ${competitor.lastName} weight ${competitor.weight}${getTournamentWeightUnit()} doesn't match any weight range`);
                 }
                 break;
 
@@ -3888,7 +3915,7 @@ function loadCompetitors(skipSync = false) {
             <td>${testBadge}${comp.firstName} ${comp.lastName}</td>
             <td>${ageDisplay}</td>
             <td>${comp.gender || '-'}</td>
-            <td>${comp.weight} kg</td>
+            <td>${comp.weight ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
             <td>${comp.rank}</td>
             <td>${comp.club}</td>
             <td style="font-size: 12px;">${eventsHtml}</td>
@@ -4364,9 +4391,9 @@ function executeTestGeneration(config) {
             : group.gender === 'male' ? ['Male'] : ['Female'];
 
         for (let i = 0; i < group.count; i++) {
-            const { firstName, lastName } = getUniqueName();
             const rank = groupRanks[Math.floor(Math.random() * groupRanks.length)];
             const gender = genders[i % genders.length];
+            const { firstName, lastName } = getUniqueName();
             const age = Math.floor(Math.random() * (group.ageMax - group.ageMin + 1)) + group.ageMin;
             const weight = parseFloat((group.weightMin + Math.random() * (group.weightMax - group.weightMin)).toFixed(1));
             const club = dojoPool[Math.floor(Math.random() * dojoPool.length)];
@@ -4479,27 +4506,29 @@ function generateTestCompetitors() {
     // manages clubs, and does scoped cleanup.
 
     // ── Name pools (diverse mix) ──
-    const firstNames = [
-        'Aiden', 'Akira', 'Alejandro', 'Amara', 'Anika', 'Arjun', 'Ava', 'Benjamin',
-        'Camila', 'Carlos', 'Charlotte', 'Chen', 'Chloe', 'Daniel', 'Davi', 'Diana',
-        'Elena', 'Elijah', 'Emilia', 'Ethan', 'Fatima', 'Gabriel', 'Hana', 'Haruto',
-        'Hiroshi', 'Hugo', 'Ibrahim', 'Isabella', 'Isla', 'Jack', 'James', 'Jasmine',
-        'Jayden', 'Jin', 'Kai', 'Kaito', 'Kara', 'Kenji', 'Layla', 'Leo',
-        'Liam', 'Lily', 'Logan', 'Lucas', 'Luna', 'Malik', 'Maria', 'Mia',
-        'Mohammed', 'Nadia', 'Nathan', 'Nia', 'Noah', 'Nora', 'Oliver', 'Omar',
-        'Owen', 'Priya', 'Rafael', 'Rin', 'Riya', 'Rosa', 'Ryan', 'Sakura',
-        'Samuel', 'Sara', 'Sebastian', 'Sofia', 'Sora', 'Takeshi', 'Tariq', 'Thomas',
-        'Victoria', 'William', 'Yuki', 'Zara', 'Adriana', 'Andre', 'Beatriz', 'Blake',
-        'Caleb', 'Carmen', 'Dante', 'Dina', 'Eric', 'Eva', 'Felix', 'Grace',
-        'Hannah', 'Ian', 'Jade', 'Jordan', 'Kira', 'Leah', 'Marco', 'Maya',
-        'Naomi', 'Oscar', 'Paola', 'Quinn', 'Reese', 'Riley', 'Sami', 'Tara',
-        'Uma', 'Victor', 'Wendy', 'Xavier', 'Yara', 'Zoe', 'Abel', 'Bianca',
-        'Cruz', 'Daphne', 'Eli', 'Fiona', 'Gavin', 'Helena', 'Ivan', 'Julia',
-        'Khalil', 'Lucia', 'Mateo', 'Nina', 'Orion', 'Petra', 'Ramon', 'Selena',
-        'Theo', 'Ursula', 'Vivian', 'Wesley', 'Ximena', 'Yosef', 'Zuri', 'Amir',
-        'Briana', 'Cyrus', 'Dahlia', 'Elio', 'Freya', 'Gage', 'Hector', 'Ingrid',
-        'Javier', 'Kaya', 'Lorenzo', 'Mika', 'Nico', 'Olive', 'Paloma', 'River'
+    const maleFirstNames = [
+        'Aiden', 'Akira', 'Alejandro', 'Arjun', 'Benjamin', 'Carlos', 'Daniel', 'Davi',
+        'Elijah', 'Ethan', 'Gabriel', 'Haruto', 'Hiroshi', 'Hugo', 'Ibrahim', 'Jack',
+        'James', 'Jayden', 'Jin', 'Kai', 'Kaito', 'Kenji', 'Leo', 'Liam', 'Logan',
+        'Lucas', 'Malik', 'Mohammed', 'Nathan', 'Noah', 'Oliver', 'Omar', 'Owen',
+        'Rafael', 'Ryan', 'Samuel', 'Sebastian', 'Takeshi', 'Tariq', 'Thomas', 'William',
+        'Andre', 'Blake', 'Caleb', 'Dante', 'Eric', 'Felix', 'Ian', 'Marco', 'Oscar',
+        'Sami', 'Victor', 'Xavier', 'Abel', 'Cruz', 'Eli', 'Gavin', 'Ivan', 'Khalil',
+        'Mateo', 'Orion', 'Ramon', 'Theo', 'Wesley', 'Yosef', 'Amir', 'Cyrus', 'Elio',
+        'Gage', 'Hector', 'Javier', 'Lorenzo', 'Nico', 'Chen', 'Jordan', 'Quinn', 'Riley', 'River'
     ];
+    const femaleFirstNames = [
+        'Amara', 'Anika', 'Ava', 'Camila', 'Charlotte', 'Chloe', 'Diana', 'Elena',
+        'Emilia', 'Fatima', 'Hana', 'Isabella', 'Isla', 'Jasmine', 'Kara', 'Layla',
+        'Lily', 'Luna', 'Maria', 'Mia', 'Nadia', 'Nia', 'Nora', 'Priya', 'Rin',
+        'Riya', 'Rosa', 'Sakura', 'Sara', 'Sofia', 'Sora', 'Victoria', 'Yuki', 'Zara',
+        'Adriana', 'Beatriz', 'Carmen', 'Dina', 'Eva', 'Grace', 'Hannah', 'Jade',
+        'Kira', 'Leah', 'Maya', 'Naomi', 'Paola', 'Tara', 'Uma', 'Wendy', 'Yara',
+        'Zoe', 'Bianca', 'Daphne', 'Fiona', 'Helena', 'Julia', 'Lucia', 'Nina',
+        'Petra', 'Selena', 'Ursula', 'Vivian', 'Ximena', 'Zuri', 'Briana', 'Dahlia',
+        'Freya', 'Ingrid', 'Kaya', 'Mika', 'Olive', 'Paloma', 'Reese'
+    ];
+    const firstNames = [...maleFirstNames, ...femaleFirstNames];
 
     const lastNames = [
         'Nakamura', 'Gonzalez', 'Kim', 'Patel', 'O\'Brien', 'Santos', 'Schmidt', 'Wang',
@@ -4753,27 +4782,38 @@ function generateTestCompetitors() {
     console.log('=== STEP 5 — Generating competitors ===');
 
     const shuffledFirst = shuffle(firstNames);
+    const shuffledMaleFirst = shuffle(maleFirstNames);
+    const shuffledFemaleFirst = shuffle(femaleFirstNames);
     const shuffledLast = shuffle(lastNames);
     const usedNames = new Set();
     let nameIndex = 0;
+    let maleNameIdx = 0;
+    let femaleNameIdx = 0;
 
-    function getUniqueName() {
-        // Try combinations until we find an unused one
+    function getUniqueName(gender) {
+        // Pick from gender-appropriate pool if gender provided
+        const pool = gender === 'Female' ? shuffledFemaleFirst
+            : gender === 'Male' ? shuffledMaleFirst
+            : shuffledFirst;
+        let idx = gender === 'Female' ? femaleNameIdx : gender === 'Male' ? maleNameIdx : nameIndex;
+
         for (let attempt = 0; attempt < 500; attempt++) {
-            const fi = (nameIndex + attempt) % shuffledFirst.length;
-            const li = Math.floor((nameIndex + attempt) / shuffledFirst.length + attempt) % shuffledLast.length;
-            const fullName = `${shuffledFirst[fi]}|${shuffledLast[li]}`;
+            const fi = (idx + attempt) % pool.length;
+            const li = Math.floor((idx + attempt) / pool.length + attempt) % shuffledLast.length;
+            const fullName = `${pool[fi]}|${shuffledLast[li]}`;
             if (!usedNames.has(fullName)) {
                 usedNames.add(fullName);
-                nameIndex++;
-                return { firstName: shuffledFirst[fi], lastName: shuffledLast[li] };
+                if (gender === 'Female') femaleNameIdx = idx + attempt + 1;
+                else if (gender === 'Male') maleNameIdx = idx + attempt + 1;
+                else nameIndex = idx + attempt + 1;
+                return { firstName: pool[fi], lastName: shuffledLast[li] };
             }
         }
         // Fallback: add numeric suffix
-        nameIndex++;
-        const fi = nameIndex % shuffledFirst.length;
-        const li = nameIndex % shuffledLast.length;
-        return { firstName: shuffledFirst[fi], lastName: shuffledLast[li] + nameIndex };
+        idx++;
+        const fi = idx % pool.length;
+        const li = idx % shuffledLast.length;
+        return { firstName: pool[fi], lastName: shuffledLast[li] + idx };
     }
 
     let clubIndex = 0;
@@ -4813,22 +4853,12 @@ function generateTestCompetitors() {
 
     function buildCompetitorFromSlot(slot, teamCode, teamName, forcedClub) {
         const { combo, eventId, isTeam, teamSize } = slot;
-        const { firstName, lastName } = getUniqueName();
         const club = forcedClub || nextClub();
 
         // Determine attributes from the range combination
         let age, gender, weight, rank, experience;
 
-        // Age
-        if (combo.age) {
-            const minAge = Math.ceil(combo.age.min);
-            const maxAge = Math.floor(combo.age.max);
-            age = minAge + Math.floor(Math.random() * (maxAge - minAge + 1));
-        } else {
-            age = 8 + Math.floor(Math.random() * 25); // 8-32 default
-        }
-
-        // Gender
+        // Gender — determine FIRST so we can pick gender-appropriate name
         if (combo.gender) {
             if (combo.gender.value === 'Open') {
                 gender = Math.random() < 0.5 ? 'Male' : 'Female';
@@ -4837,6 +4867,18 @@ function generateTestCompetitors() {
             }
         } else {
             gender = Math.random() < 0.5 ? 'Male' : 'Female';
+        }
+
+        // Name — pick from gender-appropriate pool
+        const { firstName, lastName } = getUniqueName(gender);
+
+        // Age
+        if (combo.age) {
+            const minAge = Math.ceil(combo.age.min);
+            const maxAge = Math.floor(combo.age.max);
+            age = minAge + Math.floor(Math.random() * (maxAge - minAge + 1));
+        } else {
+            age = 8 + Math.floor(Math.random() * 25); // 8-32 default
         }
 
         // Weight
@@ -5820,9 +5862,9 @@ function _renderEventTemplates(eventId) {
 function _deleteTemplateFromEvent(templateId, eventId) {
     const divisions = db.load('divisions');
     if (!divisions[eventId]?.templates) return;
-    const tmpl = divisions[eventId].templates.find(t => t.id === templateId);
+    const tmpl = divisions[eventId].templates.find(t => String(t.id) === String(templateId));
     if (!tmpl || !confirm(`Delete template "${tmpl.name}"?`)) return;
-    divisions[eventId].templates = divisions[eventId].templates.filter(t => t.id !== templateId);
+    divisions[eventId].templates = divisions[eventId].templates.filter(t => String(t.id) !== String(templateId));
     localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
     _renderEventTemplates(eventId);
     loadEventTypes();   // refresh badge count
@@ -7386,7 +7428,7 @@ function loadTemplateForEditing(templateId) {
 
     if (!eventData || !eventData.templates) return;
 
-    const template = eventData.templates.find(t => t.id === templateId);
+    const template = eventData.templates.find(t => String(t.id) === String(templateId));
     if (!template) return;
 
     // Populate template fields
@@ -7411,7 +7453,11 @@ function loadTemplateForEditing(templateId) {
                 // Uncheck all first, then restore saved selections
                 rangesContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
                 criterion.ranges.forEach(range => {
-                    const checkbox = rangesContainer.querySelector(`input[value="${range.value}"]`);
+                    const val = range.value;
+                    // Match case-insensitively: presets use lowercase ('male'), form uses Title case ('Male')
+                    const capitalized = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+                    const checkbox = rangesContainer.querySelector(`input[value="${val}"]`)
+                        || rangesContainer.querySelector(`input[value="${capitalized}"]`);
                     if (checkbox) checkbox.checked = true;
                 });
                 return;
@@ -7617,11 +7663,11 @@ function deleteTemplate(templateId) {
 
     if (!eventData || !eventData.templates) return;
 
-    const template = eventData.templates.find(t => t.id === templateId);
+    const template = eventData.templates.find(t => String(t.id) === String(templateId));
     if (!template) return;
 
     if (confirm(`Are you sure you want to delete the template "${template.name}"?\n\nThis will not affect already generated divisions.`)) {
-        eventData.templates = eventData.templates.filter(t => t.id !== templateId);
+        eventData.templates = eventData.templates.filter(t => String(t.id) !== String(templateId));
         localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
         loadTemplatesList();
         showMessage('Template deleted successfully!');
@@ -7909,7 +7955,7 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                 console.log(`      → Age filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'gender':
-                filtered = competitors.filter(c => c.gender === range.value);
+                filtered = competitors.filter(c => (c.gender || '').toLowerCase() === (range.value || '').toLowerCase());
                 console.log(`      → Gender filter (${range.value}): ${filtered.length} matches`);
                 if (filtered.length === 0 && competitors.length > 0) {
                     console.log(`      → Sample competitor gender:`, competitors[0].gender);
@@ -8053,21 +8099,23 @@ function loadDivisions() {
                     if (!Array.isArray(divCompetitors) || (hideEmpty && divCompetitors.length === 0)) return;
                     const sheet = document.createElement('div');
                     sheet.className = 'division-sheet';
-                    const tableRows = divCompetitors.map(comp => `
+                    const cId = (c) => c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+                const tableRows = divCompetitors.map(comp => `
                         <tr>
                             <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
                             <td>${getDisplayAge(comp)}</td>
                             <td>${comp.gender || '-'}</td>
-                            <td>${comp.weight !== undefined ? comp.weight + ' kg' : '-'}</td>
+                            <td>${comp.weight !== undefined ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                             <td>${comp.rank || '-'}</td>
                             <td>${comp.club || '-'}</td>
                             <td>${getCountryFallback(comp)}</td>
+                            <td><button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Move to another division">Move</button></td>
                         </tr>`).join('');
                     sheet.innerHTML = `
                         <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
                         <div class="division-content">
                             <table class="division-table">
-                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th></tr></thead>
+                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th><th style="width:60px;"></th></tr></thead>
                                 <tbody>${tableRows}</tbody>
                             </table>
                         </div>`;
@@ -8126,15 +8174,17 @@ function loadDivisions() {
         const sheet = document.createElement('div');
         sheet.className = 'division-sheet';
 
+        const compId = (comp) => comp.id || comp._id || `${comp.firstName}_${comp.lastName}_${comp.dateOfBirth}`;
         let tableRows = competitors.map(comp => `
             <tr>
                 <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
                 <td>${getDisplayAge(comp)}</td>
                 <td>${comp.gender || '-'}</td>
-                <td>${comp.weight !== undefined ? comp.weight + ' kg' : '-'}</td>
+                <td>${comp.weight !== undefined ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                 <td>${comp.rank || '-'}</td>
                 <td>${comp.club || '-'}</td>
                 <td>${getCompetitorCountry(comp)}</td>
+                <td><button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Move to another division">Move</button></td>
             </tr>
         `).join('');
 
@@ -8153,6 +8203,7 @@ function loadDivisions() {
                             <th>Rank</th>
                             <th>Dojo</th>
                             <th>Country</th>
+                            <th style="width:60px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -8174,6 +8225,104 @@ function loadDivisions() {
 
     console.log('Container children count:', container.children.length);
     console.log('=== LOAD DIVISIONS END ===');
+}
+
+/* ── Move Competitor Between Divisions ────────────────── */
+function showMoveCompetitorModal(fromDivision, competitorId) {
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId) return;
+
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData || !eventData.generated) return;
+
+    const divisions = eventData.generated;
+    const divisionKeys = Object.keys(divisions).sort();
+
+    // Find the competitor
+    const fromComps = divisions[fromDivision];
+    if (!Array.isArray(fromComps)) return;
+    const comp = fromComps.find(c => {
+        const cid = c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+        return cid === competitorId;
+    });
+    if (!comp) { showToast('Competitor not found', 'error'); return; }
+
+    // Build target division options (exclude current)
+    const otherDivs = divisionKeys.filter(d => d !== fromDivision);
+    if (otherDivs.length === 0) { showToast('No other divisions to move to', 'error'); return; }
+
+    const compName = `${comp.firstName || '?'} ${comp.lastName || '?'}`;
+
+    // Create modal overlay
+    let overlay = document.getElementById('move-comp-overlay');
+    if (overlay) overlay.remove();
+    overlay = document.createElement('div');
+    overlay.id = 'move-comp-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+        <div style="background:var(--glass-bg,#1a1a2e);border:1px solid var(--glass-border,#333);border-radius:12px;padding:24px;max-width:420px;width:90%;color:var(--text-primary,#fff);">
+            <h3 style="margin:0 0 8px 0;font-size:16px;">Move Competitor</h3>
+            <p style="margin:0 0 16px 0;font-size:14px;color:var(--text-secondary,#aaa);">
+                Move <strong>${_escapeHtml(compName)}</strong> from <em>${_escapeHtml(fromDivision)}</em>
+            </p>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;margin-bottom:6px;font-size:13px;">Target Division</label>
+                <select id="move-comp-target" class="form-input" style="width:100%;">
+                    ${otherDivs.map(d => {
+                        const cnt = (divisions[d] || []).length;
+                        return `<option value="${_escapeHtml(d)}">${_escapeHtml(d)} (${cnt})</option>`;
+                    }).join('')}
+                </select>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('move-comp-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="executeCompetitorMove('${_escapeHtml(fromDivision)}','${competitorId}')">Move</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function executeCompetitorMove(fromDivision, competitorId) {
+    const target = document.getElementById('move-comp-target')?.value;
+    if (!target) return;
+
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId) return;
+
+    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData || !eventData.generated) return;
+
+    const divisions = eventData.generated;
+    const fromComps = divisions[fromDivision];
+    if (!Array.isArray(fromComps)) return;
+
+    // Find and remove from source
+    const idx = fromComps.findIndex(c => {
+        const cid = c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+        return cid === competitorId;
+    });
+    if (idx === -1) { showToast('Competitor not found', 'error'); return; }
+    const [moved] = fromComps.splice(idx, 1);
+
+    // Add to target
+    if (!Array.isArray(divisions[target])) divisions[target] = [];
+    divisions[target].push(moved);
+
+    // Save back
+    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+
+    // Close modal and refresh
+    const overlay = document.getElementById('move-comp-overlay');
+    if (overlay) overlay.remove();
+
+    showToast(`Moved ${moved.firstName} ${moved.lastName} → ${target}`, 'success');
+    loadDivisions();
 }
 
 function exportDivisions() {
@@ -13253,7 +13402,7 @@ function renderDirectorCompetitorCheckinDetail(competitorId) {
         const et = eventTypes.find(e => String(e.id) === String(eid));
         return et ? et.name : null;
     }).filter(Boolean).join(', ') || '—';
-    const registeredWeight = record.weight ? `${record.weight} kg` : '—';
+    const registeredWeight = record.weight ? `${record.weight} ${getTournamentWeightUnit()}` : '—';
 
     const photoHTML = record.photo
         ? `<img src="${record.photo}" class="ci-photo" alt="">`
@@ -15319,7 +15468,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                         <div id="operator-red-name" style="font-size: clamp(14px, 2vw, 22px); font-weight: 700; color: ${corner1TextColor}; margin-bottom: clamp(2px, 0.3vh, 8px); word-wrap: break-word;">${operatorRedCompetitor ? `${operatorRedCompetitor.firstName} ${operatorRedCompetitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}</div>
                         ${operatorRedCompetitor ? `
                             <div style="font-size: clamp(10px, 1.1vw, 13px); color: ${corner1TextColor}; opacity: 0.8; margin-bottom: clamp(4px, 0.5vh, 10px);">
-                                ${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight || 'N/A'}kg | ${operatorRedCompetitor.rank || 'N/A'}
+                                ${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight || 'N/A'}${getTournamentWeightUnit()} | ${operatorRedCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorRedCompetitor.clubLogo ? `<img src="${operatorRedCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
                                     <span>${operatorRedCompetitor.club || 'No Dojo'}</span>
@@ -15363,7 +15512,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                         <div id="operator-blue-name" style="font-size: clamp(14px, 2vw, 22px); font-weight: 700; color: ${corner2TextColor}; margin-bottom: clamp(2px, 0.3vh, 8px); word-wrap: break-word;">${operatorBlueCompetitor ? `${operatorBlueCompetitor.firstName} ${operatorBlueCompetitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}</div>
                         ${operatorBlueCompetitor ? `
                             <div style="font-size: clamp(10px, 1.1vw, 13px); color: ${corner2TextColor}; opacity: 0.8; margin-bottom: clamp(4px, 0.5vh, 10px);">
-                                ${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight || 'N/A'}kg | ${operatorBlueCompetitor.rank || 'N/A'}
+                                ${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight || 'N/A'}${getTournamentWeightUnit()} | ${operatorBlueCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorBlueCompetitor.clubLogo ? `<img src="${operatorBlueCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
                                     <span>${operatorBlueCompetitor.club || 'No Dojo'}</span>
@@ -16295,7 +16444,7 @@ function selectOperatorCompetitor(corner) {
 
     document.getElementById(`${corner}-competitor-info`).innerHTML = `
         <strong>${competitor.firstName} ${competitor.lastName}</strong><br>
-        ${getDisplayAge(competitor)} yrs | ${competitor.weight}kg | ${competitor.rank}<br>
+        ${getDisplayAge(competitor)} yrs | ${competitor.weight}${getTournamentWeightUnit()} | ${competitor.rank}<br>
         ${competitor.club}
     `;
 
@@ -17701,7 +17850,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
                         </div>
                         ${currentKataCompetitor ? `
                             <div style="font-size: clamp(12px, 1.3vw, 16px); color: var(--text-secondary); margin-top: 4px;">
-                                ${getDisplayAge(currentKataCompetitor)} yrs | ${currentKataCompetitor.weight}kg | ${currentKataCompetitor.rank} | ${currentKataCompetitor.club}
+                                ${getDisplayAge(currentKataCompetitor)} yrs | ${currentKataCompetitor.weight}${getTournamentWeightUnit()} | ${currentKataCompetitor.rank} | ${currentKataCompetitor.club}
                             </div>
                         ` : ''}
                     </div>
@@ -19473,14 +19622,14 @@ function updateOperatorTVDisplay(winner = null) {
 
         // Competitor data
         redName: operatorRedCompetitor ? `${operatorRedCompetitor.firstName} ${operatorRedCompetitor.lastName}`.toUpperCase() : corner1Name,
-        redInfo: operatorRedCompetitor ? `${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight}kg | ${operatorRedCompetitor.rank} | ${operatorRedCompetitor.club}` : '',
+        redInfo: operatorRedCompetitor ? `${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight}${getTournamentWeightUnit()} | ${operatorRedCompetitor.rank} | ${operatorRedCompetitor.club}` : '',
         redPhoto: operatorRedCompetitor?.photo || null,
         redClubLogo: operatorRedCompetitor?.clubLogo || null,
         redScore: operatorRedScore,
         redPenalties: operatorRedPenalties,
 
         blueName: operatorBlueCompetitor ? `${operatorBlueCompetitor.firstName} ${operatorBlueCompetitor.lastName}`.toUpperCase() : corner2Name,
-        blueInfo: operatorBlueCompetitor ? `${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight}kg | ${operatorBlueCompetitor.rank} | ${operatorBlueCompetitor.club}` : '',
+        blueInfo: operatorBlueCompetitor ? `${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight}${getTournamentWeightUnit()} | ${operatorBlueCompetitor.rank} | ${operatorBlueCompetitor.club}` : '',
         bluePhoto: operatorBlueCompetitor?.photo || null,
         blueClubLogo: operatorBlueCompetitor?.clubLogo || null,
         blueScore: operatorBlueScore,
@@ -19805,7 +19954,7 @@ function renderActiveScoreboard() {
                 <div class="competitor red-corner">
                     <img id="mat-red-photo" class="competitor-photo hidden" alt="Red Corner">
                     <div class="competitor-name" id="mat-red-name">${redComp ? (redComp.firstName + ' ' + redComp.lastName).toUpperCase() : 'RED CORNER'}</div>
-                    <div class="competitor-info" id="mat-red-info">${redComp ? `${getDisplayAge(redComp)} yrs | ${redComp.weight}kg | ${redComp.rank} | ${redComp.club}` : ''}</div>
+                    <div class="competitor-info" id="mat-red-info">${redComp ? `${getDisplayAge(redComp)} yrs | ${redComp.weight}${getTournamentWeightUnit()} | ${redComp.rank} | ${redComp.club}` : ''}</div>
                     <div class="score" id="mat-red-score">${matData.redScore}</div>
                     <div class="controls">
                         <button class="btn btn-small" onclick="addMatScore('red', 1)">+1</button>
@@ -19826,7 +19975,7 @@ function renderActiveScoreboard() {
                 <div class="competitor blue-corner">
                     <img id="mat-blue-photo" class="competitor-photo hidden" alt="Blue Corner">
                     <div class="competitor-name" id="mat-blue-name">${blueComp ? (blueComp.firstName + ' ' + blueComp.lastName).toUpperCase() : 'BLUE CORNER'}</div>
-                    <div class="competitor-info" id="mat-blue-info">${blueComp ? `${getDisplayAge(blueComp)} yrs | ${blueComp.weight}kg | ${blueComp.rank} | ${blueComp.club}` : ''}</div>
+                    <div class="competitor-info" id="mat-blue-info">${blueComp ? `${getDisplayAge(blueComp)} yrs | ${blueComp.weight}${getTournamentWeightUnit()} | ${blueComp.rank} | ${blueComp.club}` : ''}</div>
                     <div class="score" id="mat-blue-score">${matData.blueScore}</div>
                     <div class="controls">
                         <button class="btn btn-small" onclick="addMatScore('blue', 1)">+1</button>
@@ -20336,8 +20485,8 @@ async function loadPricingPeriods() {
                         <div style="font-weight:600;">${_escapeHtml(p.name)}${activeBadge}</div>
                         <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${start} → ${end}</div>
                         <div style="font-size:0.85rem;margin-top:4px;">
-                            Primary: <strong>$${parseFloat(p.base_event_price).toFixed(2)}</strong>
-                            &nbsp;&nbsp;Add-on: <strong>$${parseFloat(p.addon_event_price).toFixed(2)}</strong>
+                            Primary: <strong>${formatPrice(p.base_event_price, getTournamentCurrency())}</strong>
+                            &nbsp;&nbsp;Add-on: <strong>${formatPrice(p.addon_event_price, getTournamentCurrency())}</strong>
                         </div>
                     </div>
                     <div style="display:flex;gap:8px;flex-shrink:0;">
@@ -20755,7 +20904,38 @@ function showTournamentEditForm() {
                     <option value="Europe/London" ${t.timezone==='Europe/London'?'selected':''}>GMT/BST — London</option>
                     <option value="Europe/Paris" ${t.timezone==='Europe/Paris'?'selected':''}>CET/CEST — Paris / Berlin / Rome</option>
                     <option value="Asia/Tokyo" ${t.timezone==='Asia/Tokyo'?'selected':''}>JST — Tokyo</option>
+                    <option value="America/Mexico_City" ${t.timezone==='America/Mexico_City'?'selected':''}>Central Mexico — Mexico City / Guadalajara</option>
+                    <option value="America/Hermosillo" ${t.timezone==='America/Hermosillo'?'selected':''}>Sonora, Mexico (no DST)</option>
+                    <option value="America/Tijuana" ${t.timezone==='America/Tijuana'?'selected':''}>Pacific Mexico — Tijuana / Ensenada</option>
+                    <option value="America/Bogota" ${t.timezone==='America/Bogota'?'selected':''}>Colombia — Bogotá</option>
+                    <option value="America/Sao_Paulo" ${t.timezone==='America/Sao_Paulo'?'selected':''}>Brazil — São Paulo</option>
+                    <option value="America/Argentina/Buenos_Aires" ${t.timezone==='America/Argentina/Buenos_Aires'?'selected':''}>Argentina — Buenos Aires</option>
+                    <option value="Asia/Shanghai" ${t.timezone==='Asia/Shanghai'?'selected':''}>China — Shanghai / Beijing</option>
+                    <option value="Asia/Kolkata" ${t.timezone==='Asia/Kolkata'?'selected':''}>India — Kolkata / Mumbai</option>
                     <option value="Australia/Sydney" ${t.timezone==='Australia/Sydney'?'selected':''}>AEST — Sydney</option>
+                    <option value="Pacific/Auckland" ${t.timezone==='Pacific/Auckland'?'selected':''}>NZST — Auckland</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Currency</label>
+                <select id="ti-edit-currency" class="form-input">
+                    <option value="USD" ${(t.currency||'USD')==='USD'?'selected':''}>USD ($) — US Dollar</option>
+                    <option value="MXN" ${t.currency==='MXN'?'selected':''}>MXN ($) — Mexican Peso</option>
+                    <option value="EUR" ${t.currency==='EUR'?'selected':''}>EUR (€) — Euro</option>
+                    <option value="GBP" ${t.currency==='GBP'?'selected':''}>GBP (£) — British Pound</option>
+                    <option value="JPY" ${t.currency==='JPY'?'selected':''}>JPY (¥) — Japanese Yen</option>
+                    <option value="BRL" ${t.currency==='BRL'?'selected':''}>BRL (R$) — Brazilian Real</option>
+                    <option value="CAD" ${t.currency==='CAD'?'selected':''}>CAD (C$) — Canadian Dollar</option>
+                    <option value="AUD" ${t.currency==='AUD'?'selected':''}>AUD (A$) — Australian Dollar</option>
+                    <option value="ARS" ${t.currency==='ARS'?'selected':''}>ARS ($) — Argentine Peso</option>
+                    <option value="COP" ${t.currency==='COP'?'selected':''}>COP ($) — Colombian Peso</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Weight Unit</label>
+                <select id="ti-edit-weight-unit" class="form-input">
+                    <option value="kg" ${(t.weight_unit||t.weightUnit||'kg')==='kg'?'selected':''}>Kilograms (kg)</option>
+                    <option value="lbs" ${(t.weight_unit||t.weightUnit)==='lbs'?'selected':''}>Pounds (lbs)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -20783,6 +20963,8 @@ async function saveTournamentEdit() {
     const location = document.getElementById('ti-edit-location')?.value.trim();
     const sanctioningBody = document.getElementById('ti-edit-sanctioning')?.value || undefined;
     const timezone = document.getElementById('ti-edit-timezone')?.value || undefined;
+    const currency = document.getElementById('ti-edit-currency')?.value || undefined;
+    const weightUnit = document.getElementById('ti-edit-weight-unit')?.value || undefined;
     const published = document.getElementById('ti-edit-published')?.value === 'true';
 
     if (!name) { showToast('Tournament name is required', 'error'); return; }
@@ -20795,7 +20977,7 @@ async function saveTournamentEdit() {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, published }),
+            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, currency, weightUnit, published }),
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -20814,6 +20996,8 @@ async function saveTournamentEdit() {
                 location: saved.location,
                 sanctioningBody: saved.sanctioning_body,
                 timezone: saved.timezone,
+                currency: saved.currency,
+                weightUnit: saved.weight_unit,
                 published: saved.published,
             };
             db.save('tournaments', tournaments);
@@ -21632,7 +21816,7 @@ function selectCompetitor(corner) {
     const competitor = competitors.find(c => c.id === competitorId);
 
     if (competitor) {
-        const info = `${getDisplayAge(competitor)} yrs | ${competitor.weight}kg | ${competitor.rank} | ${competitor.club}`;
+        const info = `${getDisplayAge(competitor)} yrs | ${competitor.weight}${getTournamentWeightUnit()} | ${competitor.rank} | ${competitor.club}`;
 
         if (corner === 'red') {
             redCompetitor = competitor;
@@ -21702,13 +21886,13 @@ function updateTVDisplay() {
     const state = {
         scoreboardType: 'kumite', // Standalone scoreboard is kumite-style
         redName: redCompetitor ? `${redCompetitor.firstName} ${redCompetitor.lastName}`.toUpperCase() : 'RED CORNER',
-        redInfo: redCompetitor ? `${getDisplayAge(redCompetitor)} yrs | ${redCompetitor.weight}kg | ${redCompetitor.rank} | ${redCompetitor.club}` : '',
+        redInfo: redCompetitor ? `${getDisplayAge(redCompetitor)} yrs | ${redCompetitor.weight}${getTournamentWeightUnit()} | ${redCompetitor.rank} | ${redCompetitor.club}` : '',
         redPhoto: redCompetitor?.photo || null,
         redScore: redScore,
         redPenalties: redPenalties,
 
         blueName: blueCompetitor ? `${blueCompetitor.firstName} ${blueCompetitor.lastName}`.toUpperCase() : 'BLUE CORNER',
-        blueInfo: blueCompetitor ? `${getDisplayAge(blueCompetitor)} yrs | ${blueCompetitor.weight}kg | ${blueCompetitor.rank} | ${blueCompetitor.club}` : '',
+        blueInfo: blueCompetitor ? `${getDisplayAge(blueCompetitor)} yrs | ${blueCompetitor.weight}${getTournamentWeightUnit()} | ${blueCompetitor.rank} | ${blueCompetitor.club}` : '',
         bluePhoto: blueCompetitor?.photo || null,
         blueScore: blueScore,
         bluePenalties: bluePenalties,

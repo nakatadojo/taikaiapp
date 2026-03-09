@@ -839,6 +839,25 @@
     }
     </style>
     <script src="/taikai-logo.js"></script>
+    <!-- Google Translate -->
+    <script type="text/javascript">
+    function googleTranslateElementInit() {
+        new google.translate.TranslateElement({
+            pageLanguage: 'en',
+            includedLanguages: 'en,es,ja,pt,fr,de,it,zh-CN,ko,ar',
+            layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+            autoDisplay: false
+        }, 'google_translate_element');
+    }
+    </script>
+    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <style>
+    #google_translate_element { display:inline-block; vertical-align:middle; }
+    #google_translate_element .goog-te-gadget { font-size:0; }
+    #google_translate_element .goog-te-gadget .goog-te-combo { font-size:13px; padding:4px 8px; border-radius:6px; border:1px solid var(--glass-border,#444); background:var(--glass-bg,#1a1a2e); color:var(--text-primary,#fff); cursor:pointer; }
+    .goog-te-banner-frame { display:none !important; }
+    body { top:0 !important; }
+    </style>
 </head>
 <body>
 
@@ -847,6 +866,7 @@
         <div class="navbar-inner">
             <a href="/" class="navbar-brand"><img data-taikai-logo alt="Taikai" style="height:40px;width:auto;"></a>
             <div class="navbar-links" id="navbar-actions">
+                <div id="google_translate_element"></div>
                 <a href="/" class="navbar-link">Back to Directory</a>
                 <button class="nav-auth-btn nav-auth-ghost" onclick="openAuthModal('login')">Log In</button>
                 <button class="nav-auth-btn nav-auth-primary" onclick="openAuthModal('signup')">Sign Up</button>
@@ -1150,6 +1170,8 @@
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const tournamentDate = safeDate(tournament.date);
         const deadline = safeDate(tournament.registration_deadline);
+        // Use end-of-day for deadline comparison so the full deadline day is included
+        const deadlineEOD = deadline ? new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate(), 23, 59, 59, 999) : null;
 
         // If tournament date is in the past, it's completed
         if (tournamentDate && tournamentDate < today) {
@@ -1159,7 +1181,7 @@
         // Registration is open if: registration_open flag is true AND (date >= today OR no date) AND (no deadline OR deadline >= now)
         const regOpen = tournament.registration_open;
         const dateOk = !tournamentDate || tournamentDate >= today;
-        const deadlineOk = !deadline || deadline >= now;
+        const deadlineOk = !deadlineEOD || deadlineEOD >= now;
 
         if (regOpen && dateOk && deadlineOk) {
             return { key: 'open', label: 'Registration Open', cssClass: 'open' };
