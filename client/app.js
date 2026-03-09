@@ -1628,6 +1628,15 @@ function loadEventCheckboxes(preselectedEvents = []) {
         const teamLabel = teamSize > 1 ? ` (Team of ${teamSize})` : '';
         const isChecked = selectedEventOrder.includes(event.id);
 
+        // Prerequisite label
+        let prereqHint = '';
+        if (event.prerequisiteEventId) {
+            const prereqEv = eventTypes.find(e => e.id == event.prerequisiteEventId);
+            if (prereqEv) {
+                prereqHint = `<span style="display:block; font-size:11px; color:var(--accent); opacity:0.85; margin-top:2px;">Requires: ${prereqEv.name}</span>`;
+            }
+        }
+
         checkboxDiv.innerHTML = `
             <input
                 type="checkbox"
@@ -1640,7 +1649,7 @@ function loadEventCheckboxes(preselectedEvents = []) {
                 style="width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;"
             >
             <label for="event-${event.id}" style="cursor: pointer; flex: 1; font-size: 14px;">
-                <strong>${event.name}</strong>${teamLabel}
+                <strong>${event.name}</strong>${teamLabel}${prereqHint}
             </label>
             <span id="event-badge-${event.id}" style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap;"></span>
         `;
@@ -1742,87 +1751,224 @@ function handleEventSelection() {
     const teamSection = document.getElementById('team-registration-section');
 
     let hasTeamEvent = false;
+    const eventTypes = db.load('eventTypes');
 
+    // 1. Detect team events
     checkboxes.forEach(checkbox => {
         const teamSize = parseInt(checkbox.dataset.teamSize);
-        if (teamSize > 1) {
-            hasTeamEvent = true;
+        if (teamSize > 1) hasTeamEvent = true;
+    });
+
+    if (teamSection) {
+        if (hasTeamEvent) {
+            teamSection.classList.remove('hidden');
+            // Reset autocomplete state when section re-appears
+            const input = document.getElementById('team-name-input');
+            if (input && !input.value) _selectedTeamData = null;
+        } else {
+            teamSection.classList.add('hidden');
+            _selectedTeamData = null;
+        }
+    }
+
+    // 2. Enforce prerequisites — if an event with a prerequisiteEventId is selected,
+    //    auto-check the required event and lock it
+    const allCheckboxes = document.querySelectorAll('input[name="events"]');
+
+    // First pass: collect IDs of currently-selected events
+    const selectedIds = new Set();
+    checkboxes.forEach(cb => selectedIds.add(cb.value));
+
+    // Second pass: for each selected event, auto-select its prerequisite
+    let addedPrereq = false;
+    checkboxes.forEach(cb => {
+        const ev = eventTypes.find(e => e.id === cb.value);
+        if (ev && ev.prerequisiteEventId) {
+            const prereqCb = document.querySelector(`input[name="events"][value="${ev.prerequisiteEventId}"]`);
+            if (prereqCb && !prereqCb.checked) {
+                prereqCb.checked = true;
+                selectedIds.add(ev.prerequisiteEventId);
+                addedPrereq = true;
+                // Keep selectedEventOrder in sync — insert prereq before the requiring event
+                if (!selectedEventOrder.includes(ev.prerequisiteEventId)) {
+                    const insertIdx = selectedEventOrder.indexOf(cb.value);
+                    if (insertIdx >= 0) {
+                        selectedEventOrder.splice(insertIdx, 0, ev.prerequisiteEventId);
+                    } else {
+                        selectedEventOrder.unshift(ev.prerequisiteEventId);
+                    }
+                }
+            }
         }
     });
 
-    if (hasTeamEvent) {
-        teamSection.classList.remove('hidden');
-    } else {
-        teamSection.classList.add('hidden');
+    // Third pass: disable/lock prerequisite checkboxes that are required by a selected event
+    allCheckboxes.forEach(cb => {
+        const requiredBy = [...document.querySelectorAll('input[name="events"]:checked')].some(selCb => {
+            const selEv = eventTypes.find(e => e.id === selCb.value);
+            return selEv && selEv.prerequisiteEventId === cb.value;
+        });
+        cb.disabled = requiredBy;
+        // Label is a sibling inside the row div, not a parent — use the row ID
+        const row = document.getElementById(`event-row-${cb.value}`);
+        const label = row?.querySelector('label');
+        if (label) {
+            let lockBadge = label.querySelector('.prereq-lock');
+            if (requiredBy) {
+                if (!lockBadge) {
+                    lockBadge = document.createElement('span');
+                    lockBadge.className = 'prereq-lock';
+                    lockBadge.style.cssText = 'font-size:0.7rem; color:var(--accent); margin-left:6px; opacity:0.8;';
+                    lockBadge.textContent = '(required)';
+                    label.appendChild(lockBadge);
+                }
+            } else {
+                if (lockBadge) lockBadge.remove();
+            }
+        }
+    });
+
+    if (addedPrereq) {
+        showToast('A required event was automatically added to your selection.', 'info');
+    }
+
+    updateEventBadges?.();
+    updatePriceSummary?.();
+}
+
+// ─── Team name search / autocomplete (replaces old team-code flow) ────────────
+let _selectedTeamData = null; // { code, name, memberCount, isNew }
+
+function _escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function searchTeams(query) {
+    const suggestionsDiv = document.getElementById('team-suggestions');
+    const infoDiv       = document.getElementById('team-selection-info');
+    _selectedTeamData   = null;
+    if (infoDiv) infoDiv.classList.add('hidden');
+
+    if (!query || query.trim().length < 1) {
+        if (suggestionsDiv) suggestionsDiv.style.display = 'none';
+        return;
+    }
+
+    // Find the team event currently selected
+    const checkboxes = document.querySelectorAll('input[name="events"]:checked');
+    let teamEventId = null;
+    const eventTypes = db.load('eventTypes');
+    checkboxes.forEach(cb => {
+        const ev = eventTypes.find(e => e.id === cb.value);
+        if (ev && ev.teamSize > 1) teamEventId = cb.value;
+    });
+
+    if (!teamEventId || !currentTournamentId) {
+        if (suggestionsDiv) suggestionsDiv.style.display = 'none';
+        return;
+    }
+
+    try {
+        const res = await fetch(
+            `/api/tournaments/${currentTournamentId}/teams/public?eventId=${teamEventId}&name=${encodeURIComponent(query)}`,
+            { credentials: 'include' }
+        );
+        if (!res.ok) { if (suggestionsDiv) suggestionsDiv.style.display = 'none'; return; }
+        const data = await res.json();
+
+        const teamEvent = eventTypes.find(e => e.id === teamEventId);
+        const maxSize = teamEvent?.teamSize || 2;
+
+        // Only show teams that aren't full
+        const joinable = (data.teams || []).filter(t => t.memberCount < maxSize);
+
+        if (!suggestionsDiv) return;
+        suggestionsDiv.innerHTML = '';
+
+        joinable.forEach(t => {
+            const div = document.createElement('div');
+            div.style.cssText = 'padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--glass-border); display:flex; justify-content:space-between; align-items:center;';
+            div.onmousedown = (e) => { e.preventDefault(); selectExistingTeam(t, maxSize); };
+            div.onmouseover = () => div.style.background = 'rgba(255,255,255,0.08)';
+            div.onmouseout  = () => div.style.background = '';
+            div.innerHTML = `
+                <span><strong>${_escapeHtml(t.name)}</strong></span>
+                <span style="font-size:0.8rem; color:var(--text-secondary);">${t.memberCount}/${maxSize} members</span>
+            `;
+            suggestionsDiv.appendChild(div);
+        });
+
+        // Always offer "Create new team"
+        const trimmed = query.trim();
+        const createDiv = document.createElement('div');
+        createDiv.style.cssText = 'padding:10px 14px; cursor:pointer; display:flex; align-items:center; gap:8px; color:var(--accent); font-weight:600;';
+        createDiv.onmousedown = (e) => { e.preventDefault(); confirmNewTeam(trimmed); };
+        createDiv.onmouseover = () => createDiv.style.background = 'rgba(255,255,255,0.08)';
+        createDiv.onmouseout  = () => createDiv.style.background = '';
+        createDiv.textContent = `+ Create "${trimmed}" as new team`;
+        suggestionsDiv.appendChild(createDiv);
+
+        suggestionsDiv.style.display = 'block';
+    } catch(e) {
+        if (suggestionsDiv) suggestionsDiv.style.display = 'none';
     }
 }
 
-function toggleTeamOptions() {
-    const teamOption = document.querySelector('input[name="team-option"]:checked').value;
-    const createSection = document.getElementById('team-create-section');
-    const joinSection = document.getElementById('team-join-section');
-
-    if (teamOption === 'create') {
-        createSection.classList.remove('hidden');
-        joinSection.classList.add('hidden');
-    } else {
-        createSection.classList.add('hidden');
-        joinSection.classList.remove('hidden');
+function selectExistingTeam(teamData, maxSize) {
+    const input = document.getElementById('team-name-input');
+    const suggestionsDiv = document.getElementById('team-suggestions');
+    const infoDiv = document.getElementById('team-selection-info');
+    if (input) input.value = teamData.name;
+    if (suggestionsDiv) suggestionsDiv.style.display = 'none';
+    _selectedTeamData = { code: teamData.code, name: teamData.name, memberCount: teamData.memberCount, isNew: false };
+    if (infoDiv) {
+        infoDiv.classList.remove('hidden');
+        infoDiv.innerHTML = `
+            <span style="color:#22c55e; font-weight:600;">✓ Joining existing team</span><br>
+            <strong>${_escapeHtml(teamData.name)}</strong> — ${teamData.memberCount + 1}/${maxSize} members (including you)
+            <br><span style="color:var(--text-secondary); font-size:0.8rem;">No payment required to join an existing team</span>
+        `;
     }
+}
+
+function confirmNewTeam(name) {
+    const input = document.getElementById('team-name-input');
+    const suggestionsDiv = document.getElementById('team-suggestions');
+    const infoDiv = document.getElementById('team-selection-info');
+    if (input) input.value = name;
+    if (suggestionsDiv) suggestionsDiv.style.display = 'none';
+    _selectedTeamData = { code: null, name: name, isNew: true };
+    if (infoDiv) {
+        infoDiv.classList.remove('hidden');
+        infoDiv.innerHTML = `
+            <span style="color:var(--accent); font-weight:600;">+ Creating new team</span><br>
+            <strong>${_escapeHtml(name)}</strong> — You will be the team captain.
+            <br><span style="color:var(--text-secondary); font-size:0.8rem;">Teammates search by team name to join you — no code sharing needed.</span>
+        `;
+    }
+}
+
+function hideTeamSuggestions() {
+    // Slight delay so onmousedown fires before blur hides the dropdown
+    setTimeout(() => {
+        const s = document.getElementById('team-suggestions');
+        if (s) s.style.display = 'none';
+        // If user blurred without selecting, treat typed value as new team name
+        const input = document.getElementById('team-name-input');
+        if (input && input.value.trim() && !_selectedTeamData) {
+            confirmNewTeam(input.value.trim());
+        }
+    }, 200);
 }
 
 function generateTeamCode() {
-    // Generate a unique 6-character team code
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding similar-looking characters
+    // Internal — generates a unique 6-character code (still used for backend storage)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'TEAM-';
     for (let i = 0; i < 6; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
-}
-
-function verifyTeamCode() {
-    const teamCode = document.getElementById('team-code').value.trim().toUpperCase();
-    const teamInfoDiv = document.getElementById('team-info');
-
-    if (!teamCode) {
-        showMessage('Please enter a team code', 'error');
-        return;
-    }
-
-    // Find team by code
-    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
-    const team = teams[teamCode];
-
-    if (!team) {
-        showMessage('Invalid team code', 'error');
-        teamInfoDiv.classList.add('hidden');
-        return;
-    }
-
-    // Check if team is full
-    if (team.members.length >= team.maxSize) {
-        showMessage('This team is already full', 'error');
-        teamInfoDiv.classList.add('hidden');
-        return;
-    }
-
-    // Get event info
-    const eventTypes = db.load('eventTypes');
-    const event = eventTypes.find(e => e.id === team.eventId);
-
-    // Show team info
-    teamInfoDiv.classList.remove('hidden');
-    teamInfoDiv.innerHTML = `
-        <strong style="color: var(--accent);">✓ Valid Team Code</strong><br>
-        <strong>Event:</strong> ${event ? event.name : 'Unknown'}<br>
-        <strong>Team Captain:</strong> ${team.captainName}<br>
-        <strong>Current Members:</strong> ${team.members.length} / ${team.maxSize}<br>
-        <strong>Spots Available:</strong> ${team.maxSize - team.members.length}<br>
-        <p style="margin-top: 8px; color: var(--text-secondary);">You will join this team (no payment required)</p>
-    `;
-
-    showMessage('Team code verified!', 'success');
 }
 
 function hideCompetitorForm() {
@@ -2007,69 +2153,81 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
     // Build selected events from the ordered array
     const selectedEvents = [...selectedEventOrder];
 
-    // Handle team registration
+    // Handle team registration (new name-search flow — no team codes shown to users)
     let teamCode = null;
     let teamName = null;
     const teamSection = document.getElementById('team-registration-section');
 
-    if (!teamSection.classList.contains('hidden')) {
-        const teamOption = document.querySelector('input[name="team-option"]:checked')?.value;
+    if (teamSection && !teamSection.classList.contains('hidden')) {
+        // Resolve team data — _selectedTeamData is set by selectExistingTeam / confirmNewTeam / hideTeamSuggestions
+        const teamNameInput = document.getElementById('team-name-input')?.value.trim();
+        if (!teamNameInput) {
+            showMessage('Please enter a team name', 'error');
+            return;
+        }
 
-        if (teamOption === 'create') {
-            // Creating new team
-            teamName = document.getElementById('team-name').value.trim();
-            if (!teamName) {
-                showMessage('Please enter a team name', 'error');
-                return;
+        // If user typed but never clicked a suggestion, treat as new team
+        if (!_selectedTeamData) {
+            _selectedTeamData = { code: null, name: teamNameInput, isNew: true };
+        }
+
+        // Find the team event in the registration
+        const teamEventId = selectedEvents.find(eventId => {
+            const ev = eventTypes.find(e => e.id === eventId);
+            return ev && ev.teamSize > 1;
+        });
+        const teamEvent = eventTypes.find(e => e.id === teamEventId);
+
+        if (_selectedTeamData.isNew) {
+            // ── Creating a new team ──
+            teamName = _selectedTeamData.name;
+
+            // Check no existing team has same name for this event (prevent accidental duplicates)
+            const existingTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            const duplicate = Object.values(existingTeams).find(
+                t => t.name.toLowerCase() === teamName.toLowerCase() && t.eventId === teamEventId
+            );
+            if (duplicate) {
+                // Team by that name already exists locally — auto-join if not full
+                if (duplicate.members.length >= (duplicate.maxSize || teamEvent?.teamSize || 2)) {
+                    showMessage(`A team named "${teamName}" already exists and is full. Choose a different name.`, 'error');
+                    return;
+                }
+                // Join the existing local team silently
+                teamCode = duplicate.code;
+                _selectedTeamData = { code: teamCode, name: teamName, isNew: false };
+            } else {
+                teamCode = generateTeamCode();
+                const allTeams = existingTeams;
+                allTeams[teamCode] = {
+                    code: teamCode,
+                    name: teamName,
+                    eventId: teamEventId,
+                    maxSize: teamEvent?.teamSize || 2,
+                    captainName: (document.getElementById('firstName')?.value || '') + ' ' + (document.getElementById('lastName')?.value || ''),
+                    members: [],
+                    createdAt: new Date().toISOString()
+                };
+                localStorage.setItem(_scopedKey('teams'), JSON.stringify(allTeams));
+                _debouncedSync('teams', _syncTeamsToServer, 2000);
             }
 
-            // Find the team event
-            const teamEventId = selectedEvents.find(eventId => {
-                const event = eventTypes.find(e => e.id === eventId);
-                return event && event.teamSize > 1;
-            });
+        } else {
+            // ── Joining an existing team ──
+            teamCode = _selectedTeamData.code;
+            teamName = _selectedTeamData.name;
 
-            const teamEvent = eventTypes.find(e => e.id === teamEventId);
-
-            // Generate unique team code
-            teamCode = generateTeamCode();
-
-            // Create team record
-            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
-            teams[teamCode] = {
-                code: teamCode,
-                name: teamName,
-                eventId: teamEventId,
-                maxSize: teamEvent.teamSize,
-                captainName: document.getElementById('firstName').value + ' ' + document.getElementById('lastName').value,
-                members: [], // Will add competitor ID after creation
-                createdAt: new Date().toISOString()
-            };
-            localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
-            _debouncedSync('teams', _syncTeamsToServer, 2000);
-
-        } else if (teamOption === 'join') {
-            // Joining existing team
-            teamCode = document.getElementById('team-code').value.trim().toUpperCase();
             if (!teamCode) {
-                showMessage('Please enter a team code', 'error');
+                showMessage('Invalid team selection. Please search and select a team.', 'error');
                 return;
             }
 
-            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
-            const team = teams[teamCode];
-
-            if (!team) {
-                showMessage('Invalid team code', 'error');
+            const allTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            const localTeam = allTeams[teamCode];
+            if (localTeam && localTeam.members.length >= (localTeam.maxSize || teamEvent?.teamSize || 2)) {
+                showMessage(`The team "${teamName}" is already full.`, 'error');
                 return;
             }
-
-            if (team.members.length >= team.maxSize) {
-                showMessage('This team is already full', 'error');
-                return;
-            }
-
-            teamName = team.name;
         }
     }
 
@@ -2177,17 +2335,15 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
             showMessage(`Competitor registered, but auto-division failed: ${error.message}`, 'warning');
         }
 
-        // Show success message with team code if applicable
+        // Show success message — team info if applicable
         if (teamCode && teamName && competitor.teamCode === teamCode) {
-            const teamOption = document.querySelector('input[name="team-option"]:checked')?.value;
-            if (teamOption === 'create') {
-                showMessage(
-                    `Competitor registered successfully!\n\nTeam Code: ${teamCode}\n\nShare this code with your ${eventTypes.find(e => e.teamSize > 1)?.teamSize - 1} teammate(s) so they can join "${teamName}".`,
-                    'success'
-                );
-                showToast(`Team created! Code: ${teamCode} — share with teammates`, 'success');
+            const isNewTeam = _selectedTeamData?.isNew !== false; // true if created, false if joined
+            if (isNewTeam) {
+                const teamSize = eventTypes.find(e => e.teamSize > 1)?.teamSize || 2;
+                showMessage(`Competitor registered! Team "${teamName}" created. Teammates can join by searching for "${teamName}" during their registration.`, 'success');
+                showToast(`Team "${teamName}" created — teammates search by name to join`, 'success');
             } else {
-                showMessage(`Successfully joined team "${teamName}"!`, 'success');
+                showMessage(`Competitor registered and joined team "${teamName}"!`, 'success');
             }
         } else {
             showMessage('Competitor registered successfully!');
@@ -3175,20 +3331,14 @@ window.editCompetitor = function(id) {
     const paymentStatusEl = document.getElementById('payment-status');
     if (paymentStatusEl) paymentStatusEl.value = comp.paymentStatus || 'unpaid';
 
-    // Handle team fields
+    // Handle team fields (new name-search UI)
     if (comp.teamCode || comp.teamName) {
         const teamSection = document.getElementById('team-registration-section');
         if (teamSection && !teamSection.classList.contains('hidden')) {
-            if (comp.teamCode) {
-                const joinRadio = document.querySelector('input[name="team-option"][value="join"]');
-                if (joinRadio) {
-                    joinRadio.checked = true;
-                    toggleTeamOptions();
-                    document.getElementById('team-code').value = comp.teamCode;
-                }
-            }
-            if (comp.teamName) {
-                document.getElementById('team-name').value = comp.teamName;
+            const nameInput = document.getElementById('team-name-input');
+            if (nameInput && comp.teamName) {
+                nameInput.value = comp.teamName;
+                _selectedTeamData = { code: comp.teamCode || null, name: comp.teamName, isNew: false };
             }
         }
     }
@@ -4282,8 +4432,23 @@ function updateClubSelects() {
  */
 
 // Event Type Management
-function showEventForm() {
+function showEventForm(editId) {
     document.getElementById('event-form-container').classList.remove('hidden');
+
+    // Populate prerequisite dropdown with existing event types
+    const prereqSelect = document.getElementById('event-prerequisite');
+    if (prereqSelect) {
+        const eventTypes = db.load('eventTypes');
+        prereqSelect.innerHTML = '<option value="">None — this event has no prerequisite</option>';
+        eventTypes.forEach(et => {
+            if (et.id !== editId) { // don't offer self as prerequisite
+                const opt = document.createElement('option');
+                opt.value = et.id;
+                opt.textContent = et.name + (et.teamSize > 1 ? ` (Team of ${et.teamSize})` : ' (Individual)');
+                prereqSelect.appendChild(opt);
+            }
+        });
+    }
 }
 
 function hideEventForm() {
@@ -4338,10 +4503,12 @@ if (eventForm) {
         const basePriceVal = document.getElementById('event-base-price')?.value;
         const addOnPriceVal = document.getElementById('event-addon-price')?.value;
 
+        const prereqVal = document.getElementById('event-prerequisite')?.value || '';
         const eventType = {
             name: document.getElementById('event-name').value,
             description: document.getElementById('event-description').value || '',
             teamSize: parseInt(document.getElementById('event-team-size').value) || 1,
+            prerequisiteEventId: prereqVal || null,
             // Tiered pricing overrides (null = use tournament default)
             basePrice: basePriceVal !== '' && basePriceVal != null ? parseFloat(basePriceVal) : null,
             addOnPrice: addOnPriceVal !== '' && addOnPriceVal != null ? parseFloat(addOnPriceVal) : null,
@@ -4400,6 +4567,16 @@ function loadEventTypes() {
             </div>
         `;
 
+        // Prerequisite display
+        let prereqHtml = '';
+        if (event.prerequisiteEventId) {
+            const prereqEvent = eventTypes.find(e => e.id == event.prerequisiteEventId);
+            prereqHtml = `<div class="event-detail" style="color:var(--accent);">
+                <strong>Requires:</strong> ${prereqEvent ? prereqEvent.name : '(deleted event)'}
+                <span style="font-size:0.75rem; opacity:0.7; margin-left:4px;">— registrants must also register for this event</span>
+            </div>`;
+        }
+
         card.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: start;">
                 <h3>${event.name}${event.isDefault ? ' <span style="background: var(--accent); color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; margin-left: 8px;">DEFAULT</span>' : ''}</h3>
@@ -4407,6 +4584,7 @@ function loadEventTypes() {
             ${event.description ? `<div class="event-detail" style="color: var(--text-secondary); margin-bottom: 12px;">${event.description}</div>` : ''}
             <div class="event-detail"><strong>Team Size:</strong> ${teamSizeLabel}</div>
             ${priceHtml}
+            ${prereqHtml}
             ${event.isDefault ? '<div class="event-detail" style="color: var(--accent);"><strong>Type:</strong> Base Registration Fee (auto-included for all competitors)</div>' : '<div class="event-detail"><strong>Type:</strong> Add-on Event (optional)</div>'}
             <div class="event-actions">
                 <button class="btn btn-small btn-danger" onclick="deleteEventType(${event.id})">Delete</button>

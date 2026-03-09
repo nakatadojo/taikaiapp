@@ -5,6 +5,9 @@ const c = require('../controllers/teamController');
 
 const router = express.Router();
 
+// Public team search — no auth required (must be before the authenticated route)
+router.get('/:id/teams/public', c.listTeamsPublic);
+
 router.get('/:id/teams',
   requireAuth, requireTournamentOwner,
   c.getTeams

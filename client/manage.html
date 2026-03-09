@@ -721,38 +721,15 @@
                         <!-- Team Registration Section (shown when team event selected) -->
                         <div id="team-registration-section" class="form-group hidden" style="grid-column: 1 / -1;">
                             <div style="padding: 16px; background: var(--bg-secondary); border-radius: 10px; border: 2px solid var(--accent);">
-                                <h4 style="margin: 0 0 16px 0; color: var(--accent);">Team Event Registration</h4>
-
-                                <div style="margin-bottom: 16px;">
-                                    <label style="display: block; margin-bottom: 8px;">
-                                        <input type="radio" name="team-option" value="create" checked onchange="toggleTeamOptions()">
-                                        <strong>Create New Team</strong> (I'm the first member - I'll pay)
-                                    </label>
-                                    <label style="display: block;">
-                                        <input type="radio" name="team-option" value="join" onchange="toggleTeamOptions()">
-                                        <strong>Join Existing Team</strong> (I have a team code)
-                                    </label>
+                                <h4 style="margin: 0 0 12px 0; color: var(--accent);">Team Event Registration</h4>
+                                <div class="form-group" style="position: relative; margin-bottom: 8px;">
+                                    <label for="team-name-input">Team Name *</label>
+                                    <input type="text" id="team-name-input" placeholder="Type to search or create a team…" autocomplete="off"
+                                           oninput="searchTeams(this.value)" onblur="hideTeamSuggestions()">
+                                    <div id="team-suggestions" style="display:none; position:absolute; left:0; right:0; top:100%; background:var(--bg-primary); border:1px solid var(--glass-border); border-radius:8px; z-index:200; max-height:220px; overflow-y:auto; margin-top:4px; box-shadow:0 4px 16px rgba(0,0,0,0.4);"></div>
                                 </div>
-
-                                <div id="team-create-section">
-                                    <div class="form-group">
-                                        <label for="team-name">Team Name *</label>
-                                        <input type="text" id="team-name" placeholder="e.g., Tokyo Dragons">
-                                        <p class="hint">Choose a name for your team. Your teammates will see this when they join.</p>
-                                    </div>
-                                    <p class="hint" style="margin-top: 8px;">You'll receive a team code after registration to share with your teammates.</p>
-                                </div>
-
-                                <div id="team-join-section" class="hidden">
-                                    <div class="form-group">
-                                        <label for="team-code">Team Code *</label>
-                                        <input type="text" id="team-code" placeholder="e.g., TEAM-A1B2C3" style="text-transform: uppercase;">
-                                        <button type="button" class="btn btn-secondary" onclick="verifyTeamCode()" style="margin-top: 8px;">Verify Code</button>
-                                    </div>
-                                    <div id="team-info" class="hidden" style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 8px;">
-                                        <!-- Team info will be displayed here -->
-                                    </div>
-                                </div>
+                                <div id="team-selection-info" class="hidden" style="margin-top:8px; padding:10px 12px; background:var(--bg-primary); border-radius:8px; font-size:0.875rem;"></div>
+                                <p class="hint" style="margin-top:6px;">Search for an existing team to join, or type a new name to create one. Teammates search by team name — no codes needed.</p>
                             </div>
                         </div>
 
@@ -954,7 +931,16 @@
                                 <option value="2">Team of 2</option>
                                 <option value="3">Team of 3</option>
                             </select>
-                            <p class="hint">Individual events register single competitors. Team events require selecting team members.</p>
+                            <p class="hint">Individual events register single competitors. Team events require all members to register.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="event-prerequisite">Required Event (Prerequisite)</label>
+                            <select id="event-prerequisite">
+                                <option value="">None — this event has no prerequisite</option>
+                                <!-- populated dynamically when form opens -->
+                            </select>
+                            <p class="hint">If set, registrants must also be registered for this event. Example: Team Kata requires Individual Kata.</p>
                         </div>
 
                         <h4 style="margin-top: 16px; margin-bottom: 8px;">Price Overrides (Optional)</h4>

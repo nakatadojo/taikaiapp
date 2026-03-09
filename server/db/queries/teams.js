@@ -83,4 +83,20 @@ async function sync(tournamentId, teams) {
   }
 }
 
-module.exports = { getByTournament, sync };
+/**
+ * Get teams for a specific event (public, no auth).
+ * Used by the registration page to show joinable teams.
+ */
+async function getByEvent(tournamentId, eventId) {
+  const { rows } = await pool.query(
+    `SELECT team_code, team_name, members
+     FROM tournament_teams
+     WHERE tournament_id = $1
+       AND event_id = $2
+     ORDER BY team_name`,
+    [tournamentId, eventId]
+  );
+  return rows;
+}
+
+module.exports = { getByTournament, getByEvent, sync };

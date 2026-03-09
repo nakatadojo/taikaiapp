@@ -43,4 +43,33 @@ async function syncTeams(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getTeams, syncTeams };
+/**
+ * GET /api/tournaments/:id/teams/public?eventId=xxx&name=yyy
+ * Public (no auth) — returns teams for an event so registrants can search.
+ * Optional ?name= does a case-insensitive substring filter.
+ */
+async function listTeamsPublic(req, res, next) {
+  try {
+    const { eventId, name } = req.query;
+    if (!eventId) {
+      return res.status(400).json({ error: 'eventId query param is required' });
+    }
+    const rows = await TeamQueries.getByEvent(req.params.id, eventId);
+
+    let filtered = rows;
+    if (name && name.trim()) {
+      const q = name.trim().toLowerCase();
+      filtered = rows.filter(r => r.team_name.toLowerCase().includes(q));
+    }
+
+    const teams = filtered.map(r => ({
+      code: r.team_code,
+      name: r.team_name,
+      memberCount: Array.isArray(r.members) ? r.members.length : 0,
+    }));
+
+    res.json({ teams });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getTeams, syncTeams, listTeamsPublic };
