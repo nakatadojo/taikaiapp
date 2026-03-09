@@ -11305,8 +11305,7 @@ function _getTournamentName() {
 function printOfficialBadge(id) {
     const official = db.load('officials').find(o => o.id == id);
     if (!official) return;
-    const role = official.certificationLevel || 'Official';
-    const card = _generateBadgeCardHTML(official, role, _getTournamentName());
+    const card = _generateBadgeCardHTML(official, 'Official', _getTournamentName());
     _openBadgePrintWindow(card, _getTournamentName());
 }
 
@@ -11314,15 +11313,14 @@ function printAllOfficialBadges() {
     const officials = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
     if (officials.length === 0) { showToast('No officials to print', 'warning'); return; }
     const tName = _getTournamentName();
-    const cards = officials.map(o => _generateBadgeCardHTML(o, o.certificationLevel || 'Official', tName)).join('');
+    const cards = officials.map(o => _generateBadgeCardHTML(o, 'Official', tName)).join('');
     _openBadgePrintWindow(cards, tName);
 }
 
 function printStaffBadge(id) {
     const member = db.load('staffMembers').find(s => s.id == id);
     if (!member) return;
-    const role = member.position || 'Staff';
-    const card = _generateBadgeCardHTML(member, role, _getTournamentName());
+    const card = _generateBadgeCardHTML(member, 'Staff', _getTournamentName());
     _openBadgePrintWindow(card, _getTournamentName());
 }
 
@@ -11330,7 +11328,7 @@ function printAllStaffBadges() {
     const members = db.load('staffMembers').filter(s => !currentTournamentId || s.tournamentId === currentTournamentId);
     if (members.length === 0) { showToast('No staff to print', 'warning'); return; }
     const tName = _getTournamentName();
-    const cards = members.map(s => _generateBadgeCardHTML(s, s.position || 'Staff', tName)).join('');
+    const cards = members.map(s => _generateBadgeCardHTML(s, 'Staff', tName)).join('');
     _openBadgePrintWindow(cards, tName);
 }
 
