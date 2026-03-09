@@ -11145,33 +11145,83 @@ function _getBadgePrintCSS() {
     return `
         @page { size: letter portrait; margin: 0.4in; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f0f0; color: #111; }
         .badge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25in; }
+
+        /* Card shell */
         .badge-card {
             width: 3.4in; height: 4.3in;
-            border: 2px solid #222; border-radius: 10px;
-            padding: 0.18in;
-            display: flex; flex-direction: column; align-items: center; text-align: center;
-            page-break-inside: avoid; break-inside: avoid; overflow: hidden;
+            border: 2px solid #111; border-radius: 12px;
+            display: flex; flex-direction: column;
+            page-break-inside: avoid; break-inside: avoid;
+            overflow: hidden; background: #fff;
         }
-        .badge-logo { height: 30px; width: auto; margin-bottom: 6px; }
-        .badge-divider { width: 90%; height: 1px; background: #ccc; margin: 5px 0; }
+
+        /* ── Role headline (top) ── */
+        .badge-headline {
+            padding: 14px 12px 12px;
+            text-align: center;
+            font-size: 1.15rem;
+            font-weight: 900;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #111;
+            border-bottom: 2px solid #e8e8e8;
+            line-height: 1.2;
+        }
+
+        /* ── Body: photo + person info ── */
+        .badge-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 12px 10px;
+            text-align: center;
+            gap: 5px;
+        }
         .badge-photo {
-            width: 88px; height: 88px; border-radius: 50%;
-            object-fit: cover; border: 2px solid #333;
-            background: #eee; margin: 8px 0;
+            width: 82px; height: 82px; border-radius: 50%;
+            object-fit: cover; border: 2px solid #222;
+            background: #ddd; margin-bottom: 8px;
         }
         .badge-photo-placeholder {
-            width: 88px; height: 88px; border-radius: 50%;
-            background: #eee; display: flex; align-items: center;
-            justify-content: center; font-size: 2rem; margin: 8px 0; color: #aaa;
+            width: 82px; height: 82px; border-radius: 50%;
+            background: #ddd; display: flex; align-items: center;
+            justify-content: center; font-size: 1.8rem; color: #aaa;
+            margin-bottom: 8px;
         }
-        .badge-name { font-size: 0.95rem; font-weight: 700; margin-bottom: 3px; line-height: 1.2; }
-        .badge-role { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #444; margin-bottom: 2px; }
-        .badge-dojo { font-size: 0.7rem; color: #666; }
-        .badge-footer { margin-top: auto; padding-top: 8px; display: flex; align-items: center; gap: 8px; width: 100%; }
-        .badge-qr { width: 58px; height: 58px; flex-shrink: 0; }
-        .badge-tournament { font-size: 0.6rem; color: #888; text-align: left; flex: 1; line-height: 1.4; }
+        .badge-name  { font-size: 0.95rem; font-weight: 700; line-height: 1.25; }
+        .badge-level { font-size: 0.72rem; color: #555; margin-top: 1px; }
+        .badge-dojo  { font-size: 0.72rem; color: #555; }
+
+        /* ── QR + tournament name row ── */
+        .badge-qr-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-top: 1px solid #e8e8e8;
+        }
+        .badge-qr { width: 54px; height: 54px; flex-shrink: 0; }
+        .badge-tournament {
+            flex: 1;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.35;
+            color: #111;
+        }
+
+        /* ── Black footer with logo ── */
+        .badge-footer-black {
+            background: #111;
+            padding: 9px 14px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .badge-logo { height: 26px; width: auto; }
     `;
 }
 
@@ -11190,15 +11240,27 @@ function _generateBadgeCardHTML(person, roleLabel, tournamentName) {
         : `<div class="badge-photo-placeholder">👤</div>`;
 
     return `<div class="badge-card">
-        <img class="badge-logo" src="${logoSrc}" alt="Taikai">
-        <div class="badge-divider"></div>
-        ${photoHTML}
-        <div class="badge-name">${fullName}</div>
-        ${roleLabel ? `<div class="badge-role">${roleLabel}</div>` : ''}
-        ${person.dojo ? `<div class="badge-dojo">${person.dojo}</div>` : ''}
-        <div class="badge-footer">
+        <!-- Role headline at top -->
+        <div class="badge-headline">${roleLabel || 'Official'}</div>
+
+        <!-- Photo + person info -->
+        <div class="badge-body">
+            ${photoHTML}
+            <div class="badge-name">${fullName}</div>
+            ${person.certificationLevel ? `<div class="badge-level">${person.certificationLevel}</div>` : ''}
+            ${person.position           ? `<div class="badge-level">${person.position}</div>`           : ''}
+            ${person.dojo ? `<div class="badge-dojo">${person.dojo}</div>` : ''}
+        </div>
+
+        <!-- QR + tournament name -->
+        <div class="badge-qr-row">
             <img class="badge-qr" src="${qrSrc}" alt="QR">
             <div class="badge-tournament">${tournamentName}</div>
+        </div>
+
+        <!-- Black footer with Taikai logo -->
+        <div class="badge-footer-black">
+            <img class="badge-logo" src="${logoSrc}" alt="Taikai">
         </div>
     </div>`;
 }
