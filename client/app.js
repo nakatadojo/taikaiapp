@@ -18918,70 +18918,77 @@ function getDivisionResults(divisionName, eventId) {
     return [];
 }
 
-function loadResults() {
+// Server-side results cache for certificates section
+let _serverResultsCache = [];
+
+async function loadResults() {
     const container = document.getElementById('results-container');
     if (!container) return;
 
-    const divisions = db.load('divisions');
-    const eventTypes = db.load('eventTypes');
-
-    let html = '';
-    let totalDivisions = 0;
-    let completedDivisions = 0;
-
-    Object.keys(divisions).forEach(eventId => {
-        const eventData = divisions[eventId];
-        if (!eventData || !eventData.generated) return;
-
-        const event = eventTypes.find(e => String(e.id) === String(eventId));
-        const eventName = event ? event.name : `Event ${eventId}`;
-
-        let eventHtml = '';
-
-        Object.keys(eventData.generated).forEach(divisionName => {
-            totalDivisions++;
-            const results = getDivisionResults(divisionName, eventId);
-
-            if (results.length === 0) return;
-            completedDivisions++;
-
-            eventHtml += `
-                <div style="margin-bottom: 12px; padding: 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px;">
-                    <h4 style="margin-bottom: 8px;">${divisionName}</h4>
-                    <div>
-                        ${results.map((result, idx) => {
-                            const medalEmoji = result.rank <= 3 ? ['&#x1F947;','&#x1F948;','&#x1F949;'][result.rank - 1] || `#${result.rank}` : `#${result.rank}`;
-                            const winMethodLabel = result.winMethod ? { points: 'Points', decision: 'Decision', hansoku: 'Hansoku', withdrawal: 'Withdrawal', default_win: 'Default Win', ippon: 'Ippon' }[result.winMethod] || result.winMethod : '';
-                            const winMethodHTML = winMethodLabel ? `<span style="font-size: 10px; background: var(--bg-secondary); padding: 1px 6px; border-radius: 4px; color: var(--text-secondary); margin-left: 6px;">${winMethodLabel}${result.winNote ? ': ' + result.winNote : ''}</span>` : '';
-                            return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
-                                <span style="width: 40px; text-align: center; font-size: 18px;">${medalEmoji}</span>
-                                <div style="flex: 1;">
-                                    <div style="font-weight: 600;">${result.name}${winMethodHTML}</div>
-                                    ${result.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${result.club}</div>` : ''}
-                                </div>
-                                ${result.score !== undefined ? `<div style="font-weight: 700;">${typeof result.score === 'number' ? result.score.toFixed(2) : result.score}</div>` : ''}
-                            </div>`;
-                        }).join('')}
-                    </div>
-                </div>
-            `;
-        });
-
-        if (eventHtml) {
-            html += `<div class="glass-panel" style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 16px; color: var(--accent-color);">${eventName}</h3>
-                ${eventHtml}
-            </div>`;
-        }
-    });
-
-    if (html === '') {
-        html = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No completed divisions yet. Results will appear here once brackets are completed.</p>';
-    } else {
-        html = `<p style="color: var(--text-secondary); margin-bottom: 16px;">${completedDivisions}/${totalDivisions} divisions completed</p>` + html;
+    // Fetch results from server API (same source as Awards cards)
+    if (!currentTournamentId) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No tournament loaded.</p>';
+        return;
     }
 
-    container.innerHTML = html;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/results`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load results');
+
+        const results = data.results || [];
+        _serverResultsCache = results;
+
+        if (results.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No completed divisions yet. Results will appear here once brackets are completed and synced.</p>';
+            return;
+        }
+
+        // Group by event name
+        const byEvent = {};
+        results.forEach(r => {
+            const eventName = r.event_name || 'Unknown Event';
+            if (!byEvent[eventName]) byEvent[eventName] = [];
+            byEvent[eventName].push(r);
+        });
+
+        let html = `<p style="color: var(--text-secondary); margin-bottom: 16px;">${results.length} division(s) with results</p>`;
+
+        Object.keys(byEvent).forEach(eventName => {
+            let eventHtml = '';
+            byEvent[eventName].forEach(r => {
+                const placements = Array.isArray(r.results_data) ? r.results_data : [];
+                const medals = ['&#x1F947;', '&#x1F948;', '&#x1F949;'];
+
+                eventHtml += `
+                    <div style="margin-bottom: 12px; padding: 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px;">
+                        <h4 style="margin-bottom: 8px;">${_escapeHtml(r.division_name)}</h4>
+                        <div>
+                            ${placements.slice(0, 3).map((p, idx) => {
+                                return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
+                                    <span style="width: 40px; text-align: center; font-size: 18px;">${medals[idx] || '#' + (idx+1)}</span>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600;">${_escapeHtml(p.name || 'TBD')}</div>
+                                        ${p.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${_escapeHtml(p.club)}</div>` : ''}
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `<div class="glass-panel" style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 16px; color: var(--accent-color);">${_escapeHtml(eventName)}</h3>
+                ${eventHtml}
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('loadResults error:', err);
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">Failed to load results from server.</p>';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -21443,41 +21450,33 @@ function generateAllCertificates() {
         return;
     }
 
-    const divisions = db.load('divisions');
-    const eventTypes = db.load('eventTypes');
-
     // Get tournament info
     const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
-    // Collect all placements
+    // Use server results cache (populated by loadResults)
+    const serverResults = _serverResultsCache || [];
+
+    const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
     const certificates = [];
 
-    Object.keys(divisions).forEach(eventId => {
-        const eventData = divisions[eventId];
-        if (!eventData || !eventData.generated) return;
-
-        Object.keys(eventData.generated).forEach(divisionName => {
-            const results = getDivisionResults(divisionName, eventId);
-            const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
-
-            results.forEach((result, idx) => {
-                if (idx > 2) return; // Top 3 only
-                certificates.push({
-                    name: result.name,
-                    place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
-                    division: divisionName,
-                    tournament: tournamentName,
-                    date: tournamentDate,
-                    club: result.club || ''
-                });
+    serverResults.forEach(r => {
+        const placements = Array.isArray(r.results_data) ? r.results_data : [];
+        placements.slice(0, 3).forEach((p, idx) => {
+            certificates.push({
+                name: p.name || 'TBD',
+                place: placeLabels[idx] || `${idx + 1}th Place`,
+                division: r.division_name || 'Unknown',
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: p.club || ''
             });
         });
     });
 
     if (certificates.length === 0) {
-        showMessage('No completed divisions with results found.', 'error');
+        showMessage('No completed divisions with results found. Make sure results are synced from the scoreboard.', 'error');
         return;
     }
 
@@ -21515,10 +21514,12 @@ function generateAllCertificates() {
 
 /**
  * Print certificates for a single division (called from Awards cards).
- * Looks up the division across all events, gets top-3 results, and
- * downloads one certificate PNG per placement.
+ * Accepts optional serverPlacements array from the awards API data.
+ * Falls back to localStorage bracket data if no server data provided.
+ * @param {string} divisionName
+ * @param {Array|null} serverPlacements - [{name, club}, ...] from server results_data
  */
-function printCertificatesForDivision(divisionName) {
+function printCertificatesForDivision(divisionName, serverPlacements) {
     const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
         showMessage('Please upload a certificate template first in Settings → Certificates', 'error');
@@ -21531,46 +21532,60 @@ function printCertificatesForDivision(divisionName) {
         return;
     }
 
-    const divisions = db.load('divisions');
-
-    // Find the eventId that contains this division
-    let foundEventId = null;
-    Object.keys(divisions).forEach(eventId => {
-        const eventData = divisions[eventId];
-        if (!eventData || !eventData.generated) return;
-        if (eventData.generated[divisionName]) {
-            foundEventId = eventId;
-        }
-    });
-
-    if (!foundEventId) {
-        showMessage(`Division "${divisionName}" not found. Make sure divisions are generated.`, 'error');
-        return;
-    }
-
-    const results = getDivisionResults(divisionName, foundEventId);
-    if (!results || results.length === 0) {
-        showMessage(`No results found for "${divisionName}".`, 'error');
-        return;
-    }
-
     const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
     const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
     const certificates = [];
-    results.forEach((result, idx) => {
-        if (idx > 2) return;
-        certificates.push({
-            name: result.name,
-            place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
-            division: divisionName,
-            tournament: tournamentName,
-            date: tournamentDate,
-            club: result.club || ''
+
+    if (serverPlacements && serverPlacements.length > 0) {
+        // Use server-side results data (from Awards cards)
+        serverPlacements.slice(0, 3).forEach((p, idx) => {
+            certificates.push({
+                name: p.name || 'TBD',
+                place: placeLabels[idx] || `${idx + 1}th Place`,
+                division: divisionName,
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: p.club || ''
+            });
         });
-    });
+    } else {
+        // Fallback: look up from localStorage bracket data
+        const divisions = db.load('divisions');
+        let foundEventId = null;
+        Object.keys(divisions).forEach(eventId => {
+            const eventData = divisions[eventId];
+            if (!eventData || !eventData.generated) return;
+            if (eventData.generated[divisionName]) {
+                foundEventId = eventId;
+            }
+        });
+
+        if (!foundEventId) {
+            showMessage(`Division "${divisionName}" not found. Make sure brackets are completed or results are synced.`, 'error');
+            return;
+        }
+
+        const results = getDivisionResults(divisionName, foundEventId);
+        if (!results || results.length === 0) {
+            showMessage(`No results found for "${divisionName}".`, 'error');
+            return;
+        }
+
+        results.forEach((result, idx) => {
+            if (idx > 2) return;
+            certificates.push({
+                name: result.name,
+                place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
+                division: divisionName,
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: result.club || ''
+            });
+        });
+    }
 
     if (certificates.length === 0) {
         showMessage(`No placements to print for "${divisionName}".`, 'error');

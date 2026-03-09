@@ -3406,9 +3406,12 @@
         };
 
         window.printDivisionCertificate = function(divisionName) {
-            // Delegate to existing certificate system in app.js
+            // Find the server-side results data for this division
+            const match = awardsResults.find(r => r.division_name === divisionName);
+            const serverPlacements = match && Array.isArray(match.results_data) ? match.results_data : null;
+
             if (typeof printCertificatesForDivision === 'function') {
-                printCertificatesForDivision(divisionName);
+                printCertificatesForDivision(divisionName, serverPlacements);
             } else {
                 alert('Certificate printing not available. Use the Certificates section below.');
             }
