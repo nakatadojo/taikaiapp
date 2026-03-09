@@ -11216,6 +11216,8 @@ function _getBadgePrintCSS() {
         /* ── Black footer with logo ── */
         .badge-footer-black {
             background: #111;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
             padding: 9px 14px;
             display: flex;
             justify-content: center;
@@ -18223,21 +18225,70 @@ function loadTournamentInfoView() {
         return;
     }
 
-    if (content) {
-        const dateStr = t.date ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString() : '\u2014';
-        content.innerHTML = `
-            <div style="display: grid; gap: 10px; font-size: 14px;">
-                <div><strong>Name:</strong> ${t.name || '\u2014'}</div>
-                <div><strong>Date:</strong> ${dateStr}</div>
-                <div><strong>Location:</strong> ${t.location || t.venue || '\u2014'}</div>
-                <div><strong>Sanctioning Body:</strong> ${t.sanctioningBody ? t.sanctioningBody.toUpperCase() : '\u2014'}</div>
-                <div><strong>Status:</strong> ${t.published ? 'Published' : 'Draft'}</div>
-            </div>
-        `;
-    }
+    // Fetch live registration_open status from server, then render
+    fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(serverT => {
+            const regOpen = serverT ? serverT.registration_open : (t.registration_open || false);
+            _renderTournamentInfoContent(t, regOpen);
+        })
+        .catch(() => _renderTournamentInfoContent(t, t.registration_open || false));
 
     if (deleteNameEl) {
         deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
+    }
+}
+
+function _renderTournamentInfoContent(t, regOpen) {
+    const content = document.getElementById('tournament-info-content');
+    if (!content) return;
+    const dateStr = t.date ? new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString() : '\u2014';
+    const regBadge = regOpen
+        ? `<span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Open</span>`
+        : `<span style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);padding:2px 10px;border-radius:20px;font-size:0.8rem;font-weight:600;">Closed</span>`;
+    content.innerHTML = `
+        <div style="display: grid; gap: 12px; font-size: 14px;">
+            <div><strong>Name:</strong> ${t.name || '\u2014'}</div>
+            <div><strong>Date:</strong> ${dateStr}</div>
+            <div><strong>Location:</strong> ${t.location || t.venue || '\u2014'}</div>
+            <div><strong>Sanctioning Body:</strong> ${t.sanctioningBody ? t.sanctioningBody.toUpperCase() : '\u2014'}</div>
+            <div><strong>Status:</strong> ${t.published ? 'Published' : 'Draft'}</div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+                <strong>Registration:</strong>
+                ${regBadge}
+                <button class="btn btn-small ${regOpen ? 'btn-danger' : 'btn-primary'}"
+                    onclick="toggleRegistrationOpen(${!!regOpen})">
+                    ${regOpen ? 'Close Registration' : 'Open Registration'}
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function toggleRegistrationOpen(currentlyOpen) {
+    if (!currentTournamentId) return;
+    const newVal = !currentlyOpen;
+    const label = newVal ? 'open' : 'close';
+    if (!confirm(`Are you sure you want to ${label} registration for this tournament?`)) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ registrationOpen: newVal }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to update registration status');
+        }
+        showToast(`Registration is now ${newVal ? 'open' : 'closed'}`, 'success');
+        // Re-render with updated state
+        const tournaments = db.load('tournaments');
+        const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+        if (t) _renderTournamentInfoContent(t, newVal);
+    } catch (err) {
+        showToast(err.message || 'Failed to update', 'error');
     }
 }
 
