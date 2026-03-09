@@ -3351,13 +3351,17 @@ function loadCompetitors(skipSync = false) {
 
     // Show tournament filter status
     if (currentTournamentId) {
-        const currentTournament = tournaments.find(t => t.id === currentTournamentId);
-        if (currentTournament) {
-            const filterBanner = document.getElementById('tournament-filter-banner');
-            if (filterBanner) {
-                filterBanner.textContent = `Showing competitors for: ${currentTournament.name}`;
-                filterBanner.classList.remove('hidden');
-            }
+        const filterBanner = document.getElementById('tournament-filter-banner');
+        if (filterBanner) {
+            const currentTournamentLocal = tournaments.find(t => t.id === currentTournamentId);
+            // Fallback: if tournament isn't in localStorage (server-only record), read name from dropdown
+            const tournamentName = currentTournamentLocal?.name ||
+                (() => {
+                    const sel = document.getElementById('active-tournament');
+                    return sel?.selectedOptions?.[0]?.textContent?.trim() || currentTournamentId;
+                })();
+            filterBanner.textContent = `Showing competitors for: ${tournamentName}`;
+            filterBanner.classList.remove('hidden');
         }
     }
 
@@ -3520,7 +3524,7 @@ window.editCompetitor = function(id) {
 
 let _tdmGroups = [];
 
-const _ALL_RANKS = ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', '1st Dan', '2nd Dan', '3rd Dan'];
+const _ALL_RANKS = ['10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu', '4th kyu', '3rd kyu', '2nd kyu', '1st kyu', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan'];
 
 const _defaultDojoPool = [
     'Rising Sun Karate', 'Midwest Martial Arts', 'Heartland Dojo',
@@ -3536,8 +3540,8 @@ function openTestDataModal() {
     _tdmGroups = [{
         id: Date.now(),
         count: 20,
-        rankFrom: 'White',
-        rankTo: 'Purple',
+        rankFrom: '10th kyu',
+        rankTo: '1st kyu',
         ageMin: 8,
         ageMax: 18,
         weightMin: 25,
@@ -3840,7 +3844,9 @@ function executeTestGeneration(config) {
     function getUniqueName() {
         for (let attempt = 0; attempt < 500; attempt++) {
             const fi = (nameIdx + attempt) % sFirst.length;
-            const li = Math.floor((nameIdx + attempt) / sFirst.length + attempt) % sLast.length;
+            // Use prime multiplier (7) so last names cycle independently of first names,
+            // preventing all competitors from sharing the same last name.
+            const li = (nameIdx * 7 + attempt) % sLast.length;
             const key = `${sFirst[fi]}|${sLast[li]}`;
             if (!usedNames.has(key)) {
                 usedNames.add(key);
@@ -3849,7 +3855,7 @@ function executeTestGeneration(config) {
             }
         }
         nameIdx++;
-        return { firstName: sFirst[nameIdx % sFirst.length], lastName: sLast[nameIdx % sLast.length] + nameIdx };
+        return { firstName: sFirst[nameIdx % sFirst.length], lastName: sLast[(nameIdx * 7) % sLast.length] + nameIdx };
     }
 
     // ── Step 6: Build competitors from groups ──
@@ -3888,19 +3894,21 @@ function executeTestGeneration(config) {
         }
     }
 
-    // ── Step 7: Save and auto-assign ──
+    // ── Step 7: Save all competitors first, then assign divisions once ──
+    // autoAssignToDivisions() reloads ALL competitors from localStorage each call,
+    // so calling it N times was N full rebuilds. Save everything first, call once.
     let successCount = 0;
     let failCount = 0;
     for (const comp of competitorsToCreate) {
-        const competitorId = db.add('competitors', comp);
-        try { autoAssignToDivisions(comp, competitorId); successCount++; }
+        try { db.add('competitors', comp); successCount++; }
         catch (e) { failCount++; }
     }
 
-    // Also re-assign any existing real competitors so their divisions are correct
-    const realCompetitors = db.load('competitors').filter(c => !c.is_test && c.tournamentId === currentTournamentId);
-    for (const comp of realCompetitors) {
-        try { autoAssignToDivisions(comp, comp.id); } catch (e) { /* ignore */ }
+    // Single division assignment pass covers all test + real competitors
+    const allSavedForTournament = db.load('competitors').filter(c => c.tournamentId === currentTournamentId);
+    if (allSavedForTournament.length > 0) {
+        try { autoAssignToDivisions(allSavedForTournament[0], allSavedForTournament[0].id); }
+        catch (e) { console.warn('Division auto-assignment failed:', e); }
     }
 
     // ── Step 8: Refresh UI ──
