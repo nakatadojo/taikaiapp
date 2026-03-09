@@ -1291,6 +1291,9 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'staff') {
             loadStaff();
         }
+        if (view === 'checkin') {
+            loadCheckinView();
+        }
     });
 });
 
@@ -4099,24 +4102,42 @@ if (instructorForm) {
     });
 }
 
-function loadInstructors() {
-    const instructors = db.load('instructors');
+async function loadInstructors() {
     const tbody = document.getElementById('instructors-tbody');
-
     if (!tbody) return;
-
     tbody.innerHTML = '';
 
-    instructors.forEach(instructor => {
+    const instructors = db.load('instructors');
+    // Also add server-approved coaches who are not already in the local list
+    const serverCoaches = [];
+    if (currentTournamentId) {
+        try {
+            const res = await fetch(`/api/tournament-members/${currentTournamentId}`, { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                const approved = (data.members || []).filter(m => m.role === 'coach' && m.status === 'approved');
+                for (const m of approved) {
+                    if (!instructors.find(i => i.memberId === m.id)) {
+                        serverCoaches.push({ id: `reg_${m.id}`, firstName: m.first_name, lastName: m.last_name, rank: '', club: '', email: m.email || '', phone: '', memberId: m.id, source: 'registered' });
+                    }
+                }
+            }
+        } catch(e) { /* offline */ }
+    }
+
+    const all = [...instructors, ...serverCoaches];
+    all.forEach(instructor => {
         const tr = document.createElement('tr');
+        const registeredBadge = instructor.source === 'registered'
+            ? `<span style="font-size:0.7rem;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.35);border-radius:20px;padding:1px 6px;margin-left:6px;">✓ Registered</span>` : '';
         tr.innerHTML = `
-            <td>${instructor.firstName} ${instructor.lastName}</td>
-            <td>${instructor.rank}</td>
-            <td>${instructor.club}</td>
+            <td>${instructor.firstName} ${instructor.lastName}${registeredBadge}</td>
+            <td>${instructor.rank || '-'}</td>
+            <td>${instructor.club || '-'}</td>
             <td>${instructor.email}</td>
             <td>${instructor.phone || '-'}</td>
             <td>
-                <button class="btn btn-small btn-danger" onclick="deleteInstructor(${instructor.id})">Delete</button>
+                ${instructor.source !== 'registered' ? `<button class="btn btn-small btn-danger" onclick="deleteInstructor(${instructor.id})">Delete</button>` : '<span style="font-size:0.75rem;color:var(--text-secondary);">Via registration</span>'}
             </td>
         `;
         tbody.appendChild(tr);
@@ -10770,14 +10791,18 @@ function _renderPersonnelCard(person, type) {
     const editFn   = type === 'official' ? 'showOfficialForm'  : 'showStaffForm';
     const assignFn = type === 'official' ? 'showOfficialAssignments' : 'showStaffAssignments';
     const deleteFn = type === 'official' ? 'deleteOfficial'    : 'deleteStaff';
+    const registeredBadge = person.source === 'registered'
+        ? `<span style="font-size:0.7rem;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.35);border-radius:20px;padding:1px 7px;margin-left:auto;white-space:nowrap;">✓ Registered</span>`
+        : '';
 
     return `<div class="personnel-card" data-id="${person.id}" data-search="${name.toLowerCase()} ${(person.dojo||'').toLowerCase()} ${roleLabel.toLowerCase()}">
         <div class="personnel-card-header">
             ${photoHTML}
             <div style="flex:1;min-width:0;">
-                <div class="personnel-name">${name}</div>
+                <div class="personnel-name" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${name}${registeredBadge}</div>
                 ${roleLabel ? `<div class="personnel-role">${roleLabel}</div>` : ''}
                 ${person.dojo ? `<div class="personnel-dojo">${person.dojo}</div>` : ''}
+                ${person.email ? `<div class="personnel-dojo" style="font-size:0.72rem;">${person.email}</div>` : ''}
             </div>
         </div>
         ${assignCount > 0 ? `<div style="font-size:0.78rem;color:var(--text-secondary);">${assignCount} assignment${assignCount !== 1 ? 's' : ''}</div>` : ''}
@@ -10790,26 +10815,59 @@ function _renderPersonnelCard(person, type) {
     </div>`;
 }
 
-function loadOfficials() {
+async function loadOfficials() {
     const grid = document.getElementById('officials-grid');
     if (!grid) return;
-    const all = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
-    if (all.length === 0) {
+    let local = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
+    // Merge in server-approved officials (role='judge') who registered publicly
+    if (currentTournamentId) {
+        try {
+            const res = await fetch(`/api/tournament-members/${currentTournamentId}`, { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                const approved = (data.members || []).filter(m => m.role === 'judge' && m.status === 'approved');
+                for (const m of approved) {
+                    if (!local.find(o => o.memberId === m.id)) {
+                        // Auto-save stub so print/edit functions can find it by ID
+                        const stub = db.add('officials', { firstName: m.first_name, lastName: m.last_name, email: m.email || '', memberId: m.id, source: 'registered', tournamentId: currentTournamentId, assignments: [], photo: null, dojo: '', certificationLevel: '' });
+                        local.push(stub);
+                    }
+                }
+            }
+        } catch(e) { /* offline — show local only */ }
+    }
+    if (local.length === 0) {
         grid.innerHTML = '<p class="hint" style="padding:20px 0;">No officials added yet.</p>';
         return;
     }
-    grid.innerHTML = all.map(o => _renderPersonnelCard(o, 'official')).join('');
+    grid.innerHTML = local.map(o => _renderPersonnelCard(o, 'official')).join('');
 }
 
-function loadStaff() {
+async function loadStaff() {
     const grid = document.getElementById('staff-grid');
     if (!grid) return;
-    const all = db.load('staffMembers').filter(s => !currentTournamentId || s.tournamentId === currentTournamentId);
-    if (all.length === 0) {
+    let local = db.load('staffMembers').filter(s => !currentTournamentId || s.tournamentId === currentTournamentId);
+    // Merge in server-approved staff who registered publicly
+    if (currentTournamentId) {
+        try {
+            const res = await fetch(`/api/tournament-members/${currentTournamentId}`, { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                const approved = (data.members || []).filter(m => m.role === 'staff' && m.status === 'approved');
+                for (const m of approved) {
+                    if (!local.find(s => s.memberId === m.id)) {
+                        const stub = db.add('staffMembers', { firstName: m.first_name, lastName: m.last_name, email: m.email || '', memberId: m.id, source: 'registered', tournamentId: currentTournamentId, assignments: [], photo: null, dojo: '', position: m.staff_role || '' });
+                        local.push(stub);
+                    }
+                }
+            }
+        } catch(e) { /* offline */ }
+    }
+    if (local.length === 0) {
         grid.innerHTML = '<p class="hint" style="padding:20px 0;">No staff added yet.</p>';
         return;
     }
-    grid.innerHTML = all.map(s => _renderPersonnelCard(s, 'staff')).join('');
+    grid.innerHTML = local.map(s => _renderPersonnelCard(s, 'staff')).join('');
 }
 
 // ── Form show/hide ────────────────────────────────────────────────────────────
@@ -11227,9 +11285,13 @@ function _getBadgePrintCSS() {
     `;
 }
 
-function _generateBadgeCardHTML(person, roleLabel, tournamentName) {
+function _generateBadgeCardHTML(person, roleLabel, tournamentName, memberId) {
     const fullName = `${person.firstName} ${person.lastName}`;
-    const qrData   = encodeURIComponent(`${fullName} | ${roleLabel} | ${tournamentName}`);
+    // If member has a server ID (from tournament_members), encode machine-readable QR for scanner
+    const qrPayload = (memberId || person.memberId)
+        ? `checkin:member:${memberId || person.memberId}:${currentTournamentId || ''}`
+        : `${fullName} | ${roleLabel} | ${tournamentName}`;
+    const qrData   = encodeURIComponent(qrPayload);
     const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${qrData}`;
 
     // Embed logo src directly — works in any popup/blob context
@@ -11336,6 +11398,358 @@ function printAllStaffBadges() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // END OFFICIALS & STAFF
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHECK-IN SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let _checkinScanner  = null;   // Html5Qrcode instance
+let _checkinData     = [];     // loaded competitor registrations
+let _checkinMembers  = [];     // loaded approved members
+let _checkinTab      = 'competitors'; // active tab
+
+async function loadCheckinView() {
+    if (!currentTournamentId) {
+        document.getElementById('ci-list-competitors').innerHTML = '<p class="hint" style="padding:16px;">No tournament selected.</p>';
+        return;
+    }
+    // Reset detail panel
+    document.getElementById('checkin-detail-panel').style.display = 'none';
+
+    // Fetch competitors
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            _checkinData = data.competitors || [];
+            _renderCheckinStats(data.stats || {});
+        }
+    } catch(e) {
+        _checkinData = [];
+    }
+
+    // Fetch approved members
+    try {
+        const res = await fetch(`/api/tournament-members/${currentTournamentId}`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            _checkinMembers = (data.members || []).filter(m => m.status === 'approved' && ['judge','staff','coach'].includes(m.role));
+        }
+    } catch(e) {
+        _checkinMembers = [];
+    }
+
+    _renderCheckinList();
+}
+
+function _renderCheckinStats(stats) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+    set('ci-stat-total', stats.total);
+    set('ci-stat-checked', stats.checked_in);
+    set('ci-stat-missing', stats.missing);
+    set('ci-stat-mat', stats.on_mat);
+}
+
+function _renderCheckinList() {
+    const search = (document.getElementById('ci-search')?.value || '').toLowerCase();
+    // Competitors
+    const compList = document.getElementById('ci-list-competitors');
+    if (compList) {
+        const filtered = _checkinData.filter(c => {
+            const name = `${c.first_name} ${c.last_name}`.toLowerCase();
+            return !search || name.includes(search);
+        });
+        compList.innerHTML = filtered.length === 0
+            ? '<p class="hint" style="padding:16px;">No competitors found.</p>'
+            : filtered.map(c => {
+                const checked = !!c.checkin_id;
+                return `<div class="checkin-list-item" onclick="renderCheckinDetail('${c.registration_id}', 'competitor')">
+                    <span>${c.first_name} ${c.last_name}<br><small style="color:var(--text-secondary);">${c.academy_name || ''}</small></span>
+                    <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
+                </div>`;
+            }).join('');
+    }
+    // Members
+    const memList = document.getElementById('ci-list-members');
+    if (memList) {
+        const filtered = _checkinMembers.filter(m => {
+            const name = `${m.first_name} ${m.last_name}`.toLowerCase();
+            return !search || name.includes(search);
+        });
+        memList.innerHTML = filtered.length === 0
+            ? '<p class="hint" style="padding:16px;">No personnel found.</p>'
+            : filtered.map(m => {
+                const checked = !!m.checked_in_at;
+                const roleLabel = m.role === 'judge' ? 'Official' : m.role === 'coach' ? 'Coach' : 'Staff';
+                return `<div class="checkin-list-item" onclick="renderMemberCheckinDetail('${m.id}')">
+                    <span>${m.first_name} ${m.last_name}<br><small style="color:var(--text-secondary);">${roleLabel}${m.staff_role ? ' · '+m.staff_role : ''}</small></span>
+                    <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ Present' : 'Not In'}</span>
+                </div>`;
+            }).join('');
+    }
+}
+
+function filterCheckinList() {
+    _renderCheckinList();
+}
+
+function switchCheckinTab(tab) {
+    _checkinTab = tab;
+    const compList = document.getElementById('ci-list-competitors');
+    const memList  = document.getElementById('ci-list-members');
+    const tComp    = document.getElementById('ci-tab-competitors');
+    const tMem     = document.getElementById('ci-tab-members');
+    if (tab === 'competitors') {
+        compList.style.display = '';
+        memList.style.display  = 'none';
+        if (tComp) { tComp.style.borderBottomColor = 'var(--accent)'; tComp.style.color = 'var(--text-primary)'; }
+        if (tMem)  { tMem.style.borderBottomColor  = 'transparent';   tMem.style.color  = 'var(--text-secondary)'; }
+    } else {
+        compList.style.display = 'none';
+        memList.style.display  = '';
+        if (tMem)  { tMem.style.borderBottomColor  = 'var(--accent)'; tMem.style.color  = 'var(--text-primary)'; }
+        if (tComp) { tComp.style.borderBottomColor = 'transparent';   tComp.style.color = 'var(--text-secondary)'; }
+    }
+}
+
+// ── QR Scanner ──────────────────────────────────────────────────────────────
+
+function startQRScanner() {
+    if (!window.Html5Qrcode) {
+        showToast('QR scanner library not loaded yet — please wait a moment and try again', 'warning');
+        return;
+    }
+    if (_checkinScanner) { stopQRScanner(); }
+    _checkinScanner = new Html5Qrcode('qr-reader');
+    _checkinScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => { handleQRScan(decodedText); },
+        () => {}
+    ).then(() => {
+        document.getElementById('ci-start-scan-btn').style.display = 'none';
+        document.getElementById('ci-stop-scan-btn').style.display  = '';
+    }).catch(err => {
+        showToast(`Camera error: ${err}`, 'error');
+        _checkinScanner = null;
+    });
+}
+
+function stopQRScanner() {
+    if (_checkinScanner) {
+        _checkinScanner.stop().catch(() => {});
+        _checkinScanner.clear();
+        _checkinScanner = null;
+    }
+    document.getElementById('ci-start-scan-btn').style.display = '';
+    document.getElementById('ci-stop-scan-btn').style.display  = 'none';
+}
+
+function handleQRScan(text) {
+    // Pause scanner briefly to avoid double-scans
+    if (_checkinScanner) { _checkinScanner.pause(true); setTimeout(() => { if (_checkinScanner) _checkinScanner.resume(); }, 3000); }
+
+    // Parse QR formats
+    if (text.startsWith('checkin:registrant:')) {
+        const parts = text.split(':');
+        const rid = parts[2];
+        renderCheckinDetail(rid, 'competitor');
+        return;
+    }
+    if (text.startsWith('checkin:member:')) {
+        const parts = text.split(':');
+        const mid = parts[2];
+        renderMemberCheckinDetail(mid);
+        return;
+    }
+    // Fallback: fuzzy name search
+    const lower = text.toLowerCase();
+    const match = _checkinData.find(c => `${c.first_name} ${c.last_name}`.toLowerCase().includes(lower));
+    if (match) { renderCheckinDetail(match.registration_id, 'competitor'); return; }
+    const mMatch = _checkinMembers.find(m => `${m.first_name} ${m.last_name}`.toLowerCase().includes(lower));
+    if (mMatch) { renderMemberCheckinDetail(mMatch.id); return; }
+    showToast('QR code not recognized — try searching by name', 'warning');
+}
+
+// ── Competitor Detail Panel ──────────────────────────────────────────────────
+
+function renderCheckinDetail(registrationId, type) {
+    const record = _checkinData.find(c => c.registration_id === registrationId);
+    if (!record) { showToast('Competitor not found', 'warning'); return; }
+
+    const panel = document.getElementById('checkin-detail-panel');
+    const content = document.getElementById('ci-detail-content');
+    panel.style.display = '';
+
+    const checked = !!record.checkin_id;
+    const waiverSigned = record.waiver_status === 'signed';
+    const photoHTML = record.photo
+        ? `<img src="${record.photo}" class="ci-photo" alt="">`
+        : `<div class="ci-photo" style="background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">👤</div>`;
+    const eventsText = (record.events || []).map(e => e.eventName).filter(Boolean).join(', ') || '—';
+    const registeredWeight = record.registered_weight ? `${record.registered_weight} kg` : '—';
+
+    const alreadyCheckedHTML = checked ? `
+        <div style="margin-bottom:16px;padding:10px 14px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;color:#22c55e;font-weight:600;">
+            ✓ Checked In ${record.checked_in_at ? '· ' + new Date(record.checked_in_at).toLocaleTimeString() : ''}
+        </div>
+        <button class="btn btn-secondary btn-small" onclick="undoCheckin('${registrationId}')">↩ Undo Check-In</button>
+    ` : `
+        <!-- Document verification -->
+        <div style="margin-bottom:16px;">
+            <h4 style="margin-bottom:10px;font-size:14px;">Verification</h4>
+            <div class="checkin-doc-row">
+                <span style="flex:1;">Waiver / Parent Consent</span>
+                <span style="${waiverSigned ? 'color:#22c55e;font-weight:600;' : 'color:#ef4444;'}">
+                    ${waiverSigned ? '✓ Signed' : '✗ Not Signed'}
+                </span>
+            </div>
+            <div class="checkin-doc-row">
+                <label style="flex:1;cursor:pointer;">AAU Membership Card</label>
+                <input type="checkbox" id="ci-aau-verified" style="width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="checkin-doc-row" style="flex-wrap:wrap;gap:8px;">
+                <span style="flex:1;">Weight · Registered: <strong>${registeredWeight}</strong></span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="number" id="ci-actual-weight" placeholder="Actual kg" step="0.1" min="0" max="300"
+                        style="width:90px;padding:4px 8px;border-radius:6px;border:1px solid var(--glass-border);background:var(--bg-secondary);color:var(--text-primary);">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" id="ci-weight-verified"> Verified
+                    </label>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary" onclick="performCheckin('${registrationId}')">✓ Check In</button>
+    `;
+
+    content.innerHTML = `
+        <div class="ci-person-header">
+            ${photoHTML}
+            <div>
+                <div style="font-weight:700;font-size:1.05rem;">${record.first_name} ${record.last_name}</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);">${record.academy_name || ''}</div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">Events: ${eventsText}</div>
+            </div>
+        </div>
+        ${alreadyCheckedHTML}
+    `;
+}
+
+async function performCheckin(registrationId) {
+    const actualWeight = document.getElementById('ci-actual-weight')?.value;
+    const weightVerified = document.getElementById('ci-weight-verified')?.checked;
+    const aauVerified   = document.getElementById('ci-aau-verified')?.checked;
+
+    const btn = document.querySelector('#ci-detail-content .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking in…'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ registrationId, actualWeight: actualWeight || null, weightVerified: !!weightVerified, aauVerified: !!aauVerified }),
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Check-in failed', 'error'); if (btn) { btn.disabled = false; btn.textContent = '✓ Check In'; } return; }
+        // Update local data
+        const idx = _checkinData.findIndex(c => c.registration_id === registrationId);
+        if (idx >= 0) { _checkinData[idx] = { ..._checkinData[idx], checkin_id: data.checkin?.id, checked_in_at: data.checkin?.checked_in_at }; }
+        _renderCheckinStats(data.stats || {});
+        _renderCheckinList();
+        renderCheckinDetail(registrationId, 'competitor');
+        showToast('Checked in!', 'success');
+    } catch(err) {
+        showToast('Network error', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✓ Check In'; }
+    }
+}
+
+async function undoCheckin(registrationId) {
+    if (!confirm('Undo this check-in?')) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin/${registrationId}`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Cannot undo', 'error'); return; }
+        const idx = _checkinData.findIndex(c => c.registration_id === registrationId);
+        if (idx >= 0) { _checkinData[idx] = { ..._checkinData[idx], checkin_id: null, checked_in_at: null }; }
+        _renderCheckinStats(data.stats || {});
+        _renderCheckinList();
+        renderCheckinDetail(registrationId, 'competitor');
+        showToast('Check-in undone', 'success');
+    } catch(err) { showToast('Network error', 'error'); }
+}
+
+// ── Member (Official/Staff/Coach) Detail Panel ───────────────────────────────
+
+function renderMemberCheckinDetail(memberId) {
+    const member = _checkinMembers.find(m => m.id === memberId);
+    if (!member) { showToast('Member not found', 'warning'); return; }
+
+    const panel = document.getElementById('checkin-detail-panel');
+    const content = document.getElementById('ci-detail-content');
+    panel.style.display = '';
+
+    const checked = !!member.checked_in_at;
+    const roleLabel = member.role === 'judge' ? 'Official' : member.role === 'coach' ? 'Coach' : 'Staff';
+
+    content.innerHTML = `
+        <div class="ci-person-header">
+            <div class="ci-photo" style="background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">👤</div>
+            <div>
+                <div style="font-weight:700;font-size:1.05rem;">${member.first_name} ${member.last_name}</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);">${roleLabel}${member.staff_role ? ' · ' + member.staff_role : ''}</div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${member.email || ''}</div>
+            </div>
+        </div>
+        ${checked
+            ? `<div style="margin-bottom:16px;padding:10px 14px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;color:#22c55e;font-weight:600;">✓ Present${member.checked_in_at ? ' · ' + new Date(member.checked_in_at).toLocaleTimeString() : ''}</div>
+               <button class="btn btn-secondary btn-small" onclick="undoMemberCheckin('${memberId}')">↩ Undo</button>`
+            : `<button class="btn btn-primary" onclick="performMemberCheckin('${memberId}')">✓ Mark Present</button>`
+        }
+    `;
+    // Switch to members tab if not already there
+    if (_checkinTab !== 'members') switchCheckinTab('members');
+}
+
+async function performMemberCheckin(memberId) {
+    const btn = document.querySelector('#ci-detail-content .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Marking…'; }
+    try {
+        const res = await fetch(`/api/tournament-members/${memberId}/checkin`, {
+            method: 'PATCH', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Failed', 'error'); if (btn) { btn.disabled = false; btn.textContent = '✓ Mark Present'; } return; }
+        const idx = _checkinMembers.findIndex(m => m.id === memberId);
+        if (idx >= 0) { _checkinMembers[idx] = { ..._checkinMembers[idx], checked_in_at: data.member?.checked_in_at || new Date().toISOString() }; }
+        _renderCheckinList();
+        renderMemberCheckinDetail(memberId);
+        showToast('Marked present!', 'success');
+    } catch(err) { showToast('Network error', 'error'); if (btn) { btn.disabled = false; btn.textContent = '✓ Mark Present'; } }
+}
+
+async function undoMemberCheckin(memberId) {
+    if (!confirm('Undo this check-in?')) return;
+    try {
+        const res = await fetch(`/api/tournament-members/${memberId}/checkin`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || 'Failed', 'error'); return; }
+        const idx = _checkinMembers.findIndex(m => m.id === memberId);
+        if (idx >= 0) { _checkinMembers[idx] = { ..._checkinMembers[idx], checked_in_at: null }; }
+        _renderCheckinList();
+        renderMemberCheckinDetail(memberId);
+        showToast('Check-in undone', 'success');
+    } catch(err) { showToast('Network error', 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END CHECK-IN SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Drag and Drop Schedule Grid with Dynamic Timeline

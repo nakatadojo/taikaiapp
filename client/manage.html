@@ -384,6 +384,7 @@
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
                     <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> Staging</button>
+                    <button class="nav-btn" data-view="checkin"><i data-lucide="scan-line" class="nav-icon"></i> Check-In</button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
                     <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
                     <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
@@ -2438,6 +2439,73 @@
                 <div id="staging-mat-grid" class="timeline-grid"></div>
             </section>
 
+            <!-- ===== CHECK-IN VIEW ===== -->
+            <section id="checkin-view" class="view">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                    <h2>Check-In</h2>
+                    <button class="btn btn-secondary btn-small" onclick="loadCheckinView()">🔄 Refresh</button>
+                </div>
+
+                <!-- Stats Bar -->
+                <div class="checkin-stats-bar" id="checkin-stats-bar">
+                    <div class="checkin-stat-card">
+                        <div class="checkin-stat-num" id="ci-stat-total">—</div>
+                        <div class="checkin-stat-label">Total</div>
+                    </div>
+                    <div class="checkin-stat-card" style="border-color:rgba(34,197,94,0.3);">
+                        <div class="checkin-stat-num" style="color:#22c55e;" id="ci-stat-checked">—</div>
+                        <div class="checkin-stat-label">Checked In</div>
+                    </div>
+                    <div class="checkin-stat-card" style="border-color:rgba(239,68,68,0.3);">
+                        <div class="checkin-stat-num" style="color:#ef4444;" id="ci-stat-missing">—</div>
+                        <div class="checkin-stat-label">Missing</div>
+                    </div>
+                    <div class="checkin-stat-card" style="border-color:rgba(251,191,36,0.3);">
+                        <div class="checkin-stat-num" style="color:#fbbf24;" id="ci-stat-mat">—</div>
+                        <div class="checkin-stat-label">On Mat</div>
+                    </div>
+                </div>
+
+                <!-- Layout: Scanner + List left, Detail panel right -->
+                <div class="checkin-layout">
+                    <!-- Left column: QR Scanner + list -->
+                    <div style="display:flex;flex-direction:column;gap:16px;">
+                        <!-- QR Scanner -->
+                        <div class="checkin-scanner-panel">
+                            <h4 style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                                <span>📷 QR Scanner</span>
+                                <span style="font-size:0.75rem;font-weight:400;color:var(--text-secondary);">Point camera at competitor's QR code or official's badge</span>
+                            </h4>
+                            <div id="qr-reader"></div>
+                            <div style="margin-top:10px;display:flex;gap:8px;">
+                                <button class="btn btn-primary btn-small" id="ci-start-scan-btn" onclick="startQRScanner()">Start Camera</button>
+                                <button class="btn btn-secondary btn-small" id="ci-stop-scan-btn" onclick="stopQRScanner()" style="display:none;">Stop Camera</button>
+                            </div>
+                            <p class="hint" style="margin-top:8px;">Or search by name below ↓</p>
+                        </div>
+
+                        <!-- Search + List -->
+                        <div class="checkin-list-panel">
+                            <div style="padding:12px;border-bottom:1px solid var(--glass-border);">
+                                <input type="text" id="ci-search" placeholder="Search by name…" oninput="filterCheckinList()" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--glass-border);background:var(--bg-secondary);color:var(--text-primary);font-size:14px;">
+                            </div>
+                            <!-- Tabs -->
+                            <div style="display:flex;border-bottom:1px solid var(--glass-border);">
+                                <button class="ci-tab active" onclick="switchCheckinTab('competitors')" id="ci-tab-competitors" style="flex:1;padding:10px;background:none;border:none;color:var(--text-primary);font-size:13px;cursor:pointer;border-bottom:2px solid var(--accent);">Competitors</button>
+                                <button class="ci-tab" onclick="switchCheckinTab('members')" id="ci-tab-members" style="flex:1;padding:10px;background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;border-bottom:2px solid transparent;">Officials / Staff / Coaches</button>
+                            </div>
+                            <div id="ci-list-competitors" style="max-height:400px;overflow-y:auto;"></div>
+                            <div id="ci-list-members" style="max-height:400px;overflow-y:auto;display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right column: Detail panel -->
+                    <div id="checkin-detail-panel" class="checkin-detail-panel" style="display:none;">
+                        <div id="ci-detail-content"></div>
+                    </div>
+                </div>
+            </section>
+
             <!-- ===== STAGING SETTINGS VIEW ===== -->
             <section id="staging-settings-view" class="view">
                 <h2 style="margin-bottom:20px;">Staging Display Settings</h2>
@@ -3508,5 +3576,7 @@
         });
     });
     </script>
+    <!-- QR scanner library — loaded lazily -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 </body>
 </html>

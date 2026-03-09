@@ -648,6 +648,7 @@
                     status: reg.status || 'active',
                     events: reg.events || [],
                     profileName: `${reg.profile_first_name || reg.first_name || ''} ${reg.profile_last_name || reg.last_name || ''}`.trim(),
+                    registrationId: reg.id,
                 });
             }
 
@@ -739,6 +740,20 @@
             ? `<a href="/tournaments/${esc(item.tournamentSlug)}" class="btn-sm" style="text-decoration:none;">View Tournament</a>`
             : '';
 
+        // QR code for competitors — encodes registrationId for event-day check-in scan
+        let qrSection = '';
+        if (item.role === 'competitor' && item.registrationId && item.status !== 'cancelled') {
+            const qrData = encodeURIComponent(`checkin:registrant:${item.registrationId}:${item.tournamentId}`);
+            qrSection = `
+                <div style="border-top:1px solid var(--border,rgba(255,255,255,0.1));margin-top:12px;padding-top:12px;display:flex;align-items:center;gap:14px;">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${qrData}&bgcolor=ffffff&color=111111&margin=4" alt="Check-in QR" style="width:80px;height:80px;border-radius:6px;flex-shrink:0;">
+                    <div>
+                        <div style="font-weight:600;font-size:13px;margin-bottom:3px;">Check-In QR</div>
+                        <div style="font-size:12px;color:var(--text-dim,#aaa);">Show this code at the check-in table on event day. Staff will scan it to verify your registration.</div>
+                    </div>
+                </div>`;
+        }
+
         return `
             <div class="card">
                 <div class="card-header">
@@ -750,6 +765,7 @@
                             ${details}
                         </div>
                         ${eventsList}
+                        ${qrSection}
                     </div>
                     <div class="card-badges">${roleBadge}${staffBadge}${statusBadge}</div>
                 </div>

@@ -123,4 +123,32 @@ async function getStaffDashboard(userId) {
   return result.rows;
 }
 
-module.exports = { create, findById, getByTournament, approve, decline, getByUser, getStaffDashboard };
+/**
+ * Mark a tournament member as checked in on event day.
+ */
+async function checkIn(memberId, checkedInBy) {
+  const result = await pool.query(
+    `UPDATE tournament_members
+     SET checked_in_at = NOW(), checked_in_by = $2
+     WHERE id = $1 AND status = 'approved'
+     RETURNING *`,
+    [memberId, checkedInBy]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Undo a member check-in.
+ */
+async function undoCheckIn(memberId) {
+  const result = await pool.query(
+    `UPDATE tournament_members
+     SET checked_in_at = NULL, checked_in_by = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [memberId]
+  );
+  return result.rows[0] || null;
+}
+
+module.exports = { create, findById, getByTournament, approve, decline, getByUser, getStaffDashboard, checkIn, undoCheckIn };

@@ -260,4 +260,36 @@ async function listPublic(req, res, next) {
   }
 }
 
-module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, staffDashboard };
+/**
+ * PATCH /api/tournament-members/:id/checkin
+ * Mark a member (official/staff/coach) as checked in on event day.
+ */
+async function checkIn(req, res, next) {
+  try {
+    const member = await tournamentMemberQueries.checkIn(req.params.id, req.user.id);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found or not approved' });
+    }
+    res.json({ member });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * DELETE /api/tournament-members/:id/checkin
+ * Undo a member check-in.
+ */
+async function undoCheckIn(req, res, next) {
+  try {
+    const member = await tournamentMemberQueries.undoCheckIn(req.params.id);
+    if (!member) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+    res.json({ member });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, staffDashboard, checkIn, undoCheckIn };

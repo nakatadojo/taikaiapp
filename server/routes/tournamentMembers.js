@@ -45,4 +45,16 @@ router.patch('/:id/decline',
   controller.decline
 );
 
+// PATCH /api/tournament-members/:id/checkin — Mark member as checked in on event day
+router.patch('/:id/checkin',
+  requireAuth,
+  controller.checkIn
+);
+
+// DELETE /api/tournament-members/:id/checkin — Undo member check-in
+router.delete('/:id/checkin',
+  requireAuth,
+  controller.undoCheckIn
+);
+
 module.exports = router;

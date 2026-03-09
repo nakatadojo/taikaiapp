@@ -16,11 +16,12 @@ async function list(req, res, next) {
 
 /**
  * POST /api/tournaments/:id/checkin
- * Check in a competitor. Body: { registrationId, notes? }
+ * Check in a competitor.
+ * Body: { registrationId, notes?, actualWeight?, weightVerified?, aauVerified? }
  */
 async function checkin(req, res, next) {
   try {
-    const { registrationId, notes } = req.body;
+    const { registrationId, notes, actualWeight, weightVerified, aauVerified } = req.body;
     if (!registrationId) {
       return res.status(400).json({ error: 'registrationId is required' });
     }
@@ -30,6 +31,9 @@ async function checkin(req, res, next) {
       registrationId,
       checkedInBy: req.user.id,
       notes,
+      actualWeight: actualWeight != null ? parseFloat(actualWeight) : null,
+      weightVerified: !!weightVerified,
+      aauVerified: !!aauVerified,
     });
 
     const stats = await CheckinQueries.getStats(req.params.id);
