@@ -11180,12 +11180,17 @@ function _generateBadgeCardHTML(person, roleLabel, tournamentName) {
     const qrData   = encodeURIComponent(`${fullName} | ${roleLabel} | ${tournamentName}`);
     const qrSrc    = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${qrData}`;
 
+    // Embed logo src directly — works in any popup/blob context
+    const logoSrc = (typeof window !== 'undefined' && window.TAIKAI_LOGO)
+        ? window.TAIKAI_LOGO
+        : '/assets/taikai-logo.png';
+
     const photoHTML = person.photo
         ? `<img class="badge-photo" src="${person.photo}" alt="${fullName}">`
         : `<div class="badge-photo-placeholder">👤</div>`;
 
     return `<div class="badge-card">
-        <img class="badge-logo" data-taikai-logo alt="Taikai">
+        <img class="badge-logo" src="${logoSrc}" alt="Taikai">
         <div class="badge-divider"></div>
         ${photoHTML}
         <div class="badge-name">${fullName}</div>
@@ -11199,33 +11204,34 @@ function _generateBadgeCardHTML(person, roleLabel, tournamentName) {
 }
 
 function _openBadgePrintWindow(cardsHTML, tournamentName) {
-    // Get the taikai logo base64 from window.TAIKAI_LOGO (set by taikai-logo.js)
-    const logoScript = window.TAIKAI_LOGO
-        ? `<script>window.TAIKAI_LOGO = '${window.TAIKAI_LOGO}';<\/script>
-           <script>document.querySelectorAll('[data-taikai-logo]').forEach(el=>{el.src=window.TAIKAI_LOGO;});<\/script>`
-        : '';
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Badges \u2014 ${tournamentName}</title>
+    <style>${_getBadgePrintCSS()}</style>
+</head>
+<body>
+    <div class="badge-grid">${cardsHTML}</div>
+    <script>
+        window.addEventListener('load', function() {
+            setTimeout(function() { window.print(); }, 800);
+        });
+    <\/script>
+</body>
+</html>`;
 
-    const html = `<!DOCTYPE html><html><head>
-        <meta charset="UTF-8">
-        <title>Badges — ${tournamentName}</title>
-        <style>${_getBadgePrintCSS()}</style>
-    </head><body>
-        <div class="badge-grid">${cardsHTML}</div>
-        ${logoScript}
-        <script>
-            // Populate taikai logos
-            if (window.TAIKAI_LOGO) {
-                document.querySelectorAll('[data-taikai-logo]').forEach(el => { el.src = window.TAIKAI_LOGO; });
-            }
-            // Wait for images then print
-            window.addEventListener('load', function() { setTimeout(function(){ window.print(); }, 500); });
-        <\/script>
-    </body></html>`;
-
-    const w = window.open('', '_blank', 'width=900,height=700,noopener');
-    if (!w) { showToast('Allow popups to print badges', 'warning'); return; }
-    w.document.write(html);
-    w.document.close();
+    // Use Blob URL — avoids document.write limits and encoding issues
+    try {
+        const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const w = window.open(blobUrl, '_blank', 'width=900,height=700');
+        if (!w) { showToast('Allow popups to print badges', 'warning'); return; }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+        console.error('Badge print error:', err);
+        showToast('Could not open print window', 'error');
+    }
 }
 
 function _getTournamentName() {
