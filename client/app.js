@@ -3610,6 +3610,8 @@ function openTestDataModal() {
         ageMax: 18,
         weightMin: 25,
         weightMax: 80,
+        experienceMin: 0,
+        experienceMax: 5,
         gender: 'mixed',
     }];
     _showTdmModal();
@@ -3656,6 +3658,14 @@ function _tdmGroupHTML(g, idx) {
                         <input type="number" min="10" max="200" value="${g.weightMin}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'weightMin',+this.value)">
                         <span style="color:var(--text-muted);font-size:11px;">–</span>
                         <input type="number" min="10" max="200" value="${g.weightMax}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'weightMax',+this.value)">
+                    </div>
+                </div>
+                <div class="tdm-field">
+                    <label class="tdm-label">Experience (yrs)</label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input type="number" min="0" max="50" value="${g.experienceMin ?? 0}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'experienceMin',+this.value)">
+                        <span style="color:var(--text-muted);font-size:11px;">–</span>
+                        <input type="number" min="0" max="50" value="${g.experienceMax ?? 5}" class="tdm-input tdm-input-sm" oninput="_tdmUpdate(${g.id},'experienceMax',+this.value)">
                     </div>
                 </div>
                 <div class="tdm-field">
@@ -3713,7 +3723,7 @@ function _showTdmModal() {
 }
 
 window._tdmAddGroup = function() {
-    _tdmGroups.push({ id: Date.now(), count: 10, rankFrom: 'White', rankTo: 'Blue', ageMin: 8, ageMax: 18, weightMin: 25, weightMax: 80, gender: 'mixed' });
+    _tdmGroups.push({ id: Date.now(), count: 10, rankFrom: 'White', rankTo: 'Blue', ageMin: 8, ageMax: 18, weightMin: 25, weightMax: 80, experienceMin: 0, experienceMax: 5, gender: 'mixed' });
     const c = document.getElementById('tdm-groups-container');
     if (c) c.innerHTML = _tdmGroups.map((g, i) => _tdmGroupHTML(g, i)).join('');
 };
@@ -3942,8 +3952,9 @@ function executeTestGeneration(config) {
             const weight = parseFloat((group.weightMin + Math.random() * (group.weightMax - group.weightMin)).toFixed(1));
             const club = dojoPool[Math.floor(Math.random() * dojoPool.length)];
             const dateOfBirth = genDOB(age);
-            const rankIdx = _ALL_RANKS.indexOf(rank);
-            const experience = parseFloat((Math.max(0, rankIdx * 0.8 + Math.random() * 1.5 - 0.5)).toFixed(1));
+            const expMin = group.experienceMin ?? 0;
+            const expMax = group.experienceMax ?? 5;
+            const experience = parseFloat((expMin + Math.random() * Math.max(0, expMax - expMin)).toFixed(1));
 
             competitorsToCreate.push({
                 firstName, lastName, dateOfBirth, weight, rank, experience,
