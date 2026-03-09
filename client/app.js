@@ -6895,9 +6895,22 @@ function showDivisionBuilder(templateId = null, eventId = null) {
 
     builder.classList.remove('hidden');
 
-    // When opened from the Events tab, show as a floating modal overlay
+    // When opened from the Events tab, show as a floating modal overlay.
+    // The builder lives inside #divisions-view which has display:none on other tabs —
+    // position:fixed cannot escape a display:none ancestor, so we physically move the
+    // builder element to <body> while the modal is open, then return it on close.
     if (_currentBuilderEventId) {
         builder.classList.add('division-builder-modal');
+
+        // Insert a placeholder so we know where to return the builder on close
+        if (!document.getElementById('division-builder-placeholder')) {
+            const placeholder = document.createElement('div');
+            placeholder.id = 'division-builder-placeholder';
+            placeholder.style.display = 'none';
+            builder.parentElement.insertBefore(placeholder, builder);
+        }
+        document.body.appendChild(builder); // reparent to body — position:fixed now works
+
         let backdrop = document.getElementById('division-builder-backdrop');
         if (!backdrop) {
             backdrop = document.createElement('div');
@@ -6907,7 +6920,6 @@ function showDivisionBuilder(templateId = null, eventId = null) {
             document.body.appendChild(backdrop);
         }
         backdrop.style.display = 'block';
-        builder.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
@@ -7119,6 +7131,12 @@ function loadExistingCriteria() {
 function hideDivisionBuilder() {
     const builder = document.getElementById('division-builder');
     if (builder) {
+        // If the builder was reparented to <body> for the modal, move it back
+        const placeholder = document.getElementById('division-builder-placeholder');
+        if (placeholder) {
+            placeholder.parentElement.insertBefore(builder, placeholder);
+            placeholder.remove();
+        }
         builder.classList.add('hidden');
         builder.classList.remove('division-builder-modal');
     }
