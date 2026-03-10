@@ -134,6 +134,8 @@ function generateUniqueId() {
 let currentTournamentId = null;
 
 // ── Server Persistence Helpers ───────────────────────────────────────────────
+// Competitors are kept in-memory only — never written to localStorage.
+let _inMemoryCompetitors = [];
 let _competitorsSyncTimer = null;
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -301,8 +303,8 @@ class Database {
     }
 
     init() {
-        // Array-based tables
-        const arrayTables = ['competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
+        // Array-based tables (competitors handled in-memory, not localStorage)
+        const arrayTables = ['instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
         for (const table of arrayTables) {
             const key = (table === 'tournaments') ? table : _scopedKey(table);
             if (!localStorage.getItem(key)) {
@@ -326,6 +328,7 @@ class Database {
     }
 
     save(table, data) {
+        if (table === 'competitors') { _inMemoryCompetitors = Array.isArray(data) ? data : []; return; }
         const key = (table === 'tournaments') ? table : _scopedKey(table);
         localStorage.setItem(key, JSON.stringify(data));
         // Backward compat: also write to global key for scoreboards/TV displays
@@ -335,6 +338,7 @@ class Database {
     }
 
     load(table) {
+        if (table === 'competitors') return _inMemoryCompetitors;
         const key = (table === 'tournaments') ? table : _scopedKey(table);
         const data = localStorage.getItem(key);
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
@@ -541,9 +545,9 @@ async function _loadCompetitorsFromServer() {
         ]);
         if (compRes.ok) {
             const { competitors } = await compRes.json();
-            if (Array.isArray(competitors) && competitors.length) {
-                db.save('competitors', competitors);
-            }
+            db.save('competitors', Array.isArray(competitors) ? competitors : []);
+            // Remove any stale localStorage copy left from a previous session
+            localStorage.removeItem(_scopedKey('competitors'));
         }
         if (clubsRes.ok) {
             const { clubs } = await clubsRes.json();
@@ -1248,6 +1252,7 @@ function switchTournament() {
     const select = document.getElementById('active-tournament');
     currentTournamentId = select.value || null;
     if (currentTournamentId) {
+        _inMemoryCompetitors = [];   // clear stale in-memory competitors on tournament switch
         _migrateUnscopedData();
         db.init();
         document.getElementById('main-nav').classList.remove('hidden');
@@ -8349,7 +8354,7 @@ function showMoveCompetitorModal(fromDivision, competitorId) {
     if (!Array.isArray(fromComps)) return;
     const comp = fromComps.find(c => {
         const cid = c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
-        return cid === competitorId;
+        return String(cid) === String(competitorId);
     });
     if (!comp) { showToast('Competitor not found', 'error'); return; }
 
