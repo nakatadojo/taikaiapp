@@ -633,7 +633,8 @@
 
     function renderTournamentCard(t) {
         const dateStr = formatDate(t.date);
-        const statusBadge = `<span class="badge badge-${t.status || 'draft'}">${esc(t.status || 'draft')}</span>`;
+        const statusText = t.published ? 'published' : 'draft';
+        const statusBadge = `<span class="badge badge-${statusText}">${esc(statusText)}</span>`;
         const count = t.competitor_count || 0;
 
         return `
