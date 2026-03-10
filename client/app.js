@@ -8371,7 +8371,7 @@ function showMoveCompetitorModal(fromDivision, competitorId) {
     overlay.id = 'move-comp-overlay';
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML = `
-        <div style="background:var(--glass-bg,#1a1a2e);border:1px solid var(--glass-border,#333);border-radius:12px;padding:24px;max-width:420px;width:90%;color:var(--text-primary,#fff);">
+        <div style="background:var(--bg-secondary,#1a1a24);border:1px solid var(--glass-border,#333);border-radius:12px;padding:24px;max-width:420px;width:90%;color:var(--text-primary,#fff);">
             <h3 style="margin:0 0 8px 0;font-size:16px;">Move Competitor</h3>
             <p style="margin:0 0 16px 0;font-size:14px;color:var(--text-secondary,#aaa);">
                 Move <strong>${_escapeHtml(compName)}</strong> from <em>${_escapeHtml(fromDivision)}</em>
