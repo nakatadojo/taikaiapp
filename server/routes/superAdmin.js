@@ -52,7 +52,7 @@ router.get('/stats', async (req, res, next) => {
         (SELECT COUNT(*) FROM users) AS total_users,
         (SELECT COUNT(*) FROM academies) AS total_dojos,
         (SELECT COUNT(*) FROM tournaments) AS total_tournaments,
-        (SELECT COUNT(*) FROM tournaments WHERE status = 'published') AS active_tournaments,
+        (SELECT COUNT(*) FROM tournaments WHERE published = true) AS active_tournaments,
         (SELECT COUNT(DISTINCT r.profile_id) FROM registrations r WHERE r.status != 'cancelled') AS total_registrations
     `);
 

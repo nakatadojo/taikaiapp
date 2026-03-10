@@ -3009,6 +3009,10 @@
             });
             localStorage.setItem(_scopedKey('divisions'), JSON.stringify(mergedDivisions));
 
+            // Wait for auth to be confirmed before making authenticated API calls.
+            const authedUser = await window._authReady;
+            if (!authedUser) return; // not logged in — auth-gate will handle it
+
             // Load schedule, divisions, and brackets from server (parallel)
             try {
                 const [schedResult, divResult, brkResult, teamResult] = await Promise.allSettled([

@@ -133,6 +133,11 @@ function generateUniqueId() {
 // Active tournament — declared early so scoped-storage helpers can reference it.
 let currentTournamentId = null;
 
+// Auth-ready promise — resolves with the user (or null) once Auth.init() completes.
+// Used to defer authenticated API calls until auth state is known, preventing 401 noise.
+let _resolveAuthReady;
+const _authReady = window._authReady = new Promise(r => { _resolveAuthReady = r; });
+
 // ── Server Persistence Helpers ───────────────────────────────────────────────
 // Competitors are kept in-memory only — never written to localStorage.
 let _inMemoryCompetitors = [];
@@ -1450,38 +1455,43 @@ loadTournamentSelector();
         _migrateUnscopedData();
         db.init();
         document.getElementById('main-nav')?.classList.remove('hidden');
-        // Hydrate from server — server is source of truth for all data.
-        // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
-        // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
-        _hydrateEventTypesFromServer().then(() => {
-            loadCompetitors();
-            loadDashboard();
-            // Load generated divisions AFTER templates are hydrated from event types
-            return _loadDivisionsFromServer();
-        }).then(() => {
-            if (typeof loadDivisions === 'function') loadDivisions();
+        // Defer all authenticated server calls until auth state is confirmed.
+        // This prevents a flood of 401s when the page loads before Auth.init() resolves.
+        _authReady.then(user => {
+            if (!user) return; // not logged in — auth-gate handles the redirect
+            // Hydrate from server — server is source of truth for all data.
+            // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
+            // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
+            _hydrateEventTypesFromServer().then(() => {
+                loadCompetitors();
+                loadDashboard();
+                // Load generated divisions AFTER templates are hydrated from event types
+                return _loadDivisionsFromServer();
+            }).then(() => {
+                if (typeof loadDivisions === 'function') loadDivisions();
+            });
+            _loadCompetitorsFromServer().then(() => {
+                loadCompetitors();
+            });
+            _loadPersonnelFromServer().then(() => {
+                if (typeof loadOfficials === 'function') loadOfficials();
+                if (typeof loadStaff === 'function') loadStaff();
+                if (typeof loadInstructors === 'function') loadInstructors();
+            });
+            _loadTeamsFromServer();
+            _loadBracketsFromServer().then(() => {
+                if (typeof loadBrackets === 'function') loadBrackets();
+            });
+            _loadResultsFromServer().then(() => {
+                if (typeof loadResults === 'function') loadResults();
+            });
+            // Auto-load certificate template + config from server
+            loadCertificateTemplateFromServer().catch(e => console.warn('[sync] Certificate template load:', e.message));
+            // Auto-load scoreboard config from server
+            _loadScoreboardConfigFromServer().catch(e => console.warn('[sync] Scoreboard config load:', e.message));
+            // Auto-load public site config from server
+            _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
         });
-        _loadCompetitorsFromServer().then(() => {
-            loadCompetitors();
-        });
-        _loadPersonnelFromServer().then(() => {
-            if (typeof loadOfficials === 'function') loadOfficials();
-            if (typeof loadStaff === 'function') loadStaff();
-            if (typeof loadInstructors === 'function') loadInstructors();
-        });
-        _loadTeamsFromServer();
-        _loadBracketsFromServer().then(() => {
-            if (typeof loadBrackets === 'function') loadBrackets();
-        });
-        _loadResultsFromServer().then(() => {
-            if (typeof loadResults === 'function') loadResults();
-        });
-        // Auto-load certificate template + config from server
-        loadCertificateTemplateFromServer().catch(e => console.warn('[sync] Certificate template load:', e.message));
-        // Auto-load scoreboard config from server
-        _loadScoreboardConfigFromServer().catch(e => console.warn('[sync] Scoreboard config load:', e.message));
-        // Auto-load public site config from server
-        _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
     }
 
     // Try localStorage first (instant, no network)
@@ -23248,6 +23258,8 @@ window.addEventListener('load', () => {
 
     // Auth initialization
     Auth.onAuthChange = (user) => {
+        // Resolve the auth-ready promise on first call so deferred API calls can proceed.
+        if (_resolveAuthReady) { _resolveAuthReady(user); _resolveAuthReady = null; }
         // Reveal the page now that auth state is known (prevents login-screen flash on refresh)
         document.body.style.visibility = 'visible';
         const gate = document.getElementById('auth-gate');
