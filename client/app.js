@@ -537,7 +537,7 @@ function _queueCompetitorsSync() {
 }
 
 async function _syncCompetitorsToServer() {
-    if (!currentTournamentId) return;
+    if (!currentTournamentId) return false;
     setSyncIndicator('syncing');
     try {
         const [compRes, clubsRes] = await Promise.all([
@@ -554,12 +554,19 @@ async function _syncCompetitorsToServer() {
                 body: JSON.stringify({ clubs: db.load('clubs') }),
             }),
         ]);
+        if (compRes.status === 401 || clubsRes.status === 401) {
+            setSyncIndicator('error');
+            showMessage('Your session has expired. Please refresh the page and log in again.', 'error');
+            return false;
+        }
         if (!compRes.ok) throw new Error(`competitors sync HTTP ${compRes.status}`);
         if (!clubsRes.ok) throw new Error(`clubs sync HTTP ${clubsRes.status}`);
         setSyncIndicator('ok');
+        return true;
     } catch (e) {
         setSyncIndicator('error');
         console.warn('[sync] competitors/clubs failed:', e.message);
+        return false;
     }
 }
 
@@ -2876,7 +2883,7 @@ function loadClubDropdown() {
 }
 
 // Competitor Registration
-document.getElementById('competitor-form').addEventListener('submit', (e) => {
+document.getElementById('competitor-form').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     // Ensure tournament is selected
@@ -3107,7 +3114,16 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         };
 
         const competitorId = db.add('competitors', competitor);
-        _queueCompetitorsSync();
+
+        // Immediately sync to server — don't debounce for new adds so data is never lost.
+        // Roll back and abort if the sync fails (e.g. session expired).
+        const synced = await _syncCompetitorsToServer();
+        if (!synced) {
+            // Roll back: remove the competitor from memory so UI stays consistent
+            db.save('competitors', db.load('competitors').filter(c => c.id !== competitorId));
+            showMessage('Could not save competitor — please check your connection and try again.', 'error');
+            return; // Keep form open so the user doesn't lose their input
+        }
 
         // Add competitor to team members list
         if (teamCode) {
