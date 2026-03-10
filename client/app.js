@@ -1104,7 +1104,7 @@ window.togglePaymentStatus = function(competitorId) {
     const cycle = ['unpaid', 'paid', 'partial', 'waived'];
     const idx = cycle.indexOf(comp.paymentStatus || 'unpaid');
     comp.paymentStatus = cycle[(idx + 1) % cycle.length];
-    localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+    db.save('competitors', competitors);
     loadCompetitors(true);
 };
 
@@ -1508,7 +1508,7 @@ function migrateLegacyCompetitors() {
 
     if (migrated > 0) {
         try {
-            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+            db.save('competitors', competitors);
             console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
         } catch (e) {
             console.warn('[migration] Could not save migrateLegacyCompetitors — quota exceeded, skipping.');
@@ -1545,7 +1545,7 @@ function migrateLegacyPricing() {
 
     if (migrated > 0) {
         try {
-            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+            db.save('competitors', competitors);
             console.log(`Migrated pricing data for ${migrated} competitors`);
         } catch (e) {
             console.warn('[migration] Could not save migrateLegacyPricing — quota exceeded, skipping.');
@@ -3037,7 +3037,7 @@ document.getElementById('competitor-form').addEventListener('submit', (e) => {
         };
 
         const updatedCompetitor = allCompetitors[compIndex];
-        localStorage.setItem(_scopedKey('competitors'), JSON.stringify(allCompetitors));
+        db.save('competitors', allCompetitors);
         _queueCompetitorsSync();
 
         // Update competitor data embedded in brackets (they store full objects, not IDs)
@@ -5304,7 +5304,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
                 }
             });
             if (updatedCount > 0) {
-                localStorage.setItem(_scopedKey('competitors'), JSON.stringify(competitors));
+                db.save('competitors', competitors);
             }
         }
 
@@ -22963,7 +22963,7 @@ async function syncRegistrationsFromServer() {
         });
 
         if (added > 0) {
-            localStorage.setItem(_scopedKey('competitors'), JSON.stringify(existing));
+            db.save('competitors', existing);
             loadCompetitors();
         }
 
