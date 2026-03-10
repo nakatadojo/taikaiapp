@@ -898,6 +898,85 @@ async function _loadResultsFromServer() {
     }
 }
 
+// ── Scoreboard Config Server Sync ────────────────────────────────────────
+async function _syncScoreboardConfigToServer(config) {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-config`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config }),
+        });
+        if (res.ok) {
+            console.log('[sync] Scoreboard config saved to server');
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to sync scoreboard config:', err.message);
+    }
+}
+
+async function _loadScoreboardConfigFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-config`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.config) {
+            localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(data.config));
+            // Also mirror kumite corner settings to legacy key
+            if (data.config.kumite) {
+                localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
+                    corner1Name:   data.config.kumite.corner1Name,
+                    corner2Name:   data.config.kumite.corner2Name,
+                    corner1Custom: data.config.kumite.corner1Color,
+                    corner2Custom: data.config.kumite.corner2Color,
+                }));
+            }
+            console.log('[sync] Loaded scoreboard config from server');
+            if (typeof loadUnifiedScoreboardConfig === 'function') loadUnifiedScoreboardConfig();
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load scoreboard config:', err.message);
+    }
+}
+
+// ── Public Site Config Server Sync ────────────────────────────────────────
+async function _syncPublicSiteConfigToServer(config) {
+    if (!currentTournamentId) return;
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicSiteConfig: config }),
+        });
+        console.log('[sync] Public site config saved to server');
+    } catch (err) {
+        console.warn('[sync] Failed to sync public site config:', err.message);
+    }
+}
+
+async function _loadPublicSiteConfigFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverConfig = data.tournament?.public_site_config;
+        if (serverConfig && Object.keys(serverConfig).length > 0) {
+            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(serverConfig));
+            console.log('[sync] Loaded public site config from server');
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load public site config:', err.message);
+    }
+}
+
 /**
  * Load generated divisions from the server and merge with local division templates.
  * Templates come from _hydrateEventTypesFromServer (criteria_templates on tournament_events).
@@ -1350,6 +1429,12 @@ loadTournamentSelector();
         _loadResultsFromServer().then(() => {
             if (typeof loadResults === 'function') loadResults();
         });
+        // Auto-load certificate template + config from server
+        loadCertificateTemplateFromServer().catch(e => console.warn('[sync] Certificate template load:', e.message));
+        // Auto-load scoreboard config from server
+        _loadScoreboardConfigFromServer().catch(e => console.warn('[sync] Scoreboard config load:', e.message));
+        // Auto-load public site config from server
+        _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
     }
 
     // Try localStorage first (instant, no network)
@@ -6299,6 +6384,9 @@ function saveUnifiedScoreboardConfig() {
 
     updateScoreboardConfigStatus();
     showMessage('Scoreboard configuration saved!');
+
+    // Sync to server
+    _syncScoreboardConfigToServer(config);
 }
 
 function loadUnifiedScoreboardConfig() {
@@ -8314,8 +8402,9 @@ function executeCompetitorMove(fromDivision, competitorId) {
     if (!Array.isArray(divisions[target])) divisions[target] = [];
     divisions[target].push(moved);
 
-    // Save back
+    // Save back and sync to server so the move persists across reloads
     localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
 
     // Close modal and refresh
     const overlay = document.getElementById('move-comp-overlay');
@@ -15750,9 +15839,10 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // Store for later use - find bracket ID by matching bracket properties
     window.currentMatchId = currentMatch.id;
     const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const bracketDiv = bracket.division || bracket.divisionName;
     window.currentBracketId = Object.keys(brackets).find(id => {
         const b = brackets[id];
-        return (b.division === bracket.division || b.divisionName === bracket.division) && b.eventId == bracket.eventId;
+        return (b.division === bracketDiv || b.divisionName === bracketDiv) && b.eventId == bracket.eventId;
     });
 
     console.log('Stored bracket ID:', window.currentBracketId);
@@ -18918,70 +19008,77 @@ function getDivisionResults(divisionName, eventId) {
     return [];
 }
 
-function loadResults() {
+// Server-side results cache for certificates section
+let _serverResultsCache = [];
+
+async function loadResults() {
     const container = document.getElementById('results-container');
     if (!container) return;
 
-    const divisions = db.load('divisions');
-    const eventTypes = db.load('eventTypes');
-
-    let html = '';
-    let totalDivisions = 0;
-    let completedDivisions = 0;
-
-    Object.keys(divisions).forEach(eventId => {
-        const eventData = divisions[eventId];
-        if (!eventData || !eventData.generated) return;
-
-        const event = eventTypes.find(e => String(e.id) === String(eventId));
-        const eventName = event ? event.name : `Event ${eventId}`;
-
-        let eventHtml = '';
-
-        Object.keys(eventData.generated).forEach(divisionName => {
-            totalDivisions++;
-            const results = getDivisionResults(divisionName, eventId);
-
-            if (results.length === 0) return;
-            completedDivisions++;
-
-            eventHtml += `
-                <div style="margin-bottom: 12px; padding: 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px;">
-                    <h4 style="margin-bottom: 8px;">${divisionName}</h4>
-                    <div>
-                        ${results.map((result, idx) => {
-                            const medalEmoji = result.rank <= 3 ? ['&#x1F947;','&#x1F948;','&#x1F949;'][result.rank - 1] || `#${result.rank}` : `#${result.rank}`;
-                            const winMethodLabel = result.winMethod ? { points: 'Points', decision: 'Decision', hansoku: 'Hansoku', withdrawal: 'Withdrawal', default_win: 'Default Win', ippon: 'Ippon' }[result.winMethod] || result.winMethod : '';
-                            const winMethodHTML = winMethodLabel ? `<span style="font-size: 10px; background: var(--bg-secondary); padding: 1px 6px; border-radius: 4px; color: var(--text-secondary); margin-left: 6px;">${winMethodLabel}${result.winNote ? ': ' + result.winNote : ''}</span>` : '';
-                            return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
-                                <span style="width: 40px; text-align: center; font-size: 18px;">${medalEmoji}</span>
-                                <div style="flex: 1;">
-                                    <div style="font-weight: 600;">${result.name}${winMethodHTML}</div>
-                                    ${result.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${result.club}</div>` : ''}
-                                </div>
-                                ${result.score !== undefined ? `<div style="font-weight: 700;">${typeof result.score === 'number' ? result.score.toFixed(2) : result.score}</div>` : ''}
-                            </div>`;
-                        }).join('')}
-                    </div>
-                </div>
-            `;
-        });
-
-        if (eventHtml) {
-            html += `<div class="glass-panel" style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 16px; color: var(--accent-color);">${eventName}</h3>
-                ${eventHtml}
-            </div>`;
-        }
-    });
-
-    if (html === '') {
-        html = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No completed divisions yet. Results will appear here once brackets are completed.</p>';
-    } else {
-        html = `<p style="color: var(--text-secondary); margin-bottom: 16px;">${completedDivisions}/${totalDivisions} divisions completed</p>` + html;
+    // Fetch results from server API (same source as Awards cards)
+    if (!currentTournamentId) {
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No tournament loaded.</p>';
+        return;
     }
 
-    container.innerHTML = html;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/results`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load results');
+
+        const results = data.results || [];
+        _serverResultsCache = results;
+
+        if (results.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No completed divisions yet. Results will appear here once brackets are completed and synced.</p>';
+            return;
+        }
+
+        // Group by event name
+        const byEvent = {};
+        results.forEach(r => {
+            const eventName = r.event_name || 'Unknown Event';
+            if (!byEvent[eventName]) byEvent[eventName] = [];
+            byEvent[eventName].push(r);
+        });
+
+        let html = `<p style="color: var(--text-secondary); margin-bottom: 16px;">${results.length} division(s) with results</p>`;
+
+        Object.keys(byEvent).forEach(eventName => {
+            let eventHtml = '';
+            byEvent[eventName].forEach(r => {
+                const placements = Array.isArray(r.results_data) ? r.results_data : [];
+                const medals = ['&#x1F947;', '&#x1F948;', '&#x1F949;'];
+
+                eventHtml += `
+                    <div style="margin-bottom: 12px; padding: 12px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px;">
+                        <h4 style="margin-bottom: 8px;">${_escapeHtml(r.division_name)}</h4>
+                        <div>
+                            ${placements.slice(0, 3).map((p, idx) => {
+                                return `<div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--glass-border);">
+                                    <span style="width: 40px; text-align: center; font-size: 18px;">${medals[idx] || '#' + (idx+1)}</span>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600;">${_escapeHtml(p.name || 'TBD')}</div>
+                                        ${p.club ? `<div style="font-size: 11px; color: var(--text-secondary);">${_escapeHtml(p.club)}</div>` : ''}
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `<div class="glass-panel" style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 16px; color: var(--accent-color);">${_escapeHtml(eventName)}</h3>
+                ${eventHtml}
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('loadResults error:', err);
+        container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">Failed to load results from server.</p>';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -21443,41 +21540,33 @@ function generateAllCertificates() {
         return;
     }
 
-    const divisions = db.load('divisions');
-    const eventTypes = db.load('eventTypes');
-
     // Get tournament info
     const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
-    // Collect all placements
+    // Use server results cache (populated by loadResults)
+    const serverResults = _serverResultsCache || [];
+
+    const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
     const certificates = [];
 
-    Object.keys(divisions).forEach(eventId => {
-        const eventData = divisions[eventId];
-        if (!eventData || !eventData.generated) return;
-
-        Object.keys(eventData.generated).forEach(divisionName => {
-            const results = getDivisionResults(divisionName, eventId);
-            const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
-
-            results.forEach((result, idx) => {
-                if (idx > 2) return; // Top 3 only
-                certificates.push({
-                    name: result.name,
-                    place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
-                    division: divisionName,
-                    tournament: tournamentName,
-                    date: tournamentDate,
-                    club: result.club || ''
-                });
+    serverResults.forEach(r => {
+        const placements = Array.isArray(r.results_data) ? r.results_data : [];
+        placements.slice(0, 3).forEach((p, idx) => {
+            certificates.push({
+                name: p.name || 'TBD',
+                place: placeLabels[idx] || `${idx + 1}th Place`,
+                division: r.division_name || 'Unknown',
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: p.club || ''
             });
         });
     });
 
     if (certificates.length === 0) {
-        showMessage('No completed divisions with results found.', 'error');
+        showMessage('No completed divisions with results found. Make sure results are synced from the scoreboard.', 'error');
         return;
     }
 
@@ -21489,6 +21578,118 @@ function generateAllCertificates() {
     function generateNext() {
         if (generated >= certificates.length) {
             showMessage(`Successfully generated ${generated} certificates!`);
+            return;
+        }
+
+        const certData = certificates[generated];
+        renderCertificateOnCanvas(offscreenCanvas, certData, function(canvas) {
+            if (!canvas) {
+                generated++;
+                setTimeout(generateNext, 50);
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.download = `certificate_${certData.name.replace(/\s+/g, '_')}_${certData.division.replace(/\s+/g, '_')}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+
+            generated++;
+            setTimeout(generateNext, 300);
+        });
+    }
+
+    generateNext();
+}
+
+/**
+ * Print certificates for a single division (called from Awards cards).
+ * Accepts optional serverPlacements array from the awards API data.
+ * Falls back to localStorage bracket data if no server data provided.
+ * @param {string} divisionName
+ * @param {Array|null} serverPlacements - [{name, club}, ...] from server results_data
+ */
+function printCertificatesForDivision(divisionName, serverPlacements) {
+    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    if (!template) {
+        showMessage('Please upload a certificate template first in Settings → Certificates', 'error');
+        return;
+    }
+
+    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    if (!config) {
+        showMessage('Please configure merge tag positions in Settings → Certificates first', 'error');
+        return;
+    }
+
+    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
+    const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
+    const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
+
+    const placeLabels = ['1st Place', '2nd Place', '3rd Place'];
+    const certificates = [];
+
+    if (serverPlacements && serverPlacements.length > 0) {
+        // Use server-side results data (from Awards cards)
+        serverPlacements.slice(0, 3).forEach((p, idx) => {
+            certificates.push({
+                name: p.name || 'TBD',
+                place: placeLabels[idx] || `${idx + 1}th Place`,
+                division: divisionName,
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: p.club || ''
+            });
+        });
+    } else {
+        // Fallback: look up from localStorage bracket data
+        const divisions = db.load('divisions');
+        let foundEventId = null;
+        Object.keys(divisions).forEach(eventId => {
+            const eventData = divisions[eventId];
+            if (!eventData || !eventData.generated) return;
+            if (eventData.generated[divisionName]) {
+                foundEventId = eventId;
+            }
+        });
+
+        if (!foundEventId) {
+            showMessage(`Division "${divisionName}" not found. Make sure brackets are completed or results are synced.`, 'error');
+            return;
+        }
+
+        const results = getDivisionResults(divisionName, foundEventId);
+        if (!results || results.length === 0) {
+            showMessage(`No results found for "${divisionName}".`, 'error');
+            return;
+        }
+
+        results.forEach((result, idx) => {
+            if (idx > 2) return;
+            certificates.push({
+                name: result.name,
+                place: placeLabels[result.rank - 1] || `${result.rank}th Place`,
+                division: divisionName,
+                tournament: tournamentName,
+                date: tournamentDate,
+                club: result.club || ''
+            });
+        });
+    }
+
+    if (certificates.length === 0) {
+        showMessage(`No placements to print for "${divisionName}".`, 'error');
+        return;
+    }
+
+    showMessage(`Generating ${certificates.length} certificate(s) for ${divisionName}...`, 'info');
+
+    let generated = 0;
+    const offscreenCanvas = document.createElement('canvas');
+
+    function generateNext() {
+        if (generated >= certificates.length) {
+            showMessage(`Downloaded ${generated} certificate(s) for ${divisionName}!`);
             return;
         }
 
@@ -22138,6 +22339,9 @@ if (publicSiteForm) {
 
             localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(config));
             showMessage('Public site configuration saved successfully!');
+
+            // Sync to server
+            _syncPublicSiteConfigToServer(config);
 
             // Trigger storage event for public.html to update
             window.dispatchEvent(new Event('storage'));
