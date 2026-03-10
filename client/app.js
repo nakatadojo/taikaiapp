@@ -2262,7 +2262,7 @@ function loadEventCheckboxes(preselectedEvents = []) {
                 value="${event.id}"
                 data-team-size="${teamSize}"
                 ${isChecked ? 'checked' : ''}
-                onchange="updateEventOrder(${event.id})"
+                onchange="updateEventOrder('${event.id}')"
                 style="width: 18px; height: 18px; cursor: pointer; flex-shrink: 0;"
             >
             <label for="event-${event.id}" style="cursor: pointer; flex: 1; font-size: 14px;">
