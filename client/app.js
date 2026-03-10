@@ -136,6 +136,17 @@ let currentTournamentId = null;
 // ── Server Persistence Helpers ───────────────────────────────────────────────
 let _competitorsSyncTimer = null;
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Flush any pending competitors sync before the page unloads (navigation / reload)
+// so data isn't lost when the user moves away before the debounce fires.
+window.addEventListener('beforeunload', () => {
+    if (!_competitorsSyncTimer || !currentTournamentId) return;
+    clearTimeout(_competitorsSyncTimer);
+    _competitorsSyncTimer = null;
+    const blob = (data) => new Blob([JSON.stringify(data)], { type: 'application/json' });
+    navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/competitors/sync`, blob({ competitors: db.load('competitors') }));
+    navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/clubs/sync`, blob({ clubs: db.load('clubs') }));
+});
 function _isServerEventId(id) { return _UUID_RE.test(String(id || '')); }
 
 /**
@@ -487,13 +498,14 @@ async function _deleteEventTypeFromServer(eventId) {
  */
 function _queueCompetitorsSync() {
     clearTimeout(_competitorsSyncTimer);
-    _competitorsSyncTimer = setTimeout(_syncCompetitorsToServer, 3000);
+    _competitorsSyncTimer = setTimeout(_syncCompetitorsToServer, 1000);
 }
 
 async function _syncCompetitorsToServer() {
     if (!currentTournamentId) return;
+    setSyncIndicator('syncing');
     try {
-        await Promise.all([
+        const [compRes, clubsRes] = await Promise.all([
             fetch(`/api/tournaments/${currentTournamentId}/competitors/sync`, {
                 method: 'POST',
                 credentials: 'include',
@@ -507,7 +519,11 @@ async function _syncCompetitorsToServer() {
                 body: JSON.stringify({ clubs: db.load('clubs') }),
             }),
         ]);
+        if (!compRes.ok) throw new Error(`competitors sync HTTP ${compRes.status}`);
+        if (!clubsRes.ok) throw new Error(`clubs sync HTTP ${clubsRes.status}`);
+        setSyncIndicator('ok');
     } catch (e) {
+        setSyncIndicator('error');
         console.warn('[sync] competitors/clubs failed:', e.message);
     }
 }
