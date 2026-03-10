@@ -3113,17 +3113,23 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
             tournamentId: currentTournamentId
         };
 
-        const competitorId = db.add('competitors', competitor);
+        db.add('competitors', competitor); // mutates competitor.id in place
 
         // Immediately sync to server — don't debounce for new adds so data is never lost.
         // Roll back and abort if the sync fails (e.g. session expired).
         const synced = await _syncCompetitorsToServer();
         if (!synced) {
             // Roll back: remove the competitor from memory so UI stays consistent
-            db.save('competitors', db.load('competitors').filter(c => c.id !== competitorId));
+            db.save('competitors', db.load('competitors').filter(c => c.id !== competitor.id));
             showMessage('Could not save competitor — please check your connection and try again.', 'error');
             return; // Keep form open so the user doesn't lose their input
         }
+
+        // Reload from server after sync so _inMemoryCompetitors reflects the confirmed server state.
+        // This also guards against the init-time _loadCompetitorsFromServer overwriting memory mid-save.
+        await _loadCompetitorsFromServer();
+
+        const competitorId = competitor.id;
 
         // Add competitor to team members list
         if (teamCode) {
