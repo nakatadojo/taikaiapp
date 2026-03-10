@@ -256,6 +256,32 @@ function saveBrackets(brackets) {
 }
 
 /**
+ * After each match save, detect if the bracket is now fully complete and
+ * automatically push results to the server (no manual "Sync" click needed).
+ * Safe no-op if syncResultsToServer is not available (e.g. non-manage pages).
+ */
+function _autoSyncIfBracketComplete(bracket) {
+    if (!bracket || typeof window.syncResultsToServer !== 'function') return;
+    let complete = false;
+    if (bracket.type === 'ranking-list') {
+        complete = bracket.status === 'completed';
+    } else if (bracket.type === 'single-elimination' || bracket.type === 'repechage') {
+        const all = [...(bracket.matches || []), ...(bracket.repechageA || []), ...(bracket.repechageB || [])];
+        const active = all.filter(m => m.status !== 'empty');
+        complete = active.length > 0 && active.every(m => m.status === 'completed' || m.status === 'bye');
+    } else if (bracket.type === 'double-elimination') {
+        const decisive = bracket.reset || bracket.finals;
+        complete = !!(decisive && decisive.winner);
+    } else if (bracket.type === 'round-robin') {
+        complete = bracket.matches?.length > 0 && bracket.matches.every(m => m.status === 'completed');
+    }
+    if (complete) {
+        // Brief delay so localStorage write fully settles before sync reads it
+        setTimeout(() => window.syncResultsToServer(), 1000);
+    }
+}
+
+/**
  * Walk every match slot in a bracket and slim every competitor reference in-place.
  * Called before writing brackets to localStorage.
  */
@@ -16358,6 +16384,7 @@ function kataFlagsDeclareWinner() {
 
     // Save updated bracket
     saveBrackets(brackets);
+    _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
 
     // Save to results/history
     const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
@@ -17405,6 +17432,7 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
 
                 // Save updated bracket
                 saveBrackets(brackets);
+                _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
             }
         }
     }
@@ -17725,6 +17753,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
 
     // Save updated bracket
     saveBrackets(brackets);
+    _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
 
     // Save to results/history
     const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
