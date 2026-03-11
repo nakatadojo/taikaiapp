@@ -14,6 +14,8 @@ const RANK_ORDER = [
   '6th dan', '7th dan', '8th dan', '9th dan', '10th dan',
 ];
 
+const BELT_ORDER = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'red', 'black'];
+
 /**
  * Calculate competitor age on tournament date.
  */
@@ -71,6 +73,18 @@ function matchCriteria(competitor, criteria) {
           if (competitor.belt_rank === range.value) {
             return range.label;
           }
+        }
+        break;
+      }
+
+      case 'belt': {
+        const normBelt = r => (r || '').toLowerCase().replace(/ belt$/i, '').trim();
+        const compBeltIdx = BELT_ORDER.indexOf(normBelt(competitor.belt_rank));
+        if (compBeltIdx === -1) break;
+        const minIdx = BELT_ORDER.indexOf(normBelt(range.beltMin || ''));
+        const maxIdx = BELT_ORDER.indexOf(normBelt(range.beltMax || ''));
+        if (minIdx !== -1 && maxIdx !== -1 && compBeltIdx >= minIdx && compBeltIdx <= maxIdx) {
+          return range.label;
         }
         break;
       }
