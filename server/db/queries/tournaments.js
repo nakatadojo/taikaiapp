@@ -238,7 +238,8 @@ async function update(tournamentId, updates) {
     'slug', 'description', 'city', 'state', 'venue_name', 'venue_address',
     'published', 'organization_name', 'contact_email', 'registration_deadline',
     'cover_image_url', 'sanctioning_body', 'collect_tshirt_sizes',
-    'registration_settings', 'timezone',
+    'registration_settings', 'timezone', 'currency', 'weight_unit',
+    'public_site_config',
   ];
   const fields = [];
   const values = [];
