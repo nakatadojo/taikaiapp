@@ -1453,6 +1453,12 @@
                         activePeriodName = p.name;
                         basePrice = parseFloat(p.base_event_price);
                         addonPrice = parseFloat(p.addon_event_price);
+                        // Sync active period prices into shared tournament data so
+                        // the registration checkout uses the same prices as the sidebar
+                        if (currentTournamentData) {
+                            currentTournamentData.base_event_price = basePrice;
+                            currentTournamentData.addon_event_price = addonPrice;
+                        }
                     } else if (now < start) {
                         upcomingPeriods.push(p);
                     }
