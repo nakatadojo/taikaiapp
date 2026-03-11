@@ -2085,7 +2085,8 @@
         try {
             await Auth.resendVerification(email);
             msg.textContent = 'Verification email sent! Check your inbox.';
-            msg.classList.remove('msg-hidden');
+            msg.className = 'msg-success';
+            msg.style.marginTop = '12px';
         } catch (err) {
             msg.textContent = err.error || 'Failed to send. Please try again.';
             msg.className = 'msg-error';

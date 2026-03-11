@@ -1382,7 +1382,7 @@
             credentials: 'include',
             headers: { 'Content-Type': 'application/json', ...options.headers },
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw data;
         return data;
     }
@@ -1480,7 +1480,7 @@
                         <div class="credits-pkg-amount">${pkg.credits} <span>credits</span></div>
                         <div class="credits-pkg-price">$${dollars}</div>
                         <div class="credits-pkg-per">$${perCredit} per credit</div>
-                        <button class="btn btn-primary" style="width:100%;margin-top:16px;" onclick="buyCredits('${pkg.id}')">
+                        <button class="btn btn-primary" style="width:100%;margin-top:16px;" onclick="buyCredits('${pkg.id}', this)">
                             Buy for $${dollars}
                         </button>
                     </div>
@@ -1540,9 +1540,8 @@
         }
     }
 
-    window.buyCredits = async function(packageId) {
+    window.buyCredits = async function(packageId, btn) {
         try {
-            const btn = event?.target;
             if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
             const res = await apiFetch('/api/credits/checkout', {
                 method: 'POST',
@@ -1551,8 +1550,7 @@
             window.location.href = res.checkoutUrl;
         } catch (err) {
             alert('Could not start checkout: ' + (err.message || 'Unknown error'));
-            const btn = event?.target;
-            if (btn) { btn.disabled = false; }
+            if (btn) { btn.disabled = false; btn.textContent = `Buy`; }
         }
     };
 
