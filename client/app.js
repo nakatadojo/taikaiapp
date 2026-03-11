@@ -1532,6 +1532,7 @@ loadTournamentSelector();
             });
             _loadCompetitorsFromServer().then(() => {
                 loadCompetitors();
+                loadDashboard(); // Refresh dashboard stats after competitors load from server
             });
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
@@ -22127,6 +22128,11 @@ async function loadCertificateTemplateFromServer() {
         });
 
         if (!res.ok) {
+            // 403 = staff user without certificate access — silently skip, no error banner
+            if (res.status === 403) {
+                if (statusEl) statusEl.textContent = '';
+                return;
+            }
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || 'Load failed');
         }
