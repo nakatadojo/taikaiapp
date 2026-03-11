@@ -1805,9 +1805,11 @@
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Signup failed');
-            // Show email verification panel
+            // Account created — proceed immediately (email verification is optional, not a gate)
             await checkAuth();
-            showVerificationPanel(document.getElementById('signup-email').value.trim());
+            closeAuthModal();
+            document.querySelector('.auth-tabs').style.display = 'flex';
+            executePendingIntent();
         } catch (err) {
             errEl.textContent = err.message; errEl.style.display = 'block';
         } finally {
@@ -1838,18 +1840,9 @@
             });
             const data = await res.json();
             if (!res.ok) {
-                if (data.code === 'EMAIL_NOT_VERIFIED') {
-                    await checkAuth();
-                    showVerificationPanel(loginEmail);
-                    return;
-                }
                 throw new Error(data.error || 'Login failed');
             }
             await checkAuth();
-            if (currentUser && !currentUser.emailVerified) {
-                showVerificationPanel(loginEmail);
-                return;
-            }
             closeAuthModal();
             executePendingIntent();
         } catch (err) {
@@ -1942,15 +1935,10 @@
         else if (intent === 'staff-registration') openStaffModal();
     }
 
-    // ── Auth gate: ensures logged in + email verified ──
+    // ── Auth gate: ensures logged in ──
     function requireAuth(intent) {
         if (!currentUser) {
             openAuthModal('login', intent);
-            return false;
-        }
-        if (!currentUser.emailVerified) {
-            openAuthModal('login', intent);
-            showVerificationPanel(currentUser.email);
             return false;
         }
         return true;
