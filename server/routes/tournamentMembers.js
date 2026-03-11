@@ -32,16 +32,17 @@ router.get('/:tournamentId',
 );
 
 // PATCH /api/tournament-members/:id/approve — Approve application
+// Note: requireTournamentOwner is NOT used here because :id is the member UUID, not a tournament UUID.
+// The controller performs owner/super_admin authorization against the member's tournament_id.
 router.patch('/:id/approve',
   requireAuth,
-  requireTournamentOwner,
   controller.approve
 );
 
 // PATCH /api/tournament-members/:id/decline — Decline application
+// Same note as approve above.
 router.patch('/:id/decline',
   requireAuth,
-  requireTournamentOwner,
   controller.decline
 );
 

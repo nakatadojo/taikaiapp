@@ -74,16 +74,7 @@ async function apply(req, res, next) {
  */
 async function list(req, res, next) {
   try {
-    const tournament = await tournamentQueries.findById(req.params.tournamentId);
-    if (!tournament) {
-      return res.status(404).json({ error: 'Tournament not found' });
-    }
-
-    // Verify ownership
-    if (tournament.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Not authorized' });
-    }
-
+    // Access already verified by requireTournamentOwner middleware (owner, super_admin, or approved staff)
     const status = req.query.status || undefined;
     const members = await tournamentMemberQueries.getByTournament(req.params.tournamentId, { status });
     res.json({ members });
@@ -104,7 +95,8 @@ async function approve(req, res, next) {
     }
 
     const tournament = await tournamentQueries.findById(existing.tournament_id);
-    if (tournament.created_by !== req.user.id) {
+    const userRoles = req.user.roles || [];
+    if (tournament.created_by !== req.user.id && !userRoles.includes('super_admin')) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -155,7 +147,8 @@ async function decline(req, res, next) {
     }
 
     const tournament = await tournamentQueries.findById(existing.tournament_id);
-    if (tournament.created_by !== req.user.id) {
+    const userRoles = req.user.roles || [];
+    if (tournament.created_by !== req.user.id && !userRoles.includes('super_admin')) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
