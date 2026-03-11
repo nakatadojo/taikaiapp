@@ -775,19 +775,20 @@
             actions = `<a href="/director/tournaments/${item.tournamentId}/manage" class="btn-sm btn-accent" style="text-decoration:none;">Manage</a>`;
         } else if (item.memberId && item.status === 'approved' && ['coach', 'judge', 'staff'].includes(item.role)) {
             actions = `<button class="btn-sm btn-accent" onclick="window.open('/badge.html?memberId=${item.memberId}', '_blank')">Print Badge</button>`;
+        } else if (item.role === 'competitor' && item.registrationId && item.status !== 'cancelled') {
+            actions = `<button class="btn-sm btn-accent" onclick="window.open('/badge.html?registrationId=${item.registrationId}', '_blank')">Print Badge</button>`;
         }
 
         const viewLink = item.tournamentSlug
             ? `<a href="/tournaments/${esc(item.tournamentSlug)}" class="btn-sm" style="text-decoration:none;">View Tournament</a>`
             : '';
 
-        // QR code for competitors — encodes registrationId for event-day check-in scan
+        // QR code for competitors — served by our own API (no external CDN)
         let qrSection = '';
         if (item.role === 'competitor' && item.registrationId && item.status !== 'cancelled') {
-            const qrData = encodeURIComponent(`checkin:registrant:${item.registrationId}:${item.tournamentId}`);
             qrSection = `
                 <div style="border-top:1px solid var(--border,rgba(255,255,255,0.1));margin-top:12px;padding-top:12px;display:flex;align-items:center;gap:14px;">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${qrData}&bgcolor=ffffff&color=111111&margin=4" alt="Check-in QR" style="width:80px;height:80px;border-radius:6px;flex-shrink:0;">
+                    <img src="/api/registrations/my/${item.registrationId}/qr" alt="Check-in QR" style="width:80px;height:80px;border-radius:6px;flex-shrink:0;">
                     <div>
                         <div style="font-weight:600;font-size:13px;margin-bottom:3px;">Check-In QR</div>
                         <div style="font-size:12px;color:var(--text-dim,#aaa);">Show this code at the check-in table on event day. Staff will scan it to verify your registration.</div>

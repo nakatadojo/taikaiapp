@@ -220,11 +220,11 @@
         const loading = document.getElementById('badge-loading');
         const actions = document.getElementById('screen-actions');
 
-        // Get member ID from URL
         const params = new URLSearchParams(window.location.search);
         const memberId = params.get('memberId');
+        const registrationId = params.get('registrationId');
 
-        if (!memberId) {
+        if (!memberId && !registrationId) {
             loading.innerHTML = '<div class="error-msg">No badge ID specified.</div>';
             return;
         }
@@ -236,31 +236,18 @@
             return;
         }
 
-        // Fetch member data
-        try {
-            const res = await fetch(`/api/my/membership/${memberId}`, { credentials: 'include' });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || 'Failed to load badge data');
-            }
-            const data = await res.json();
-            const m = data.member;
+        function esc(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
 
-            if (m.status !== 'approved') {
-                loading.innerHTML = '<div class="error-msg">Badge is only available for approved members.</div>';
-                return;
-            }
-
-            const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent / Guardian' };
-            const roleLabel = roleLabels[m.role] || m.role;
-
-            const dateStr = m.tournament_date
-                ? new Date(m.tournament_date.length === 10 ? m.tournament_date + 'T12:00:00' : m.tournament_date)
+        function renderBadge(firstName, lastName, roleLabel, tournamentName, tournamentDate, qrSrc) {
+            const dateStr = tournamentDate
+                ? new Date(tournamentDate.length === 10 ? tournamentDate + 'T12:00:00' : tournamentDate)
                     .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                 : '';
-
-            // QR image is served by the server — no external CDN needed
-            const qrSrc = `/api/my/membership/${encodeURIComponent(memberId)}/qr`;
 
             wrapper.innerHTML = `
                 <div class="badge-card">
@@ -268,9 +255,9 @@
                         <div class="badge-header-text">TAIKAI</div>
                     </div>
                     <div class="badge-body">
-                        <div class="badge-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
+                        <div class="badge-name">${esc(firstName)} ${esc(lastName)}</div>
                         <div class="badge-role">${roleLabel}</div>
-                        <div class="badge-tournament">${esc(m.tournament_name || '')}</div>
+                        <div class="badge-tournament">${esc(tournamentName || '')}</div>
                         ${dateStr ? `<div class="badge-date">${dateStr}</div>` : ''}
                     </div>
                     <div class="badge-qr">
@@ -279,18 +266,60 @@
                     </div>
                 </div>
             `;
-
             actions.style.display = '';
+        }
+
+        try {
+            if (memberId) {
+                // ── Official / coach / judge / staff badge ──
+                const res = await fetch(`/api/my/membership/${memberId}`, { credentials: 'include' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'Failed to load badge data');
+                }
+                const data = await res.json();
+                const m = data.member;
+
+                if (m.status !== 'approved') {
+                    loading.innerHTML = '<div class="error-msg">Badge is only available for approved members.</div>';
+                    return;
+                }
+
+                const roleLabels = { coach: 'Coach', judge: 'Judge', staff: 'Staff', parent: 'Parent / Guardian' };
+                renderBadge(
+                    m.first_name, m.last_name,
+                    roleLabels[m.role] || m.role,
+                    m.tournament_name,
+                    m.tournament_date,
+                    `/api/my/membership/${encodeURIComponent(memberId)}/qr`
+                );
+
+            } else {
+                // ── Competitor badge ──
+                const res = await fetch(`/api/registrations/my/${registrationId}`, { credentials: 'include' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'Failed to load badge data');
+                }
+                const data = await res.json();
+                const r = data.registration;
+
+                if (r.status === 'cancelled') {
+                    loading.innerHTML = '<div class="error-msg">Badge is not available for cancelled registrations.</div>';
+                    return;
+                }
+
+                renderBadge(
+                    r.first_name, r.last_name,
+                    'Competitor',
+                    r.tournament_name,
+                    r.tournament_date,
+                    `/api/registrations/my/${encodeURIComponent(registrationId)}/qr`
+                );
+            }
 
         } catch (err) {
             loading.innerHTML = `<div class="error-msg">${esc(err.message)}</div>`;
-        }
-
-        function esc(str) {
-            if (!str) return '';
-            const d = document.createElement('div');
-            d.textContent = str;
-            return d.innerHTML;
         }
     })();
     </script>
