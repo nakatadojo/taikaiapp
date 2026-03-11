@@ -1,14 +1,12 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
+const { requireTournamentPermission } = require('../middleware/tournamentPermission');
 const upload = require('../middleware/upload');
 const { validateImageBytes } = require('../middleware/upload');
 const certificateController = require('../controllers/certificateController');
 
 const router = express.Router();
-
-// All certificate routes require auth + tournament owner role.
-// Tournament ownership is verified inside each controller function.
 
 // ── Template Upload ─────────────────────────────────────────────────────────
 
@@ -20,11 +18,11 @@ router.post('/:id/certificate-template',
   certificateController.uploadTemplate
 );
 
-// ── Get Template ────────────────────────────────────────────────────────────
+// ── Get Template — staff can read for certificate printing ──────────────────
 
 router.get('/:id/certificate-template',
   requireAuth,
-  requireTournamentOwner,
+  requireTournamentPermission('read_data'),
   certificateController.getTemplate
 );
 
