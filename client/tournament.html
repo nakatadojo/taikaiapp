@@ -2158,8 +2158,8 @@
             } else {
                 eligible.forEach(ev => {
                     html += `
-                    <label class="reg-event-item" onclick="toggleEvent(${pi}, '${ev.id}', this)">
-                        <input type="checkbox" data-profile="${pi}" data-event="${ev.id}">
+                    <label class="reg-event-item">
+                        <input type="checkbox" data-profile="${pi}" data-event="${ev.id}" onchange="toggleEvent(${pi}, '${ev.id}', this)">
                         <div style="flex:1;">
                             <div class="reg-event-name">${esc(ev.name)}</div>
                             ${ev.division ? `<div class="reg-event-division">${esc(ev.division)}</div>` : ''}
@@ -2197,10 +2197,11 @@
         return true;
     }
 
-    window.toggleEvent = function(profileIndex, eventId, el) {
+    window.toggleEvent = function(profileIndex, eventId, checkbox) {
+        const label = checkbox.closest('.reg-event-item');
         const set = regState.eventSelections[profileIndex];
-        if (set.has(eventId)) { set.delete(eventId); el.classList.remove('selected'); }
-        else { set.add(eventId); el.classList.add('selected'); }
+        if (checkbox.checked) { set.add(eventId); label.classList.add('selected'); }
+        else { set.delete(eventId); label.classList.remove('selected'); }
         updateEventPrices();
     };
 
