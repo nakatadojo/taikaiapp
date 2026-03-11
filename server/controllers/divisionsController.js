@@ -36,7 +36,13 @@ async function syncTemplates(req, res, next) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const result = await DivisionQueries.upsertTemplates(eventId, criteriaTemplates);
+    // Ensure every template has a stable UUID so the client can identify it for editing
+    const { randomUUID } = require('crypto');
+    const templatesWithIds = (criteriaTemplates || []).map(tmpl =>
+      tmpl.id ? tmpl : { ...tmpl, id: randomUUID() }
+    );
+
+    const result = await DivisionQueries.upsertTemplates(eventId, templatesWithIds);
     res.json({ criteriaTemplates: result?.criteria_templates || [] });
   } catch (err) { next(err); }
 }
