@@ -6891,6 +6891,7 @@ function addCriteria() {
                     <option value="gender">Gender</option>
                     <option value="weight">Weight</option>
                     <option value="rank">Rank</option>
+                    <option value="belt">Belt</option>
                     <option value="experience">Experience</option>
                 </select>
             </div>
@@ -6956,6 +6957,13 @@ function updateCriteriaRanges(index) {
         rangesContainer.innerHTML = `<div class="rank-ranges-list"></div>
             <button type="button" class="btn btn-small btn-secondary" onclick="addRankRange(${index})">+ Add Rank Range</button>`;
         addRankRange(index);
+        return;
+    }
+
+    if (type === 'belt') {
+        rangesContainer.innerHTML = `<div class="belt-ranges-list"></div>
+            <button type="button" class="btn btn-small btn-secondary" onclick="addBeltRange(${index})">+ Add Belt Range</button>`;
+        addBeltRange(index);
         return;
     }
 
@@ -7074,6 +7082,50 @@ function addRankRange(criteriaIndex, savedMin, savedMax, savedLabel) {
     if (savedMin) minSelect.value = savedMin;
     if (savedMax) maxSelect.value = savedMax;
     else maxSelect.value = '1st kyu'; // default: White → 1st Kyu range
+    if (savedLabel) labelInp.value = savedLabel;
+
+    rangesList.appendChild(div);
+}
+
+// Belt color options for the Belt criteria type
+const BELT_COLOR_OPTIONS = [
+    { val: 'white',  label: 'White' },
+    { val: 'yellow', label: 'Yellow' },
+    { val: 'orange', label: 'Orange' },
+    { val: 'green',  label: 'Green' },
+    { val: 'blue',   label: 'Blue' },
+    { val: 'purple', label: 'Purple' },
+    { val: 'brown',  label: 'Brown' },
+    { val: 'red',    label: 'Red' },
+    { val: 'black',  label: 'Black' },
+];
+
+function addBeltRange(criteriaIndex, savedMin, savedMax, savedLabel) {
+    const rangesList = document.querySelector(`#ranges-${criteriaIndex} .belt-ranges-list`);
+    if (!rangesList) return;
+
+    const beltOptions = BELT_COLOR_OPTIONS
+        .map(b => `<option value="${b.val}">${b.label}</option>`)
+        .join('');
+
+    const div = document.createElement('div');
+    div.className = 'range-item belt-range-item';
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;';
+    div.innerHTML = `
+        <select class="belt-min-select" style="flex:1;min-width:110px;">${beltOptions}</select>
+        <span style="white-space:nowrap;">to</span>
+        <select class="belt-max-select" style="flex:1;min-width:110px;">${beltOptions}</select>
+        <input type="text" class="belt-label" placeholder="Label (e.g., White)" style="flex:2;min-width:110px;">
+        <button type="button" class="btn btn-small btn-danger" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    const minSelect = div.querySelector('.belt-min-select');
+    const maxSelect = div.querySelector('.belt-max-select');
+    const labelInp  = div.querySelector('.belt-label');
+
+    if (savedMin) minSelect.value = savedMin;
+    if (savedMax) maxSelect.value = savedMax;
+    else maxSelect.value = 'black'; // default full range
     if (savedLabel) labelInp.value = savedLabel;
 
     rangesList.appendChild(div);
@@ -7706,6 +7758,27 @@ function loadTemplateForEditing(templateId) {
                 return;
             }
 
+            if (criterion.type === 'belt') {
+                // Populate belt color range selectors from saved beltMin/beltMax
+                criterion.ranges.forEach((range, i) => {
+                    if (i === 0) {
+                        // First range was already created by updateCriteriaRanges
+                        const firstItem = rangesContainer.querySelector('.belt-range-item');
+                        if (firstItem) {
+                            const minSel = firstItem.querySelector('.belt-min-select');
+                            const maxSel = firstItem.querySelector('.belt-max-select');
+                            const labelInp = firstItem.querySelector('.belt-label');
+                            if (minSel) minSel.value = range.beltMin || 'white';
+                            if (maxSel) maxSel.value = range.beltMax || 'black';
+                            if (labelInp) labelInp.value = range.label || '';
+                        }
+                    } else {
+                        addBeltRange(criteriaCounter, range.beltMin, range.beltMax, range.label);
+                    }
+                });
+                return;
+            }
+
             criterion.ranges.forEach(range => {
                 addRange(criteriaCounter, criterion.type);
                 const rangeItems = rangesContainer.querySelectorAll('.range-item');
@@ -7955,6 +8028,24 @@ function saveDivisionTemplate() {
                         rankMin: minSel.value,
                         rankMax: maxSel.value,
                         label: labelInp?.value.trim() || `${minSel.value} – ${maxSel.value}`
+                    });
+                }
+            });
+            if (criteriaObj.ranges.length > 0) criteria.push(criteriaObj);
+            return;
+        }
+
+        // Handle belt criteria — read belt color ranges from the UI
+        if (criteriaType === 'belt') {
+            item.querySelectorAll('.belt-range-item').forEach(rangeItem => {
+                const minSel   = rangeItem.querySelector('.belt-min-select');
+                const maxSel   = rangeItem.querySelector('.belt-max-select');
+                const labelInp = rangeItem.querySelector('.belt-label');
+                if (minSel && maxSel && minSel.value && maxSel.value) {
+                    criteriaObj.ranges.push({
+                        beltMin: minSel.value,
+                        beltMax: maxSel.value,
+                        label: labelInp?.value.trim() || `${minSel.value}–${maxSel.value}`
                     });
                 }
             });
@@ -8214,6 +8305,18 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                     console.log(`      → Rank filter (${range.value}): ${filtered.length} matches`);
                 }
                 break;
+            case 'belt': {
+                const BELT_ORDER = ['white','yellow','orange','green','blue','purple','brown','red','black'];
+                const normBelt = r => (r || '').toLowerCase().replace(/ belt$/i, '').trim();
+                const beltMinIdx = BELT_ORDER.indexOf(normBelt(range.beltMin));
+                const beltMaxIdx = BELT_ORDER.indexOf(normBelt(range.beltMax));
+                filtered = competitors.filter(c => {
+                    const cIdx = BELT_ORDER.indexOf(normBelt(c.rank || c.belt_rank));
+                    return cIdx !== -1 && cIdx >= beltMinIdx && cIdx <= beltMaxIdx;
+                });
+                console.log(`      → Belt range filter (${range.beltMin}-${range.beltMax}): ${filtered.length} matches`);
+                break;
+            }
             case 'experience':
                 // DEBUG: Check what experience values we're working with
                 if (competitors.length > 0 && rangeIdx === 0) {
