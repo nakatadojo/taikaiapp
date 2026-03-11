@@ -948,6 +948,67 @@ async function createRegistrationsFromCart(
   }
 }
 
+/**
+ * GET /api/registrations/my/:id
+ * Get a single registration owned by the current user (for badge page).
+ */
+async function getMyRegistration(req, res, next) {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT r.id, r.user_id, r.status, r.tournament_id,
+              t.name AS tournament_name, t.date AS tournament_date,
+              cp.first_name, cp.last_name
+       FROM registrations r
+       LEFT JOIN tournaments t ON t.id = r.tournament_id
+       LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+       WHERE r.id = $1`,
+      [id]
+    );
+    const reg = result.rows[0];
+    if (!reg) return res.status(404).json({ error: 'Registration not found' });
+    if (reg.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+    if (reg.status === 'cancelled') return res.status(403).json({ error: 'Registration is cancelled' });
+    res.json({ registration: reg });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/registrations/my/:id/qr
+ * Return a QR code PNG for competitor check-in.
+ */
+async function getMyRegistrationQR(req, res, next) {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT id, user_id, status FROM registrations WHERE id = $1',
+      [id]
+    );
+    const reg = result.rows[0];
+    if (!reg) return res.status(404).json({ error: 'Registration not found' });
+    if (reg.user_id !== req.user.id) return res.status(403).json({ error: 'Not authorized' });
+    if (reg.status === 'cancelled') return res.status(403).json({ error: 'Registration is cancelled' });
+
+    const QRCode = require('qrcode');
+    const origin = process.env.APP_URL || 'https://www.taikaiapp.com';
+    const checkInUrl = `${origin}/checkin?registrationId=${encodeURIComponent(reg.id)}`;
+
+    const png = await QRCode.toBuffer(checkInUrl, {
+      width: 200,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(png);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   registerCompetitor,
   registerInstructor,
@@ -957,4 +1018,6 @@ module.exports = {
   checkout,
   confirmPayment,
   getMyRegistrations,
+  getMyRegistration,
+  getMyRegistrationQR,
 };

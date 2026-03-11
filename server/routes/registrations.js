@@ -19,6 +19,12 @@ router.post('/confirm', requireAuth, registrationController.confirmPayment);
 // GET /api/registrations/my — Get logged-in user's registrations
 router.get('/my', requireAuth, registrationController.getMyRegistrations);
 
+// GET /api/registrations/my/:id — Get a single registration (for badge page)
+router.get('/my/:id', requireAuth, registrationController.getMyRegistration);
+
+// GET /api/registrations/my/:id/qr — Return QR code PNG for competitor check-in
+router.get('/my/:id/qr', requireAuth, registrationController.getMyRegistrationQR);
+
 // POST /api/registrations/validate-discount — Validate a discount code
 router.post('/validate-discount',
   requireAuth,
