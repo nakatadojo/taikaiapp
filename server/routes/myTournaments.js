@@ -13,4 +13,7 @@ router.get('/staff-dashboard', requireAuth, controller.staffDashboard);
 // GET /api/my/membership/:id — Get a single membership (for badge page)
 router.get('/membership/:id', requireAuth, controller.getMembership);
 
+// GET /api/my/membership/:id/qr — Return QR code PNG for member check-in
+router.get('/membership/:id/qr', requireAuth, controller.getMembershipQR);
+
 module.exports = router;

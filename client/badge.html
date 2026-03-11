@@ -99,7 +99,9 @@
             gap: 6px;
             border-top: 1px solid rgba(255,255,255,0.06);
         }
-        .badge-qr canvas {
+        .badge-qr img {
+            width: 160px;
+            height: 160px;
             border-radius: 8px;
             display: block;
         }
@@ -190,7 +192,7 @@
                 border-top: 1px solid #eee;
             }
             .badge-qr-label { color: #aaa; }
-            .badge-qr canvas {
+            .badge-qr img {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -209,7 +211,6 @@
         <p class="print-hint">Use Ctrl+P (or Cmd+P) to print. Set margins to "None" for best results.</p>
     </div>
 
-    <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script src="/auth.js"></script>
     <script>
     (async function() {
@@ -258,6 +259,9 @@
                     .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                 : '';
 
+            // QR image is served by the server — no external CDN needed
+            const qrSrc = `/api/my/membership/${encodeURIComponent(memberId)}/qr`;
+
             wrapper.innerHTML = `
                 <div class="badge-card">
                     <div class="badge-header">
@@ -270,19 +274,11 @@
                         ${dateStr ? `<div class="badge-date">${dateStr}</div>` : ''}
                     </div>
                     <div class="badge-qr">
-                        <canvas id="badge-qr-canvas"></canvas>
+                        <img src="${qrSrc}" alt="Check-in QR code" width="160" height="160">
                         <div class="badge-qr-label">Scan to Check In</div>
                     </div>
                 </div>
             `;
-
-            // Generate QR code encoding the member check-in URL
-            const checkInUrl = `${window.location.origin}/checkin?memberId=${encodeURIComponent(memberId)}`;
-            await QRCode.toCanvas(document.getElementById('badge-qr-canvas'), checkInUrl, {
-                width: 160,
-                margin: 1,
-                color: { dark: '#000000', light: '#ffffff' }
-            });
 
             actions.style.display = '';
 

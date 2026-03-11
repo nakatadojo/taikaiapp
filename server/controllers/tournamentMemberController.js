@@ -2,6 +2,7 @@ const tournamentMemberQueries = require('../db/queries/tournamentMembers');
 const notificationQueries = require('../db/queries/notifications');
 const tournamentQueries = require('../db/queries/tournaments');
 const userQueries = require('../db/queries/users');
+const QRCode = require('qrcode');
 
 /**
  * POST /api/tournament-members
@@ -307,4 +308,39 @@ async function undoCheckIn(req, res, next) {
   }
 }
 
-module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, staffDashboard, checkIn, undoCheckIn };
+/**
+ * GET /api/my/membership/:id/qr
+ * Return a QR code PNG for the member's check-in URL.
+ * Only the member themselves can retrieve their QR code.
+ */
+async function getMembershipQR(req, res, next) {
+  try {
+    const member = await tournamentMemberQueries.findById(req.params.id);
+    if (!member) {
+      return res.status(404).json({ error: 'Membership not found' });
+    }
+    if (member.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    if (member.status !== 'approved') {
+      return res.status(403).json({ error: 'Badge only available for approved members' });
+    }
+
+    const origin = process.env.APP_URL || 'https://www.taikaiapp.com';
+    const checkInUrl = `${origin}/checkin?memberId=${encodeURIComponent(member.id)}`;
+
+    const png = await QRCode.toBuffer(checkInUrl, {
+      width: 200,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(png);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, getMembershipQR, staffDashboard, checkIn, undoCheckIn };
