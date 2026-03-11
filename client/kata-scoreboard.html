@@ -384,7 +384,30 @@
           }
         };
         window.addEventListener('storage', handler);
-        return () => window.removeEventListener('storage', handler);
+
+        // ── Server polling for cross-device support ──────────────────────────
+        let _lastServerStateHash = null;
+        const _pollServer = _tid ? setInterval(async () => {
+          try {
+            const res = await fetch(`/api/tournaments/${_tid}/scoreboard-state`, { credentials: 'include' });
+            if (!res.ok) return;
+            const { state: serverState } = await res.json();
+            const hash = JSON.stringify(serverState);
+            if (hash === _lastServerStateHash) return;
+            _lastServerStateHash = hash;
+            if (!serverState || Object.keys(serverState).length === 0) return;
+            if (serverState.scoreboardType && serverState.scoreboardType !== 'kata') {
+              const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html' };
+              if (redirect[serverState.scoreboardType]) { window.location.href = redirect[serverState.scoreboardType] + _tidParam; return; }
+            }
+            setState(serverState);
+          } catch {}
+        }, 1000) : null;
+
+        return () => {
+          window.removeEventListener('storage', handler);
+          if (_pollServer) clearInterval(_pollServer);
+        };
       }, []);
 
       if (state && state.scoreboardType === 'kata') {

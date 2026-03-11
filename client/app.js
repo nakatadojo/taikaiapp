@@ -258,6 +258,8 @@ function saveBrackets(brackets) {
         console.error('[saveBrackets] localStorage quota exceeded — brackets not saved locally. Server sync will still be attempted.', e);
         showMessage('Warning: local storage is full. Brackets will be saved to the server but may not persist offline.', 'warning');
     }
+    // Auto-persist every match update to server so other devices see live state
+    _debouncedSync('brackets', _syncBracketsToServer, 2000);
 }
 
 /**
@@ -800,6 +802,40 @@ async function _syncBracketsToServer() {
     }
 }
 
+/**
+ * Persist the live scoreboard state to the server so other devices
+ * (TV scoreboards, staff tablets) can poll and display current match state.
+ * Called debounced ~500ms after every localStorage scoreboard-state write.
+ */
+async function _syncScoreboardStateToServer() {
+    if (!currentTournamentId) return;
+    const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-state`, {
+            method: 'PUT', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state }),
+        });
+    } catch (err) {
+        // Non-fatal — localStorage write already succeeded for same-device display
+        console.warn('[sync] scoreboard-state server sync failed:', err.message);
+    }
+}
+
+async function _syncStagingSettingsToServer() {
+    if (!currentTournamentId) return;
+    const settings = JSON.parse(localStorage.getItem(_scopedKey('stagingSettings')) || '{}');
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/staging-settings`, {
+            method: 'PUT', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings }),
+        });
+    } catch (err) {
+        console.warn('[sync] staging-settings server sync failed:', err.message);
+    }
+}
+
 async function _syncDivisionsToServer() {
     if (!currentTournamentId) return;
     const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
@@ -1032,6 +1068,23 @@ async function _loadPublicSiteConfigFromServer() {
         }
     } catch (err) {
         console.warn('[sync] Failed to load public site config:', err.message);
+    }
+}
+
+async function _loadStagingSettingsFromServer() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/staging-settings`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.settings && Object.keys(data.settings).length > 0) {
+            localStorage.setItem(_scopedKey('stagingSettings'), JSON.stringify(data.settings));
+            console.log('[sync] Loaded staging settings from server');
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load staging settings:', err.message);
     }
 }
 
@@ -1498,6 +1551,8 @@ loadTournamentSelector();
             _loadScoreboardConfigFromServer().catch(e => console.warn('[sync] Scoreboard config load:', e.message));
             // Auto-load public site config from server
             _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
+            // Auto-load staging settings from server
+            _loadStagingSettingsFromServer().catch(e => console.warn('[sync] Staging settings load:', e.message));
         });
     }
 
@@ -12438,6 +12493,7 @@ function saveStagingSettings() {
     const dps = dpsEl ? dpsEl.value : 'next5';
     const settings = { rotationInterval: interval, divisionsPerSlide: dps };
     localStorage.setItem(_scopedKey('stagingSettings'), JSON.stringify(settings));
+    _debouncedSync('stagingSettings', _syncStagingSettingsToServer, 1000);
     showToast('Staging settings saved', 'success');
 }
 
@@ -16242,6 +16298,7 @@ function updateKataFlagsTVDisplay() {
 
     console.log('State to save:', state);
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     console.log('State saved to localStorage');
 }
 
@@ -16562,6 +16619,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
     };
 
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
 function kataFlagsNextMatch() {
@@ -17840,6 +17898,7 @@ function operatorNextAfterWin() {
         const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
         localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
+        _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     } catch(e) {}
 
     const divisionComplete = checkBracketComplete(currentOperatorDivision, currentOperatorEventId);
@@ -18479,6 +18538,7 @@ function updateRankingListTVDisplay(bracket, status) {
     };
 
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
 function updateRankingListTotal(numJudges) {
@@ -18805,6 +18865,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
         const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
         localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
+        _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     } catch(e) {}
 
     // Mark division completed in schedule
@@ -19841,6 +19902,7 @@ function updateOperatorTVDisplay(winner = null) {
     };
 
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
 function generateMats() {
@@ -22186,6 +22248,7 @@ function updateTVDisplay() {
     };
 
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
 function addScore(corner, points) {
@@ -22296,6 +22359,7 @@ function declareWinner() {
     const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
     state.winner = winnerName;
     localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 
     showToast(`Winner: ${winner} | Red: ${redScore} - Blue: ${blueScore}`, 'success', 5000);
 }
