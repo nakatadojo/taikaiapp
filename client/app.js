@@ -585,7 +585,18 @@ async function _loadCompetitorsFromServer() {
         ]);
         if (compRes.ok) {
             const { competitors } = await compRes.json();
-            db.save('competitors', Array.isArray(competitors) ? competitors : []);
+            // Normalize server snake_case fields to camelCase expected by the client
+            const normalized = (Array.isArray(competitors) ? competitors : []).map(c => ({
+                ...c,
+                firstName:   c.firstName   ?? c.first_name   ?? '',
+                lastName:    c.lastName    ?? c.last_name    ?? '',
+                dateOfBirth: c.dateOfBirth ?? c.date_of_birth ?? null,
+                rank:        c.rank        ?? c.belt         ?? '',
+                weight:      c.weight      ?? c.weight_kg    ?? null,
+                checkedIn:   c.checkedIn   ?? c.checked_in   ?? false,
+                tournamentId: currentTournamentId,
+            }));
+            db.save('competitors', normalized);
             // Remove any stale localStorage copy left from a previous session
             localStorage.removeItem(_scopedKey('competitors'));
         }
@@ -1469,6 +1480,10 @@ document.getElementById('tournament-form')?.addEventListener('submit', (e) => {
     hideTournamentForm();
 });
 
+function _tournamentOptionText(t) {
+    return `${t.name} - ${new Date(typeof t.date === 'string' && t.date.length === 10 ? t.date + 'T12:00:00' : t.date).toLocaleDateString()}`;
+}
+
 function loadTournamentSelector() {
     const tournaments = db.load('tournaments');
     const select = document.getElementById('active-tournament');
@@ -1477,23 +1492,44 @@ function loadTournamentSelector() {
     tournaments.forEach(tournament => {
         const option = document.createElement('option');
         option.value = tournament.id;
-        option.textContent = `${tournament.name} - ${new Date(typeof tournament.date === 'string' && tournament.date.length === 10 ? tournament.date + 'T12:00:00' : tournament.date).toLocaleDateString()}`;
+        option.textContent = _tournamentOptionText(tournament);
         select.appendChild(option);
     });
+
+    // Also pull server tournaments so API-created ones appear in the list
+    fetch('/api/tournaments/director/mine', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            const serverList = data?.tournaments || data?.data || [];
+            if (!Array.isArray(serverList)) return;
+            serverList.forEach(t => {
+                if (!Array.from(select.options).some(o => o.value === t.id)) {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = _tournamentOptionText(t);
+                    select.appendChild(opt);
+                }
+            });
+            // If current URL has a ?tid= that is now in the list, ensure it's selected
+            const tidParam = new URLSearchParams(window.location.search).get('tid');
+            if (tidParam && select.value !== tidParam && Array.from(select.options).some(o => o.value === tidParam)) {
+                select.value = tidParam;
+            }
+        })
+        .catch(() => {});
 }
 
 // Load tournaments on page load
 loadTournamentSelector();
 
-// ── Auto-detect tournament from URL path ────────────────────────────────────
-// When manage.html is served at /director/tournaments/:id/manage the tournament
-// ID is embedded in the URL. Read it, add it to the dropdown (fetching the name
-// from the server if it isn't in localStorage), and auto-initialize that tournament.
+// ── Auto-detect tournament from URL path or ?tid= query param ───────────────
+// Supports both /director/tournaments/:id/manage and manage.html?tid=:id
 (function _initFromURL() {
     const match = window.location.pathname.match(/\/director\/tournaments\/([^/]+)\/manage/);
-    if (!match) return;
+    const tidParam = new URLSearchParams(window.location.search).get('tid');
+    if (!match && !tidParam) return;
 
-    const urlTournamentId = match[1];
+    const urlTournamentId = match ? match[1] : tidParam;
 
     // Helper to activate the detected tournament
     function _activateTournament(name) {
