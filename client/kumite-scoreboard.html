@@ -683,7 +683,33 @@
           }
         };
         window.addEventListener('storage', handler);
-        return () => window.removeEventListener('storage', handler);
+
+        // ── Server polling for cross-device support ──────────────────────────
+        // Storage events only fire within the same browser. Polling lets TV
+        // displays and staff devices on different hardware see live scores.
+        let _lastServerStateHash = null;
+        const _pollServer = _tid ? setInterval(async () => {
+          try {
+            const res = await fetch(`/api/tournaments/${_tid}/scoreboard-state`, { credentials: 'include' });
+            if (!res.ok) return;
+            const { state: serverState } = await res.json();
+            const hash = JSON.stringify(serverState);
+            if (hash === _lastServerStateHash) return; // no change
+            _lastServerStateHash = hash;
+            if (!serverState || Object.keys(serverState).length === 0) return;
+            // Auto-redirect if scoreboard type changed
+            if (serverState.scoreboardType && serverState.scoreboardType !== 'kumite') {
+              const redirect = { 'kata': 'kata-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html' };
+              if (redirect[serverState.scoreboardType]) { window.location.href = redirect[serverState.scoreboardType] + _tidParam; return; }
+            }
+            setState(serverState);
+          } catch {}
+        }, 1000) : null;
+
+        return () => {
+          window.removeEventListener('storage', handler);
+          if (_pollServer) clearInterval(_pollServer);
+        };
       }, []);
 
       if (state && state.scoreboardType === 'kumite') {
