@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { requireTournamentOwner } = require('../middleware/tournamentOwner');
+const { requireTournamentPermission } = require('../middleware/tournamentPermission');
 const scoreboardStateController = require('../controllers/scoreboardStateController');
 
 const router = express.Router();
@@ -8,26 +8,26 @@ const router = express.Router();
 // Live scoreboard state — read/write by director + approved staff
 router.get('/:id/scoreboard-state',
   requireAuth,
-  requireTournamentOwner,
+  requireTournamentPermission('read_data'),
   scoreboardStateController.getScoreboardState
 );
 
 router.put('/:id/scoreboard-state',
   requireAuth,
-  requireTournamentOwner,
+  requireTournamentPermission('operate_scoreboard'),
   scoreboardStateController.setScoreboardState
 );
 
 // Staging display settings — read/write by director + approved staff
 router.get('/:id/staging-settings',
   requireAuth,
-  requireTournamentOwner,
+  requireTournamentPermission('read_data'),
   scoreboardStateController.getStagingSettings
 );
 
 router.put('/:id/staging-settings',
   requireAuth,
-  requireTournamentOwner,
+  requireTournamentPermission('operate_scoreboard'),
   scoreboardStateController.setStagingSettings
 );
 

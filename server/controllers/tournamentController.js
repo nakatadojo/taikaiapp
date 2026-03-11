@@ -645,8 +645,6 @@ async function cloneTournament(req, res, next) {
  */
 async function getCompetitors(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
     res.json({ competitors });
   } catch (err) { next(err); }
@@ -672,8 +670,6 @@ async function syncCompetitors(req, res, next) {
  */
 async function getClubs(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const clubs = await tournamentQueries.getDirectorClubs(req.params.id);
     res.json({ clubs });
   } catch (err) { next(err); }
@@ -699,8 +695,6 @@ async function syncClubs(req, res, next) {
  */
 async function checkInDirectorCompetitor(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 
     const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
     const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
@@ -722,8 +716,6 @@ async function checkInDirectorCompetitor(req, res, next) {
  */
 async function undoCheckInDirectorCompetitor(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 
     const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
     const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
@@ -776,8 +768,6 @@ module.exports = {
 
 async function getOfficials(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const officials = await tournamentQueries.getDirectorOfficials(req.params.id);
     res.json({ officials });
   } catch (err) { next(err); }
@@ -795,8 +785,6 @@ async function syncOfficials(req, res, next) {
 
 async function getStaff(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const staff = await tournamentQueries.getDirectorStaff(req.params.id);
     res.json({ staff });
   } catch (err) { next(err); }
@@ -814,8 +802,6 @@ async function syncStaff(req, res, next) {
 
 async function getInstructors(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const instructors = await tournamentQueries.getDirectorInstructors(req.params.id);
     res.json({ instructors });
   } catch (err) { next(err); }
