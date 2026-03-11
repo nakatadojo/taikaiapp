@@ -1,12 +1,14 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
+const { requireTournamentPermission } = require('../middleware/tournamentPermission');
 const c = require('../controllers/bracketsController');
 
 const router = express.Router();
 
+// Staff can read brackets (for scoreboard operation)
 router.get('/:id/brackets',
-  requireAuth, requireTournamentOwner,
+  requireAuth, requireTournamentPermission('read_data'),
   c.getBrackets
 );
 
