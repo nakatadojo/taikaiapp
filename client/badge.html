@@ -57,36 +57,65 @@
         .badge-body {
             flex: 1;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
+            padding: 10px 14px;
+            gap: 12px;
+        }
+
+        .badge-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             justify-content: center;
-            padding: 12px 16px;
-            gap: 4px;
+            gap: 3px;
+            min-width: 0;
         }
 
         .badge-name {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             color: #fff;
             line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .badge-role {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
             color: var(--accent);
             text-transform: uppercase;
             letter-spacing: 2px;
-            margin: 4px 0;
+            margin: 2px 0;
         }
         .badge-tournament {
-            font-size: 11px;
+            font-size: 10px;
             color: rgba(255,255,255,0.6);
-            text-align: center;
             line-height: 1.4;
         }
         .badge-date {
-            font-size: 10px;
+            font-size: 9px;
             color: rgba(255,255,255,0.4);
+        }
+
+        .badge-qr {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+        }
+        .badge-qr canvas, .badge-qr img {
+            width: 72px !important;
+            height: 72px !important;
+            border-radius: 4px;
+        }
+        .badge-qr-label {
+            font-size: 8px;
+            color: rgba(255,255,255,0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         /* Screen-only elements */
@@ -162,6 +191,8 @@
             .badge-role { color: #dc2626; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .badge-tournament { color: #555; }
             .badge-date { color: #888; }
+            .badge-qr-label { color: #aaa; }
+            .badge-qr canvas, .badge-qr img { border: 1px solid #eee; }
         }
     </style>
 </head>
@@ -177,6 +208,7 @@
         <p class="print-hint">Use Ctrl+P (or Cmd+P) to print. Set margins to "None" for best results.</p>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script src="/auth.js"></script>
     <script>
     (async function() {
@@ -231,13 +263,27 @@
                         <div class="badge-header-text">TAIKAI</div>
                     </div>
                     <div class="badge-body">
-                        <div class="badge-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
-                        <div class="badge-role">${roleLabel}</div>
-                        <div class="badge-tournament">${esc(m.tournament_name || '')}</div>
-                        ${dateStr ? `<div class="badge-date">${dateStr}</div>` : ''}
+                        <div class="badge-info">
+                            <div class="badge-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
+                            <div class="badge-role">${roleLabel}</div>
+                            <div class="badge-tournament">${esc(m.tournament_name || '')}</div>
+                            ${dateStr ? `<div class="badge-date">${dateStr}</div>` : ''}
+                        </div>
+                        <div class="badge-qr">
+                            <canvas id="badge-qr-canvas"></canvas>
+                            <div class="badge-qr-label">Scan to Check In</div>
+                        </div>
                     </div>
                 </div>
             `;
+
+            // Generate QR code encoding the member check-in URL
+            const checkInUrl = `${window.location.origin}/checkin?memberId=${encodeURIComponent(memberId)}`;
+            QRCode.toCanvas(document.getElementById('badge-qr-canvas'), checkInUrl, {
+                width: 72,
+                margin: 1,
+                color: { dark: '#000000', light: '#ffffff' }
+            });
 
             actions.style.display = '';
 
