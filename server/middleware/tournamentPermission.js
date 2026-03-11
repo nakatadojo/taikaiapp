@@ -49,18 +49,21 @@ function requireTournamentPermission(...requiredPermissions) {
         return res.status(403).json({ error: 'Not authorized for this tournament' });
       }
 
-      // If member has a role definition, check permissions
+      // If member has a role definition, check specific permissions
       if (member.permissions && Array.isArray(member.permissions)) {
         const hasPermission = requiredPermissions.some(p => member.permissions.includes(p));
         if (hasPermission) {
           return next();
         }
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          required: requiredPermissions,
+        });
       }
 
-      return res.status(403).json({
-        error: 'Insufficient permissions',
-        required: requiredPermissions,
-      });
+      // Member has no role definition — basic staff member, grant access to all
+      // standard tournament operations (check-in, scoreboard, brackets, staging)
+      return next();
     } catch (err) {
       next(err);
     }

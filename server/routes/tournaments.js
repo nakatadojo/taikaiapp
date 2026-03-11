@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
+const { requireTournamentPermission } = require('../middleware/tournamentPermission');
 const upload = require('../middleware/upload');
 const { validateImageBytes } = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
@@ -184,42 +185,42 @@ router.post('/:id/sync',
 
 // ── Director Competitors / Clubs (JSONB sync) ────────────────────────────────
 
-// GET /api/tournaments/:id/competitors
-router.get('/:id/competitors', requireAuth, requireTournamentOwner, tournamentController.getCompetitors);
+// GET /api/tournaments/:id/competitors — staff can read (for check-in)
+router.get('/:id/competitors', requireAuth, requireTournamentPermission('read_data'), tournamentController.getCompetitors);
 
-// POST /api/tournaments/:id/competitors/sync
+// POST /api/tournaments/:id/competitors/sync — owner only
 router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
 
-// POST /api/tournaments/:id/competitors/:competitorId/checkin — check in a director-added competitor
-router.post('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentOwner, tournamentController.checkInDirectorCompetitor);
+// POST /api/tournaments/:id/competitors/:competitorId/checkin — staff can check in
+router.post('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentPermission('manage_checkin'), tournamentController.checkInDirectorCompetitor);
 
-// DELETE /api/tournaments/:id/competitors/:competitorId/checkin — undo check-in
-router.delete('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentOwner, tournamentController.undoCheckInDirectorCompetitor);
+// DELETE /api/tournaments/:id/competitors/:competitorId/checkin — staff can undo check-in
+router.delete('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentPermission('manage_checkin'), tournamentController.undoCheckInDirectorCompetitor);
 
-// GET /api/tournaments/:id/clubs
-router.get('/:id/clubs', requireAuth, requireTournamentOwner, tournamentController.getClubs);
+// GET /api/tournaments/:id/clubs — staff can read
+router.get('/:id/clubs', requireAuth, requireTournamentPermission('read_data'), tournamentController.getClubs);
 
-// POST /api/tournaments/:id/clubs/sync
+// POST /api/tournaments/:id/clubs/sync — owner only
 router.post('/:id/clubs/sync', requireAuth, requireTournamentOwner, tournamentController.syncClubs);
 
 // ── Director Officials / Staff / Instructors (JSONB sync) ────────────────────
 
-// GET /api/tournaments/:id/officials
-router.get('/:id/officials', requireAuth, requireTournamentOwner, tournamentController.getOfficials);
+// GET /api/tournaments/:id/officials — staff can read
+router.get('/:id/officials', requireAuth, requireTournamentPermission('read_data'), tournamentController.getOfficials);
 
-// POST /api/tournaments/:id/officials/sync
+// POST /api/tournaments/:id/officials/sync — owner only
 router.post('/:id/officials/sync', requireAuth, requireTournamentOwner, tournamentController.syncOfficials);
 
-// GET /api/tournaments/:id/staff
-router.get('/:id/staff', requireAuth, requireTournamentOwner, tournamentController.getStaff);
+// GET /api/tournaments/:id/staff — staff can read
+router.get('/:id/staff', requireAuth, requireTournamentPermission('read_data'), tournamentController.getStaff);
 
-// POST /api/tournaments/:id/staff/sync
+// POST /api/tournaments/:id/staff/sync — owner only
 router.post('/:id/staff/sync', requireAuth, requireTournamentOwner, tournamentController.syncStaff);
 
-// GET /api/tournaments/:id/instructors
-router.get('/:id/instructors', requireAuth, requireTournamentOwner, tournamentController.getInstructors);
+// GET /api/tournaments/:id/instructors — staff can read
+router.get('/:id/instructors', requireAuth, requireTournamentPermission('read_data'), tournamentController.getInstructors);
 
-// POST /api/tournaments/:id/instructors/sync
+// POST /api/tournaments/:id/instructors/sync — owner only
 router.post('/:id/instructors/sync', requireAuth, requireTournamentOwner, tournamentController.syncInstructors);
 
 // ── Director Discount Codes ──────────────────────────────────────────────
