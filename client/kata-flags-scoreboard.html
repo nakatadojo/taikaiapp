@@ -538,33 +538,40 @@
       );
     }
 
-    // ── Resolve the correct localStorage key (scoped by tournament ID) ────────
+    // ── Resolve tournament ID from URL ────────────────────────────────────────
     const _tid = new URLSearchParams(window.location.search).get('tid');
-    const _stateKey = _tid ? `t_${_tid}_scoreboard-state` : 'scoreboard-state';
     const _tidParam = _tid ? `?tid=${_tid}` : '';
 
-    // ── Wire to localStorage ────────────────────────────────────────────────
+    // ── Wire to BroadcastChannel ──────────────────────────────────────────────
     function App() {
-      const [state, setState] = React.useState(() => {
-        try { return JSON.parse(localStorage.getItem(_stateKey) || 'null'); } catch { return null; }
-      });
+      const [state, setState] = React.useState(null);
 
       React.useEffect(() => {
-        const handler = (e) => {
-          if (e.key === _stateKey && e.newValue) {
-            try {
-              const newState = JSON.parse(e.newValue);
-              // Auto-redirect if scoreboard type changed
-              if (newState.scoreboardType && newState.scoreboardType !== 'kata-flags') {
-                const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata': 'kata-scoreboard.html' };
-                if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType] + _tidParam; return; }
-              }
-              setState(newState);
-            } catch {}
+        const bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
+
+        function applyState(newState) {
+          if (!newState) return;
+          if (newState.scoreboardType && newState.scoreboardType !== 'kata-flags') {
+            const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata': 'kata-scoreboard.html' };
+            if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType] + _tidParam; return; }
           }
-        };
-        window.addEventListener('storage', handler);
-        return () => window.removeEventListener('storage', handler);
+          setState(newState);
+        }
+
+        if (bc) {
+          bc.onmessage = (evt) => {
+            const d = evt.data;
+            if (!d) return;
+            if (d.type === 'table-update' && d.table === 'scoreboard-state' && d.value) {
+              try { applyState(JSON.parse(d.value)); } catch {}
+            } else if (d.type === 'state-snapshot' && d['scoreboard-state']) {
+              try { applyState(JSON.parse(d['scoreboard-state'])); } catch {}
+            }
+          };
+          try { bc.postMessage({ type: 'request-state' }); } catch(e) {}
+        }
+
+        return () => { if (bc) bc.close(); };
       }, []);
 
       if (state && state.scoreboardType === 'kata-flags') {

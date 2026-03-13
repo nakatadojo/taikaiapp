@@ -228,35 +228,46 @@ body {
 
     const params = new URLSearchParams(location.search);
     const tid    = params.get('tid') || '';
-    const sk     = k => `t_${tid}_${k}`;
+
+    /* ── BroadcastChannel state cache (zero localStorage) ────────────── */
+    const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
+    const _stateCache = { stagingSettings: '{}', mats: '[]', matSchedule: '{}', brackets: '{}' };
+    if (_bc) {
+        _bc.onmessage = (evt) => {
+            const d = evt.data;
+            if (!d) return;
+            if (d.type === 'table-update' && d.table in _stateCache && d.value != null) {
+                _stateCache[d.table] = d.value;
+                renderSlide(currentMatIdx);
+            } else if (d.type === 'state-snapshot') {
+                if (d.stagingSettings) _stateCache.stagingSettings = d.stagingSettings;
+                if (d.mats)            _stateCache.mats            = d.mats;
+                if (d.matSchedule)     _stateCache.matSchedule     = d.matSchedule;
+                if (d.brackets)        _stateCache.brackets        = d.brackets;
+                renderSlide(currentMatIdx);
+            }
+        };
+        try { _bc.postMessage({ type: 'request-state' }); } catch(e) {}
+    }
 
     /* ── Data helpers ─────────────────────────────────────────────────── */
     function getSettings() {
-        try { return JSON.parse(localStorage.getItem(sk('stagingSettings')) || '{}'); }
+        try { return JSON.parse(_stateCache.stagingSettings || '{}'); }
         catch { return {}; }
     }
 
     function getMats() {
-        try { return JSON.parse(localStorage.getItem(sk('mats')) || '[]'); }
+        try { return JSON.parse(_stateCache.mats || '[]'); }
         catch { return []; }
     }
 
     function getSchedule() {
-        // The mat schedule key includes tournament ID in a special format
-        // Try the scoped key first, then fall back to scanning for the key
-        const direct = localStorage.getItem(sk('matSchedule'));
-        if (direct) { try { return JSON.parse(direct); } catch {} }
-        // Scan for any key containing the tournament id and matSchedule
-        for (const k of Object.keys(localStorage)) {
-            if (k.includes(tid) && k.toLowerCase().includes('matschedule')) {
-                try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch {}
-            }
-        }
-        return {};
+        try { return JSON.parse(_stateCache.matSchedule || '{}'); }
+        catch { return {}; }
     }
 
     function getBrackets() {
-        try { return JSON.parse(localStorage.getItem(sk('brackets')) || '{}'); }
+        try { return JSON.parse(_stateCache.brackets || '{}'); }
         catch { return {}; }
     }
 

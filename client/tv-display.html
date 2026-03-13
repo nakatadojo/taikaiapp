@@ -80,17 +80,20 @@
     </div>
 
     <script>
-        // Listen for localStorage changes
-        window.addEventListener('storage', function(e) {
-            if (e.key === 'scoreboard-state' && e.newValue) {
-                updateDisplay(JSON.parse(e.newValue));
-            }
-        });
-
-        // Initial load
-        const savedState = localStorage.getItem('scoreboard-state');
-        if (savedState) {
-            updateDisplay(JSON.parse(savedState));
+        // Receive state updates from operator tab via BroadcastChannel (zero localStorage)
+        const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
+        if (_bc) {
+            _bc.onmessage = (evt) => {
+                const d = evt.data;
+                if (!d) return;
+                if (d.type === 'table-update' && d.table === 'scoreboard-state' && d.value) {
+                    try { updateDisplay(JSON.parse(d.value)); } catch(e) {}
+                } else if (d.type === 'state-snapshot' && d['scoreboard-state']) {
+                    try { updateDisplay(JSON.parse(d['scoreboard-state'])); } catch(e) {}
+                }
+            };
+            // Request current state from any open operator tab
+            try { _bc.postMessage({ type: 'request-state' }); } catch(e) {}
         }
 
         // Returns white for dark backgrounds, black for light backgrounds

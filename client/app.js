@@ -253,9 +253,9 @@ function saveBrackets(brackets) {
         slimmed[id] = slimBracketForStorage(JSON.parse(JSON.stringify(brackets[id])));
     });
     try {
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(slimmed));
+        _msSet(_scopedKey('brackets'), JSON.stringify(slimmed));
     } catch (e) {
-        console.error('[saveBrackets] localStorage quota exceeded — brackets not saved locally. Server sync will still be attempted.', e);
+        console.error('[saveBrackets] Failed to save brackets to in-memory store. Server sync will still be attempted.', e);
         showMessage('Warning: local storage is full. Brackets will be saved to the server but may not persist offline.', 'warning');
     }
     // Auto-persist every match update to server so other devices see live state
@@ -329,6 +329,59 @@ function slimBracketForStorage(bracket) {
     return bracket;
 }
 
+// ── In-Memory Store (replaces localStorage — zero local persistence) ─────────
+// All scoped tournament data lives in memory only. The server is the single
+// authoritative source; data is rebuilt on every page load.
+//
+// Cross-tab display pages (staging-display, kata-scoreboard, mat-display,
+// tv-display) receive updates via BroadcastChannel('taikai-display') instead
+// of localStorage storage events.
+const _msData = Object.create(null);
+
+// Tables that are broadcast to display pages via BroadcastChannel.
+const _BC_DISPLAY_TABLES = new Set([
+    'scoreboard-state', 'stagingSettings', 'mats', 'matSchedule',
+    'brackets', 'matScoreboards', 'scoreboardSettings', 'scoreboardConfig',
+]);
+
+// BroadcastChannel for cross-tab display communication (null in environments
+// that don't support it, e.g. some older Safari or file:// origins).
+let _bc = null;
+try { _bc = new BroadcastChannel('taikai-display'); } catch(e) {}
+if (_bc) {
+    _bc.onmessage = (evt) => {
+        if (evt.data?.type === 'request-state' && currentTournamentId) {
+            const snap = { type: 'state-snapshot', tournamentId: currentTournamentId };
+            for (const t of _BC_DISPLAY_TABLES) snap[t] = _msGet(_scopedKey(t));
+            snap.competitors = JSON.stringify(_inMemoryCompetitors || []);
+            try { _bc.postMessage(snap); } catch(e) {}
+        }
+    };
+}
+
+function _msSet(key, value) {
+    _msData[key] = value;
+    // Broadcast display-table updates to cross-tab pages via BroadcastChannel.
+    if (_bc && currentTournamentId) {
+        const prefix = `t_${currentTournamentId}_`;
+        if (key.startsWith(prefix)) {
+            const table = key.slice(prefix.length);
+            if (_BC_DISPLAY_TABLES.has(table)) {
+                try { _bc.postMessage({ type: 'table-update', table, value, tournamentId: currentTournamentId }); } catch(e) {}
+            }
+        }
+    }
+}
+
+function _msGet(key) {
+    const v = _msData[key];
+    return v !== undefined ? v : null;
+}
+
+function _msRemove(key) {
+    delete _msData[key];
+}
+
 // Database Storage using localStorage
 class Database {
     constructor() {
@@ -336,44 +389,47 @@ class Database {
     }
 
     init() {
-        // Array-based tables (competitors handled in-memory, not localStorage)
+        // Array-based tables (competitors handled in-memory)
         const arrayTables = ['instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
         for (const table of arrayTables) {
             const key = (table === 'tournaments') ? table : _scopedKey(table);
-            if (!localStorage.getItem(key)) {
+            if (!_msGet(key)) {
                 if (table === 'mats') {
-                    localStorage.setItem(key, JSON.stringify([
+                    _msSet(key, JSON.stringify([
                         { id: 1, name: 'Mat 1', active: true },
                         { id: 2, name: 'Mat 2', active: true }
                     ]));
                 } else {
-                    localStorage.setItem(key, JSON.stringify([]));
+                    _msSet(key, JSON.stringify([]));
                 }
             }
         }
         // Object-based tables
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         for (const table of objectTables) {
-            if (!localStorage.getItem(_scopedKey(table))) {
-                localStorage.setItem(_scopedKey(table), JSON.stringify({}));
+            if (!_msGet(_scopedKey(table))) {
+                _msSet(_scopedKey(table), JSON.stringify({}));
             }
         }
     }
 
     save(table, data) {
         if (table === 'competitors') { _inMemoryCompetitors = Array.isArray(data) ? data : []; return; }
-        const key = (table === 'tournaments') ? table : _scopedKey(table);
-        localStorage.setItem(key, JSON.stringify(data));
-        // Backward compat: also write to global key for scoreboards/TV displays
-        if (currentTournamentId && (table === 'brackets' || table === 'matSchedule' || table === 'matScoreboards' || table === 'scoreboard-state' || table === 'mats')) {
-            localStorage.setItem(table, JSON.stringify(data));
+        if (table === 'tournaments') {
+            _msSet('tournaments', JSON.stringify(data));
+            return;
         }
+        const key = _scopedKey(table);
+        _msSet(key, JSON.stringify(data));
     }
 
     load(table) {
         if (table === 'competitors') return _inMemoryCompetitors;
-        const key = (table === 'tournaments') ? table : _scopedKey(table);
-        const data = localStorage.getItem(key);
+        if (table === 'tournaments') {
+            return JSON.parse(_msGet('tournaments') || '[]');
+        }
+        const key = _scopedKey(table);
+        const data = _msGet(key);
         const objectTables = ['divisions', 'matSchedule', 'matScoreboards'];
         if (objectTables.includes(table)) {
             return JSON.parse(data || '{}');
@@ -418,34 +474,9 @@ class Database {
 
 const db = new Database();
 
-// Clean up unscoped localStorage keys left over from before the scoped-key system.
-// We no longer migrate (copy) unscoped data into the current tournament because
-// unscoped data is now always orphaned from old/deleted tournaments — copying it
-// contaminates new tournaments with another tournament's brackets, competitors, etc.
-// Server sync is the authoritative source for all server-backed data.
-function _migrateUnscopedData() {
-    if (!currentTournamentId) return;
-    _cleanupLocalStorage();
-}
-
-// Clean up stale/orphaned localStorage data to free space
-function _cleanupLocalStorage() {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        // Remove unscoped copies of scoped keys (old pre-migration data)
-        if (_SCOPED_KEYS.has(key)) {
-            keysToRemove.push(key);
-        }
-    }
-    for (const key of keysToRemove) {
-        localStorage.removeItem(key);
-    }
-    if (keysToRemove.length > 0) {
-        console.log(`[cleanup] Removed ${keysToRemove.length} stale unscoped keys`);
-    }
-}
+// No-ops: localStorage is never used — nothing to migrate or clean up.
+function _migrateUnscopedData() {}
+function _cleanupLocalStorage() {}
 
 // Logo error handler
 function handleLogoError(img) {
@@ -598,7 +629,7 @@ async function _loadCompetitorsFromServer() {
             }));
             db.save('competitors', normalized);
             // Remove any stale localStorage copy left from a previous session
-            localStorage.removeItem(_scopedKey('competitors'));
+            _msRemove(_scopedKey('competitors'));
         }
         if (clubsRes.ok) {
             const { clubs } = await clubsRes.json();
@@ -637,7 +668,7 @@ async function _hydrateEventTypesFromServer() {
 
         // Also hydrate division templates from server criteriaTemplates so
         // autoAssignToDivisions() can find templates for wizard-created events.
-        const currentDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
         let divisionsUpdated = false;
         serverEvents.forEach(e => {
             if (e.is_default) return; // default event has no division templates
@@ -656,7 +687,7 @@ async function _hydrateEventTypesFromServer() {
             }
         });
         if (divisionsUpdated) {
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+            _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
         }
 
         if (typeof loadEventTypes === 'function') loadEventTypes();
@@ -797,7 +828,7 @@ async function _syncScheduleToServer() {
 
 async function _syncBracketsToServer() {
     if (!currentTournamentId) return;
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/sync`, {
@@ -820,7 +851,7 @@ async function _syncBracketsToServer() {
  */
 async function _syncScoreboardStateToServer() {
     if (!currentTournamentId) return;
-    const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
+    const state = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
     try {
         await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-state`, {
             method: 'PUT', credentials: 'include',
@@ -835,7 +866,7 @@ async function _syncScoreboardStateToServer() {
 
 async function _syncStagingSettingsToServer() {
     if (!currentTournamentId) return;
-    const settings = JSON.parse(localStorage.getItem(_scopedKey('stagingSettings')) || '{}');
+    const settings = JSON.parse(_msGet(_scopedKey('stagingSettings')) || '{}');
     try {
         await fetch(`/api/tournaments/${currentTournamentId}/staging-settings`, {
             method: 'PUT', credentials: 'include',
@@ -849,7 +880,7 @@ async function _syncStagingSettingsToServer() {
 
 async function _syncDivisionsToServer() {
     if (!currentTournamentId) return;
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const generatedDivisions = {};
     Object.keys(allDivisions).forEach(eventId => {
         if (allDivisions[eventId]?.generated) {
@@ -894,7 +925,7 @@ async function _syncTemplateToServer(eventId, templates) {
 
 async function _syncTeamsToServer() {
     if (!currentTournamentId) return;
-    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/sync`, {
@@ -912,7 +943,7 @@ async function _syncTeamsToServer() {
 
 async function _syncJudgeVotesToServer() {
     if (!currentTournamentId) return;
-    const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+    const judgeVoteLog = JSON.parse(_msGet(_scopedKey('judgeVoteLog')) || '[]');
     if (judgeVoteLog.length === 0) return;
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-votes/sync`, {
@@ -922,7 +953,7 @@ async function _syncJudgeVotesToServer() {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         // Clear the log after successful sync
-        localStorage.setItem(_scopedKey('judgeVoteLog'), '[]');
+        _msSet(_scopedKey('judgeVoteLog'), '[]');
         console.log('[Judge Analytics] Synced', judgeVoteLog.length, 'votes to server');
     } catch (err) {
         console.warn('[Judge Analytics] Sync failed:', err.message);
@@ -946,7 +977,7 @@ async function _loadTeamsFromServer() {
         const data = await res.json();
         if (data.teams) {
             // Server always wins — always overwrite local so data is consistent across browsers
-            localStorage.setItem(_scopedKey('teams'), JSON.stringify(data.teams));
+            _msSet(_scopedKey('teams'), JSON.stringify(data.teams));
             if (Object.keys(data.teams).length > 0) {
                 console.log(`[sync] Loaded ${Object.keys(data.teams).length} team(s) from server`);
             }
@@ -972,7 +1003,7 @@ async function _loadBracketsFromServer() {
         const data = await res.json();
         const serverBrackets = data.brackets || {};
         // Always write server response (even empty {}) so contaminated local data is cleared.
-        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(serverBrackets));
+        _msSet(_scopedKey('brackets'), JSON.stringify(serverBrackets));
         if (Object.keys(serverBrackets).length > 0) {
             console.log(`[sync] Loaded ${Object.keys(serverBrackets).length} bracket(s) from server`);
         }
@@ -1030,10 +1061,10 @@ async function _loadScoreboardConfigFromServer() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.config) {
-            localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(data.config));
+            _msSet(_scopedKey('scoreboardConfig'), JSON.stringify(data.config));
             // Also mirror kumite corner settings to legacy key
             if (data.config.kumite) {
-                localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
+                _msSet(_scopedKey('scoreboardSettings'), JSON.stringify({
                     corner1Name:   data.config.kumite.corner1Name,
                     corner2Name:   data.config.kumite.corner2Name,
                     corner1Custom: data.config.kumite.corner1Color,
@@ -1074,7 +1105,7 @@ async function _loadPublicSiteConfigFromServer() {
         const data = await res.json();
         const serverConfig = data.tournament?.public_site_config;
         if (serverConfig && Object.keys(serverConfig).length > 0) {
-            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(serverConfig));
+            _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(serverConfig));
             console.log('[sync] Loaded public site config from server');
         }
     } catch (err) {
@@ -1091,7 +1122,7 @@ async function _loadStagingSettingsFromServer() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.settings && Object.keys(data.settings).length > 0) {
-            localStorage.setItem(_scopedKey('stagingSettings'), JSON.stringify(data.settings));
+            _msSet(_scopedKey('stagingSettings'), JSON.stringify(data.settings));
             console.log('[sync] Loaded staging settings from server');
         }
     } catch (err) {
@@ -1118,7 +1149,7 @@ async function _loadDivisionsFromServer() {
 
         // Merge server generatedDivisions into local divisions
         // (templates already hydrated by _hydrateEventTypesFromServer)
-        const currentDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
         Object.keys(serverGenerated).forEach(eventId => {
             if (!currentDivisions[eventId]) {
                 currentDivisions[eventId] = { templates: [], generated: {} };
@@ -1129,7 +1160,7 @@ async function _loadDivisionsFromServer() {
                 currentDivisions[eventId].updatedAt = serverGenerated[eventId].updatedAt;
             }
         });
-        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+        _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
         console.log(`[sync] Loaded generated divisions for ${Object.keys(serverGenerated).length} event(s) from server`);
     } catch (err) {
         console.warn('[sync] Failed to load divisions from server:', err.message);
@@ -1360,6 +1391,14 @@ function switchTournament() {
         document.getElementById('main-nav').classList.remove('hidden');
         loadCompetitors();
         loadDashboard();
+        // Reload server-side competitors/clubs when switching to a server-managed tournament.
+        // _activateTournament handles the initial URL-load path; switchTournament must also refresh.
+        if (_isServerTournamentId(currentTournamentId)) {
+            _loadCompetitorsFromServer().then(() => {
+                loadCompetitors();
+                loadDashboard();
+            });
+        }
         _loadTeamsFromServer();
 
         // Reload whichever view is currently active so it shows the new tournament's data
@@ -1460,8 +1499,8 @@ document.getElementById('tournament-form')?.addEventListener('submit', (e) => {
     };
 
     // Initialize tournaments array if needed
-    if (!localStorage.getItem('tournaments')) {
-        localStorage.setItem('tournaments', JSON.stringify([]));
+    if (!_msGet('tournaments')) {
+        _msSet('tournaments', JSON.stringify([]));
     }
 
     const savedTournament = db.add('tournaments', tournament);
@@ -3062,7 +3101,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
             teamName = _selectedTeamData.name;
 
             // Check no existing team has same name for this event (prevent accidental duplicates)
-            const existingTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            const existingTeams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
             const duplicate = Object.values(existingTeams).find(
                 t => t.name.toLowerCase() === teamName.toLowerCase() && t.eventId === teamEventId
             );
@@ -3087,7 +3126,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
                     members: [],
                     createdAt: new Date().toISOString()
                 };
-                localStorage.setItem(_scopedKey('teams'), JSON.stringify(allTeams));
+                _msSet(_scopedKey('teams'), JSON.stringify(allTeams));
                 _debouncedSync('teams', _syncTeamsToServer, 2000);
             }
 
@@ -3101,7 +3140,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
                 return;
             }
 
-            const allTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            const allTeams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
             const localTeam = allTeams[teamCode];
             if (localTeam && localTeam.members.length >= (localTeam.maxSize || teamEvent?.teamSize || 2)) {
                 showMessage(`The team "${teamName}" is already full.`, 'error');
@@ -3225,11 +3264,11 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
 
         // Add competitor to team members list
         if (teamCode) {
-            const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+            const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
             if (team) {
                 team.members.push(competitorId);
-                localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+                _msSet(_scopedKey('teams'), JSON.stringify(teams));
                 _debouncedSync('teams', _syncTeamsToServer, 2000);
             }
         }
@@ -3271,7 +3310,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
 
 // Update competitor data embedded in all brackets
 function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     let changed = false;
 
     // Fields to copy into embedded competitor objects
@@ -3449,7 +3488,7 @@ function autoAssignToDivisions(competitor, competitorId) {
         };
     });
 
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(freshDivisions));
     // Persist auto-generated divisions to server so they survive page refreshes
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
     console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
@@ -3525,8 +3564,8 @@ function autoUpdateBracketsAfterRegistration(competitor) {
     const competitorId = competitor.id;
     if (!competitorId) return;
 
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
-    const brackets     = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const brackets     = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     if (Object.keys(brackets).length === 0) return;
 
     // Build the set of "eventId::divisionName" keys this competitor now belongs to
@@ -3686,7 +3725,7 @@ function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, t
     }
 
     // Save updated divisions
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 }
 
 // Build a division name automatically from a competitor's own attributes,
@@ -3847,7 +3886,7 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     generateMatchesForBracket(bracket);
 
     // Save bracket
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Check if bracket already exists for this division
     const existingBracketKey = Object.keys(brackets).find(key =>
@@ -4012,7 +4051,7 @@ function generateMatchesForBracket(bracket) {
  */
 
 function lockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -4046,7 +4085,7 @@ function lockBracket(bracketId) {
 }
 
 function unlockBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -4080,7 +4119,7 @@ function unlockBracket(bracketId) {
 
 function autoLockBracketOnMatchStart(bracketId) {
     // Called when a match status changes from 'pending' to 'in-progress'
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket || bracket.locked) return;
@@ -4511,16 +4550,16 @@ function executeTestGeneration(config) {
     for (const event of nonDefaultEvents) {
         if (divisions[event.id]) divisions[event.id].generated = {};
     }
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 
     // Clear brackets and teams for these events
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     Object.keys(brackets).forEach(id => { if (eventIds.includes(brackets[id]?.eventId)) delete brackets[id]; });
     saveBrackets(brackets);
 
-    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
     Object.keys(teams).forEach(code => { if (eventIds.includes(teams[code]?.eventId)) delete teams[code]; });
-    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+    _msSet(_scopedKey('teams'), JSON.stringify(teams));
 
     // ── Step 2: Tournament info for DOB generation ──
     const tournaments = db.load('tournaments');
@@ -4729,10 +4768,10 @@ function clearTestData() {
     for (const event of nonDefaultEvents) {
         if (divisions[event.id]) divisions[event.id].generated = {};
     }
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 
     // Clear brackets
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     Object.keys(brackets).forEach(id => { if (eventIds.includes(brackets[id]?.eventId)) delete brackets[id]; });
     saveBrackets(brackets);
 
@@ -4860,11 +4899,11 @@ function generateTestCompetitors() {
             divisions[eventId].generated = {};
         }
     }
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
     console.log('  Cleared generated divisions');
 
     // Clear brackets for current tournament's events
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracketIdsToDelete = [];
     for (const [bracketId, bracket] of Object.entries(brackets)) {
         if (eventIds.includes(bracket.eventId)) {
@@ -4876,7 +4915,7 @@ function generateTestCompetitors() {
     console.log(`  Deleted ${bracketIdsToDelete.length} brackets`);
 
     // Clear teams for current tournament's events
-    const teams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
     const teamCodesToDelete = [];
     for (const [code, team] of Object.entries(teams)) {
         if (eventIds.includes(team.eventId)) {
@@ -4884,7 +4923,7 @@ function generateTestCompetitors() {
         }
     }
     teamCodesToDelete.forEach(code => delete teams[code]);
-    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teams));
+    _msSet(_scopedKey('teams'), JSON.stringify(teams));
     _debouncedSync('teams', _syncTeamsToServer, 2000);
     console.log(`  Deleted ${teamCodesToDelete.length} teams`);
 
@@ -5210,7 +5249,7 @@ function generateTestCompetitors() {
     let failCount = 0;
 
     // For team events, we need to create team entries
-    const teamRegistry = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+    const teamRegistry = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
 
     for (const comp of competitorsToCreate) {
         const competitorId = db.add('competitors', comp);
@@ -5244,7 +5283,7 @@ function generateTestCompetitors() {
     }
 
     // Save team registry
-    localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamRegistry));
+    _msSet(_scopedKey('teams'), JSON.stringify(teamRegistry));
     _debouncedSync('teams', _syncTeamsToServer, 2000);
 
     // ── STEP 7: Refresh UI and log summary ──
@@ -5288,16 +5327,16 @@ function clearAllCompetitors() {
             for (const eventId of Object.keys(divisions)) {
                 if (divisions[eventId]) divisions[eventId].generated = {};
             }
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+            _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 
             // Clear mat schedule
-            localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify({}));
+            _msSet(_scopedKey('matSchedule'), JSON.stringify({}));
 
             // Clear matches
             db.clear('matches');
 
             // Clear brackets
-            localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
+            _msSet(_scopedKey('brackets'), JSON.stringify({}));
 
             // Reload views
             loadCompetitors();
@@ -5441,7 +5480,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
             updatedAt: new Date().toISOString()
         };
 
-        localStorage.setItem(_scopedKey('clubs'), JSON.stringify(clubs));
+        _msSet(_scopedKey('clubs'), JSON.stringify(clubs));
 
         // If club name changed, update all competitors with this club
         if (oldClubName !== clubName) {
@@ -5980,8 +6019,8 @@ if (eventForm) {
             showMessage('Event type updated!');
         } else {
             // CREATE new event type
-            if (!localStorage.getItem(_scopedKey('eventTypes'))) {
-                localStorage.setItem(_scopedKey('eventTypes'), JSON.stringify([]));
+            if (!_msGet(_scopedKey('eventTypes'))) {
+                _msSet(_scopedKey('eventTypes'), JSON.stringify([]));
             }
             const newEventType = { ...fields, createdAt: new Date().toISOString() };
             db.add('eventTypes', newEventType);
@@ -6080,7 +6119,7 @@ function deleteEventType(id) {
         const divisions = db.load('divisions');
         if (divisions[id]) {
             delete divisions[id];
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+            _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
         }
         loadEventTypes();
         loadEventTypeSelector();
@@ -6121,7 +6160,7 @@ function _deleteTemplateFromEvent(templateId, eventId) {
     const tmpl = divisions[eventId].templates.find(t => String(t.id) === String(templateId));
     if (!tmpl || !confirm(`Delete template "${tmpl.name}"?`)) return;
     divisions[eventId].templates = divisions[eventId].templates.filter(t => String(t.id) !== String(templateId));
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
     _renderEventTemplates(eventId);
     loadEventTypes();   // refresh badge count
 }
@@ -6473,7 +6512,7 @@ function loadScoreboardConfigsDropdown() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getUnifiedScoreboardConfig() {
-    try { return JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null'); } catch { return null; }
+    try { return JSON.parse(_msGet(_scopedKey('scoreboardConfig')) || 'null'); } catch { return null; }
 }
 
 // Returns '#ffffff' for dark backgrounds, '#000000' for light backgrounds (like white)
@@ -6543,10 +6582,10 @@ function saveUnifiedScoreboardConfig() {
         },
     };
 
-    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
+    _msSet(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror corner names/colors into legacy scoreboardSettings so legacy paths still work
-    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
+    _msSet(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -6807,10 +6846,10 @@ function autoGenerateScoreboardConfig(sanctioningBody) {
         },
     };
 
-    localStorage.setItem(_scopedKey('scoreboardConfig'), JSON.stringify(config));
+    _msSet(_scopedKey('scoreboardConfig'), JSON.stringify(config));
 
     // Mirror into legacy scoreboardSettings for backward compat
-    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify({
+    _msSet(_scopedKey('scoreboardSettings'), JSON.stringify({
         corner1Name:   config.kumite.corner1Name,
         corner2Name:   config.kumite.corner2Name,
         corner1Custom: config.kumite.corner1Color,
@@ -8000,7 +8039,7 @@ function deleteTemplate(templateId) {
 
     if (confirm(`Are you sure you want to delete the template "${template.name}"?\n\nThis will not affect already generated divisions.`)) {
         eventData.templates = eventData.templates.filter(t => String(t.id) !== String(templateId));
-        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+        _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
         loadTemplatesList();
         showMessage('Template deleted successfully!');
     }
@@ -8157,7 +8196,7 @@ function saveDivisionTemplate() {
         divisions[eventId].templates.push(template);
     }
 
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(divisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 
     // Sync templates to server (debounced)
     const syncEventId = eventId;
@@ -8199,7 +8238,7 @@ function generateDivisions() {
     }
 
     // Get the division template for this event
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     console.log('All divisions before generation:', allDivisions);
 
     const eventData = allDivisions[eventId];
@@ -8270,8 +8309,8 @@ function generateDivisions() {
         updatedAt: new Date().toISOString()
     };
 
-    console.log('Saving to localStorage:', allDivisions[eventId]);
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    console.log('Saving divisions:', allDivisions[eventId]);
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Sync generated divisions to server (debounced)
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
@@ -8391,8 +8430,8 @@ function renderDivisions() {
 function loadDivisions() {
     console.log('=== LOAD DIVISIONS START ===');
 
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
-    console.log('All divisions from localStorage:', allDivisions);
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    console.log('All divisions from memory:', allDivisions);
 
     const container = document.getElementById('divisions-container');
     console.log('Container element:', container);
@@ -8432,7 +8471,7 @@ function loadDivisions() {
             const currentTournament = tournaments.find(t => t.id === currentTournamentId);
             const ageCalc = currentTournament?.ageCalculationMethod || 'aau-standard';
             const eventDate = currentTournament?.date || new Date();
-            const freshDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+            const freshDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
             if (!freshDivisions[eventId]) freshDivisions[eventId] = { templates: [], generated: {} };
             if (!freshDivisions[eventId].generated) freshDivisions[eventId].generated = {};
 
@@ -8444,7 +8483,7 @@ function loadDivisions() {
                     freshDivisions[eventId].generated[divName].push(comp);
                 }
             });
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(freshDivisions));
+            _msSet(_scopedKey('divisions'), JSON.stringify(freshDivisions));
             // Re-read
             const updated = freshDivisions[eventId];
             if (updated && updated.generated && Object.keys(updated.generated).length > 0) {
@@ -8595,7 +8634,7 @@ function showMoveCompetitorModal(fromDivision, competitorId) {
     const eventId = eventSelector?.value;
     if (!eventId) return;
 
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (!eventData || !eventData.generated) return;
 
@@ -8656,7 +8695,7 @@ function executeCompetitorMove(fromDivision, competitorId) {
     const eventId = eventSelector?.value;
     if (!eventId) return;
 
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (!eventData || !eventData.generated) return;
 
@@ -8677,7 +8716,7 @@ function executeCompetitorMove(fromDivision, competitorId) {
     divisions[target].push(moved);
 
     // Save back and sync to server so the move persists across reloads
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
 
     // Close modal and refresh
@@ -8808,12 +8847,12 @@ function deleteDivisions() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to show count
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -8859,7 +8898,7 @@ function deleteDivisions() {
     // Only delete the generated divisions, preserve criteria/templates
     delete eventData.generated;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Clear the display
     renderDivisions();
@@ -8877,12 +8916,12 @@ function deleteCriteria() {
     }
 
     // Get event name for the warning messages
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     const eventName = eventType ? eventType.name : 'this event';
 
     // Get divisions to check if criteria exists
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.criteria || eventData.criteria.length === 0) {
@@ -8930,7 +8969,7 @@ function deleteCriteria() {
     // Delete criteria, preserve generated divisions
     delete eventData.criteria;
     eventData.updatedAt = new Date().toISOString();
-    localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Hide the criteria builder if shown
     const builder = document.getElementById('division-builder');
@@ -9024,7 +9063,7 @@ function showBracketGenerator() {
     }
 
     // Load divisions for selected event
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -9033,7 +9072,7 @@ function showBracketGenerator() {
     }
 
     // Get event type to pre-populate defaults
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
 
     // Populate scoreboard dropdown from unified config
@@ -9193,7 +9232,7 @@ function onBracketTemplateChange() {
     checklistGroup.style.display = 'none';
     if (isNaN(templateIdx) || !eventId) return;
 
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     const template = eventData?.templates?.[templateIdx];
     if (!template) return;
@@ -9277,14 +9316,14 @@ function updateBracketTypeOptions() {
 
 function getTemplateDurationForEvent(eventId) {
     // Check event-level match_duration_seconds first (from DB)
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const evt = eventTypes.find(e => String(e.id) === String(eventId));
     if (evt?.matchDurationSeconds) {
         return evt.matchDurationSeconds;
     }
 
     // Fall back to first template's matchDuration
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (eventData?.templates?.[0]?.matchDuration) {
         return eventData.templates[0].matchDuration;
@@ -9297,7 +9336,7 @@ function getTemplateDurationForEvent(eventId) {
  * Matches the division name against template age groups to find the right duration.
  */
 function getDivisionMatchDuration(divisionName, eventId) {
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     if (!eventData?.templates) return null;
 
@@ -9372,7 +9411,7 @@ function generateBracketsForAllDivisions() {
     }
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
 
     if (!eventData || !eventData.generated) {
@@ -9443,7 +9482,7 @@ function generateBracketsForAllDivisions() {
             bracket.matchDuration = (formDuration ? formDuration * 60 : null) || divisionDuration || eventDuration || null;
 
             // Save bracket
-            const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+            const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
             brackets[bracketId] = bracket;
             saveBrackets(brackets);
@@ -9524,9 +9563,9 @@ function generateBrackets(event) {
     }
 
     // Load shared resources once before the loop
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData    = allDivisions[eventId];
-    const brackets     = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets     = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const matSchedule  = matAssignment ? loadMatScheduleData() : null;
     let successCount = 0;
     const skippedNames = [];
@@ -10710,7 +10749,7 @@ function loadBrackets() {
 
     if (!container) return;
 
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Clean up: Remove any brackets with 0 competitors
     let cleaned = false;
@@ -11020,7 +11059,7 @@ let bracketEditMode = false;
 let originalBracketState = null;
 
 function viewBracket(bracketId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
 
     if (!bracket) {
@@ -11117,7 +11156,7 @@ function saveBracketChanges() {
     if (!currentViewingBracket) return;
 
     // Save to localStorage
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     brackets[currentViewingBracket.id] = currentViewingBracket;
     saveBrackets(brackets);
 
@@ -11718,7 +11757,7 @@ window.scoreMatch = function(bracketId, matchId) {
     console.log('Bracket ID:', bracketId);
     console.log('Match ID:', matchId);
 
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     console.log('Available bracket IDs:', Object.keys(brackets));
 
     const bracket = brackets[bracketId];
@@ -11767,7 +11806,7 @@ window.scoreMatch = function(bracketId, matchId) {
     }
 
     // Get scoreboard configuration
-    const scoreboardConfigs = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfigs')) || '[]');
+    const scoreboardConfigs = JSON.parse(_msGet(_scopedKey('scoreboardConfigs')) || '[]');
     let scoreboardConfig = null;
     let scoreboardType = 'kumite';
 
@@ -11837,7 +11876,7 @@ function showDivisionTransfer() {
     const currentEventId = currentViewingBracket.eventId;
 
     // Get all divisions for this event
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[currentEventId];
 
     if (!eventData || !eventData.generated) {
@@ -11846,7 +11885,7 @@ function showDivisionTransfer() {
     }
 
     // Get all brackets to show competitor counts
-    const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Get ALL divisions (not just eligible ones)
     const allDivisionsData = [];
@@ -12103,8 +12142,8 @@ function transferCompetitor(targetDivisionName, eventId) {
         console.log('Event ID:', eventId);
 
         // Get all data
-        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
-        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+        const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        const allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         const eventData = allDivisions[eventId];
 
         if (!eventData || !eventData.generated) {
@@ -12135,7 +12174,7 @@ function transferCompetitor(targetDivisionName, eventId) {
 
         // Save divisions
         allDivisions[eventId] = eventData;
-        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+        _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
         console.log('Divisions saved');
 
         // Find target bracket before deleting anything
@@ -12186,7 +12225,7 @@ function transferCompetitor(targetDivisionName, eventId) {
 function deleteBracket(bracketId) {
     if (!confirm('Delete this bracket? This cannot be undone.')) return;
 
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     delete brackets[bracketId];
     saveBrackets(brackets);
@@ -12229,7 +12268,7 @@ function deleteBracket(bracketId) {
  */
 
 function deleteAllBrackets() {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracketCount = Object.keys(brackets).length;
 
     if (bracketCount === 0) {
@@ -12267,7 +12306,7 @@ function deleteAllBrackets() {
     }
 
     // Delete all brackets
-    localStorage.setItem(_scopedKey('brackets'), JSON.stringify({}));
+    _msSet(_scopedKey('brackets'), JSON.stringify({}));
 
     // Sync deletion to server (debounced)
     _debouncedSync('brackets', _syncBracketsToServer, 1000);
@@ -12295,7 +12334,7 @@ function getScheduleSettings() {
         matStartTimes: {},    // { matId: "08:00" }
         divisionOverrides: {} // { divisionName: { duration: X } }
     };
-    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    const saved = JSON.parse(_msGet(key) || 'null');
     return saved ? { ...defaults, ...saved } : defaults;
 }
 
@@ -12316,7 +12355,7 @@ function saveScheduleSettings() {
     });
 
     const key = currentTournamentId ? `scheduleSettings_${currentTournamentId}` : 'scheduleSettings';
-    localStorage.setItem(key, JSON.stringify(settings));
+    _msSet(key, JSON.stringify(settings));
     showMessage('Schedule settings saved');
     recalculateScheduleTimes();
     loadScheduleGrid();
@@ -12326,7 +12365,7 @@ function saveScheduleSettings() {
 
 function resetScheduleSettings() {
     const key = currentTournamentId ? `scheduleSettings_${currentTournamentId}` : 'scheduleSettings';
-    localStorage.removeItem(key);
+    _msRemove(key);
     loadScheduleSettingsUI();
     showMessage('Schedule settings reset to defaults');
     recalculateScheduleTimes();
@@ -12381,16 +12420,15 @@ function getMatScheduleKey() {
 
 function loadMatScheduleData() {
     const key = getMatScheduleKey();
-    let data = JSON.parse(localStorage.getItem(key) || 'null');
+    let data = JSON.parse(_msGet(key) || 'null');
 
-    // Migration: check old non-scoped key if no tournament-scoped data exists
+    // Migration: check scoped key if no tournament-scoped data exists
     if (!data && currentTournamentId) {
-        const oldData = JSON.parse(localStorage.getItem(_scopedKey('matSchedule')) || 'null');
+        const oldData = JSON.parse(_msGet(_scopedKey('matSchedule')) || 'null');
         if (oldData && Object.keys(oldData).length > 0) {
             // Migrate old format to new format under tournament-scoped key
             data = migrateMatScheduleData(oldData);
-            localStorage.setItem(key, JSON.stringify(data));
-            // Don't delete old key in case user switches tournaments
+            _msSet(key, JSON.stringify(data));
         }
     }
 
@@ -12399,9 +12437,9 @@ function loadMatScheduleData() {
 
 function saveMatScheduleData(data) {
     const key = getMatScheduleKey();
-    localStorage.setItem(key, JSON.stringify(data));
-    // Also update the non-scoped key for backward compat with TV displays
-    localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(data));
+    _msSet(key, JSON.stringify(data));
+    // Also update the scoped key (passthrough to localStorage for staging-display.html)
+    _msSet(_scopedKey('matSchedule'), JSON.stringify(data));
     // Sync to server (debounced)
     _debouncedSync('schedule', _syncScheduleToServer, 1500);
 }
@@ -12433,7 +12471,7 @@ function migrateMatScheduleData(oldData) {
 // Estimate duration for a division based on its bracket
 function estimateDivisionDuration(divisionName, eventId) {
     const settings = getScheduleSettings();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
     const event = eventTypes.find(e => e.id == eventId);
 
@@ -12488,7 +12526,7 @@ function estimateDivisionDuration(divisionName, eventId) {
 
 // Get progress for a division (completed units / total units)
 function getDivisionProgress(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Find bracket for this division
     let bracket = null;
@@ -12623,7 +12661,7 @@ function loadMatSchedule() {
 
 function getStagingSettings() {
     try {
-        return JSON.parse(localStorage.getItem(_scopedKey('stagingSettings')) || '{"rotationInterval":20,"divisionsPerSlide":"next5"}');
+        return JSON.parse(_msGet(_scopedKey('stagingSettings')) || '{"rotationInterval":20,"divisionsPerSlide":"next5"}');
     } catch { return { rotationInterval: 20, divisionsPerSlide: 'next5' }; }
 }
 
@@ -12632,7 +12670,7 @@ function saveStagingSettings() {
     const dpsEl = document.querySelector('input[name="staging-divisions-per-slide"]:checked');
     const dps = dpsEl ? dpsEl.value : 'next5';
     const settings = { rotationInterval: interval, divisionsPerSlide: dps };
-    localStorage.setItem(_scopedKey('stagingSettings'), JSON.stringify(settings));
+    _msSet(_scopedKey('stagingSettings'), JSON.stringify(settings));
     _debouncedSync('stagingSettings', _syncStagingSettingsToServer, 1000);
     showToast('Staging settings saved', 'success');
 }
@@ -12702,7 +12740,7 @@ function loadStagingView() {
 
     const mats     = db.load('mats') || [];
     const schedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Build lookup: "eventId::divisionName" → bracket
     const bracketByDiv = {};
@@ -13950,7 +13988,7 @@ function loadScheduleGrid() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Populate event filter dropdown (once)
     const filterEl = document.getElementById('schedule-event-filter');
@@ -14414,8 +14452,8 @@ function loadLiveControlGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -14524,7 +14562,7 @@ function loadQueueManagementGrid() {
 
     const mats = db.load('mats');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const eventTypes = db.load('eventTypes');
 
     container.innerHTML = `
@@ -14671,10 +14709,10 @@ function handleQueueDragEnd(e) {
 
 // Live control functions
 function pauseMat(matId) {
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[matId]) {
         matScoreboards[matId].paused = !matScoreboards[matId].paused;
-        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         showMessage(`Mat ${matId} ${matScoreboards[matId].paused ? 'paused' : 'resumed'}`);
         loadLiveControlGrid();
     }
@@ -14701,9 +14739,9 @@ function skipDivision(matId) {
             recalculateScheduleTimes();
 
             // Clear current scoreboard
-            const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+            const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
             delete matScoreboards[matId];
-            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+            _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
             showMessage('Division skipped and moved to end of queue');
             loadLiveControlGrid();
@@ -14778,7 +14816,7 @@ function autoScheduleDivisions() {
     const mats = db.load('mats');
     const eventTypes = db.load('eventTypes');
     const matSchedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Get all divisions that have brackets with competitors
     const allDivisionsList = [];
@@ -14897,7 +14935,7 @@ function clearAllSchedules() {
 
 function cleanOrphanScheduleEntries() {
     const schedule = loadMatScheduleData();
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Build a set of all valid division names from existing brackets
     const validDivisions = new Set();
@@ -15045,6 +15083,11 @@ let currentOperatorDivision = null;
 let currentOperatorEventId = null;
 // Active scoreboard type tracker - prevents multiple scoreboards from conflicting
 let activeScoreboardType = null; // 'kumite', 'kata-flags', 'kata-points', 'standalone', null
+
+// Stored params for on-the-fly type switching (persist for the browser session until page reload)
+let _opKumiteParams     = null; // { matId, divisionName, eventId }
+let _opKataPointsParams = null; // { matId, divisionName, eventId, bracket, scoreboardType }
+let _opKataFlagsParams  = null; // { matId, divisionName, eventId, bracket, scoreboardConfig }
 
 // Staging view auto-refresh timer
 let _stagingRefreshTimer = null;
@@ -15217,14 +15260,14 @@ let operatorYukoCountBlue = 0;
 
 // Default: AKA (red/corner1) on RIGHT, AO (blue/corner2) on LEFT (matches judge's view from behind ref)
 // When swapped: AKA on LEFT, AO on RIGHT (for operators sitting on the other side)
-let operatorSidesSwapped = localStorage.getItem(_scopedKey('operatorSidesSwapped')) === 'true';
+let operatorSidesSwapped = _msGet(_scopedKey('operatorSidesSwapped')) === 'true';
 
 // Toggle operator sides (swap left/right corner panels)
 // Default: AKA (corner1/red) on RIGHT, AO (corner2/blue) on LEFT
 // Swapped: AKA on LEFT, AO on RIGHT
 function toggleOperatorSides() {
     operatorSidesSwapped = !operatorSidesSwapped;
-    localStorage.setItem(_scopedKey('operatorSidesSwapped'), operatorSidesSwapped);
+    _msSet(_scopedKey('operatorSidesSwapped'), operatorSidesSwapped);
     // Kumite: 3-column grid [Corner1, Timer, Corner2]
     const grid = document.querySelector('.scoreboard-display');
     if (grid && grid.children.length >= 3) {
@@ -15406,12 +15449,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     currentOperatorEventId = eventId;
 
     // Get event type to determine scoreboard type
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
     console.log('Event Type:', eventType);
 
     // Find bracket for this division
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     let currentBracket = null;
 
     // Search for bracket matching this division and event
@@ -15550,7 +15593,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     operatorBlueCompetitor = null;
 
     // Get competitors in this division
-    const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const eventData = allDivisions[eventId];
     const divisionCompetitors = eventData?.generated?.[divisionName] || [];
 
@@ -15667,7 +15710,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     }
 
     // Get mat name and scoreboard settings
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -15697,7 +15740,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         corner2Color = scoreboardConfig.settings.corner2Color || '#0a84ff';
         console.log('Using legacy named scoreboard config:', { corner1Name, corner1Color, corner2Name, corner2Color });
     } else {
-        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+        const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -15794,7 +15837,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // Show next division from schedule
     if (nextDivision) {
-        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+        const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         const eventName = nextEvent?.name || 'Unknown Event';
 
@@ -15858,6 +15901,16 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                             <button class="btn btn-primary" onclick="operatorStartTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">▶ Start</button>
                             <button class="btn btn-secondary" onclick="operatorPauseTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">⏸ Pause</button>
                             <button class="btn btn-secondary" onclick="operatorResetTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">↺ Reset</button>
+                            <div style="display: flex; gap: 4px; margin-top: 2px;">
+                                <input id="operator-set-time-input" type="text" placeholder="M:SS"
+                                       style="background: var(--bg-secondary); border: 1px solid var(--glass-border);
+                                              border-radius: 6px; color: var(--text-primary);
+                                              font-size: clamp(11px, 1.2vw, 13px); padding: 4px 6px;
+                                              flex: 1; text-align: center; min-width: 0;"
+                                       onkeydown="if(event.key==='Enter') operatorSetTime()" />
+                                <button class="btn btn-secondary" onclick="operatorSetTime()"
+                                        style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px) 8px; white-space: nowrap;">Set</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -15920,6 +15973,10 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     activeScoreboardType = 'kumite';
     console.log('Active scoreboard type set to: kumite');
 
+    // Store params for on-the-fly type switching
+    _opKumiteParams = { matId, divisionName, eventId };
+    _updateOperatorTypeSwitcher('kumite');
+
     // Push initial state to audience display (triggers type redirect if needed)
     updateOperatorTVDisplay();
 }
@@ -15941,6 +15998,10 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     activeScoreboardType = 'kata-flags';
     console.log('Active scoreboard type set to: kata-flags');
 
+    // Store params for on-the-fly type switching
+    _opKataFlagsParams = { matId, divisionName, eventId, bracket, scoreboardConfig };
+    _updateOperatorTypeSwitcher('kata-flags');
+
     // Stop any running kumite timers to prevent them from overwriting our state
     if (operatorTimerInterval) {
         clearInterval(operatorTimerInterval);
@@ -15958,7 +16019,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     // routing works. Kumite interference is already prevented by activeScoreboardType checks.
 
     // Get mat name early so we can store it globally
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -16113,7 +16174,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
 
     // Store for later use - find bracket ID by matching bracket properties
     window.currentMatchId = currentMatch.id;
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracketDiv = bracket.division || bracket.divisionName;
     window.currentBracketId = Object.keys(brackets).find(id => {
         const b = brackets[id];
@@ -16437,7 +16498,7 @@ function updateKataFlagsTVDisplay() {
     };
 
     console.log('State to save:', state);
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     console.log('State saved to localStorage');
 }
@@ -16475,7 +16536,7 @@ function kataFlagsDeclareWinner() {
         return;
     }
 
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[window.currentBracketId];
 
     if (!bracket) {
@@ -16616,7 +16677,7 @@ function kataFlagsDeclareWinner() {
     _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
 
     // Save to results/history
-    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
+    const results = JSON.parse(_msGet(_scopedKey('results')) || '[]');
     results.push({
         id: generateUniqueId(),
         timestamp: new Date().toISOString(),
@@ -16632,7 +16693,7 @@ function kataFlagsDeclareWinner() {
         winMethod: 'decision',
         winNote: `Flag decision (${corner1Votes > corner2Votes ? corner1Votes : corner2Votes}-${corner1Votes > corner2Votes ? corner2Votes : corner1Votes})`
     });
-    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+    _msSet(_scopedKey('results'), JSON.stringify(results));
 
     // ── Judge Vote Analytics Logging ──────────────────────────────────────
     // Store each judge's vote for analytics (does NOT block the UI flow)
@@ -16647,7 +16708,7 @@ function kataFlagsDeclareWinner() {
             ? Math.round((lastVoteTs - firstVoteTs) / 100) / 10
             : null;
 
-        const judgeVoteLog = JSON.parse(localStorage.getItem(_scopedKey('judgeVoteLog')) || '[]');
+        const judgeVoteLog = JSON.parse(_msGet(_scopedKey('judgeVoteLog')) || '[]');
 
         for (let ji = 0; ji < kataFlagsJudgeVotes.length; ji++) {
             const judgeVote = kataFlagsJudgeVotes[ji];
@@ -16675,7 +16736,7 @@ function kataFlagsDeclareWinner() {
             });
         }
 
-        localStorage.setItem(_scopedKey('judgeVoteLog'), JSON.stringify(judgeVoteLog));
+        _msSet(_scopedKey('judgeVoteLog'), JSON.stringify(judgeVoteLog));
         window._kataFlagsVoteTimestamps = {}; // reset for next match
 
         // Debounced sync to server
@@ -16758,7 +16819,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         }
     };
 
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
@@ -16768,7 +16829,7 @@ function kataFlagsNextMatch() {
     console.log(`[NEXT MATCH] Division: ${kataFlagsDivisionName}, complete: ${divisionComplete}`);
 
     // Debug: dump the full bracket state
-    const debugBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const debugBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     for (const id in debugBrackets) {
         const b = debugBrackets[id];
         if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
@@ -17441,6 +17502,85 @@ function operatorResetTimer() {
     updateOperatorTVDisplay();
 }
 
+function operatorSetTime() {
+    const input = document.getElementById('operator-set-time-input');
+    if (!input) return;
+    const val = input.value.trim();
+    let seconds;
+    if (val.includes(':')) {
+        const [m, s] = val.split(':');
+        seconds = (parseInt(m) || 0) * 60 + (parseInt(s) || 0);
+    } else {
+        seconds = parseInt(val) || 0;
+    }
+    if (seconds < 0) seconds = 0;
+    operatorTimeRemaining = seconds;
+    try {
+        const { rules } = getActiveRuleset();
+        const thresh = rules.timer.atoshiBaraku || 15;
+        if (seconds > thresh) operatorAtoshiBaraku = false;
+    } catch(e) {}
+    const timerEl = document.getElementById('operator-timer');
+    if (timerEl) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        timerEl.style.color = operatorAtoshiBaraku ? '#ff453a' : '';
+    }
+    input.value = '';
+    updateOperatorTVDisplay();
+}
+
+// Show / update the type-switcher bar in the operator modal header.
+// Called each time an operator of any type is opened.
+function _updateOperatorTypeSwitcher(activeType) {
+    const switcher = document.getElementById('operator-type-switcher');
+    if (!switcher) return;
+    switcher.style.display = 'flex';
+    const map = {
+        'kumite':      { id: 'type-btn-kumite',      params: _opKumiteParams },
+        'kata-points': { id: 'type-btn-kata-points', params: _opKataPointsParams },
+        'kata-flags':  { id: 'type-btn-kata-flags',  params: _opKataFlagsParams },
+    };
+    for (const [type, { id, params }] of Object.entries(map)) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        const isActive  = type === activeType;
+        const isEnabled = !!params;
+        btn.disabled = !isEnabled || isActive;
+        btn.style.opacity = isActive ? '1' : isEnabled ? '0.75' : '0.35';
+        if (isActive) {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+        } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+        }
+    }
+}
+
+// Switch the operator panel (controls + TV display) to a previously-loaded type.
+function operatorSwitchScoreboardType(type) {
+    if (type === activeScoreboardType) return;
+    // Pause any running kumite timer
+    if (operatorTimerInterval) {
+        clearInterval(operatorTimerInterval);
+        operatorTimerInterval = null;
+    }
+    if (type === 'kumite' && _opKumiteParams) {
+        const { matId, divisionName, eventId } = _opKumiteParams;
+        openOperatorScoreboard(matId, divisionName, eventId);
+    } else if (type === 'kata-flags' && _opKataFlagsParams) {
+        const { matId, divisionName, eventId, bracket, scoreboardConfig } = _opKataFlagsParams;
+        openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, scoreboardConfig);
+    } else if (type === 'kata-points' && _opKataPointsParams) {
+        const { matId, divisionName, eventId, bracket, scoreboardType } = _opKataPointsParams;
+        openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardType);
+    } else {
+        showMessage('Open a bracket of that type first to enable switching.', 'warning');
+    }
+}
+
 function operatorResetMatch() {
     if (!confirm('Reset this match? All scores will be cleared.')) return;
 
@@ -17574,7 +17714,7 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
 
     // Save match result to bracket
     if (window.currentBracketId && window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
 
         if (bracket) {
@@ -17677,7 +17817,7 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
     });
 
     // Show inline winner result on operator side (no full-screen overlay)
-    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+    const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
     const winnerCornerName = corner === 'red' ? (settings.corner1Name || 'RED') : (settings.corner2Name || 'BLUE');
     const winnerColor = corner === 'red' ? (settings.corner1Custom || '#ff453a') : (settings.corner2Custom || '#0a84ff');
 
@@ -17885,7 +18025,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
     }
 
     // Update match data
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[window.currentBracketId];
     if (!bracket) {
         showToast('Bracket not found', 'error');
@@ -17986,7 +18126,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
     _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
 
     // Save to results/history
-    const results = JSON.parse(localStorage.getItem(_scopedKey('results')) || '[]');
+    const results = JSON.parse(_msGet(_scopedKey('results')) || '[]');
     results.push({
         id: generateUniqueId(),
         timestamp: new Date().toISOString(),
@@ -18001,7 +18141,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
         winNote: withdrawalLabels[withdrawalType] || 'Opponent absent',
         withdrawalType: withdrawalType
     });
-    localStorage.setItem(_scopedKey('results'), JSON.stringify(results));
+    _msSet(_scopedKey('results'), JSON.stringify(results));
 
     // Show winner result
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
@@ -18035,9 +18175,9 @@ function operatorNextAfterWin() {
 
     // Clear winner from audience display (works for all scoreboard types)
     try {
-        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
+        const currentState = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
+        _msSet(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
         _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     } catch(e) {}
 
@@ -18152,8 +18292,12 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     currentOperatorEventId = eventId;
     currentKataScoreboardType = scoreboardType;
 
+    // Store params for on-the-fly type switching
+    _opKataPointsParams = { matId, divisionName, eventId, bracket, scoreboardType };
+    _updateOperatorTypeSwitcher(scoreboardType === 'kata-flags' ? 'kata-flags' : 'kata-points');
+
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -18358,7 +18502,7 @@ function submitKataScores(isFlags) {
         finalScore = total / kataJudgeScores.length;
     }
 
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     let bracketId = null;
 
     for (const id in brackets) {
@@ -18440,7 +18584,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     currentOperatorDivision = divisionName;
     currentOperatorEventId = eventId;
 
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -18589,11 +18733,11 @@ let currentRankingListNumJudges = 5;
 function updateRankingListTVDisplay(bracket, status) {
     currentRankingListBracket = bracket;
 
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
-    const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == currentOperatorEventId);
     const eventName = eventType?.name || 'Kata';
 
@@ -18637,7 +18781,7 @@ function updateRankingListTVDisplay(bracket, status) {
     // Get club logo if available
     let clubLogo = null;
     if (competitor?.club) {
-        const clubs = JSON.parse(localStorage.getItem(_scopedKey('clubs')) || '[]');
+        const clubs = JSON.parse(_msGet(_scopedKey('clubs')) || '[]');
         const club = clubs.find(c => c.name === competitor.club);
         clubLogo = club?.logo || null;
     }
@@ -18677,7 +18821,7 @@ function updateRankingListTVDisplay(bracket, status) {
         rankings: rankings
     };
 
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
@@ -18734,7 +18878,7 @@ function submitRankingListScore(numJudges) {
     const avgScore = total / count;
 
     // Find the bracket and update the current entry
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     let targetBracketId = null;
 
     for (const [bracketId, bracket] of Object.entries(brackets)) {
@@ -18828,6 +18972,10 @@ function closeOperatorScoreboard() {
 
     // Clear the modal UI
     document.getElementById('operator-scoreboard-modal').classList.add('hidden');
+
+    // Hide the type-switcher bar (params are kept for the session so operator can re-open and switch)
+    const _typeSwitcherBar = document.getElementById('operator-type-switcher');
+    if (_typeSwitcherBar) _typeSwitcherBar.style.display = 'none';
 
     // Clear active scoreboard type
     activeScoreboardType = null;
@@ -18931,7 +19079,7 @@ function buildMatchProgressHTML(bracket) {
 }
 
 function checkBracketComplete(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -19002,9 +19150,9 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
 
     // Clear winner from audience display so celebration overlay goes away
     try {
-        const currentState = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
+        const currentState = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
         currentState.winner = null;
-        localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
+        _msSet(_scopedKey('scoreboard-state'), JSON.stringify(currentState));
         _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
     } catch(e) {}
 
@@ -19022,7 +19170,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     if (!content) return;
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
@@ -19058,7 +19206,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
     let nextDivHTML = '';
     if (nextDivision) {
         // Check if next division has a bracket
-        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         let hasBracket = false;
         for (const id in brackets) {
             if ((brackets[id].division === nextDivision.division || brackets[id].divisionName === nextDivision.division) && brackets[id].eventId == nextDivision.eventId) {
@@ -19067,7 +19215,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
             }
         }
 
-        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+        const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
 
         nextDivHTML = `
@@ -19185,7 +19333,7 @@ function cancelAutoAdvance() {
 }
 
 function getDivisionResults(divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     for (const id in brackets) {
         const bracket = brackets[id];
@@ -19399,7 +19547,7 @@ function updateEditResultsButtonVisibility(bracket) {
 }
 
 function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
-    const edits = JSON.parse(localStorage.getItem(_scopedKey('scoreEditLog')) || '[]');
+    const edits = JSON.parse(_msGet(_scopedKey('scoreEditLog')) || '[]');
     edits.push({
         bracketId,
         entryId,
@@ -19410,11 +19558,11 @@ function logScoreEdit(bracketId, entryId, field, oldValue, newValue) {
         division: currentOperatorDivision,
         eventId: currentOperatorEventId
     });
-    localStorage.setItem(_scopedKey('scoreEditLog'), JSON.stringify(edits));
+    _msSet(_scopedKey('scoreEditLog'), JSON.stringify(edits));
 }
 
 function openEditResultsPanel(matId, divisionName, eventId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     let bracketId = null;
     let bracket = null;
 
@@ -19514,7 +19662,7 @@ function openEditRankingListPanel(matId, divisionName, eventId, bracketId, brack
 }
 
 function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxScore) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -19576,7 +19724,7 @@ function editRankingListEntry(entryIndex, bracketId, numJudges, minScore, maxSco
 }
 
 function saveRankingListEdit(entryIndex, bracketId, numJudges) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -19635,7 +19783,7 @@ function saveRankingListEdit(entryIndex, bracketId, numJudges) {
 
 function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
     const content = document.getElementById('operator-scoreboard-content');
-    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+    const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Name = settings.corner1Name || 'RED';
     const corner2Name = settings.corner2Name || 'BLUE';
 
@@ -19713,7 +19861,7 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
 }
 
 function editKumiteMatch(matchId, bracketId) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -19759,7 +19907,7 @@ function editKumiteMatch(matchId, bracketId) {
     const redName = match.redCorner ? `${match.redCorner.firstName} ${match.redCorner.lastName}` : 'Unknown';
     const blueName = match.blueCorner ? `${match.blueCorner.firstName} ${match.blueCorner.lastName}` : 'Unknown';
 
-    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+    const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
     const corner1Color = settings.corner1Custom || '#ff453a';
     const corner2Color = settings.corner2Custom || '#0a84ff';
 
@@ -19811,7 +19959,7 @@ function editKumiteMatch(matchId, bracketId) {
 }
 
 function saveKumiteEdit(matchId, bracketId, matchSource, poolIndex) {
-    const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[bracketId];
     if (!bracket) return;
 
@@ -19915,7 +20063,7 @@ function updateOperatorTVDisplay(winner = null) {
     }
 
     // Get mat name
-    const mats = JSON.parse(localStorage.getItem(_scopedKey('mats')) || '[]');
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == currentOperatorMat);
     const matName = mat ? mat.name : `Mat ${currentOperatorMat}`;
 
@@ -19929,7 +20077,7 @@ function updateOperatorTVDisplay(winner = null) {
         corner1Color = uk.corner1Color || '#ff453a';
         corner2Color = uk.corner2Color || '#0a84ff';
     } else {
-        const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+        const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
@@ -19939,7 +20087,7 @@ function updateOperatorTVDisplay(winner = null) {
     // Build match info
     let matchInfo = 'Current Match';
     if (window.currentMatchId) {
-        const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         const bracket = brackets[window.currentBracketId];
         if (bracket) {
             let match = null;
@@ -19968,12 +20116,12 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision = scheduleForNext[currentDivIndex + 1];
 
         // Get event type name for next division
-        const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
+        const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
         const nextEvent = eventTypes.find(e => e.id == nextDivision.eventId);
         nextDivision.eventName = nextEvent?.name || 'Unknown Event';
 
         // Get bracket info for next division
-        const allBrackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+        const allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         for (const bracketId in allBrackets) {
             const b = allBrackets[bracketId];
             if (b.division === nextDivision.division && b.eventId == nextDivision.eventId) {
@@ -20041,7 +20189,7 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision: nextDivision
     };
 
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
@@ -20204,7 +20352,7 @@ function loadMatchToScoreboard(matchId) {
         selectMatScoreboard(match.matId);
 
         // Load competitors for this mat
-        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+        const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[match.matId]) {
             matScoreboards[match.matId] = {
                 redId: match.redId,
@@ -20215,7 +20363,7 @@ function loadMatchToScoreboard(matchId) {
                 bluePenalties: 0,
                 timeRemaining: 120
             };
-            localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+            _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         }
 
         renderActiveScoreboard();
@@ -20286,7 +20434,7 @@ function renderActiveScoreboard() {
     const container = document.getElementById('active-scoreboard-container');
     if (!container) return;
 
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard] || {
         redId: null,
         blueId: null,
@@ -20407,7 +20555,7 @@ function selectMatCompetitor(corner) {
     const selectId = corner === 'red' ? 'mat-red-select' : 'mat-blue-select';
     const competitorId = parseInt(document.getElementById(selectId).value);
 
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard] = {
             redScore: 0,
@@ -20424,7 +20572,7 @@ function selectMatCompetitor(corner) {
         matScoreboards[currentMatScoreboard].blueId = competitorId || null;
     }
 
-    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -20432,7 +20580,7 @@ function selectMatCompetitor(corner) {
 let matTimerIntervals = {};
 
 function addMatScore(corner, points) {
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     if (corner === 'red') {
@@ -20441,13 +20589,13 @@ function addMatScore(corner, points) {
         matScoreboards[currentMatScoreboard].blueScore += points;
     }
 
-    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     document.getElementById(`mat-${corner}-score`).textContent = matScoreboards[currentMatScoreboard][`${corner}Score`];
     updateAllMatDisplays();
 }
 
 function addMatPenalty(corner) {
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     if (!matScoreboards[currentMatScoreboard]) return;
 
     const mat = matScoreboards[currentMatScoreboard];
@@ -20474,7 +20622,7 @@ function addMatPenalty(corner) {
         showToast(`${corner.toUpperCase()} corner is disqualified! (Hansoku - 4th penalty)`, 'error', 5000);
     }
 
-    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -20483,11 +20631,11 @@ function startMatTimer() {
     if (matTimerIntervals[currentMatScoreboard]) return;
 
     matTimerIntervals[currentMatScoreboard] = setInterval(() => {
-        const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+        const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
         if (!matScoreboards[currentMatScoreboard]) return;
 
         matScoreboards[currentMatScoreboard].timeRemaining--;
-        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
 
         const minutes = Math.floor(matScoreboards[currentMatScoreboard].timeRemaining / 60);
         const seconds = matScoreboards[currentMatScoreboard].timeRemaining % 60;
@@ -20511,10 +20659,10 @@ function pauseMatTimer() {
 
 function resetMatTimer() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     if (matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard].timeRemaining = 120;
-        localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
         document.getElementById('mat-timer').textContent = '2:00';
         updateAllMatDisplays();
     }
@@ -20522,7 +20670,7 @@ function resetMatTimer() {
 
 function declareMatWinner() {
     pauseMatTimer();
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     const matData = matScoreboards[currentMatScoreboard];
 
     if (!matData) return;
@@ -20532,12 +20680,12 @@ function declareMatWinner() {
 
     // Update display with winner
     matData.winner = winner;
-    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     updateAllMatDisplays();
 }
 
 function resetMatScoreboard() {
-    const matScoreboards = JSON.parse(localStorage.getItem(_scopedKey('matScoreboards')) || '{}');
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
     matScoreboards[currentMatScoreboard] = {
         redId: null,
         blueId: null,
@@ -20547,7 +20695,7 @@ function resetMatScoreboard() {
         bluePenalties: 0,
         timeRemaining: 120
     };
-    localStorage.setItem(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -20574,8 +20722,10 @@ function openAllScoreboards() {
 }
 
 function updateAllMatDisplays() {
-    // Trigger storage event for all mat displays
-    localStorage.setItem('mat-update-trigger', Date.now().toString());
+    // Notify mat display pages via BroadcastChannel
+    if (_bc && currentTournamentId) {
+        try { _bc.postMessage({ type: 'mat-update', tournamentId: currentTournamentId }); } catch(e) {}
+    }
 }
 
 // Load Mat Scoreboards View
@@ -20663,13 +20813,13 @@ function saveScoreboardSettings() {
         updatedAt: new Date().toISOString()
     };
 
-    localStorage.setItem(_scopedKey('scoreboardSettings'), JSON.stringify(settings));
+    _msSet(_scopedKey('scoreboardSettings'), JSON.stringify(settings));
     showMessage('Scoreboard settings saved successfully!');
 }
 
 // Load scoreboard settings on page load
 function loadScoreboardSettings() {
-    const settings = JSON.parse(localStorage.getItem(_scopedKey('scoreboardSettings')) || '{}');
+    const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
 
     if (document.getElementById('corner1-name')) {
         document.getElementById('corner1-name').value = settings.corner1Name || 'RED';
@@ -21423,7 +21573,7 @@ async function toggleRegistrationOpen(currentlyOpen) {
 }
 
 function loadCertificatesView() {
-    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (template && template.data) {
         const previewImg = document.getElementById('certificate-preview-img');
         const previewDiv = document.getElementById('certificate-template-preview');
@@ -21482,9 +21632,9 @@ async function deleteEventFromServer(eventId) {
         db.delete('eventTypes', eventId);
 
         // Remove associated divisions
-        const allDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+        const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
         delete allDivisions[eventId];
-        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(allDivisions));
+        _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
         // Refresh UI
         loadSettingsEvents();
@@ -21524,13 +21674,13 @@ async function deleteTournamentFromServer() {
         }
 
         // Clear scoped localStorage keys
-        localStorage.removeItem(_scopedKey('eventTypes'));
-        localStorage.removeItem(_scopedKey('divisions'));
-        localStorage.removeItem(_scopedKey('scoreboardConfig'));
+        _msRemove(_scopedKey('eventTypes'));
+        _msRemove(_scopedKey('divisions'));
+        _msRemove(_scopedKey('scoreboardConfig'));
 
-        // Remove from the tournaments array in localStorage so it disappears from dropdown
+        // Remove from the in-memory tournaments array so it disappears from dropdown
         const remaining = tournaments.filter(t => String(t.id) !== String(currentTournamentId));
-        localStorage.setItem('tournaments', JSON.stringify(remaining));
+        _msSet('tournaments', JSON.stringify(remaining));
 
         currentTournamentId = null;
 
@@ -21543,7 +21693,7 @@ async function deleteTournamentFromServer() {
         showToast(`Tournament "${tournamentName}" deleted`, 'success');
 
         // Stay on page if there are more tournaments to delete, otherwise redirect
-        const leftover = JSON.parse(localStorage.getItem('tournaments') || '[]');
+        const leftover = JSON.parse(_msGet('tournaments') || '[]');
         if (leftover.length === 0) {
             setTimeout(() => {
                 window.location.href = '/account.html#tournaments';
@@ -21603,7 +21753,7 @@ function previewCertificateTemplate() {
 }
 
 function clearCertificateTemplate() {
-    localStorage.removeItem(_scopedKey('certificateTemplate'));
+    _msRemove(_scopedKey('certificateTemplate'));
     const previewDiv = document.getElementById('certificate-template-preview');
     if (previewDiv) previewDiv.style.display = 'none';
     document.getElementById('merge-tag-config-panel').style.display = 'none';
@@ -21632,7 +21782,7 @@ function saveCertificateTemplate() {
             uploadedAt: new Date().toISOString()
         };
 
-        localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(template));
+        _msSet(_scopedKey('certificateTemplate'), JSON.stringify(template));
         showMessage('Certificate template saved successfully!');
 
         // Show merge tag config
@@ -21662,7 +21812,7 @@ const TAG_LABELS = {
 };
 
 function loadMergeTagEditors() {
-    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     const tags = config?.tags || DEFAULT_CERTIFICATE_TAGS;
 
     const container = document.getElementById('merge-tag-list');
@@ -21730,7 +21880,7 @@ function getCertificateConfigFromForm() {
 
 function saveCertificateConfig() {
     const config = getCertificateConfigFromForm();
-    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
+    _msSet(_scopedKey('certificateConfig'), JSON.stringify(config));
     showMessage('Certificate configuration saved!');
 }
 
@@ -21761,7 +21911,7 @@ function previewCertificateWithSampleData() {
 }
 
 function renderCertificateOnCanvas(canvas, data, callback) {
-    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template || !template.data) {
         if (callback) callback(null);
         return;
@@ -21773,7 +21923,7 @@ function renderCertificateOnCanvas(canvas, data, callback) {
     if (formEl) {
         config = getCertificateConfigFromForm();
     } else {
-        config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+        config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     }
     if (!config) config = { tags: DEFAULT_CERTIFICATE_TAGS };
 
@@ -21812,20 +21962,20 @@ function renderCertificateOnCanvas(canvas, data, callback) {
 }
 
 function generateAllCertificates() {
-    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
         showMessage('Please upload a certificate template first in Settings', 'error');
         return;
     }
 
-    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
         showMessage('Please configure merge tag positions in Settings first', 'error');
         return;
     }
 
     // Get tournament info
-    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
+    const publicSiteConfig = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
@@ -21894,19 +22044,19 @@ function generateAllCertificates() {
  * @param {Array|null} serverPlacements - [{name, club}, ...] from server results_data
  */
 function printCertificatesForDivision(divisionName, serverPlacements) {
-    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
         showMessage('Please upload a certificate template first in Settings → Certificates', 'error');
         return;
     }
 
-    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
         showMessage('Please configure merge tag positions in Settings → Certificates first', 'error');
         return;
     }
 
-    const publicSiteConfig = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
+    const publicSiteConfig = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
     const tournamentName = publicSiteConfig.tournamentName || 'Tournament';
     const tournamentDate = publicSiteConfig.tournamentDate || new Date().toLocaleDateString();
 
@@ -22045,7 +22195,7 @@ async function syncCertificateTemplateToServer() {
     }
 
     // Fallback: try to upload from localStorage base64 data
-    const template = JSON.parse(localStorage.getItem(_scopedKey('certificateTemplate')) || 'null');
+    const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template || !template.data) {
         showMessage('No certificate template to sync. Please select or save a template first.', 'error');
         return;
@@ -22098,7 +22248,7 @@ async function syncCertificateTemplateToServer() {
 async function syncCertificateConfigToServerSilent() {
     if (!currentTournamentId) return;
 
-    const config = JSON.parse(localStorage.getItem(_scopedKey('certificateConfig')) || 'null');
+    const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     if (!config) return;
 
     try {
@@ -22124,7 +22274,7 @@ async function saveCertificateConfigToServer() {
 
     const config = getCertificateConfigFromForm();
     // Also save locally
-    localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(config));
+    _msSet(_scopedKey('certificateConfig'), JSON.stringify(config));
 
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/certificate-template/config`, {
@@ -22188,7 +22338,7 @@ async function loadCertificateTemplateFromServer() {
                 data: template.template_data,
                 uploadedAt: template.updated_at || new Date().toISOString(),
             };
-            localStorage.setItem(_scopedKey('certificateTemplate'), JSON.stringify(templateObj));
+            _msSet(_scopedKey('certificateTemplate'), JSON.stringify(templateObj));
 
             // Update preview
             const previewImg = document.getElementById('certificate-preview-img');
@@ -22201,7 +22351,7 @@ async function loadCertificateTemplateFromServer() {
 
         // Save merge tag config to localStorage
         if (template.merge_tag_config && Object.keys(template.merge_tag_config).length > 0) {
-            localStorage.setItem(_scopedKey('certificateConfig'), JSON.stringify(template.merge_tag_config));
+            _msSet(_scopedKey('certificateConfig'), JSON.stringify(template.merge_tag_config));
             document.getElementById('merge-tag-config-panel').style.display = 'block';
             loadMergeTagEditors();
         }
@@ -22392,7 +22542,7 @@ function updateTVDisplay() {
         winner: null
     };
 
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
 
@@ -22501,9 +22651,9 @@ function declareWinner() {
     }
 
     // Update TV display with winner
-    const state = JSON.parse(localStorage.getItem(_scopedKey('scoreboard-state')) || '{}');
+    const state = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
     state.winner = winnerName;
-    localStorage.setItem(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 
     showToast(`Winner: ${winner} | Red: ${redScore} - Blue: ${blueScore}`, 'success', 5000);
@@ -22620,15 +22770,15 @@ if (publicSiteForm) {
                 location: document.getElementById('public-location')?.value || '',
                 description: document.getElementById('public-description')?.value || '',
                 primaryColor: document.getElementById('public-primary-color')?.value || '#0071e3',
-                coverImage: currentPublicCoverData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').coverImage || null,
-                logo: currentPublicLogoData || JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}').logo || null,
+                coverImage: currentPublicCoverData || JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}').coverImage || null,
+                logo: currentPublicLogoData || JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}').logo || null,
                 footerText: document.getElementById('public-footer-text')?.value || '',
                 showSchedule: document.getElementById('public-show-schedule')?.checked || false,
                 showResults: document.getElementById('public-show-results')?.checked || false,
                 updatedAt: new Date().toISOString()
             };
 
-            localStorage.setItem(_scopedKey('publicSiteConfig'), JSON.stringify(config));
+            _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(config));
             showMessage('Public site configuration saved successfully!');
 
             // Sync to server
@@ -22644,7 +22794,7 @@ if (publicSiteForm) {
 }
 
 function loadPublicSiteConfig() {
-    const config = JSON.parse(localStorage.getItem(_scopedKey('publicSiteConfig')) || '{}');
+    const config = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
 
     const nameInput = document.getElementById('public-tournament-name');
     const dateInput = document.getElementById('public-tournament-date');
@@ -23166,7 +23316,7 @@ async function handleReviewRequest(requestId, action) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SERVER SYNC — Pull registrations from PostgreSQL into localStorage
+// SERVER SYNC — Pull external registrations (Smoothcomp integration) from server
 // ═══════════════════════════════════════════════════════════════════════════
 
 let syncInterval = null;
@@ -23187,7 +23337,11 @@ async function syncRegistrationsFromServer() {
 
         const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) {
-            if (res.status === 401) throw new Error('Not authenticated');
+            if (res.status === 401) {
+                // No Smoothcomp integration for this tournament — stop polling to avoid spam
+                stopSyncPolling();
+                throw new Error('Not authenticated');
+            }
             throw new Error('Sync failed');
         }
         const data = await res.json();

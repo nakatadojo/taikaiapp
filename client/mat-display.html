@@ -134,18 +134,35 @@
         let previousCompetitorName = null;
         let scoresWereRevealed = false;
 
-        // Listen for updates
-        window.addEventListener('storage', function(e) {
-            if (e.key === 'matScoreboards' || e.key === 'mat-update-trigger' || e.key === 'scoreboard-state') {
-                updateDisplay();
-            }
-        });
+        // BroadcastChannel state cache (zero localStorage)
+        const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
+        const _cache = { 'scoreboard-state': '{}', matScoreboards: '{}', competitors: '[]' };
+        if (_bc) {
+            _bc.onmessage = (evt) => {
+                const d = evt.data;
+                if (!d) return;
+                if (d.type === 'table-update' && d.value != null &&
+                    (d.table === 'scoreboard-state' || d.table === 'matScoreboards')) {
+                    _cache[d.table] = d.value;
+                    updateDisplay();
+                } else if (d.type === 'mat-update') {
+                    updateDisplay();
+                } else if (d.type === 'state-snapshot') {
+                    if (d['scoreboard-state']) _cache['scoreboard-state'] = d['scoreboard-state'];
+                    if (d.matScoreboards)      _cache.matScoreboards      = d.matScoreboards;
+                    if (d.competitors)         _cache.competitors         = d.competitors;
+                    updateDisplay();
+                }
+            };
+            // Request current state from any open operator tab
+            try { _bc.postMessage({ type: 'request-state' }); } catch(e) {}
+        }
 
-        // Initial load
+        // Initial render (cache will be empty until operator tab responds)
         updateDisplay();
 
         function updateDisplay() {
-            const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+            const state = JSON.parse(_cache['scoreboard-state'] || '{}');
 
             if (state.scoreboardType === 'kata' && state.matName) {
                 const stateMatNum = state.matName.replace(/\D/g, '');
@@ -194,7 +211,7 @@
 
         function applyCornerColors() {
             // Read corner colors from scoreboard state or config
-            const state = JSON.parse(localStorage.getItem('scoreboard-state') || '{}');
+            const state = JSON.parse(_cache['scoreboard-state'] || '{}');
             const c1Color = state.corner1Color || '#ff453a';
             const c2Color = state.corner2Color || '#0a84ff';
             const c1Text = getCornerTextColor(c1Color);
@@ -215,14 +232,14 @@
         }
 
         function updateKumiteDisplay() {
-            const matScoreboards = JSON.parse(localStorage.getItem('matScoreboards') || '{}');
+            const matScoreboards = JSON.parse(_cache.matScoreboards || '{}');
             const matData = matScoreboards[matId];
             if (!matData) return;
 
             // Apply dynamic corner colors
             applyCornerColors();
 
-            const competitors = JSON.parse(localStorage.getItem('competitors') || '[]');
+            const competitors = JSON.parse(_cache.competitors || '[]');
             const redComp = matData.redId ? competitors.find(c => c.id === matData.redId) : null;
             const blueComp = matData.blueId ? competitors.find(c => c.id === matData.blueId) : null;
 
@@ -267,7 +284,7 @@
                 setTimeout(() => {
                     winnerOverlay.classList.remove('show');
                     matData.winner = null;
-                    localStorage.setItem('matScoreboards', JSON.stringify(matScoreboards));
+                    _cache.matScoreboards = JSON.stringify(matScoreboards);
                 }, 5000);
             }
         }

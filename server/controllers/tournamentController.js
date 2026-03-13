@@ -333,12 +333,6 @@ async function uploadCoverImage(req, res, next) {
  */
 async function createEvent(req, res, next) {
   try {
-    // Check ownership
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) {
-      return res.status(403).json({ error: 'You do not own this tournament' });
-    }
-
     const {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
@@ -365,12 +359,6 @@ async function createEvent(req, res, next) {
  */
 async function updateEvent(req, res, next) {
   try {
-    // Check ownership
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) {
-      return res.status(403).json({ error: 'You do not own this tournament' });
-    }
-
     const {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
@@ -428,12 +416,6 @@ async function deleteTournament(req, res, next) {
 
 async function deleteEvent(req, res, next) {
   try {
-    // Check ownership
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) {
-      return res.status(403).json({ error: 'You do not own this tournament' });
-    }
-
     const event = await tournamentQueries.deleteEvent(req.params.eventId);
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
@@ -656,8 +638,6 @@ async function getCompetitors(req, res, next) {
  */
 async function syncCompetitors(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const { competitors } = req.body;
     await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors || []);
     res.json({ ok: true });
@@ -681,8 +661,6 @@ async function getClubs(req, res, next) {
  */
 async function syncClubs(req, res, next) {
   try {
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
     const { clubs } = req.body;
     await tournamentQueries.syncDirectorClubs(req.params.id, clubs || []);
     res.json({ ok: true });

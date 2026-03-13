@@ -141,13 +141,13 @@ router.post('/:id/events',
     body('eventType').optional().trim(),
     body('division').optional().trim(),
     body('gender').optional().isIn(['male', 'female', 'mixed']),
-    body('ageMin').optional().isInt({ min: 0 }),
-    body('ageMax').optional().isInt({ min: 0 }),
-    body('rankMin').optional().trim(),
-    body('rankMax').optional().trim(),
-    body('priceOverride').optional().isFloat({ min: 0 }),
-    body('addonPriceOverride').optional().isFloat({ min: 0 }),
-    body('maxCompetitors').optional().isInt({ min: 1 }),
+    body('ageMin').optional({ nullable: true }).isInt({ min: 0 }),
+    body('ageMax').optional({ nullable: true }).isInt({ min: 0 }),
+    body('rankMin').optional({ nullable: true }).trim(),
+    body('rankMax').optional({ nullable: true }).trim(),
+    body('priceOverride').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('addonPriceOverride').optional({ nullable: true }).isFloat({ min: 0 }),
+    body('maxCompetitors').optional({ nullable: true }).isInt({ min: 1 }),
   ],
   validate,
   tournamentController.createEvent
@@ -188,7 +188,7 @@ router.post('/:id/sync',
 // GET /api/tournaments/:id/competitors — staff can read (for check-in)
 router.get('/:id/competitors', requireAuth, requireTournamentPermission('read_data'), tournamentController.getCompetitors);
 
-// POST /api/tournaments/:id/competitors/sync — owner only
+// POST /api/tournaments/:id/competitors/sync — owner or approved staff
 router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
 
 // POST /api/tournaments/:id/competitors/:competitorId/checkin — staff can check in
@@ -200,7 +200,7 @@ router.delete('/:id/competitors/:competitorId/checkin', requireAuth, requireTour
 // GET /api/tournaments/:id/clubs — staff can read
 router.get('/:id/clubs', requireAuth, requireTournamentPermission('read_data'), tournamentController.getClubs);
 
-// POST /api/tournaments/:id/clubs/sync — owner only
+// POST /api/tournaments/:id/clubs/sync — owner or approved staff
 router.post('/:id/clubs/sync', requireAuth, requireTournamentOwner, tournamentController.syncClubs);
 
 // ── Director Officials / Staff / Instructors (JSONB sync) ────────────────────

@@ -544,6 +544,17 @@
                         </div>
                     </div>
 
+                    <!-- Scoreboard Type Switcher (hidden until operator opens) -->
+                    <div id="operator-type-switcher" style="display: none; align-items: center; gap: 6px;
+                         margin-bottom: clamp(4px, 0.8vh, 12px); padding: 6px 12px;
+                         background: var(--bg-secondary); border-radius: 8px;
+                         border: 1px solid var(--glass-border); flex-shrink: 0;">
+                        <span style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">Type:</span>
+                        <button id="type-btn-kumite"      class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kumite')"      style="font-size: 12px; padding: 4px 10px;" disabled>🥋 Kumite</button>
+                        <button id="type-btn-kata-points" class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-points')" style="font-size: 12px; padding: 4px 10px;" disabled>🎌 Kata</button>
+                        <button id="type-btn-kata-flags"  class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-flags')"  style="font-size: 12px; padding: 4px 10px;" disabled>🚩 Kata Flags</button>
+                    </div>
+
                     <div id="operator-scoreboard-content" style="flex: 1; min-height: 0; overflow-y: auto;"></div>
                 </div>
             </div>
@@ -2929,11 +2940,11 @@
             const data = await res.json();
             const t = data.tournament;
 
-            // Inject tournament into localStorage so app.js can use it.
+            // Inject tournament into _msData so app.js can use it.
             // Always use the URL's tournamentId as the key (not t.id which may be a
-            // different format from the DB), so all localStorage scoping stays consistent
+            // different format from the DB), so all scoping stays consistent
             // with what _initFromURL set for currentTournamentId.
-            const tournaments = JSON.parse(localStorage.getItem('tournaments') || '[]');
+            const tournaments = JSON.parse(_msGet('tournaments') || '[]');
             const existing = tournaments.find(x => String(x.id) === String(tournamentId) || String(x.id) === String(t.id));
             if (!existing) {
                 tournaments.push({
@@ -2956,7 +2967,7 @@
                     },
                     createdAt: t.created_at || new Date().toISOString()
                 });
-                localStorage.setItem('tournaments', JSON.stringify(tournaments));
+                _msSet('tournaments', JSON.stringify(tournaments));
             }
 
             // Replace localStorage eventTypes with this tournament's events (clear stale data)
@@ -2998,7 +3009,7 @@
 
             // Merge server division templates with locally-configured ones.
             // Locally-created template entries (for local event IDs) are preserved.
-            const existingLocalDivisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+            const existingLocalDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
             const mergedDivisions = Object.assign({}, existingLocalDivisions);
             Object.keys(allDivisions).forEach(evId => {
                 if (!mergedDivisions[evId] || !mergedDivisions[evId].templates?.length) {
@@ -3007,7 +3018,7 @@
                 }
                 // If we already have local templates, keep them (don't overwrite with server's presets)
             });
-            localStorage.setItem(_scopedKey('divisions'), JSON.stringify(mergedDivisions));
+            _msSet(_scopedKey('divisions'), JSON.stringify(mergedDivisions));
 
             // Wait for auth to be confirmed before making authenticated API calls.
             const authedUser = await window._authReady;
@@ -3026,11 +3037,11 @@
                 if (schedResult.status === 'fulfilled' && schedResult.value.ok) {
                     const schedData = await schedResult.value.json();
                     if (schedData.matSchedule && Object.keys(schedData.matSchedule).length > 0) {
-                        localStorage.setItem(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
-                        localStorage.setItem(_scopedKey('matSchedule'), JSON.stringify(schedData.matSchedule));
+                        _msSet(`matSchedule_${tournamentId}`, JSON.stringify(schedData.matSchedule));
+                        _msSet(_scopedKey('matSchedule'), JSON.stringify(schedData.matSchedule));
                     }
                     if (schedData.scheduleSettings && Object.keys(schedData.scheduleSettings).length > 0) {
-                        localStorage.setItem(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
+                        _msSet(`scheduleSettings_${tournamentId}`, JSON.stringify(schedData.scheduleSettings));
                     }
                     // Track published state for UI
                     window._schedulePublished = schedData.published || false;
@@ -3040,13 +3051,13 @@
                 if (divResult.status === 'fulfilled' && divResult.value.ok) {
                     const divData = await divResult.value.json();
                     if (divData.generatedDivisions && Object.keys(divData.generatedDivisions).length > 0) {
-                        const current = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
+                        const current = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
                         Object.keys(divData.generatedDivisions).forEach(evId => {
                             if (!current[evId]) current[evId] = {};
                             current[evId].generated = divData.generatedDivisions[evId].generated;
                             current[evId].updatedAt = divData.generatedDivisions[evId].updatedAt;
                         });
-                        localStorage.setItem(_scopedKey('divisions'), JSON.stringify(current));
+                        _msSet(_scopedKey('divisions'), JSON.stringify(current));
                     }
                 }
 
@@ -3054,7 +3065,7 @@
                 if (brkResult.status === 'fulfilled' && brkResult.value.ok) {
                     const brkData = await brkResult.value.json();
                     if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
-                        localStorage.setItem(_scopedKey('brackets'), JSON.stringify(brkData.brackets));
+                        _msSet(_scopedKey('brackets'), JSON.stringify(brkData.brackets));
                     }
                 }
 
@@ -3062,9 +3073,9 @@
                 if (teamResult.status === 'fulfilled' && teamResult.value.ok) {
                     const teamData = await teamResult.value.json();
                     if (teamData.teams && Object.keys(teamData.teams).length > 0) {
-                        const localTeams = JSON.parse(localStorage.getItem(_scopedKey('teams')) || '{}');
+                        const localTeams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
                         if (Object.keys(localTeams).length === 0) {
-                            localStorage.setItem(_scopedKey('teams'), JSON.stringify(teamData.teams));
+                            _msSet(_scopedKey('teams'), JSON.stringify(teamData.teams));
                         }
                     }
                 }
@@ -3090,7 +3101,7 @@
 
             // Auto-generate scoreboard config from sanctioning body (after switchTournament sets currentTournamentId)
             if (t.sanctioning_body && typeof autoGenerateScoreboardConfig === 'function') {
-                const existing = JSON.parse(localStorage.getItem(_scopedKey('scoreboardConfig')) || 'null');
+                const existing = JSON.parse(_msGet(_scopedKey('scoreboardConfig')) || 'null');
                 if (!existing || (String(existing.tournamentId) !== String(t.id) && String(existing.tournamentId) !== String(tournamentId))) {
                     autoGenerateScoreboardConfig(t.sanctioning_body);
                 }
@@ -3174,12 +3185,12 @@
 
             try {
                 // Read divisions and brackets from localStorage
-                const divisions = JSON.parse(localStorage.getItem(_scopedKey('divisions')) || '{}');
-                const eventTypes = JSON.parse(localStorage.getItem(_scopedKey('eventTypes')) || '[]');
-                const brackets = JSON.parse(localStorage.getItem(_scopedKey('brackets')) || '{}');
+                const divisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+                const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
+                const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
                 if (!Object.keys(divisions).length && !Object.keys(brackets).length) {
-                    statusEl.textContent = 'No localStorage data found. Run scoreboards first.';
+                    statusEl.textContent = 'No in-memory data found. Run scoreboards first.';
                     btn.disabled = false;
                     return;
                 }
