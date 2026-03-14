@@ -1,7 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const { requireTournamentPermission } = require('../middleware/tournamentPermission');
 const upload = require('../middleware/upload');
@@ -24,7 +24,7 @@ router.get('/:id/registration-settings',
 );
 
 // GET /api/tournaments — List all tournaments (legacy)
-router.get('/', tournamentController.getTournaments);
+router.get('/', optionalAuth, tournamentController.getTournaments);
 
 // ── Director Endpoints (MUST be before /:id param routes) ───────────────────
 
@@ -41,7 +41,8 @@ router.get('/director/stats',
 );
 
 // GET /api/tournaments/:id — Get single tournament with events
-router.get('/:id', tournamentController.getTournament);
+// optionalAuth populates req.user so owners can view their own unpublished draft
+router.get('/:id', optionalAuth, tournamentController.getTournament);
 
 // GET /api/tournaments/:id/events/eligible/:profileId — Eligible events for a profile
 router.get('/:id/events/eligible/:profileId',
@@ -264,9 +265,10 @@ router.post('/:id/discount-codes',
       if (tournament.created_by !== req.user.id) {
         return res.status(403).json({ error: 'Not authorized' });
       }
-      // Check duplicate
-      const existing = await discountQueries.findByCode(req.body.code);
-      if (existing) return res.status(409).json({ error: 'A discount code with this name already exists' });
+      // Check duplicate within this tournament only — different tournaments may share code names
+      const existing = await discountQueries.getByTournament(req.params.id);
+      const duplicate = existing.find(d => d.code === req.body.code.toLowerCase());
+      if (duplicate) return res.status(409).json({ error: 'A discount code with this name already exists for this tournament' });
 
       const discount = await discountQueries.create({
         code: req.body.code,
@@ -340,25 +342,22 @@ router.delete('/:id/discount-codes/:codeId',
 // ── Director Event Staff ───────────────────────────────────────────────────
 const eventStaffQueries = require('../db/queries/eventStaff');
 
-// GET /api/tournaments/:id/staff
-router.get('/:id/staff',
+// GET /api/tournaments/:id/event-staff
+// NOTE: renamed from /:id/staff to avoid shadowing the JSONB staff route above (BUG-005 fix).
+router.get('/:id/event-staff',
   requireAuth,
   requireTournamentOwner,
   async (req, res, next) => {
     try {
-      const tournament = await tournaments.findById(req.params.id);
-      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
-      if (tournament.created_by !== req.user.id) {
-        return res.status(403).json({ error: 'Not authorized' });
-      }
+      // req.tournament is already verified and attached by requireTournamentOwner
       const staff = await eventStaffQueries.getByTournament(req.params.id);
       res.json({ staff });
     } catch (err) { next(err); }
   }
 );
 
-// POST /api/tournaments/:id/staff
-router.post('/:id/staff',
+// POST /api/tournaments/:id/event-staff
+router.post('/:id/event-staff',
   requireAuth,
   requireTournamentOwner,
   [
@@ -374,11 +373,6 @@ router.post('/:id/staff',
   validate,
   async (req, res, next) => {
     try {
-      const tournament = await tournaments.findById(req.params.id);
-      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
-      if (tournament.created_by !== req.user.id) {
-        return res.status(403).json({ error: 'Not authorized' });
-      }
       const staff = await eventStaffQueries.create({
         tournamentId: req.params.id,
         name: req.body.name,
@@ -395,8 +389,8 @@ router.post('/:id/staff',
   }
 );
 
-// PUT /api/tournaments/:id/staff/:staffId
-router.put('/:id/staff/:staffId',
+// PUT /api/tournaments/:id/event-staff/:staffId
+router.put('/:id/event-staff/:staffId',
   requireAuth,
   requireTournamentOwner,
   [
@@ -411,11 +405,6 @@ router.put('/:id/staff/:staffId',
   validate,
   async (req, res, next) => {
     try {
-      const tournament = await tournaments.findById(req.params.id);
-      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
-      if (tournament.created_by !== req.user.id) {
-        return res.status(403).json({ error: 'Not authorized' });
-      }
       const updates = {};
       const { name, email, phone, role, status, notes, tshirtSize } = req.body;
       if (name !== undefined) updates.name = name;
@@ -433,17 +422,12 @@ router.put('/:id/staff/:staffId',
   }
 );
 
-// DELETE /api/tournaments/:id/staff/:staffId
-router.delete('/:id/staff/:staffId',
+// DELETE /api/tournaments/:id/event-staff/:staffId
+router.delete('/:id/event-staff/:staffId',
   requireAuth,
   requireTournamentOwner,
   async (req, res, next) => {
     try {
-      const tournament = await tournaments.findById(req.params.id);
-      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
-      if (tournament.created_by !== req.user.id) {
-        return res.status(403).json({ error: 'Not authorized' });
-      }
       const result = await eventStaffQueries.remove(req.params.staffId);
       if (!result) return res.status(404).json({ error: 'Staff member not found' });
       res.json({ message: 'Staff member removed' });

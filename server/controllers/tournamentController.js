@@ -12,7 +12,10 @@ const { sendTournamentPublishedEmail } = require('../email');
  */
 async function getTournaments(req, res, next) {
   try {
-    const tournaments = await tournamentQueries.getAll();
+    const allTournaments = await tournamentQueries.getAll();
+    const userRoles = req.user?.roles || [];
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+    const tournaments = isAdmin ? allTournaments : allTournaments.filter(t => t.published);
     res.json({ tournaments });
   } catch (err) {
     next(err);
@@ -39,7 +42,9 @@ async function getDirectory(req, res, next) {
 
 /**
  * GET /api/tournaments/:id
- * Get a single tournament with events (public).
+ * Get a single tournament with events.
+ * Public callers (unauthenticated or non-owners) only see published tournaments.
+ * The tournament owner and super_admins can see unpublished drafts.
  */
 async function getTournament(req, res, next) {
   try {
@@ -47,6 +52,18 @@ async function getTournament(req, res, next) {
     if (!tournament) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
+
+    if (!tournament.published) {
+      // Allow the owner and super_admins to view their own draft
+      const userId = req.user?.id;
+      const userRoles = req.user?.roles || [];
+      const isSuperAdmin = userRoles.includes('super_admin');
+      const isOwner = userId && tournament.created_by === userId;
+      if (!isOwner && !isSuperAdmin) {
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
+    }
+
     res.json({ tournament });
   } catch (err) {
     next(err);

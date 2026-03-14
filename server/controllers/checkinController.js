@@ -26,6 +26,16 @@ async function checkin(req, res, next) {
       return res.status(400).json({ error: 'registrationId is required' });
     }
 
+    // Verify the registration belongs to this tournament before creating a checkin record
+    const pool = require('../db/pool');
+    const regCheck = await pool.query(
+      `SELECT id FROM registrations WHERE id = $1 AND tournament_id = $2 AND status != 'cancelled'`,
+      [registrationId, req.params.id]
+    );
+    if (regCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Registration not found in this tournament' });
+    }
+
     const record = await CheckinQueries.create({
       tournamentId: req.params.id,
       registrationId,

@@ -21,7 +21,7 @@ async function registerCompetitor(req, res, next) {
     const {
       firstName, lastName, dateOfBirth, weight, rank, experience,
       gender, club, email, phone, photo, clubLogo,
-      tournamentId, events, pricing, paymentStatus,
+      tournamentId, events, pricing,
     } = req.body;
 
     if (!firstName || !lastName || !email) {
@@ -30,6 +30,8 @@ async function registerCompetitor(req, res, next) {
 
     const { academyId, guardianEmail } = req.body;
 
+    // paymentStatus is never accepted from the client — always unpaid on creation.
+    // Directors mark registrations as paid via the activate endpoint or Stripe checkout.
     const registration = await registrationQueries.createCompetitorRegistration({
       tournamentId,
       userId: req.user?.id || null,
@@ -38,7 +40,7 @@ async function registerCompetitor(req, res, next) {
       firstName, lastName, dateOfBirth, weight, rank, experience,
       gender, club, email, phone, photo, clubLogo,
       events, pricing,
-      paymentStatus: paymentStatus || 'unpaid',
+      paymentStatus: 'unpaid',
       source: 'public',
     });
 
@@ -81,6 +83,19 @@ async function registerCompetitor(req, res, next) {
         await membershipRequestQueries.createRequest(academyId, req.user.id);
       } catch (err) {
         // Ignore errors (e.g., already requested)
+      }
+    }
+
+    // Send confirmation email to the competitor (fire-and-forget — don't fail the response)
+    if (email && registrationStatus !== 'pending_guardian') {
+      try {
+        const tournament = await tournamentQueries.findById(tournamentId);
+        if (tournament) {
+          const competitorEntry = [{ name: `${firstName} ${lastName}`, events: [], subtotal: 0 }];
+          await sendRegistrationConfirmationEmail(email, tournament, competitorEntry, 0, 0, registration.id);
+        }
+      } catch (emailErr) {
+        console.warn('Legacy registration: failed to send confirmation email:', emailErr.message);
       }
     }
 
@@ -158,15 +173,33 @@ async function registerClub(req, res, next) {
 /**
  * GET /api/registrations?tournamentId=X
  * Admin sync endpoint — returns all registrations formatted for localStorage merge.
+ *
+ * Access rules:
+ *   - With tournamentId: caller must own that tournament OR have admin/super_admin role.
+ *   - Without tournamentId: caller must have admin/super_admin role.
  */
 async function getRegistrations(req, res, next) {
   try {
     const { tournamentId } = req.query;
+    const userRoles = req.user.roles || [];
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
 
     let registrations;
     if (tournamentId) {
+      if (!isAdmin) {
+        const tournament = await tournamentQueries.findById(tournamentId);
+        if (!tournament) {
+          return res.status(404).json({ error: 'Tournament not found' });
+        }
+        if (tournament.created_by !== req.user.id) {
+          return res.status(403).json({ error: 'Not authorized to access this tournament\'s registrations' });
+        }
+      }
       registrations = await registrationQueries.getRegistrationsForTournament(tournamentId);
     } else {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
       registrations = await registrationQueries.getAllRegistrations();
     }
 
@@ -664,6 +697,13 @@ async function confirmPayment(req, res, next) {
     if (!existing.rows[0]) {
       return res.status(404).json({ error: 'Payment session not found' });
     }
+
+    // Only the purchaser (or a super_admin) may confirm a session
+    const userRoles = req.user.roles || [];
+    if (!userRoles.includes('super_admin') && existing.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized to confirm this payment' });
+    }
+
     if (existing.rows[0].status === 'completed') {
       return res.json({ status: 'already_confirmed', message: 'Registration already confirmed' });
     }

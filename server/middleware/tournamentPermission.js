@@ -19,6 +19,17 @@ function requireTournamentPermission(...requiredPermissions) {
       const tournamentId = req.params.id;
       const userId = req.user.id;
 
+      // Guard against non-UUID ids to avoid a PostgreSQL cast error (500)
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tournamentId)) {
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
+
+      // Super admins always have full access — mirrors requireTournamentOwner behaviour
+      const userRoles = req.user.roles || [];
+      if (userRoles.includes('super_admin')) {
+        return next();
+      }
+
       // Check if user is the tournament creator
       const { rows: [tournament] } = await pool.query(
         'SELECT created_by FROM tournaments WHERE id = $1',
