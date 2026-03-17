@@ -1394,7 +1394,10 @@ function switchTournament() {
         // Reload server-side competitors/clubs when switching to a server-managed tournament.
         // _activateTournament handles the initial URL-load path; switchTournament must also refresh.
         if (_isServerTournamentId(currentTournamentId)) {
-            _loadCompetitorsFromServer().then(() => {
+            _loadCompetitorsFromServer().then(async () => {
+                loadCompetitors();
+                loadDashboard();
+                await syncRegistrationsFromServer(true);
                 loadCompetitors();
                 loadDashboard();
             });
@@ -1605,9 +1608,13 @@ loadTournamentSelector();
             }).then(() => {
                 if (typeof loadDivisions === 'function') loadDivisions();
             });
-            _loadCompetitorsFromServer().then(() => {
+            _loadCompetitorsFromServer().then(async () => {
                 loadCompetitors();
                 loadDashboard(); // Refresh dashboard stats after competitors load from server
+                // Auto-sync portal registrations so they appear without a manual button press
+                await syncRegistrationsFromServer(true);
+                loadCompetitors();
+                loadDashboard();
             });
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
@@ -23469,13 +23476,13 @@ async function handleReviewRequest(requestId, action) {
 
 let syncInterval = null;
 
-async function syncRegistrationsFromServer() {
+async function syncRegistrationsFromServer(silent = false) {
     // Skip for localStorage-only (non-UUID) tournament IDs — server doesn't know them
     if (currentTournamentId && !_isServerTournamentId(currentTournamentId)) return;
 
     const btn = document.getElementById('sync-server-btn');
     const status = document.getElementById('sync-status');
-    if (btn) { btn.disabled = true; btn.textContent = '🔄 Syncing...'; }
+    if (!silent && btn) { btn.disabled = true; btn.textContent = '🔄 Syncing...'; }
 
     try {
         const tournamentId = currentTournamentId || '';
@@ -23499,7 +23506,7 @@ async function syncRegistrationsFromServer() {
         const serverCompetitors = serverRegistrations.filter(r => !r.type || r.type === undefined);
 
         if (serverCompetitors.length === 0) {
-            if (status) {
+            if (!silent && status) {
                 status.textContent = 'No server registrations found.';
                 status.classList.remove('hidden');
                 setTimeout(() => status.classList.add('hidden'), 3000);
@@ -23539,7 +23546,7 @@ async function syncRegistrationsFromServer() {
             loadCompetitors();
         }
 
-        if (status) {
+        if (!silent && status) {
             status.textContent = added > 0
                 ? `Synced ${added} new registration${added > 1 ? 's' : ''} from server.`
                 : 'All server registrations already synced.';
@@ -23547,7 +23554,7 @@ async function syncRegistrationsFromServer() {
             setTimeout(() => status.classList.add('hidden'), 4000);
         }
     } catch (err) {
-        if (status && err.message !== 'Not authenticated') {
+        if (!silent && status && err.message !== 'Not authenticated') {
             status.textContent = 'Sync failed: ' + err.message;
             status.style.borderColor = 'rgba(239,68,68,0.3)';
             status.style.background = 'rgba(239,68,68,0.1)';
@@ -23561,7 +23568,7 @@ async function syncRegistrationsFromServer() {
             }, 4000);
         }
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh from Server'; }
+        if (!silent && btn) { btn.disabled = false; btn.textContent = '🔄 Refresh from Server'; }
     }
 }
 

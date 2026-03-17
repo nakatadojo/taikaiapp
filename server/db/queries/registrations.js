@@ -116,6 +116,15 @@ async function createClubRegistration({
 async function getRegistrationsForTournament(tournamentId) {
   const result = await pool.query(
     `SELECT r.*,
+            cp.first_name  AS profile_first_name,
+            cp.last_name   AS profile_last_name,
+            cp.date_of_birth AS profile_dob,
+            cp.gender      AS profile_gender,
+            cp.belt_rank   AS profile_belt,
+            cp.experience_level AS profile_experience,
+            cp.weight      AS profile_weight,
+            cp.academy_name AS profile_club,
+            cp.guardian_email AS profile_guardian_email,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -128,9 +137,12 @@ async function getRegistrationsForTournament(tournamentId) {
               '[]'
             ) AS events
      FROM registrations r
+     LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
      LEFT JOIN registration_events re ON re.registration_id = r.id
      WHERE r.tournament_id = $1
-     GROUP BY r.id
+     GROUP BY r.id,
+              cp.first_name, cp.last_name, cp.date_of_birth, cp.gender,
+              cp.belt_rank, cp.experience_level, cp.weight, cp.academy_name, cp.guardian_email
      ORDER BY r.created_at ASC`,
     [tournamentId]
   );
@@ -143,6 +155,15 @@ async function getRegistrationsForTournament(tournamentId) {
 async function getAllRegistrations() {
   const result = await pool.query(
     `SELECT r.*,
+            cp.first_name  AS profile_first_name,
+            cp.last_name   AS profile_last_name,
+            cp.date_of_birth AS profile_dob,
+            cp.gender      AS profile_gender,
+            cp.belt_rank   AS profile_belt,
+            cp.experience_level AS profile_experience,
+            cp.weight      AS profile_weight,
+            cp.academy_name AS profile_club,
+            cp.guardian_email AS profile_guardian_email,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -155,8 +176,11 @@ async function getAllRegistrations() {
               '[]'
             ) AS events
      FROM registrations r
+     LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
      LEFT JOIN registration_events re ON re.registration_id = r.id
-     GROUP BY r.id
+     GROUP BY r.id,
+              cp.first_name, cp.last_name, cp.date_of_birth, cp.gender,
+              cp.belt_rank, cp.experience_level, cp.weight, cp.academy_name, cp.guardian_email
      ORDER BY r.created_at ASC`
   );
   return result.rows;

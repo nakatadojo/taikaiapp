@@ -1620,15 +1620,15 @@
                     <label style="display:flex; gap:10px; cursor:pointer; font-size:13px; color:var(--text-muted); line-height:1.5;">
                         <input type="checkbox" id="cart-waiver-check" style="accent-color:var(--accent); width:18px; height:18px; margin-top:2px; flex-shrink:0;"
                                onchange="onWaiverChange(this.checked)">
-                        <span>I acknowledge that by completing this registration, I agree to the tournament waiver and rules. I confirm that all competitor information provided is accurate.</span>
+                        <span id="cart-waiver-text">I acknowledge that by completing this registration, I agree to the tournament waiver and rules. I confirm that all competitor information provided is accurate.</span>
                     </label>
                 </div>
                 <div class="mt-24" style="display:flex;flex-direction:column;gap:10px;">
-                    <button class="btn-accent btn-block" onclick="handleCheckout()" id="cart-pay-btn">
-                        Pay Now
+                    <button class="btn-accent btn-block" id="cart-primary-btn" onclick="handlePrimaryAction()">
+                        Register
                     </button>
-                    <button class="btn-secondary btn-block" onclick="handlePayLater()" id="cart-pay-later-btn" style="display:none;">
-                        Register — Pay Later
+                    <button class="btn-secondary btn-block" id="cart-secondary-btn" style="display:none;" onclick="handleSecondaryAction()">
+                        Pay Now Instead
                     </button>
                 </div>
             </div>
@@ -3129,31 +3129,57 @@
         container.innerHTML = html;
         summary.style.display = '';
 
-        // Show waiver acknowledgment and disable pay until checked
-        const waiverEl = document.getElementById('cart-waiver');
-        const waiverCheck = document.getElementById('cart-waiver-check');
-        const payBtn = document.getElementById('cart-pay-btn');
-        const payLaterBtn = document.getElementById('cart-pay-later-btn');
-        waiverEl.style.display = 'block';
-        waiverCheck.checked = false;
-        payBtn.disabled = true;
-
-        // Show pay-later button only if tournament allows it
+        // Configure buttons and waiver text based on allowPayLater setting
         const t = state.tournament?.tournament || state.tournament || {};
         const regSettings = t.registration_settings || {};
-        if (payLaterBtn) {
-            payLaterBtn.style.display = regSettings.allowPayLater ? '' : 'none';
-            payLaterBtn.disabled = true;
+        const allowPayLater = !!regSettings.allowPayLater;
+
+        const waiverEl = document.getElementById('cart-waiver');
+        const waiverCheck = document.getElementById('cart-waiver-check');
+        const waiverText = document.getElementById('cart-waiver-text');
+        const primaryBtn = document.getElementById('cart-primary-btn');
+        const secondaryBtn = document.getElementById('cart-secondary-btn');
+
+        waiverEl.style.display = 'block';
+        waiverCheck.checked = false;
+
+        if (allowPayLater) {
+            // Primary action = register now, pay at check-in
+            primaryBtn.textContent = 'Register';
+            primaryBtn.disabled = true;
+            secondaryBtn.style.display = '';
+            secondaryBtn.disabled = true;
+            waiverText.textContent = 'I agree to the tournament waiver and rules, and I agree to pay the registration fee at check-in. I confirm that all competitor information provided is accurate.';
+        } else {
+            // Primary action = pay now via Stripe
+            primaryBtn.textContent = 'Pay Now';
+            primaryBtn.disabled = true;
+            secondaryBtn.style.display = 'none';
+            waiverText.textContent = 'I acknowledge that by completing this registration, I agree to the tournament waiver and rules. I confirm that all competitor information provided is accurate.';
         }
 
         updateCartTotals();
     }
 
     window.onWaiverChange = function(checked) {
-        const payBtn = document.getElementById('cart-pay-btn');
-        const payLaterBtn = document.getElementById('cart-pay-later-btn');
-        if (payBtn) payBtn.disabled = !checked;
-        if (payLaterBtn && payLaterBtn.style.display !== 'none') payLaterBtn.disabled = !checked;
+        const primaryBtn = document.getElementById('cart-primary-btn');
+        const secondaryBtn = document.getElementById('cart-secondary-btn');
+        if (primaryBtn) primaryBtn.disabled = !checked;
+        if (secondaryBtn && secondaryBtn.style.display !== 'none') secondaryBtn.disabled = !checked;
+    };
+
+    window.handlePrimaryAction = function() {
+        const t = state.tournament?.tournament || state.tournament || {};
+        const allowPayLater = !!(t.registration_settings || {}).allowPayLater;
+        if (allowPayLater) {
+            handlePayLater();
+        } else {
+            handleCheckout();
+        }
+    };
+
+    window.handleSecondaryAction = function() {
+        handleCheckout();
     };
 
     function updateCartTotals() {
@@ -3233,9 +3259,11 @@
     };
 
     window.handleCheckout = async function() {
-        const btn = document.getElementById('cart-pay-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Processing...';
+        const t = state.tournament?.tournament || state.tournament || {};
+        const allowPayLater = !!(t.registration_settings || {}).allowPayLater;
+        // When allowPayLater is on, checkout is the secondary button; otherwise primary
+        const btn = document.getElementById(allowPayLater ? 'cart-secondary-btn' : 'cart-primary-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
 
         // Build payload — server expects { competitors: [{ profileId, events: [{ eventId }] }] }
         const competitors = state.cart.items.map(item => ({
@@ -3272,19 +3300,18 @@
                     });
                     onPaymentSuccess(confirmData);
                 } catch (err2) {
-                    showError('cart-pay-btn', 'Payment confirmation failed: ' + err2.message);
+                    showError('cart-primary-btn', 'Payment confirmation failed: ' + err2.message);
                 }
             }
         } catch (err) {
             alert('Checkout failed: ' + err.message);
         } finally {
-            btn.disabled = false;
-            btn.textContent = 'Pay Now';
+            if (btn) { btn.disabled = false; btn.textContent = 'Pay Now Instead'; }
         }
     };
 
     window.handlePayLater = async function() {
-        const btn = document.getElementById('cart-pay-later-btn');
+        const btn = document.getElementById('cart-primary-btn');
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Registering...';
 
@@ -3309,7 +3336,7 @@
             alert('Registration failed: ' + err.message);
         } finally {
             btn.disabled = false;
-            btn.textContent = 'Register — Pay Later';
+            btn.textContent = 'Register';
         }
     };
 
