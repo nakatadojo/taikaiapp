@@ -21407,29 +21407,61 @@ function loadTournamentInfoView() {
         return;
     }
 
+    // For server tournaments, always fetch fresh data and sync ALL fields (timezone, currency,
+    // weight unit, etc.) into the in-memory db. This ensures settings survive page refreshes.
+    if (_isServerTournamentId(currentTournamentId)) {
+        if (content) content.innerHTML = '<p class="hint">Loading…</p>';
+        fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                const serverT = data?.tournament;
+                if (!serverT) {
+                    const ts = db.load('tournaments');
+                    const t = ts.find(t => String(t.id) === String(currentTournamentId));
+                    if (t) _renderTournamentInfoContent(t, t.registration_open || false);
+                    else if (content) content.innerHTML = '<p class="hint">Tournament not found.</p>';
+                    return;
+                }
+                // Sync server snake_case → in-memory store (camelCase where needed)
+                const ts = db.load('tournaments');
+                const idx = ts.findIndex(x => String(x.id) === String(currentTournamentId));
+                const merged = {
+                    ...(idx >= 0 ? ts[idx] : {}),
+                    id: serverT.id,
+                    name: serverT.name,
+                    date: serverT.date,
+                    location: serverT.location,
+                    sanctioningBody: serverT.sanctioning_body,
+                    timezone: serverT.timezone,
+                    currency: serverT.currency,
+                    weightUnit: serverT.weight_unit,
+                    weight_unit: serverT.weight_unit,
+                    published: serverT.published,
+                    registration_open: serverT.registration_open,
+                };
+                if (idx >= 0) { ts[idx] = merged; } else { ts.push(merged); }
+                db.save('tournaments', ts);
+                if (deleteNameEl) deleteNameEl.textContent = `You are about to delete: "${merged.name}"`;
+                _renderTournamentInfoContent(merged, serverT.registration_open);
+            })
+            .catch(() => {
+                const ts = db.load('tournaments');
+                const t = ts.find(t => String(t.id) === String(currentTournamentId));
+                if (t) _renderTournamentInfoContent(t, t.registration_open || false);
+                else if (content) content.innerHTML = '<p class="hint">Failed to load tournament.</p>';
+            });
+        return;
+    }
+
+    // Local (non-server) tournament — read from in-memory db directly
     const tournaments = db.load('tournaments');
     const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
     if (!t) {
         if (content) content.innerHTML = '<p class="hint">Tournament not found.</p>';
         return;
     }
-
-    // Fetch live registration_open status from server (UUID tournaments only), then render
-    if (_isServerTournamentId(currentTournamentId)) {
-        fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' })
-            .then(r => r.ok ? r.json() : null)
-            .then(serverT => {
-                const regOpen = serverT ? serverT.registration_open : (t.registration_open || false);
-                _renderTournamentInfoContent(t, regOpen);
-            })
-            .catch(() => _renderTournamentInfoContent(t, t.registration_open || false));
-    } else {
-        _renderTournamentInfoContent(t, t.registration_open || false);
-    }
-
-    if (deleteNameEl) {
-        deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
-    }
+    _renderTournamentInfoContent(t, t.registration_open || false);
+    if (deleteNameEl) deleteNameEl.textContent = `You are about to delete: "${t.name}"`;
 }
 
 function _renderTournamentInfoContent(t, regOpen) {
@@ -22875,7 +22907,12 @@ if (publicSiteForm) {
     });
 }
 
-function loadPublicSiteConfig() {
+async function loadPublicSiteConfig() {
+    // If config not yet in memory (e.g. page just loaded), fetch from server first
+    // so images and other settings aren't lost on refresh.
+    if (!_msGet(_scopedKey('publicSiteConfig')) && currentTournamentId && _isServerTournamentId(currentTournamentId)) {
+        await _loadPublicSiteConfigFromServer().catch(() => {});
+    }
     const config = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
 
     const nameInput = document.getElementById('public-tournament-name');
