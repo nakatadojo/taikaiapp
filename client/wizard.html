@@ -1202,6 +1202,14 @@
             </div>
             <p class="form-hint" style="margin-left: 28px; margin-bottom: 16px;">Competitors must enter their weight during registration (for kumite weigh-in events).</p>
 
+            <div class="toggle-row">
+                <label>
+                    <input type="checkbox" id="t-allow-pay-later" style="accent-color:var(--accent);width:18px;height:18px;">
+                    <span class="form-label" style="margin:0;">Allow Registration Without Payment</span>
+                </label>
+            </div>
+            <p class="form-hint" style="margin-left: 28px; margin-bottom: 16px;">When enabled, competitors can register and pay later. These registrations will show as <strong>Outstanding</strong> until payment is received.</p>
+
             <div style="margin-top: 16px;">
                 <span class="form-label">Custom Document Requirements</span>
                 <p class="form-hint" style="margin-bottom: 8px;">Request additional documents from competitors (e.g., insurance waiver, medical clearance).</p>
@@ -1322,7 +1330,7 @@
                     </div>
                 </div>
             </div>
-            <p class="form-hint">Set to $0 for a free tournament. Individual event prices can be set below.</p>
+            <p class="form-hint" id="pricing-free-hint">Set to $0 for a free tournament. Individual event prices can be set below.</p>
         </div>
 
         <div class="pricing-section" id="pricing-periods-section">
@@ -1448,6 +1456,41 @@ function showToast(msg, type = 'info') {
     setTimeout(() => toast.remove(), 3000);
 }
 
+/* ── Currency helpers ───────────────────────────────────────── */
+function getWizardCurrencySymbol() {
+    const code = (wizardData.currency || 'USD').toUpperCase();
+    try {
+        // Extract just the currency prefix (e.g. "MX$" for MXN, "$" for USD, "€" for EUR)
+        const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, minimumFractionDigits: 0 }).format(0);
+        return formatted.replace(/[\d,.\s]+/, '').trim();
+    } catch (e) {
+        const map = { USD:'$', MXN:'MX$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'CA$', AUD:'A$', ARS:'$', COP:'$' };
+        return map[code] || '$';
+    }
+}
+
+function wizardFmtPrice(amount) {
+    const num = parseFloat(amount);
+    const code = (wizardData.currency || 'USD').toUpperCase();
+    if (isNaN(num)) {
+        try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(0); } catch(e) { return `${getWizardCurrencySymbol()}0`; }
+    }
+    try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(num);
+    } catch (e) {
+        return `${getWizardCurrencySymbol()}${num.toFixed(code === 'JPY' ? 0 : 2)}`;
+    }
+}
+
+/** Update all visible <span class="currency"> elements in Step 4. */
+function updateWizardCurrencySymbols() {
+    const sym = getWizardCurrencySymbol();
+    document.querySelectorAll('.currency').forEach(el => { el.textContent = sym; });
+    // Also update the hint that says "Set to $0"
+    const hint = document.getElementById('pricing-free-hint');
+    if (hint) hint.textContent = `Set to ${wizardFmtPrice(0)} for a free tournament. Individual event prices can be set below.`;
+}
+
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -1483,6 +1526,7 @@ let wizardData = {
         photoRequired: false,
         photoMessage: '',
         weightRequired: false,
+        allowPayLater: false,
         customDocuments: [],
     },
     // Step 2: Event types
@@ -1702,6 +1746,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         $('#photo-message-group').style.display = this.checked ? 'block' : 'none';
     });
 
+    // Currency select — update all currency symbols whenever it changes
+    $('#t-currency').addEventListener('change', function() {
+        wizardData.currency = this.value;
+        updateWizardCurrencySymbols();
+        if (currentStep === 4) {
+            renderPricingOverrides();
+            renderPricingPeriods();
+        }
+    });
+
     updateStepIndicator();
     updateNavButtons();
 });
@@ -1738,12 +1792,14 @@ async function loadExistingTournament() {
             photoRequired: regSettings.photoRequired || false,
             photoMessage: regSettings.photoMessage || '',
             weightRequired: regSettings.weightRequired || false,
+            allowPayLater: regSettings.allowPayLater || false,
             customDocuments: regSettings.customDocuments || [],
         };
         $('#t-photo-required').checked = wizardData.registrationSettings.photoRequired;
         $('#t-photo-message').value = wizardData.registrationSettings.photoMessage;
         $('#photo-message-group').style.display = wizardData.registrationSettings.photoRequired ? 'block' : 'none';
         $('#t-weight-required').checked = wizardData.registrationSettings.weightRequired;
+        $('#t-allow-pay-later').checked = wizardData.registrationSettings.allowPayLater;
         renderCustomDocs(wizardData.registrationSettings.customDocuments);
 
         if (t.cover_image_url) {
@@ -1889,7 +1945,7 @@ function goToStep(step) {
     updateNavButtons();
 
     // Prepare step content
-    if (step === 4) renderPricingOverrides();
+    if (step === 4) { renderPricingOverrides(); renderPricingPeriods(); updateWizardCurrencySymbols(); }
     if (step === 5) renderReview();
 
     // Scroll to top
@@ -1990,6 +2046,7 @@ function collectStepData(step) {
             photoRequired: $('#t-photo-required').checked,
             photoMessage: $('#t-photo-message').value.trim(),
             weightRequired: $('#t-weight-required').checked,
+            allowPayLater: $('#t-allow-pay-later').checked,
             customDocuments: collectCustomDocs(),
         };
     }
@@ -2432,6 +2489,8 @@ function renderPricingOverrides() {
     const section = $('#event-pricing-section');
     const container = $('#event-price-overrides');
 
+    updateWizardCurrencySymbols();
+
     if (wizardData.eventTypes.length <= 1) {
         section.style.display = 'none';
         return;
@@ -2439,6 +2498,8 @@ function renderPricingOverrides() {
 
     section.style.display = 'block';
     container.innerHTML = '';
+
+    const sym = getWizardCurrencySymbol();
 
     wizardData.eventTypes.forEach(et => {
         const info = EVENT_TYPE_INFO[et] || { label: et };
@@ -2453,7 +2514,7 @@ function renderPricingOverrides() {
             <div class="form-group">
                 <label class="form-label">${escapeHtml(displayName)} — Base Price Override</label>
                 <div class="price-input-group">
-                    <span class="currency">$</span>
+                    <span class="currency">${sym}</span>
                     <input type="number" class="form-input" id="override-base-${et}"
                            min="0" step="0.01" placeholder="Use default"
                            value="${override.base || ''}">
@@ -2462,7 +2523,7 @@ function renderPricingOverrides() {
             <div class="form-group">
                 <label class="form-label">${escapeHtml(displayName)} — Add-on Price Override</label>
                 <div class="price-input-group">
-                    <span class="currency">$</span>
+                    <span class="currency">${sym}</span>
                     <input type="number" class="form-input" id="override-addon-${et}"
                            min="0" step="0.01" placeholder="Use default"
                            value="${override.addon || ''}">
@@ -2509,6 +2570,8 @@ function renderPricingPeriods() {
     const container = $('#pricing-periods-list');
     container.innerHTML = '';
 
+    const sym = getWizardCurrencySymbol();
+
     wizardData.pricingPeriods.forEach((period, idx) => {
         const card = document.createElement('div');
         card.className = 'pricing-period-card';
@@ -2536,7 +2599,7 @@ function renderPricingPeriods() {
                 <div class="form-group">
                     <label class="form-label">Base Price</label>
                     <div class="price-input-group">
-                        <span class="currency">$</span>
+                        <span class="currency">${sym}</span>
                         <input type="number" class="form-input" min="0" step="0.01"
                                value="${period.base_event_price}"
                                onchange="updatePricingPeriod('${period.id}', 'base_event_price', this.value)">
@@ -2545,7 +2608,7 @@ function renderPricingPeriods() {
                 <div class="form-group">
                     <label class="form-label">Add-on Price</label>
                     <div class="price-input-group">
-                        <span class="currency">$</span>
+                        <span class="currency">${sym}</span>
                         <input type="number" class="form-input" min="0" step="0.01"
                                value="${period.addon_event_price}"
                                onchange="updatePricingPeriod('${period.id}', 'addon_event_price', this.value)">
@@ -2635,9 +2698,9 @@ function renderReview() {
     const pricingEl = $('#review-pricing');
     let pricingHtml = `
         <span class="review-label">Base Price</span>
-        <span class="review-value">$${wizardData.basePrice.toFixed(2)}</span>
+        <span class="review-value">${wizardFmtPrice(wizardData.basePrice)}</span>
         <span class="review-label">Add-on Price</span>
-        <span class="review-value">$${wizardData.addonPrice.toFixed(2)}</span>
+        <span class="review-value">${wizardFmtPrice(wizardData.addonPrice)}</span>
     `;
 
     const overrideEntries = Object.entries(wizardData.eventPriceOverrides);
@@ -2647,13 +2710,13 @@ function renderReview() {
             if (override.base) {
                 pricingHtml += `
                     <span class="review-label">${info.label} Base</span>
-                    <span class="review-value">$${override.base.toFixed(2)} (override)</span>
+                    <span class="review-value">${wizardFmtPrice(override.base)} (override)</span>
                 `;
             }
             if (override.addon) {
                 pricingHtml += `
                     <span class="review-label">${info.label} Add-on</span>
-                    <span class="review-value">$${override.addon.toFixed(2)} (override)</span>
+                    <span class="review-value">${wizardFmtPrice(override.addon)} (override)</span>
                 `;
             }
         });
@@ -2668,7 +2731,7 @@ function renderReview() {
             const end = new Date(p.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             pricingHtml += `
                 <span class="review-label">${escapeHtml(p.name)}</span>
-                <span class="review-value">${start} – ${end}: $${parseFloat(p.base_event_price).toFixed(2)} / $${parseFloat(p.addon_event_price).toFixed(2)}</span>
+                <span class="review-value">${start} – ${end}: ${wizardFmtPrice(p.base_event_price)} / ${wizardFmtPrice(p.addon_event_price)}</span>
             `;
         });
     }
@@ -2677,7 +2740,7 @@ function renderReview() {
 
     // Registration Requirements
     const reg = wizardData.registrationSettings;
-    const hasRegSettings = reg.photoRequired || reg.weightRequired || (reg.customDocuments && reg.customDocuments.length > 0);
+    const hasRegSettings = reg.photoRequired || reg.weightRequired || reg.allowPayLater || (reg.customDocuments && reg.customDocuments.length > 0);
     const regSection = $('#review-registration-section');
     const regEl = $('#review-registration');
 
@@ -2691,6 +2754,10 @@ function renderReview() {
         if (reg.weightRequired) {
             regHtml += `<span class="review-label">Weight Disclosure</span>
                         <span class="review-value">Required</span>`;
+        }
+        if (reg.allowPayLater) {
+            regHtml += `<span class="review-label">Pay Later</span>
+                        <span class="review-value">Enabled — competitors can register with outstanding balance</span>`;
         }
         if (reg.customDocuments && reg.customDocuments.length > 0) {
             regHtml += `<span class="review-label">Custom Documents</span>

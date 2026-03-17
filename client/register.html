@@ -1619,13 +1619,16 @@
                 <div id="cart-waiver" style="display:none; margin-top:16px; padding:16px; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-sm);">
                     <label style="display:flex; gap:10px; cursor:pointer; font-size:13px; color:var(--text-muted); line-height:1.5;">
                         <input type="checkbox" id="cart-waiver-check" style="accent-color:var(--accent); width:18px; height:18px; margin-top:2px; flex-shrink:0;"
-                               onchange="document.getElementById('cart-pay-btn').disabled = !this.checked">
+                               onchange="onWaiverChange(this.checked)">
                         <span>I acknowledge that by completing this registration, I agree to the tournament waiver and rules. I confirm that all competitor information provided is accurate.</span>
                     </label>
                 </div>
-                <div class="mt-24">
+                <div class="mt-24" style="display:flex;flex-direction:column;gap:10px;">
                     <button class="btn-accent btn-block" onclick="handleCheckout()" id="cart-pay-btn">
                         Pay Now
+                    </button>
+                    <button class="btn-secondary btn-block" onclick="handlePayLater()" id="cart-pay-later-btn" style="display:none;">
+                        Register — Pay Later
                     </button>
                 </div>
             </div>
@@ -3130,12 +3133,28 @@
         const waiverEl = document.getElementById('cart-waiver');
         const waiverCheck = document.getElementById('cart-waiver-check');
         const payBtn = document.getElementById('cart-pay-btn');
+        const payLaterBtn = document.getElementById('cart-pay-later-btn');
         waiverEl.style.display = 'block';
         waiverCheck.checked = false;
         payBtn.disabled = true;
 
+        // Show pay-later button only if tournament allows it
+        const t = state.tournament?.tournament || state.tournament || {};
+        const regSettings = t.registration_settings || {};
+        if (payLaterBtn) {
+            payLaterBtn.style.display = regSettings.allowPayLater ? '' : 'none';
+            payLaterBtn.disabled = true;
+        }
+
         updateCartTotals();
     }
+
+    window.onWaiverChange = function(checked) {
+        const payBtn = document.getElementById('cart-pay-btn');
+        const payLaterBtn = document.getElementById('cart-pay-later-btn');
+        if (payBtn) payBtn.disabled = !checked;
+        if (payLaterBtn && payLaterBtn.style.display !== 'none') payLaterBtn.disabled = !checked;
+    };
 
     function updateCartTotals() {
         let subtotal = 0;
@@ -3264,7 +3283,37 @@
         }
     };
 
-    function onPaymentSuccess(data) {
+    window.handlePayLater = async function() {
+        const btn = document.getElementById('cart-pay-later-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Registering...';
+
+        const competitors = state.cart.items.map(item => ({
+            profileId: item.profileId,
+            events: item.events.map(e => ({ eventId: e.id })),
+        }));
+
+        try {
+            const data = await api('/api/registrations/pay-later', {
+                method: 'POST',
+                body: JSON.stringify({
+                    tournamentId: state.tournamentId,
+                    competitors,
+                    discountCode: state.cart.discountCode || undefined,
+                }),
+            });
+
+            // Show outstanding success
+            onPaymentSuccess(data, true);
+        } catch (err) {
+            alert('Registration failed: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Register — Pay Later';
+        }
+    };
+
+    function onPaymentSuccess(data, isPayLater = false) {
         // Build success summary
         let summaryHTML = '';
         for (const item of state.cart.items) {
@@ -3279,7 +3328,13 @@
 
         // Coach mode: update success message and actions
         const isCoach = state.isCoachMode || sessionStorage.getItem('taikai_coach_mode') === 'true';
-        if (isCoach) {
+        if (isPayLater) {
+            document.getElementById('success-text').textContent = 'Registration submitted. You have an outstanding balance due — please arrange payment with the event organizer.';
+            document.getElementById('success-actions').innerHTML = `
+                <button class="btn-accent" onclick="navigate('registrations')">View My Registrations</button>
+                <button class="btn-ghost" onclick="navigate('dashboard')">Register More</button>
+            `;
+        } else if (isCoach) {
             document.getElementById('success-text').textContent = 'Registration confirmed. Waiver emails have been sent to the parents/guardians.';
             document.getElementById('success-actions').innerHTML = `
                 <a href="/coach.html" class="btn-accent">Back to Coach Dashboard</a>
@@ -3366,9 +3421,16 @@
                     <div class="reg-group-title">${esc(tournamentName)}</div>`;
                 for (const reg of regs) {
                     const status = (reg.status || 'confirmed').toLowerCase();
-                    const statusClass = status === 'confirmed' ? 'status-confirmed'
+                    const paymentStatus = (reg.payment_status || reg.paymentStatus || '').toLowerCase();
+                    const isOutstanding = status === 'active' && paymentStatus === 'unpaid';
+
+                    const statusClass = isOutstanding ? 'status-pending'
+                        : status === 'active' || status === 'confirmed' ? 'status-confirmed'
                         : status === 'pending' ? 'status-pending'
                         : 'status-cancelled';
+                    const statusLabel = isOutstanding ? 'Outstanding'
+                        : status === 'active' ? 'Confirmed'
+                        : status;
 
                     const eventsArr = Array.isArray(reg.events) ? reg.events : [];
                     const eventsText = eventsArr.map(e => e.eventName || e.name || '').filter(Boolean).join(', ');
@@ -3378,7 +3440,7 @@
                             <span class="reg-item-name">${esc(reg.competitorName || reg.profileName || ((reg.profile_first_name || '') + ' ' + (reg.profile_last_name || '')).trim() || '')}</span>
                             <span class="reg-item-event">${esc(eventsText || 'Event')}</span>
                         </div>
-                        <span class="reg-item-status ${statusClass}">${esc(status)}</span>
+                        <span class="reg-item-status ${statusClass}">${esc(statusLabel)}</span>
                     </div>`;
                 }
                 html += '</div>';
@@ -3411,15 +3473,18 @@
 
     function getCurrSym() {
         const t = state.tournament?.tournament || state.tournament || {};
-        const code = (t.currency || 'USD').toUpperCase();
-        const map = { USD:'$', MXN:'$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'C$', AUD:'A$', ARS:'$', COP:'$' };
-        return map[code] || '$';
+        return (t.currency || 'USD').toUpperCase();
     }
     function fmtPrice(amount) {
-        const sym = getCurrSym();
-        const t = state.tournament?.tournament || state.tournament || {};
-        const dec = (t.currency||'USD') === 'JPY' ? 0 : 2;
-        return `${sym}${parseFloat(amount).toFixed(dec)}`;
+        const code = getCurrSym();
+        const num = parseFloat(amount);
+        try {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(isNaN(num) ? 0 : num);
+        } catch (e) {
+            const map = { USD:'$', MXN:'MX$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'CA$', AUD:'A$', ARS:'$', COP:'$' };
+            const sym = map[code] || '$';
+            return `${sym}${isNaN(num) ? '0.00' : num.toFixed(code === 'JPY' ? 0 : 2)}`;
+        }
     }
 
     function capitalize(s) {

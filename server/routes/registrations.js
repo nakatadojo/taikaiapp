@@ -16,6 +16,9 @@ router.post('/checkout', requireAuth, registrationController.checkout);
 // POST /api/registrations/confirm — Confirm payment + create registrations
 router.post('/confirm', requireAuth, registrationController.confirmPayment);
 
+// POST /api/registrations/pay-later — Register without upfront payment (outstanding balance)
+router.post('/pay-later', requireAuth, registrationController.payLater);
+
 // GET /api/registrations/my — Get logged-in user's registrations
 router.get('/my', requireAuth, registrationController.getMyRegistrations);
 

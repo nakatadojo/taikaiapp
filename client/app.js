@@ -2731,15 +2731,26 @@ function _escapeHtml(str) {
 
 /* ── Currency & Weight helpers ───────────────────────── */
 function getCurrencySymbol(code) {
-    const map = { USD:'$', MXN:'$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'C$', AUD:'A$', ARS:'$', COP:'$' };
-    return map[(code||'USD').toUpperCase()] || '$';
+    const c = (code || 'USD').toUpperCase();
+    try {
+        const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: c, minimumFractionDigits: 0 }).format(0);
+        return formatted.replace(/[\d,.\s]+/, '').trim();
+    } catch (e) {
+        const map = { USD:'$', MXN:'MX$', EUR:'€', GBP:'£', JPY:'¥', BRL:'R$', CAD:'CA$', AUD:'A$', ARS:'$', COP:'$' };
+        return map[c] || '$';
+    }
 }
 
 function formatPrice(amount, currencyCode) {
-    const sym = getCurrencySymbol(currencyCode);
     const num = parseFloat(amount);
-    if (isNaN(num)) return `${sym}0`;
-    return `${sym}${num.toFixed(currencyCode === 'JPY' ? 0 : 2)}`;
+    const code = (currencyCode || 'USD').toUpperCase();
+    try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(isNaN(num) ? 0 : num);
+    } catch (e) {
+        const sym = getCurrencySymbol(code);
+        if (isNaN(num)) return `${sym}0`;
+        return `${sym}${num.toFixed(code === 'JPY' ? 0 : 2)}`;
+    }
 }
 
 function getTournamentWeightUnit() {
@@ -21438,6 +21449,7 @@ function loadTournamentInfoView() {
                     weight_unit: serverT.weight_unit,
                     published: serverT.published,
                     registration_open: serverT.registration_open,
+                    registration_settings: serverT.registration_settings || {},
                 };
                 if (idx >= 0) { ts[idx] = merged; } else { ts.push(merged); }
                 db.save('tournaments', ts);
@@ -21591,6 +21603,14 @@ function showTournamentEditForm() {
                 </select>
                 <p class="hint" style="margin-top:4px;">Draft tournaments are hidden from public registration pages until published.</p>
             </div>
+            <div class="form-group">
+                <label class="form-label">Registration Options</label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--glass,rgba(255,255,255,0.04));border:1px solid var(--glass-border,rgba(255,255,255,0.08));border-radius:6px;">
+                    <input type="checkbox" id="ti-edit-allow-pay-later" ${(t.registration_settings || {}).allowPayLater ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent,#6366f1);flex-shrink:0;">
+                    <span>Allow competitors to register without upfront payment</span>
+                </label>
+                <p class="hint" style="margin-top:4px;">When enabled, a "Register — Pay Later" option appears at checkout. Registrations created this way will show as <strong>Outstanding</strong> until payment is received.</p>
+            </div>
             <div style="display:flex;gap:10px;margin-top:4px;">
                 <button class="btn btn-primary" onclick="saveTournamentEdit()">Save Changes</button>
                 <button class="btn btn-secondary" onclick="loadTournamentInfoView()">Cancel</button>
@@ -21611,6 +21631,13 @@ async function saveTournamentEdit() {
     const currency = document.getElementById('ti-edit-currency')?.value || undefined;
     const weightUnit = document.getElementById('ti-edit-weight-unit')?.value || undefined;
     const published = document.getElementById('ti-edit-published')?.value === 'true';
+    const allowPayLater = document.getElementById('ti-edit-allow-pay-later')?.checked || false;
+
+    // Merge allowPayLater into existing registration_settings
+    const tournaments = db.load('tournaments');
+    const existingT = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const existingRegSettings = existingT?.registration_settings || {};
+    const registrationSettings = { ...existingRegSettings, allowPayLater };
 
     if (!name) { showToast('Tournament name is required', 'error'); return; }
 
@@ -21622,7 +21649,7 @@ async function saveTournamentEdit() {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, currency, weightUnit, published }),
+            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, currency, weightUnit, published, registrationSettings }),
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -21630,12 +21657,12 @@ async function saveTournamentEdit() {
         }
         const { tournament: saved } = await res.json();
 
-        // Update localStorage with server-confirmed values
-        const tournaments = db.load('tournaments');
-        const idx = tournaments.findIndex(t => String(t.id) === String(currentTournamentId));
+        // Update in-memory store with server-confirmed values
+        const savedTournaments = db.load('tournaments');
+        const idx = savedTournaments.findIndex(t => String(t.id) === String(currentTournamentId));
         if (idx >= 0) {
-            tournaments[idx] = {
-                ...tournaments[idx],
+            savedTournaments[idx] = {
+                ...savedTournaments[idx],
                 name: saved.name,
                 date: saved.date,
                 location: saved.location,
@@ -21643,9 +21670,11 @@ async function saveTournamentEdit() {
                 timezone: saved.timezone,
                 currency: saved.currency,
                 weightUnit: saved.weight_unit,
+                weight_unit: saved.weight_unit,
                 published: saved.published,
+                registration_settings: saved.registration_settings || {},
             };
-            db.save('tournaments', tournaments);
+            db.save('tournaments', savedTournaments);
         }
 
         // Refresh the tournament selector in case the name changed

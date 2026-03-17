@@ -513,13 +513,16 @@ async function checkout(req, res, next) {
         }
       }
 
+      // Use tournament currency (lowercase for Stripe), fallback to usd
+      const stripeCurrency = (tournament.currency || 'usd').toLowerCase();
+
       const lineItems = validatedCompetitors.map(comp => ({
         price_data: {
-          currency: 'usd',
+          currency: stripeCurrency,
           product_data: {
             name: `${comp.name} — ${comp.events.map(e => e.name).join(', ')}`,
           },
-          unit_amount: Math.round(comp.subtotal * 100), // cents
+          unit_amount: Math.round(comp.subtotal * 100), // cents (or smallest unit)
         },
         quantity: 1,
       }));
@@ -528,7 +531,7 @@ async function checkout(req, res, next) {
       if (discountAmount > 0) {
         lineItems.push({
           price_data: {
-            currency: 'usd',
+            currency: stripeCurrency,
             product_data: {
               name: `Discount (${discountCode.toUpperCase()})`,
             },
@@ -546,7 +549,7 @@ async function checkout(req, res, next) {
         line_items: discountAmount > 0
           ? [{
             price_data: {
-              currency: 'usd',
+              currency: stripeCurrency,
               product_data: {
                 name: `${tournament.name} — Tournament Registration`,
                 description: validatedCompetitors.map(c => `${c.name}: ${c.events.length} event(s)`).join('; '),
@@ -901,6 +904,216 @@ async function getMyRegistrations(req, res, next) {
 }
 
 /**
+ * POST /api/registrations/pay-later
+ * Validate cart and create registrations with payment_status='unpaid'.
+ * Only allowed when the tournament has allowPayLater enabled.
+ */
+async function payLater(req, res, next) {
+  try {
+    const { tournamentId, competitors, discountCode } = req.body;
+
+    if (!tournamentId || !Array.isArray(competitors) || competitors.length === 0) {
+      return res.status(400).json({ error: 'Tournament ID and at least one competitor are required' });
+    }
+
+    // Load tournament
+    const tournament = await tournamentQueries.findByIdWithEvents(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    // Verify allowPayLater is enabled
+    const regSettings = tournament.registration_settings || {};
+    if (!regSettings.allowPayLater) {
+      return res.status(403).json({ error: 'Pay-later registration is not enabled for this tournament.' });
+    }
+
+    // Registration deadline enforcement
+    if (tournament.registration_deadline) {
+      const rawDl = tournament.registration_deadline;
+      const deadline = new Date(typeof rawDl === 'string' && rawDl.length === 10 ? rawDl + 'T23:59:59' : rawDl);
+      if (new Date() > deadline) {
+        return res.status(400).json({
+          error: 'Registration for this tournament has closed.',
+          code: 'REGISTRATION_CLOSED',
+        });
+      }
+    }
+
+    // Credit check: ensure Event Director has enough credits
+    if (tournament.created_by) {
+      const directorBalance = await creditQueries.getBalance(tournament.created_by);
+      if (directorBalance < competitors.length) {
+        return res.status(402).json({
+          error: 'Registration is currently unavailable. Please contact the event organizer.',
+          code: 'INSUFFICIENT_CREDITS',
+        });
+      }
+    }
+
+    // Check for active pricing period
+    const PricingPeriodQueries = require('../db/queries/pricingPeriods');
+    const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
+
+    const basePrice = activePeriod
+      ? parseFloat(activePeriod.base_event_price)
+      : (parseFloat(tournament.base_event_price) || 75);
+    const addonPrice = activePeriod
+      ? parseFloat(activePeriod.addon_event_price)
+      : (parseFloat(tournament.addon_event_price) || 25);
+    const eventMap = new Map(tournament.events.map(e => [e.id, e]));
+
+    // Validate cart and calculate server-side pricing
+    let cartTotal = 0;
+    const validatedCompetitors = [];
+
+    for (const comp of competitors) {
+      const profile = await profileQueries.findById(comp.profileId);
+      if (!profile || profile.user_id !== req.user.id) {
+        return res.status(400).json({ error: `Invalid profile: ${comp.profileId}` });
+      }
+
+      const validatedEvents = [];
+      let competitorSubtotal = 0;
+
+      for (let i = 0; i < comp.events.length; i++) {
+        const eventId = comp.events[i].eventId;
+        const event = eventMap.get(eventId);
+        if (!event) {
+          return res.status(400).json({ error: `Event not found: ${eventId}` });
+        }
+
+        // Duplicate registration check
+        const existingReg = await pool.query(
+          `SELECT re.id FROM registration_events re
+           JOIN registrations r ON r.id = re.registration_id
+           WHERE r.tournament_id = $1 AND r.profile_id = $2 AND re.event_id = $3
+             AND r.status != 'cancelled'`,
+          [tournamentId, comp.profileId, eventId]
+        );
+        if (existingReg.rows.length > 0) {
+          return res.status(400).json({
+            error: `${profile.first_name} ${profile.last_name} is already registered for ${event.name}`,
+          });
+        }
+
+        // Prerequisite check
+        if (event.prerequisite_event_id) {
+          const prereqSelected = comp.events.some(e => e.eventId === event.prerequisite_event_id);
+          if (!prereqSelected) {
+            const prereqReg = await pool.query(
+              `SELECT re.id FROM registration_events re
+               JOIN registrations r ON r.id = re.registration_id
+               WHERE r.tournament_id = $1 AND r.profile_id = $2 AND re.event_id = $3
+                 AND r.status != 'cancelled'`,
+              [tournamentId, comp.profileId, event.prerequisite_event_id]
+            );
+            if (prereqReg.rows.length === 0) {
+              const prereqEvent = eventMap.get(event.prerequisite_event_id);
+              const prereqName = prereqEvent ? prereqEvent.name : 'the prerequisite event';
+              return res.status(400).json({
+                error: `${event.name} requires registration in ${prereqName} first.`,
+                code: 'PREREQUISITE_MISSING',
+              });
+            }
+          }
+        }
+
+        // Capacity check
+        if (event.max_competitors) {
+          const currentCount = await tournamentQueries.getEventRegistrationCount(eventId);
+          if (currentCount >= event.max_competitors) {
+            return res.status(400).json({
+              error: `${event.name} is full (${event.max_competitors}/${event.max_competitors} spots taken).`,
+              code: 'EVENT_FULL',
+            });
+          }
+        }
+
+        const isPrimary = i === 0;
+        const eventBasePrice = event.price_override !== null ? parseFloat(event.price_override) : basePrice;
+        const eventAddonPrice = event.addon_price_override !== null ? parseFloat(event.addon_price_override) : addonPrice;
+        const price = isPrimary ? eventBasePrice : eventAddonPrice;
+
+        validatedEvents.push({ eventId, name: event.name, isPrimary, price });
+        competitorSubtotal += price;
+      }
+
+      validatedCompetitors.push({
+        profileId: comp.profileId,
+        name: `${profile.first_name} ${profile.last_name}`,
+        events: validatedEvents,
+        subtotal: competitorSubtotal,
+      });
+      cartTotal += competitorSubtotal;
+    }
+
+    // Validate discount code if provided
+    let discountData = null;
+    let discountAmount = 0;
+    if (discountCode) {
+      const discountResult = await discountQueries.validate(discountCode, tournamentId);
+      if (!discountResult.valid) {
+        return res.status(400).json({ error: discountResult.error });
+      }
+      discountData = discountResult.discount;
+      if (discountData.type === 'percentage') {
+        discountAmount = Math.round(cartTotal * (parseFloat(discountData.value) / 100) * 100) / 100;
+      } else {
+        discountAmount = Math.min(parseFloat(discountData.value), cartTotal);
+      }
+    }
+
+    const finalTotal = Math.max(0, cartTotal - discountAmount);
+
+    // Create registrations with payment_status='unpaid'
+    const regIds = await createRegistrationsFromCartUnpaid(
+      req.user.id, tournamentId, validatedCompetitors, discountData, finalTotal
+    );
+
+    // Deduct credits from Event Director
+    if (tournament.created_by) {
+      await creditQueries.deductForRegistration(
+        tournament.created_by, validatedCompetitors.length, tournamentId,
+        regIds || [],
+        `Registration (pay later): ${validatedCompetitors.map(c => c.name).join(', ')} for ${tournament.name}`
+      );
+    }
+
+    // Notify tournament director
+    if (tournament.created_by) {
+      try {
+        for (const comp of validatedCompetitors) {
+          await notificationQueries.create({
+            recipientId: tournament.created_by,
+            tournamentId,
+            type: 'new_registration',
+            payload: {
+              competitorName: comp.name,
+              eventCount: comp.events.length,
+              amountPaid: 0,
+              paymentStatus: 'unpaid',
+            },
+          });
+        }
+      } catch (notifErr) {
+        console.warn('Failed to create pay-later notification:', notifErr.message);
+      }
+    }
+
+    return res.json({
+      status: 'outstanding',
+      message: 'Registration confirmed. Payment is outstanding.',
+      registrationIds: regIds,
+      total: finalTotal,
+      discountAmount,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * Helper: Create registration records from validated cart data.
  */
 async function createRegistrationsFromCart(
@@ -989,6 +1202,87 @@ async function createRegistrationsFromCart(
 }
 
 /**
+ * Helper: Create registration records with payment_status='unpaid' (pay-later flow).
+ */
+async function createRegistrationsFromCartUnpaid(
+  userId, tournamentId, competitors, discountData, totalDue
+) {
+  const client = await pool.connect();
+  const registrationIds = [];
+  try {
+    await client.query('BEGIN');
+
+    for (const comp of competitors) {
+      const regResult = await client.query(
+        `INSERT INTO registrations
+          (tournament_id, user_id, profile_id, registered_by, payment_status,
+           amount_paid, total_due, status)
+         VALUES ($1, $2, $3, $4, 'unpaid', 0, $5, 'active')
+         RETURNING *`,
+        [tournamentId, userId, comp.profileId, userId, comp.subtotal]
+      );
+      const registration = regResult.rows[0];
+      registrationIds.push(registration.id);
+
+      // Load profile for division assignment
+      const profile = await client.query(
+        'SELECT * FROM competitor_profiles WHERE id = $1',
+        [comp.profileId]
+      );
+
+      // Load tournament date for age calculation
+      const tournamentRow = await client.query(
+        'SELECT date FROM tournaments WHERE id = $1',
+        [tournamentId]
+      );
+      const tournamentDate = tournamentRow.rows[0]?.date;
+
+      for (let i = 0; i < comp.events.length; i++) {
+        const evt = comp.events[i];
+
+        let divisionName = null;
+        if (profile.rows[0]) {
+          const eventRow = await client.query(
+            'SELECT criteria_templates, is_event_type FROM tournament_events WHERE id = $1',
+            [evt.eventId]
+          );
+          const eventData = eventRow.rows[0];
+          if (eventData?.is_event_type && eventData?.criteria_templates) {
+            const templates = typeof eventData.criteria_templates === 'string'
+              ? JSON.parse(eventData.criteria_templates)
+              : eventData.criteria_templates;
+            divisionName = assignDivision(profile.rows[0], templates, tournamentDate);
+          }
+        }
+
+        await client.query(
+          `INSERT INTO registration_events
+            (registration_id, event_id, is_primary, price, selection_order, assigned_division)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (registration_id, event_id) DO NOTHING`,
+          [registration.id, evt.eventId, evt.isPrimary, evt.price, i, divisionName]
+        );
+      }
+    }
+
+    if (discountData?.id) {
+      await client.query(
+        'UPDATE discount_codes SET times_used = times_used + 1 WHERE id = $1',
+        [discountData.id]
+      );
+    }
+
+    await client.query('COMMIT');
+    return registrationIds;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * GET /api/registrations/my/:id
  * Get a single registration owned by the current user (for badge page).
  */
@@ -1057,6 +1351,7 @@ module.exports = {
   activateRegistration,
   checkout,
   confirmPayment,
+  payLater,
   getMyRegistrations,
   getMyRegistration,
   getMyRegistrationQR,
