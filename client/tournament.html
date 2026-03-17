@@ -1997,7 +1997,8 @@
 
     function renderCompetitorForm(c, index) {
         const t = currentTournamentData;
-        const regSettings = (t && t.registration_settings) || {};
+        let regSettings = (t && t.registration_settings) || {};
+        if (typeof regSettings === 'string') { try { regSettings = JSON.parse(regSettings); } catch(e) { regSettings = {}; } }
         const removeBtn = regState.competitors.length > 1
             ? `<button class="reg-remove-btn" onclick="removeCompetitor(${index})">Remove</button>` : '';
 
@@ -2100,7 +2101,8 @@
         const btn = document.getElementById('reg-continue-btn');
 
         // Validate
-        const regSettings = (currentTournamentData && currentTournamentData.registration_settings) || {};
+        let regSettings = (currentTournamentData && currentTournamentData.registration_settings) || {};
+        if (typeof regSettings === 'string') { try { regSettings = JSON.parse(regSettings); } catch(e) { regSettings = {}; } }
         for (let i = 0; i < regState.competitors.length; i++) {
             const c = regState.competitors[i];
             if (!c.firstName || !c.lastName || !c.dob || !c.gender) {
@@ -2266,7 +2268,11 @@
         const t = currentTournamentData;
         const events = t.events || [];
         const content = document.getElementById('reg-modal-content');
-        const allowPayLater = !!(t.registration_settings?.allowPayLater);
+        // registration_settings may be a parsed object (JSONB) or a raw string (TEXT) — handle both
+        let regSettings = t.registration_settings || {};
+        if (typeof regSettings === 'string') { try { regSettings = JSON.parse(regSettings); } catch(e) { regSettings = {}; } }
+        const allowPayLater = !!(regSettings.allowPayLater);
+        console.log('[tournament] registration_settings:', t.registration_settings, '→ allowPayLater:', allowPayLater);
         let grandTotal = 0;
 
         let html = `
@@ -2337,7 +2343,9 @@
             msgEl.style.color = '#22c55e';
             msgEl.textContent = `Discount applied: -$${discountAmount.toFixed(2)}`;
             document.getElementById('reg-total').textContent = `Total: $${finalTotal.toFixed(2)}`;
-            const _apl = !!(currentTournamentData.registration_settings?.allowPayLater);
+            let _rs = currentTournamentData.registration_settings || {};
+            if (typeof _rs === 'string') { try { _rs = JSON.parse(_rs); } catch(e) { _rs = {}; } }
+            const _apl = !!_rs.allowPayLater;
             document.getElementById('reg-pay-btn').textContent = _apl ? 'Register' : (finalTotal > 0 ? 'Pay Now' : 'Complete Registration');
         } catch (err) {
             msgEl.style.color = '#ef4444';
@@ -2350,7 +2358,9 @@
         const errEl = document.getElementById('reg-step3-error');
         errEl.style.display = 'none';
         const btn = document.getElementById('reg-pay-btn');
-        const allowPayLater = !!(currentTournamentData.registration_settings?.allowPayLater);
+        let _regSettings = currentTournamentData.registration_settings || {};
+        if (typeof _regSettings === 'string') { try { _regSettings = JSON.parse(_regSettings); } catch(e) { _regSettings = {}; } }
+        const allowPayLater = !!_regSettings.allowPayLater;
         btn.disabled = true; btn.textContent = 'Processing...';
 
         const competitors = regState.cart.map(item => ({
