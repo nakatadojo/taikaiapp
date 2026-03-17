@@ -2710,7 +2710,7 @@
 
         // Show/hide registration requirement fields (photo, weight, custom docs)
         const t = state.tournament?.tournament || state.tournament || {};
-        const regSettings = t.registration_settings || {};
+        const regSettings = t.registration_settings || registrationSettings || {};
 
         // Photo upload
         const photoGroup = document.getElementById('photo-upload-group');
@@ -3131,7 +3131,7 @@
 
         // Configure buttons and waiver text based on allowPayLater setting
         const t = state.tournament?.tournament || state.tournament || {};
-        const regSettings = t.registration_settings || {};
+        const regSettings = t.registration_settings || registrationSettings || {};
         const allowPayLater = !!regSettings.allowPayLater;
 
         const waiverEl = document.getElementById('cart-waiver');
@@ -3170,7 +3170,7 @@
 
     window.handlePrimaryAction = function() {
         const t = state.tournament?.tournament || state.tournament || {};
-        const allowPayLater = !!(t.registration_settings || {}).allowPayLater;
+        const allowPayLater = !!(t.registration_settings || registrationSettings || {}).allowPayLater;
         if (allowPayLater) {
             handlePayLater();
         } else {
@@ -3260,7 +3260,7 @@
 
     window.handleCheckout = async function() {
         const t = state.tournament?.tournament || state.tournament || {};
-        const allowPayLater = !!(t.registration_settings || {}).allowPayLater;
+        const allowPayLater = !!(t.registration_settings || registrationSettings || {}).allowPayLater;
         // When allowPayLater is on, checkout is the secondary button; otherwise primary
         const btn = document.getElementById(allowPayLater ? 'cart-secondary-btn' : 'cart-primary-btn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
