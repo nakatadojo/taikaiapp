@@ -36,6 +36,7 @@ app.use(helmet({
       scriptSrc: [
         "'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'",
         'https://translate.google.com', 'https://translate.googleapis.com',
+        'https://translate-pa.googleapis.com',
         'https://www.gstatic.com',
       ],
       // HTML files use inline event handlers (onchange, onclick, etc.) — must allow them
@@ -44,7 +45,7 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       // Socket.IO and API connections; unpkg.com for source-map fetches (.js.map)
       // Google Translate makes XHR requests to translate.googleapis.com
-      connectSrc: ["'self'", 'ws:', 'wss:', 'https://unpkg.com', 'https://translate.googleapis.com'],
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://unpkg.com', 'https://translate.googleapis.com', 'https://translate-pa.googleapis.com'],
       fontSrc: ["'self'", 'https:'],
       // Block Flash/plugin attacks
       objectSrc: ["'none'"],
