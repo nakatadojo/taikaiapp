@@ -1,5 +1,8 @@
+const bcrypt = require('bcryptjs');
 const roleQueries = require('../db/queries/roles');
 const userQueries = require('../db/queries/users');
+
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
 
 /**
  * POST /api/admin/users/:id/roles
@@ -110,4 +113,53 @@ async function deleteUser(req, res, next) {
   }
 }
 
-module.exports = { addUserRole, removeUserRole, deleteUser };
+/**
+ * POST /api/admin/users/:id/reset-password
+ * Force-reset a user's password. Admin-only.
+ * Guards: cannot reset a super_admin's password.
+ */
+async function resetUserPassword(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ error: 'newPassword is required' });
+    }
+
+    // Enforce same password rules as signup
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one uppercase letter' });
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one lowercase letter' });
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain at least one number' });
+    }
+
+    // Verify target user exists
+    const user = await userQueries.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent resetting a super_admin's password
+    const targetRoles = await roleQueries.getRolesForUser(id);
+    if (targetRoles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Cannot reset a super_admin password' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await userQueries.updatePasswordById(id, passwordHash);
+
+    res.json({ message: `Password reset for ${user.email}` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { addUserRole, removeUserRole, deleteUser, resetUserPassword };

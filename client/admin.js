@@ -305,6 +305,9 @@ function renderUsers(users) {
         <button class="btn btn-ghost btn-xs" onclick="impersonateUser('${u.id}')" title="Login as User">
           <i data-lucide="log-in"></i>
         </button>
+        <button class="btn btn-ghost btn-xs" onclick="showResetPasswordModal('${u.id}', '${esc(u.email)}')" title="Reset Password">
+          <i data-lucide="key-round"></i>
+        </button>
         <button class="btn btn-ghost btn-xs btn-danger" onclick="deleteUser('${u.id}', '${esc(u.email)}')" title="Delete User">
           <i data-lucide="trash-2"></i>
         </button>
@@ -393,6 +396,47 @@ async function impersonateUser(userId) {
     window.location.href = data.redirectUrl || '/';
   } catch (err) {
     alert('Failed to impersonate: ' + (err.error || err.message));
+  }
+}
+
+// ── Reset User Password ─────────────────────────────────────────────────────
+
+function showResetPasswordModal(userId, email) {
+  document.getElementById('reset-password-user-id').value = userId;
+  document.getElementById('reset-password-user-email').textContent = `User: ${email}`;
+  document.getElementById('reset-password-new').value = '';
+  document.getElementById('reset-password-confirm').value = '';
+  document.getElementById('reset-password-status').textContent = '';
+  document.getElementById('reset-password-status').className = 'form-status';
+  showEl('reset-password-modal');
+}
+
+async function handleResetUserPassword(e) {
+  e.preventDefault();
+  const userId = document.getElementById('reset-password-user-id').value;
+  const newPassword = document.getElementById('reset-password-new').value;
+  const confirm = document.getElementById('reset-password-confirm').value;
+  const btn = document.getElementById('reset-password-submit-btn');
+
+  if (newPassword !== confirm) {
+    showFormStatus('reset-password-status', 'Passwords do not match', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Resetting...';
+  try {
+    const data = await apiFetch(`/api/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+    showFormStatus('reset-password-status', '✓ ' + data.message, 'success');
+    setTimeout(() => closeModal('reset-password-modal'), 1500);
+  } catch (err) {
+    showFormStatus('reset-password-status', err.error || 'Failed to reset password', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Reset Password';
   }
 }
 

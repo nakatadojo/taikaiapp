@@ -30,6 +30,15 @@ router.delete('/users/:id',
   adminController.deleteUser
 );
 
+// POST /api/admin/users/:id/reset-password — Force-reset a user's password
+router.post('/users/:id/reset-password',
+  [
+    body('newPassword').notEmpty().withMessage('newPassword is required'),
+  ],
+  validate,
+  adminController.resetUserPassword
+);
+
 // ── Discount Codes ───────────────────────────────────────────────────────────
 
 // POST /api/admin/discount-codes — Create discount code

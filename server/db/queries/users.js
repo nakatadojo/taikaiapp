@@ -207,6 +207,20 @@ async function deleteUser(userId) {
   return result.rows[0] || null;
 }
 
+async function updatePasswordById(userId, passwordHash) {
+  const result = await pool.query(
+    `UPDATE users
+     SET password_hash = $1,
+         reset_token = NULL,
+         reset_token_expires = NULL,
+         updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, email`,
+    [passwordHash, userId]
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   findByEmail,
   findById,
@@ -221,4 +235,5 @@ module.exports = {
   getSettings,
   updateSettings,
   deleteUser,
+  updatePasswordById,
 };
