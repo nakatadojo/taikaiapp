@@ -415,10 +415,14 @@ async function updateEvent(req, res, next) {
  */
 async function deleteTournament(req, res, next) {
   try {
-    // Check ownership
-    const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
-    if (!owned) {
-      return res.status(403).json({ error: 'You do not own this tournament' });
+    // Admins and super_admins can delete any tournament; owners can delete their own
+    const userRoles = req.user.roles || [];
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+    if (!isAdmin) {
+      const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
+      if (!owned) {
+        return res.status(403).json({ error: 'You do not own this tournament' });
+      }
     }
 
     const deleted = await tournamentQueries.deleteTournament(req.params.id);
