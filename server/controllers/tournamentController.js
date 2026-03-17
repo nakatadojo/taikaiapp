@@ -113,6 +113,16 @@ async function getEligibleEvents(req, res, next) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
+    // Apply active pricing period — same logic used by checkout/pay-later
+    const PricingPeriodQueries = require('../db/queries/pricingPeriods');
+    const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
+    let baseEventPrice = parseFloat(result.tournament.base_event_price) || 75;
+    let addonEventPrice = parseFloat(result.tournament.addon_event_price) || 25;
+    if (activePeriod) {
+      baseEventPrice = parseFloat(activePeriod.base_event_price) || baseEventPrice;
+      addonEventPrice = parseFloat(activePeriod.addon_event_price) || addonEventPrice;
+    }
+
     // Check for existing registrations for this profile in this tournament
     const pool = require('../db/pool');
     const existingRegs = await pool.query(
@@ -123,10 +133,13 @@ async function getEligibleEvents(req, res, next) {
     );
     const alreadyRegistered = new Set(existingRegs.rows.map(r => r.event_id));
 
-    // Mark events that are already registered
+    // Mark events already registered and apply period-adjusted prices
     const events = result.events.map(e => ({
       ...e,
       alreadyRegistered: alreadyRegistered.has(e.id),
+      // Re-apply pricing with period override (base query used raw tournament prices)
+      basePrice: e.price_override != null ? parseFloat(e.price_override) : baseEventPrice,
+      addonPrice: e.addon_price_override != null ? parseFloat(e.addon_price_override) : addonEventPrice,
     }));
 
     res.json({
@@ -136,8 +149,9 @@ async function getEligibleEvents(req, res, next) {
         name: result.tournament.name,
         date: result.tournament.date,
         location: result.tournament.location,
-        baseEventPrice: parseFloat(result.tournament.base_event_price) || 75,
-        addonEventPrice: parseFloat(result.tournament.addon_event_price) || 25,
+        baseEventPrice,
+        addonEventPrice,
+        activePricingPeriod: activePeriod ? activePeriod.name : null,
       },
       profileAge: result.age,
     });

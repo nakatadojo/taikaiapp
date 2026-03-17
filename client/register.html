@@ -3004,7 +3004,11 @@
             const isPrimary = (ev.category || ev.eventType || '').toLowerCase() === 'primary' || ev.isPrimary;
             const badgeClass = isPrimary ? 'badge-primary' : 'badge-addon';
             const badgeText = isPrimary ? 'PRIMARY' : 'ADD-ON';
-            const price = typeof ev.price === 'number' ? ev.price : (ev.fee || 0);
+            // Show the basePrice on the card; add-on price shown as tooltip if different
+            const price = typeof ev.price === 'number' ? ev.price
+                        : (typeof ev.basePrice === 'number' ? ev.basePrice : (ev.fee || 0));
+            const addonDisplay = typeof ev.addonPrice === 'number' && ev.addonPrice !== price
+                ? `<div class="event-card-addon-price" title="Price when added as 2nd+ event">${fmtPrice(ev.addonPrice)} add-on</div>` : '';
             const locked = !isPrerequisiteMet(evId);
             const prereqName = locked ? getPrerequisiteName(evId) : '';
 
@@ -3015,6 +3019,7 @@
                 <div class="event-card-name">${esc(ev.name || ev.eventName)}</div>
                 <div class="event-card-meta">${esc(ev.type || ev.eventType || '')}${ev.division ? ' &middot; ' + esc(ev.division) : ''}</div>
                 <div class="event-card-price">${fmtPrice(price)}</div>
+                ${addonDisplay}
             </div>`;
         }
         html += '</div>';
@@ -3038,11 +3043,20 @@
         updateEventsSubtotal();
     };
 
+    // Resolve an event's price: first selected = basePrice, each additional = addonPrice
+    function resolveEventPrice(ev, idx) {
+        if (typeof ev.price === 'number') return ev.price; // legacy field
+        const base  = typeof ev.basePrice  === 'number' ? ev.basePrice  : 0;
+        const addon = typeof ev.addonPrice === 'number' ? ev.addonPrice : 0;
+        return idx === 0 ? base : addon;
+    }
+
     function updateEventsSubtotal() {
         let subtotal = 0;
+        let idx = 0;
         for (const evId of selectedEventIds) {
             const ev = eligibleEvents.find(e => (e._id || e.id) === evId);
-            if (ev) subtotal += (typeof ev.price === 'number' ? ev.price : (ev.fee || 0));
+            if (ev) subtotal += resolveEventPrice(ev, idx++);
         }
         document.getElementById('events-subtotal').textContent = fmtPrice(subtotal);
         const addBtn = document.getElementById('events-add-btn');
@@ -3055,6 +3069,7 @@
 
         const profile = state.profiles.find(p => (p._id || p.id) === state.currentProfileId);
         const events = [];
+        let idx = 0;
         for (const evId of selectedEventIds) {
             const ev = eligibleEvents.find(e => (e._id || e.id) === evId);
             if (ev) {
@@ -3063,7 +3078,7 @@
                     name: ev.name || ev.eventName,
                     type: ev.type || ev.eventType || '',
                     division: ev.division || '',
-                    price: typeof ev.price === 'number' ? ev.price : (ev.fee || 0),
+                    price: resolveEventPrice(ev, idx++),
                 });
             }
         }

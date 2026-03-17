@@ -1997,6 +1997,7 @@
 
     function renderCompetitorForm(c, index) {
         const t = currentTournamentData;
+        const regSettings = (t && t.registration_settings) || {};
         const removeBtn = regState.competitors.length > 1
             ? `<button class="reg-remove-btn" onclick="removeCompetitor(${index})">Remove</button>` : '';
 
@@ -2053,11 +2054,16 @@
                     </select></div>
             </div>
             <div class="reg-form-row">
-                <div class="modal-field"><label>Weight (lbs)</label>
-                    <input type="number" step="0.1" value="${c.weight}" onchange="updateCompetitor(${index},'weight',this.value)"></div>
+                <div class="modal-field"><label>Weight (lbs)${regSettings.weightRequired ? ' *' : ''}</label>
+                    <input type="number" step="0.1" value="${c.weight}" onchange="updateCompetitor(${index},'weight',this.value)"${regSettings.weightRequired ? ' required' : ''}></div>
                 <div class="modal-field"><label>Dojo / Academy</label>
                     <input type="text" value="${esc(c.academyName)}" onchange="updateCompetitor(${index},'academyName',this.value)" placeholder="Start typing..."></div>
             </div>
+            ${regSettings.photoRequired ? `
+            <div class="modal-field" style="margin-top:8px;">
+                <label>Competitor Photo *${regSettings.photoMessage ? `<span style="font-weight:400;color:var(--text-muted);margin-left:6px;">${esc(regSettings.photoMessage)}</span>` : ''}</label>
+                <input type="file" accept="image/*" onchange="updateCompetitor(${index},'photoFile',this.files[0])" required style="margin-top:4px;">
+            </div>` : ''}
         </div>`;
     }
 
@@ -2094,10 +2100,21 @@
         const btn = document.getElementById('reg-continue-btn');
 
         // Validate
+        const regSettings = (currentTournamentData && currentTournamentData.registration_settings) || {};
         for (let i = 0; i < regState.competitors.length; i++) {
             const c = regState.competitors[i];
             if (!c.firstName || !c.lastName || !c.dob || !c.gender) {
                 errEl.textContent = `Please fill in all required fields for Competitor ${i + 1}.`;
+                errEl.style.display = 'block';
+                return;
+            }
+            if (regSettings.weightRequired && !c.weight) {
+                errEl.textContent = `Weight is required for Competitor ${i + 1}.`;
+                errEl.style.display = 'block';
+                return;
+            }
+            if (regSettings.photoRequired && !c.photoFile) {
+                errEl.textContent = `A photo is required for Competitor ${i + 1}.`;
                 errEl.style.display = 'block';
                 return;
             }
@@ -2680,14 +2697,10 @@ function setupTabs(t) {
         }
     }
 
-    // Always show competitors and divisions tabs
-    document.getElementById('tab-btn-competitors').style.display = '';
-    document.getElementById('tab-btn-divisions').style.display = '';
-
-    // Always show coaches, judges, staff tabs
-    document.getElementById('tab-btn-coaches').style.display = '';
-    document.getElementById('tab-btn-judges').style.display = '';
-    document.getElementById('tab-btn-staff').style.display = '';
+    // Coaches, judges, staff visibility is not director-configurable — always show
+    if (document.getElementById('tab-btn-coaches')) document.getElementById('tab-btn-coaches').style.display = '';
+    if (document.getElementById('tab-btn-judges')) document.getElementById('tab-btn-judges').style.display = '';
+    if (document.getElementById('tab-btn-staff')) document.getElementById('tab-btn-staff').style.display = '';
 
     // Show registration buttons when registration is open
     const regOpen = t.registration_open;
