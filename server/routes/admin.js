@@ -25,6 +25,11 @@ router.delete('/users/:id/roles/:role',
   adminController.removeUserRole
 );
 
+// DELETE /api/admin/users/:id — Permanently delete a user account
+router.delete('/users/:id',
+  adminController.deleteUser
+);
+
 // ── Discount Codes ───────────────────────────────────────────────────────────
 
 // POST /api/admin/discount-codes — Create discount code

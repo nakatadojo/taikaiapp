@@ -76,4 +76,38 @@ async function removeUserRole(req, res, next) {
   }
 }
 
-module.exports = { addUserRole, removeUserRole };
+/**
+ * DELETE /api/admin/users/:id
+ * Permanently delete a user account. Admin-only.
+ * Guards: cannot delete yourself; cannot delete another super_admin.
+ */
+async function deleteUser(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    // Prevent self-deletion
+    if (id === req.user.id) {
+      return res.status(400).json({ error: 'You cannot delete your own account' });
+    }
+
+    // Verify target user exists
+    const user = await userQueries.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Prevent deleting another super_admin
+    const targetRoles = await roleQueries.getRolesForUser(id);
+    if (targetRoles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Cannot delete a super_admin account' });
+    }
+
+    await userQueries.deleteUser(id);
+
+    res.json({ message: `User ${user.email} has been permanently deleted` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { addUserRole, removeUserRole, deleteUser };

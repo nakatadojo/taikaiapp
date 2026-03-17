@@ -305,6 +305,9 @@ function renderUsers(users) {
         <button class="btn btn-ghost btn-xs" onclick="impersonateUser('${u.id}')" title="Login as User">
           <i data-lucide="log-in"></i>
         </button>
+        <button class="btn btn-ghost btn-xs btn-danger" onclick="deleteUser('${u.id}', '${esc(u.email)}')" title="Delete User">
+          <i data-lucide="trash-2"></i>
+        </button>
       </td>
     </tr>
   `).join('');
@@ -502,6 +505,11 @@ function renderTournaments(tournaments) {
       <td>${statusBadge(t.status)}</td>
       <td>${t.competitor_count}</td>
       <td>${formatDate(t.created_at)}</td>
+      <td class="actions-cell">
+        <button class="btn btn-ghost btn-xs btn-danger" onclick="deleteTournament('${t.id}', '${esc(t.name)}')" title="Delete Tournament">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </td>
     </tr>
   `).join('');
 }
@@ -512,6 +520,27 @@ function filterTournaments() {
     `${t.name} ${t.director_first_name || ''} ${t.director_last_name || ''} ${t.status}`.toLowerCase().includes(q)
   );
   renderTournaments(filtered);
+}
+
+async function deleteTournament(id, name) {
+  if (!confirm(`Permanently delete "${name}"?\n\nThis will remove all registrations, brackets, and events. This cannot be undone.`)) return;
+  try {
+    await apiFetch(`/api/tournaments/${id}`, { method: 'DELETE' });
+    loadTournaments();
+  } catch (err) {
+    alert('Failed to delete tournament: ' + (err.error || err.message));
+  }
+}
+
+async function deleteUser(id, email) {
+  if (!confirm(`Permanently delete user "${email}"?\n\nThis will remove their account, registrations, and all associated data. This cannot be undone.`)) return;
+  try {
+    await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    hideEl('user-detail-panel');
+    loadUsers();
+  } catch (err) {
+    alert('Failed to delete user: ' + (err.error || err.message));
+  }
 }
 
 // ── Payments & Revenue ──────────────────────────────────────────────────────

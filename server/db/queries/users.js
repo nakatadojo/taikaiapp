@@ -199,6 +199,14 @@ async function updateSettings(userId, settings) {
   return result.rows[0] || null;
 }
 
+async function deleteUser(userId) {
+  const result = await pool.query(
+    'DELETE FROM users WHERE id = $1 RETURNING id, email',
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 module.exports = {
   findByEmail,
   findById,
@@ -212,4 +220,5 @@ module.exports = {
   updateProfile,
   getSettings,
   updateSettings,
+  deleteUser,
 };

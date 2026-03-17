@@ -9698,12 +9698,6 @@ function seedCompetitors(competitors, method) {
             break;
     }
 
-    // For competitive seeding methods (rank, ordered), apply tournament bracket seeding
-    // This ensures #1 seed meets #2 seed in finals (if both win)
-    if (method === 'rank' || method === 'ordered') {
-        seeded = applyTournamentBracketSeeding(seeded);
-    }
-
     return seeded;
 }
 
@@ -9749,6 +9743,75 @@ function generateTournamentSeedOrder(size) {
     }
 
     return order;
+}
+
+// Build the full positioned slots array (length = next power of 2 >= n) for bracket generation.
+// Top byeCount seeds are placed at their tournament-seeded positions; their partner slot stays null.
+// Remaining seeds fill the live fight slots using snake pairing (best vs worst, etc.).
+// When there are no byes (n is a power of 2) standard tournament seeding is used for all seeds.
+function buildBracketSlots(seededCompetitors) {
+    const n = seededCompetitors.length;
+    if (n <= 0) return [];
+    if (n === 1) return [seededCompetitors[0], null];
+
+    const rounds = Math.ceil(Math.log2(n));
+    const totalSlots = Math.pow(2, rounds);
+    const byeCount = totalSlots - n;
+
+    const slots = new Array(totalSlots).fill(null);
+    const seedOrder = generateTournamentSeedOrder(totalSlots);
+
+    if (byeCount === 0) {
+        // No byes: place all seeds directly via standard tournament seeding.
+        for (let i = 0; i < n; i++) {
+            slots[seedOrder[i]] = seededCompetitors[i];
+        }
+        return slots;
+    }
+
+    // Place top byeCount seeds at their tournament seeding positions.
+    // Each position p is partnered with p^1 (same round-1 match); that partner stays null.
+    for (let i = 0; i < byeCount; i++) {
+        slots[seedOrder[i]] = seededCompetitors[i];
+    }
+
+    // Identify bye-partner positions that must remain null.
+    const byeSlotSet = new Set(seedOrder.slice(0, byeCount));
+    const byePartnerSet = new Set();
+    for (const p of byeSlotSet) {
+        byePartnerSet.add(p % 2 === 0 ? p + 1 : p - 1);
+    }
+
+    // Collect fight slot pairs (consecutive even-odd pairs not reserved for byes).
+    const topFightPairs    = [];
+    const bottomFightPairs = [];
+    for (let i = 0; i < totalSlots; i += 2) {
+        const p0 = i, p1 = i + 1;
+        if (!byeSlotSet.has(p0) && !byePartnerSet.has(p0) &&
+            !byeSlotSet.has(p1) && !byePartnerSet.has(p1)) {
+            if (p0 < totalSlots / 2) {
+                topFightPairs.push([p0, p1]);
+            } else {
+                bottomFightPairs.push([p0, p1]);
+            }
+        }
+    }
+
+    // Seed1 is always at position 0 (top half via generateTournamentSeedOrder).
+    // Start with bottom-half fight pairs so the best fight seed lands opposite seed1,
+    // satisfying the requirement that seeds 1 and 2 are on opposite bracket halves.
+    const orderedFightPairs = [...bottomFightPairs, ...topFightPairs];
+
+    // Place fight seeds using snake pairing: best vs worst, 2nd vs 2nd-worst, etc.
+    const fighters = seededCompetitors.slice(byeCount);
+    const half = fighters.length / 2;
+    for (let i = 0; i < half; i++) {
+        const [p0, p1] = orderedFightPairs[i];
+        slots[p0] = fighters[i];
+        slots[p1] = fighters[fighters.length - 1 - i];
+    }
+
+    return slots;
 }
 
 // Calculate match timing estimates for bracket
@@ -9824,10 +9887,26 @@ function shuffleArray(array) {
 }
 
 function generateSingleEliminationBracket(competitors, divisionName, eventId) {
-    const rounds = Math.ceil(Math.log2(competitors.length));
+    const n = competitors.length;
+
+    // Edge case: 0 or 1 competitor
+    if (n <= 1) {
+        return {
+            id: generateUniqueId(),
+            type: 'single-elimination',
+            division: divisionName,
+            divisionName: divisionName,
+            eventId: eventId,
+            rounds: 0,
+            competitors: competitors,
+            createdAt: new Date().toISOString(),
+            matches: []
+        };
+    }
+
+    const rounds = Math.ceil(Math.log2(n));
     const totalSlots = Math.pow(2, rounds);
 
-    // Create bracket structure
     const bracket = {
         id: generateUniqueId(),
         type: 'single-elimination',
@@ -9840,13 +9919,16 @@ function generateSingleEliminationBracket(competitors, divisionName, eventId) {
         matches: []
     };
 
+    // Build positioned slots: top seeds get byes, others fight in round 1.
+    const slots = buildBracketSlots(competitors);
+
     // First round matches
     let matchId = 1;
-    const byeAdvances = []; // Track who advances via bye
+    const byeAdvances = [];
 
     for (let i = 0; i < totalSlots / 2; i++) {
-        const comp1 = competitors[i * 2] || null;
-        const comp2 = competitors[i * 2 + 1] || null;
+        const comp1 = slots[i * 2] || null;
+        const comp2 = slots[i * 2 + 1] || null;
 
         // Determine match status
         let status, winner;
