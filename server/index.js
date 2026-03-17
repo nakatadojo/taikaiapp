@@ -32,16 +32,24 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       // unpkg.com for lucide-icons, html5-qrcode; unsafe-eval for Babel on scoreboard pages
-      scriptSrc: ["'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'"],
+      // Google Translate widget is loaded from translate.google.com / translate.googleapis.com
+      scriptSrc: [
+        "'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'",
+        'https://translate.google.com', 'https://translate.googleapis.com',
+        'https://www.gstatic.com',
+      ],
       // HTML files use inline event handlers (onchange, onclick, etc.) — must allow them
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://translate.googleapis.com', 'https://www.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       // Socket.IO and API connections; unpkg.com for source-map fetches (.js.map)
-      connectSrc: ["'self'", 'ws:', 'wss:', 'https://unpkg.com'],
+      // Google Translate makes XHR requests to translate.googleapis.com
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://unpkg.com', 'https://translate.googleapis.com'],
       fontSrc: ["'self'", 'https:'],
       // Block Flash/plugin attacks
       objectSrc: ["'none'"],
+      // Google Translate injects iframes from translate.google.com
+      frameSrc: ["'self'", 'https://translate.google.com'],
       // Prevent clickjacking — only allow framing from same origin
       frameAncestors: ["'self'"],
     },

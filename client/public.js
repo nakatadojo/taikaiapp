@@ -1,29 +1,35 @@
 // Public Site JavaScript
-// Load tournament data from localStorage and sync with admin
+// Fetches tournament data from the server API — no localStorage
 
-// Database helper
+// ── In-memory store (no localStorage) ───────────────────────────────────────
+const _memStore = {};
+
 const db = {
     load(table) {
-        const data = localStorage.getItem(table);
-        return data ? JSON.parse(data) : [];
+        const items = _memStore[table];
+        return items ? JSON.parse(JSON.stringify(items)) : [];
     },
-    add(table, item) {
-        const items = this.load(table);
-        item.id = Date.now() + Math.random();
-        items.push(item);
-        localStorage.setItem(table, JSON.stringify(items));
-        return item;
-    }
+    set(table, items) {
+        _memStore[table] = items;
+    },
 };
+
+// Public-site config loaded from the server
+let _publicConfig = null;
+
+// ── Tournament ID resolution ─────────────────────────────────────────────────
+function _getTournamentIdFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id') || params.get('tid') || null;
+}
 
 // ── Pricing Helpers (mirrored from app.js) ──────────────────────────────────
 
 function getActiveTournament() {
-    const config = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
     const tournaments = db.load('tournaments');
-    // Use tournamentId from public config, fall back to first tournament
+    const config = _publicConfig || {};
     if (config.tournamentId) {
-        return tournaments.find(t => t.id === config.tournamentId) || tournaments[0] || null;
+        return tournaments.find(t => String(t.id) === String(config.tournamentId)) || tournaments[0] || null;
     }
     return tournaments[0] || null;
 }
@@ -178,14 +184,51 @@ function updatePublicPriceSummary() {
     summaryContainer.style.display = 'block';
 }
 
-// Load tournament configuration
-function loadTournamentConfig() {
-    const config = JSON.parse(localStorage.getItem('publicSiteConfig') || '{}');
+// ── Load tournament configuration from server ────────────────────────────────
+async function loadTournamentConfig() {
+    const tid = _getTournamentIdFromURL();
+    if (!tid) {
+        console.warn('[public] No tournament ID in URL (?id= or ?tid= required)');
+        return;
+    }
 
+    try {
+        const res = await fetch(`/api/tournaments/${tid}`);
+        if (!res.ok) {
+            console.warn('[public] Failed to load tournament:', res.status);
+            return;
+        }
+        const data = await res.json();
+        const t = data.tournament || data;
+        if (!t) return;
+
+        // Build config: prefer public_site_config stored by admin, merge with tournament fields
+        const stored = t.public_site_config || {};
+        _publicConfig = {
+            ...stored,
+            tournamentId: t.id,
+            tournamentName: stored.tournamentName || t.name,
+            tournamentDate: stored.tournamentDate || t.date,
+            location: stored.location || t.location,
+            description: stored.description || t.description,
+        };
+
+        // Cache the tournament for getActiveTournament()
+        db.set('tournaments', [t]);
+
+        _applyTournamentConfig(_publicConfig);
+    } catch (err) {
+        console.warn('[public] Error loading tournament config:', err);
+    }
+}
+
+function _applyTournamentConfig(config) {
     // Update page title
     if (config.tournamentName) {
-        document.getElementById('tournament-title').textContent = config.tournamentName;
-        document.getElementById('hero-title').textContent = config.tournamentName;
+        const titleEl = document.getElementById('tournament-title');
+        const heroTitleEl = document.getElementById('hero-title');
+        if (titleEl) titleEl.textContent = config.tournamentName;
+        if (heroTitleEl) heroTitleEl.textContent = config.tournamentName;
     }
 
     // Update subtitle (date + location)
@@ -196,49 +239,59 @@ function loadTournamentConfig() {
             month: 'long',
             day: 'numeric'
         });
-        document.getElementById('hero-subtitle').textContent = `${date} • ${config.location}`;
+        const heroSubtitle = document.getElementById('hero-subtitle');
+        if (heroSubtitle) heroSubtitle.textContent = `${date} • ${config.location}`;
     }
 
     // Update logo
     if (config.logo) {
         const logoImg = document.getElementById('tournament-logo');
-        logoImg.src = config.logo;
-        logoImg.classList.remove('hidden');
+        if (logoImg) {
+            logoImg.src = config.logo;
+            logoImg.classList.remove('hidden');
+        }
     }
 
     // Update hero background
     if (config.coverImage) {
-        document.getElementById('hero-section').style.backgroundImage = `url(${config.coverImage})`;
+        const heroEl = document.getElementById('hero-section');
+        if (heroEl) heroEl.style.backgroundImage = `url(${config.coverImage})`;
     }
 
     // Update about section
     if (config.description) {
-        document.getElementById('about-content').innerHTML = `<p>${config.description}</p>`;
+        const aboutEl = document.getElementById('about-content');
+        if (aboutEl) aboutEl.innerHTML = `<p>${config.description}</p>`;
     }
 
     // Update footer
     if (config.footerText) {
-        document.getElementById('footer-text').textContent = config.footerText;
+        const footerEl = document.getElementById('footer-text');
+        if (footerEl) footerEl.textContent = config.footerText;
     }
 
     // Handle schedule visibility
+    const scheduleAvail = document.getElementById('schedule-availability');
+    const scheduleContainer = document.getElementById('public-schedule-container');
     if (config.showSchedule) {
-        document.getElementById('schedule-availability').classList.add('hidden');
-        document.getElementById('public-schedule-container').classList.remove('hidden');
+        if (scheduleAvail) scheduleAvail.classList.add('hidden');
+        if (scheduleContainer) scheduleContainer.classList.remove('hidden');
         loadPublicSchedule();
     } else {
-        document.getElementById('schedule-availability').classList.remove('hidden');
-        document.getElementById('public-schedule-container').classList.add('hidden');
+        if (scheduleAvail) scheduleAvail.classList.remove('hidden');
+        if (scheduleContainer) scheduleContainer.classList.add('hidden');
     }
 
     // Handle results visibility
+    const resultsAvail = document.getElementById('results-availability');
+    const resultsContainer = document.getElementById('public-results-container');
     if (config.showResults) {
-        document.getElementById('results-availability').classList.add('hidden');
-        document.getElementById('public-results-container').classList.remove('hidden');
+        if (resultsAvail) resultsAvail.classList.add('hidden');
+        if (resultsContainer) resultsContainer.classList.remove('hidden');
         loadPublicResults();
     } else {
-        document.getElementById('results-availability').classList.remove('hidden');
-        document.getElementById('public-results-container').classList.add('hidden');
+        if (resultsAvail) resultsAvail.classList.remove('hidden');
+        if (resultsContainer) resultsContainer.classList.add('hidden');
     }
 
     // Apply custom colors if provided
@@ -247,72 +300,88 @@ function loadTournamentConfig() {
     }
 }
 
-// Load public schedule
-function loadPublicSchedule() {
-    const matches = db.load('matches');
-    const competitors = db.load('competitors');
-    const mats = db.load('mats');
+// ── Load public schedule from server ─────────────────────────────────────────
+async function loadPublicSchedule() {
+    const tid = _getTournamentIdFromURL();
     const container = document.getElementById('public-schedule-container');
+    if (!container || !tid) return;
 
-    if (matches.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Schedule coming soon.</p>';
-        return;
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/schedule/public`);
+        if (!res.ok) throw new Error('Failed to load schedule');
+        const data = await res.json();
+        const matches = data.matches || data.schedule || [];
+
+        // Cache for event checklist use
+        db.set('matches', matches);
+
+        if (matches.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Schedule coming soon.</p>';
+            return;
+        }
+
+        container.innerHTML = '';
+        matches.sort((a, b) => {
+            if (a.time && b.time) return a.time.localeCompare(b.time);
+            return (a.mat_id || 0) - (b.mat_id || 0);
+        }).forEach(match => {
+            const row = document.createElement('div');
+            row.className = 'schedule-row';
+            row.innerHTML = `
+                <div class="schedule-time">${match.time || 'TBD'}</div>
+                <div class="schedule-mat">${match.mat_name || match.mat || ''}</div>
+                <div class="schedule-competitors">
+                    <div>${match.red_name || match.redName || 'TBD'}</div>
+                    <div style="font-size: 1.2em; color: var(--text-secondary);">vs</div>
+                    <div>${match.blue_name || match.blueName || 'TBD'}</div>
+                </div>
+                <div class="schedule-division">${match.division || ''}</div>
+            `;
+            container.appendChild(row);
+        });
+    } catch (err) {
+        console.warn('[public] Failed to load schedule:', err.message);
+        if (container) container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Schedule coming soon.</p>';
     }
-
-    container.innerHTML = '';
-
-    matches.sort((a, b) => {
-        if (a.time && b.time) return a.time.localeCompare(b.time);
-        return a.matId - b.matId;
-    }).forEach(match => {
-        const red = competitors.find(c => c.id === match.redId);
-        const blue = competitors.find(c => c.id === match.blueId);
-        const mat = mats.find(m => m.id === match.matId);
-
-        if (!red || !blue || !mat) return;
-
-        const row = document.createElement('div');
-        row.className = 'schedule-row';
-        row.innerHTML = `
-            <div class="schedule-time">${match.time || 'TBD'}</div>
-            <div class="schedule-mat">${mat.name}</div>
-            <div class="schedule-competitors">
-                <div>${red.firstName} ${red.lastName}</div>
-                <div style="font-size: 1.2em; color: var(--text-secondary);">vs</div>
-                <div>${blue.firstName} ${blue.lastName}</div>
-            </div>
-            <div class="schedule-division">${match.division}</div>
-        `;
-        container.appendChild(row);
-    });
 }
 
-// Load public results
-function loadPublicResults() {
-    const results = JSON.parse(localStorage.getItem('publicResults') || '[]');
+// ── Load public results from server ──────────────────────────────────────────
+async function loadPublicResults() {
+    const tid = _getTournamentIdFromURL();
     const container = document.getElementById('public-results-container');
+    if (!container || !tid) return;
 
-    if (results.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Results will be posted after the tournament.</p>';
-        return;
+    try {
+        const res = await fetch(`/api/tournaments/${tid}/results/public`);
+        if (!res.ok) throw new Error('Failed to load results');
+        const data = await res.json();
+        const results = data.results || [];
+
+        if (results.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Results will be posted after the tournament.</p>';
+            return;
+        }
+
+        container.innerHTML = '<div class="results-grid"></div>';
+        const grid = container.querySelector('.results-grid');
+
+        results.forEach(result => {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            card.innerHTML = `
+                <h3>${result.division}</h3>
+                <div class="result-places">
+                    ${result.first ? `<div class="result-place"><span class="medal">🥇</span> ${result.first}</div>` : ''}
+                    ${result.second ? `<div class="result-place"><span class="medal">🥈</span> ${result.second}</div>` : ''}
+                    ${result.third ? `<div class="result-place"><span class="medal">🥉</span> ${result.third}</div>` : ''}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    } catch (err) {
+        console.warn('[public] Failed to load results:', err.message);
+        if (container) container.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Results will be posted after the tournament.</p>';
     }
-
-    container.innerHTML = '<div class="results-grid"></div>';
-    const grid = container.querySelector('.results-grid');
-
-    results.forEach(result => {
-        const card = document.createElement('div');
-        card.className = 'result-card';
-        card.innerHTML = `
-            <h3>${result.division}</h3>
-            <div class="result-places">
-                ${result.first ? `<div class="result-place"><span class="medal">🥇</span> ${result.first}</div>` : ''}
-                ${result.second ? `<div class="result-place"><span class="medal">🥈</span> ${result.second}</div>` : ''}
-                ${result.third ? `<div class="result-place"><span class="medal">🥉</span> ${result.third}</div>` : ''}
-            </div>
-        `;
-        grid.appendChild(card);
-    });
 }
 
 // Registration form handling
@@ -840,8 +909,8 @@ function setupAcademyAutocomplete() {
 }
 
 // Initialize on page load
-window.addEventListener('load', () => {
-    loadTournamentConfig();
+window.addEventListener('load', async () => {
+    await loadTournamentConfig();
     setupScrollAnimations();
     setupAcademyAutocomplete();
 
@@ -871,13 +940,6 @@ window.addEventListener('load', () => {
         }
         // Clean URL
         history.replaceState(null, '', window.location.pathname);
-    }
-});
-
-// Listen for config updates from admin
-window.addEventListener('storage', (e) => {
-    if (e.key === 'publicSiteConfig' || e.key === 'matches' || e.key === 'publicResults') {
-        loadTournamentConfig();
     }
 });
 

@@ -1076,12 +1076,48 @@
                 <option value="America/Anchorage">Alaska Time (AKT)</option>
                 <option value="America/Honolulu">Hawaii Time (HT)</option>
                 <option value="America/Puerto_Rico">Atlantic Time (AT) — Puerto Rico</option>
+                <option value="America/Mexico_City">Central Mexico — Mexico City / Guadalajara</option>
+                <option value="America/Hermosillo">Sonora, Mexico (no DST)</option>
+                <option value="America/Tijuana">Pacific Mexico — Tijuana / Ensenada</option>
+                <option value="America/Bogota">Colombia — Bogotá</option>
+                <option value="America/Sao_Paulo">Brazil — São Paulo</option>
+                <option value="America/Argentina/Buenos_Aires">Argentina — Buenos Aires</option>
                 <option value="Europe/London">GMT/BST — London</option>
                 <option value="Europe/Paris">CET/CEST — Paris / Berlin / Rome</option>
                 <option value="Asia/Tokyo">JST — Tokyo</option>
+                <option value="Asia/Shanghai">China — Shanghai / Beijing</option>
+                <option value="Asia/Kolkata">India — Kolkata / Mumbai</option>
                 <option value="Australia/Sydney">AEST — Sydney</option>
+                <option value="Pacific/Auckland">NZST — Auckland</option>
             </select>
             <p class="form-hint">Used to display event times correctly for competitors.</p>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label" for="t-currency">Currency</label>
+                <select class="form-input" id="t-currency">
+                    <option value="USD">USD ($) — US Dollar</option>
+                    <option value="MXN">MXN ($) — Mexican Peso</option>
+                    <option value="EUR">EUR (€) — Euro</option>
+                    <option value="GBP">GBP (£) — British Pound</option>
+                    <option value="JPY">JPY (¥) — Japanese Yen</option>
+                    <option value="BRL">BRL (R$) — Brazilian Real</option>
+                    <option value="CAD">CAD (C$) — Canadian Dollar</option>
+                    <option value="AUD">AUD (A$) — Australian Dollar</option>
+                    <option value="ARS">ARS ($) — Argentine Peso</option>
+                    <option value="COP">COP ($) — Colombian Peso</option>
+                </select>
+                <p class="form-hint">Currency used for registration fees.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="t-weight-unit">Weight Unit</label>
+                <select class="form-input" id="t-weight-unit">
+                    <option value="kg">Kilograms (kg)</option>
+                    <option value="lbs">Pounds (lbs)</option>
+                </select>
+                <p class="form-hint">Used for weigh-in divisions.</p>
+            </div>
         </div>
 
         <div class="form-group">
@@ -1429,6 +1465,9 @@ let wizardData = {
     name: '',
     date: '',
     deadline: '',
+    timezone: 'America/New_York',
+    currency: 'USD',
+    weightUnit: 'kg',
     organization: '',
     city: '',
     state: '',
@@ -1688,6 +1727,11 @@ async function loadExistingTournament() {
         $('#t-collect-tshirts').checked = t.collect_tshirt_sizes || false;
         wizardData.collectTshirtSizes = t.collect_tshirt_sizes || false;
 
+        // Timezone, currency, weight unit
+        if (t.timezone) { $('#t-timezone').value = t.timezone; wizardData.timezone = t.timezone; }
+        if (t.currency) { $('#t-currency').value = t.currency; wizardData.currency = t.currency; }
+        if (t.weight_unit) { $('#t-weight-unit').value = t.weight_unit; wizardData.weightUnit = t.weight_unit; }
+
         // Registration settings
         const regSettings = t.registration_settings || {};
         wizardData.registrationSettings = {
@@ -1929,6 +1973,8 @@ function collectStepData(step) {
         wizardData.date = $('#t-date').value;
         wizardData.deadline = $('#t-deadline').value;
         wizardData.timezone = $('#t-timezone').value;
+        wizardData.currency = $('#t-currency').value;
+        wizardData.weightUnit = $('#t-weight-unit').value;
         wizardData.organization = $('#t-org').value.trim();
         wizardData.city = $('#t-city').value.trim();
         wizardData.state = $('#t-state').value.trim();
@@ -2080,6 +2126,9 @@ async function autoSave(step) {
                 organizationName: wizardData.organization || undefined,
                 collectTshirtSizes: wizardData.collectTshirtSizes || false,
                 registrationSettings: wizardData.registrationSettings,
+                timezone: wizardData.timezone || undefined,
+                currency: wizardData.currency || undefined,
+                weightUnit: wizardData.weightUnit || undefined,
             };
 
             if (tournamentId) {

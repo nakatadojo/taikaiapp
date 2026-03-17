@@ -1942,7 +1942,9 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            const err = new Error(data.message || data.error || `Request failed (${res.status})`);
+            // Handle express-validator errors array format ({ errors: [{msg}] })
+            const validationMsg = Array.isArray(data.errors) ? data.errors.map(e => e.msg).join(', ') : null;
+            const err = new Error(data.message || data.error || validationMsg || `Request failed (${res.status})`);
             err.status = res.status;
             err.data = data;
             throw err;
@@ -2791,11 +2793,27 @@
         const btn = document.getElementById('profile-save-btn');
         hideEl('profile-form-error');
 
+        // ── Client-side validation ──────────────────────────────────────────
+        const firstName = document.getElementById('pf-firstName').value.trim();
+        const lastName  = document.getElementById('pf-lastName').value.trim();
+        const dob       = document.getElementById('pf-dob').value;
+        const gender    = document.getElementById('pf-gender').value;
+
+        if (!firstName) { showError('profile-form-error', 'First name is required.'); document.getElementById('pf-firstName').focus(); return; }
+        if (!lastName)  { showError('profile-form-error', 'Last name is required.');  document.getElementById('pf-lastName').focus();  return; }
+        if (!dob)       { showError('profile-form-error', 'Date of birth is required.'); document.getElementById('pf-dob').focus(); return; }
+        if (!gender || !['male', 'female'].includes(gender)) {
+            showError('profile-form-error', 'Please select a gender.');
+            document.getElementById('pf-gender').focus();
+            return;
+        }
+        // ───────────────────────────────────────────────────────────────────
+
         const payload = {
-            firstName: document.getElementById('pf-firstName').value.trim(),
-            lastName: document.getElementById('pf-lastName').value.trim(),
-            dateOfBirth: document.getElementById('pf-dob').value,
-            gender: document.getElementById('pf-gender').value,
+            firstName,
+            lastName,
+            dateOfBirth: dob,
+            gender,
             beltRank: document.getElementById('pf-belt').value,
             experienceLevel: document.getElementById('pf-experience').value,
             weight: document.getElementById('pf-weight').value ? parseFloat(document.getElementById('pf-weight').value) : undefined,

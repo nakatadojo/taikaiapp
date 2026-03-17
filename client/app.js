@@ -668,10 +668,10 @@ async function _hydrateEventTypesFromServer() {
 
         // Also hydrate division templates from server criteriaTemplates so
         // autoAssignToDivisions() can find templates for wizard-created events.
+        // NOTE: templates are hydrated for ALL events, including the primary/default event.
         const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
         let divisionsUpdated = false;
         serverEvents.forEach(e => {
-            if (e.is_default) return; // default event has no division templates
             let templates = e.criteria_templates || [];
             if (typeof templates === 'string') {
                 try { templates = JSON.parse(templates); } catch(_) { templates = []; }
@@ -3439,10 +3439,10 @@ function autoAssignToDivisions(competitor, competitorId) {
     const eventTypes = db.load('eventTypes');
     const freshDivisions = db.load('divisions');
 
-    // Find all non-default events that have division templates configured
+    // Find all events (including the default/primary event) that have division templates configured
     const eventsWithTemplates = Object.keys(freshDivisions).filter(eventId => {
         const event = eventTypes.find(e => String(e.id) === String(eventId));
-        return event && !event.isDefault && freshDivisions[eventId]?.templates?.length > 0;
+        return event && freshDivisions[eventId]?.templates?.length > 0;
     });
 
     if (eventsWithTemplates.length === 0) {
