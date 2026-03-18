@@ -3,6 +3,14 @@ const pool = require('../pool');
 async function getAll(tournamentId) {
   // Unified query: director-added competitors UNION Stripe/public registrations.
   // Both sources are normalised into the same shape so the client sees one list.
+  //
+  // KEY FACTS about the registrations table:
+  //   r.status        = lifecycle state: 'active' | 'cancelled' | 'pending_guardian'
+  //   r.payment_status = payment state:  'paid' | 'unpaid' | 'pay_later' | 'pending'
+  //
+  // Stripe webhook always creates registrations with status='active', payment_status='paid'.
+  // Pay-later registrations get status='active', payment_status='pay_later'.
+  // The filter must use status != 'cancelled', NOT status IN ('paid',...).
   const { rows } = await pool.query(
     `SELECT
        tdc.id                              AS id,
@@ -20,7 +28,8 @@ async function getAll(tournamentId) {
        (tdc.data->>'phone')                AS phone,
        tdc.data                            AS raw_data,
        NULL::uuid                          AS registration_id,
-       NULL::text                          AS payment_status,
+       'director'                          AS payment_status,
+       NULL::numeric                       AS amount_paid,
        tdc.created_at
      FROM tournament_director_competitors tdc
      WHERE tdc.tournament_id = $1
@@ -43,12 +52,13 @@ async function getAll(tournamentId) {
        NULL::text                         AS phone,
        NULL::jsonb                        AS raw_data,
        r.id                               AS registration_id,
-       r.status                           AS payment_status,
+       r.payment_status                   AS payment_status,
+       r.amount_paid                      AS amount_paid,
        r.created_at
      FROM registrations r
      LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
      WHERE r.tournament_id = $1
-       AND r.status IN ('paid', 'pay_later', 'approved', 'pending')
+       AND r.status != 'cancelled'
 
      ORDER BY created_at ASC`,
     [tournamentId]
@@ -59,7 +69,10 @@ async function getAll(tournamentId) {
     is_test:         r.is_test,
     source:          r.source,
     registration_id: r.registration_id || null,
+    // camelCase so loadDashboard's paymentStatus check works
+    paymentStatus:   r.payment_status  || null,
     payment_status:  r.payment_status  || null,
+    amountPaid:      r.amount_paid     ? parseFloat(r.amount_paid) : 0,
     firstName:       r.firstName || '',
     lastName:        r.lastName  || '',
     dob:             r.dob       || null,

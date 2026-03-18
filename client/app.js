@@ -1978,9 +1978,16 @@ function loadDashboard() {
     let paidCount = 0;
     let unpaidCount = 0;
     competitors.forEach(comp => {
-        if (comp.pricing?.total) totalRevenue += comp.pricing.total;
-        if (comp.paymentStatus === 'paid') paidCount++;
-        else unpaidCount++;
+        // Director-added competitors may have comp.pricing.total (old in-memory shape).
+        // Stripe-registered competitors arrive with comp.amountPaid from the registrations table.
+        if (comp.amountPaid)        totalRevenue += comp.amountPaid;
+        else if (comp.pricing?.total) totalRevenue += comp.pricing.total;
+
+        // paymentStatus is camelCase from the unified query; 'paid' means Stripe succeeded.
+        // Director-added entries have paymentStatus='director' — count them as confirmed.
+        const ps = comp.paymentStatus || comp.payment_status || '';
+        if (ps === 'paid' || ps === 'director') paidCount++;
+        else if (ps !== 'cancelled') unpaidCount++;
     });
     const revenueEl = document.getElementById('stat-revenue');
     if (revenueEl) {
