@@ -8568,7 +8568,7 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
         return { [prefix.trim()]: competitors };
     }
 
-    const currentCriteria = criteria[index];
+    let currentCriteria = criteria[index];
     // Normalise legacy format: { type:"gender", options:["Male","Female"] }
     // → { type:"gender", ranges:[{ value:"Male", label:"Male" },...] }
     // Old division builder versions saved gender as `options` (string array) instead of `ranges`.
