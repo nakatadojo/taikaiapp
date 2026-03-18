@@ -102,6 +102,7 @@
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         // Local age calculation helper
         function getDisplayAge(comp) {
@@ -124,7 +125,10 @@
 
         // Get mat ID from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const matId = parseInt(urlParams.get('mat')) || 1;
+        const matId = parseInt(urlParams.get('mat') || urlParams.get('ring')) || 1;
+        // Tournament ID from URL or localStorage
+        const _tournamentId = urlParams.get('tournament') ||
+            (() => { try { return localStorage.getItem('currentTournamentId'); } catch(e) { return null; } })();
 
         document.getElementById('mat-label').textContent = `MAT ${matId}`;
 
@@ -134,7 +138,7 @@
         let previousCompetitorName = null;
         let scoresWereRevealed = false;
 
-        // BroadcastChannel state cache (zero localStorage)
+        // BroadcastChannel state cache (same-device fallback)
         const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
         const _cache = { 'scoreboard-state': '{}', matScoreboards: '{}', competitors: '[]' };
         if (_bc) {
@@ -158,7 +162,52 @@
             try { _bc.postMessage({ type: 'request-state' }); } catch(e) {}
         }
 
-        // Initial render (cache will be empty until operator tab responds)
+        // ── Load initial state from server ──────────────────────────────────
+        async function loadInitialStateFromServer() {
+            if (!_tournamentId) return;
+            try {
+                const res = await fetch(
+                    `/api/tournaments/${_tournamentId}/scoreboard-state?ring=${matId}`,
+                    { credentials: 'include' }
+                );
+                if (res.ok) {
+                    const { state } = await res.json();
+                    if (state && Object.keys(state).length > 0) {
+                        _cache['scoreboard-state'] = JSON.stringify(state);
+                        updateDisplay();
+                    }
+                }
+            } catch(e) {
+                console.warn('[mat-display] loadInitialStateFromServer failed:', e.message);
+            }
+        }
+
+        // ── WebSocket connection (cross-device updates) ─────────────────────
+        (function initWS() {
+            if (typeof io === 'undefined') return;
+            const socket = io({ transports: ['websocket', 'polling'] });
+
+            socket.on('connect', () => {
+                console.log('[mat-display] WebSocket connected');
+                if (_tournamentId) {
+                    socket.emit('subscribe:ring', { tournamentId: _tournamentId, ring: matId });
+                }
+                // Fetch fresh state in case we missed updates while disconnected
+                loadInitialStateFromServer();
+            });
+
+            socket.on('scoreboard:updated', ({ ring, state }) => {
+                if (parseInt(ring) !== matId) return;
+                _cache['scoreboard-state'] = JSON.stringify(state);
+                updateDisplay();
+            });
+
+            socket.on('disconnect', () => {
+                console.warn('[mat-display] WebSocket disconnected');
+            });
+        })();
+
+        // Initial render (cache will be empty until operator tab responds or WS delivers state)
         updateDisplay();
 
         function updateDisplay() {

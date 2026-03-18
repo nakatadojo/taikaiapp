@@ -79,6 +79,7 @@
         </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         // Escape user-controlled strings before inserting into innerHTML
         function esc(str) {
@@ -91,7 +92,55 @@
                 .replace(/'/g, '&#39;');
         }
 
-        // Receive state updates from operator tab via BroadcastChannel (zero localStorage)
+        // ── Ring / tournament identification ────────────────────────────────
+        const _urlParams = new URLSearchParams(window.location.search);
+        const _selectedRing = _urlParams.get('ring') || _urlParams.get('mat') || null;
+        // Tournament ID may be in URL or localStorage (set by operator page)
+        const _tournamentId = _urlParams.get('tournament') ||
+            (() => { try { return localStorage.getItem('currentTournamentId'); } catch(e) { return null; } })();
+
+        // ── Load initial state from server ──────────────────────────────────
+        async function loadInitialState() {
+            if (!_tournamentId || !_selectedRing) return;
+            try {
+                const res = await fetch(
+                    `/api/tournaments/${_tournamentId}/scoreboard-state?ring=${_selectedRing}`,
+                    { credentials: 'include' }
+                );
+                if (res.ok) {
+                    const { state } = await res.json();
+                    if (state && Object.keys(state).length > 0) updateDisplay(state);
+                }
+            } catch(e) {
+                console.warn('[tv-display] loadInitialState failed:', e.message);
+            }
+        }
+
+        // ── WebSocket connection (replaces BroadcastChannel for cross-device) ──
+        (function initWS() {
+            if (typeof io === 'undefined') return;
+            const socket = io({ transports: ['websocket', 'polling'] });
+
+            socket.on('connect', () => {
+                console.log('[tv-display] WebSocket connected');
+                if (_tournamentId && _selectedRing) {
+                    socket.emit('subscribe:ring', { tournamentId: _tournamentId, ring: _selectedRing });
+                }
+                // Fetch fresh state in case we missed updates while disconnected
+                loadInitialState();
+            });
+
+            socket.on('scoreboard:updated', ({ ring, state }) => {
+                if (String(ring) !== String(_selectedRing)) return;
+                updateDisplay(state);
+            });
+
+            socket.on('disconnect', () => {
+                console.warn('[tv-display] WebSocket disconnected');
+            });
+        })();
+
+        // ── BroadcastChannel (kept as same-device fallback) ─────────────────
         const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
         if (_bc) {
             _bc.onmessage = (evt) => {
