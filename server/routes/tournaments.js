@@ -445,4 +445,10 @@ router.delete('/:id/event-staff/:staffId',
   }
 );
 
+// ── Test Data Generator ──────────────────────────────────────────────────────
+const testDataController = require('../controllers/testDataController');
+
+router.post('/:id/generate-test-data', requireAuth, requireTournamentOwner, testDataController.generateTestData);
+router.post('/:id/clear-test-data', requireAuth, requireTournamentOwner, testDataController.clearTestData);
+
 module.exports = router;

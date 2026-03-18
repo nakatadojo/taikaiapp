@@ -4555,25 +4555,30 @@ const _defaultDojoPool = [
     'Dragon Spirit Dojo', 'Mountain View Karate', 'Thunder Bay MA', 'Golden Tiger Dojo'
 ];
 
-function openTestDataModal() {
-    if (!currentTournamentId) {
-        showMessage('Please select a tournament first.', 'error');
-        return;
+async function openTestDataModal() {
+    if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
+    if (!confirm('Generate 20-30 test competitors on the server? All connected devices will see them immediately.')) return;
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/generate-test-data`, {
+            method: 'POST', credentials: 'include',
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { count } = await res.json();
+        setSyncIndicator('ok');
+        showMessage(`Generated ${count} test competitors.`, 'success');
+        // Reload local competitors from server
+        await _loadCompetitorsFromServer();
+        if (typeof loadCompetitors === 'function') loadCompetitors(true);
+        if (typeof loadDashboard === 'function') loadDashboard();
+        // Trigger server auto-assign
+        fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
+            method: 'POST', credentials: 'include',
+        }).catch(() => {});
+    } catch (e) {
+        setSyncIndicator('error');
+        showMessage('Failed to generate test data: ' + e.message, 'error');
     }
-    _tdmGroups = [{
-        id: Date.now(),
-        count: 20,
-        rankFrom: '10th kyu',
-        rankTo: '1st kyu',
-        ageMin: 8,
-        ageMax: 18,
-        weightMin: 25,
-        weightMax: 80,
-        experienceMin: 0,
-        experienceMax: 5,
-        gender: 'mixed',
-    }];
-    _showTdmModal();
 }
 
 function _tdmGroupHTML(g, idx) {
@@ -4962,47 +4967,43 @@ function executeTestGeneration(config) {
  * Delete all test competitors for the current tournament.
  * Real competitors are unaffected. Clears test-occupied division slots and re-assigns real competitors.
  */
-function clearTestData() {
-    if (!currentTournamentId) {
-        showMessage('Please select a tournament first.', 'error');
-        return;
+async function clearTestData() {
+    if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
+    if (!confirm('Delete all test competitors from the database? Real competitors will not be affected.')) return;
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/clear-test-data`, {
+            method: 'POST', credentials: 'include',
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { deleted } = await res.json();
+        setSyncIndicator('ok');
+        showMessage(`Cleared ${deleted} test competitor(s).`, 'success');
+        // Reload competitors from server (WS broadcast handles other devices)
+        await _loadCompetitorsFromServer();
+        if (typeof loadCompetitors === 'function') loadCompetitors(true);
+        if (typeof loadDashboard === 'function') loadDashboard();
+    } catch (e) {
+        setSyncIndicator('error');
+        showMessage('Failed to clear test data: ' + e.message, 'error');
     }
-    const allCompetitors = db.load('competitors');
-    const testCompetitors = allCompetitors.filter(c => c.is_test && c.tournamentId === currentTournamentId);
-    if (testCompetitors.length === 0) {
-        showMessage('No test competitors found for this tournament.', 'warning');
-        return;
-    }
-    if (!confirm(`Delete ${testCompetitors.length} test competitor${testCompetitors.length !== 1 ? 's' : ''}? Real competitors will not be affected.`)) return;
-
-    // Remove test competitors
-    testCompetitors.forEach(c => db.delete('competitors', c.id));
-
-    // Clear generated divisions
-    const divisions = db.load('divisions');
+    // Legacy client-side clear no longer needed — server handles it
+    // but keep bracket cleanup for local UI consistency
     const eventTypes = db.load('eventTypes');
     const nonDefaultEvents = eventTypes.filter(e => !e.isDefault);
     const eventIds = nonDefaultEvents.map(e => e.id);
-    for (const event of nonDefaultEvents) {
-        if (divisions[event.id]) divisions[event.id].generated = {};
-    }
-    _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
 
     // Clear brackets
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     Object.keys(brackets).forEach(id => { if (eventIds.includes(brackets[id]?.eventId)) delete brackets[id]; });
     saveBrackets(brackets);
 
-    // Re-assign real competitors
-    const realCompetitors = db.load('competitors').filter(c => !c.is_test && c.tournamentId === currentTournamentId);
-    for (const comp of realCompetitors) {
-        try { autoAssignToDivisions(comp, comp.id); } catch (e) { /* ignore */ }
-    }
+    // Re-assign real competitors via server auto-assign
+    fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
+        method: 'POST', credentials: 'include',
+    }).catch(() => {});
 
     syncCompetitorClubsToTable();
-    loadCompetitors(true);
-    loadDashboard();
-    showMessage(`Cleared ${testCompetitors.length} test competitor${testCompetitors.length !== 1 ? 's' : ''}.`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
