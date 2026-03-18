@@ -3333,22 +3333,29 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         return;
     }
 
-    // Validate required fields (form uses novalidate — we handle validation here)
-    const _req = (id) => (document.getElementById(id)?.value || '').trim();
+    // Validate required fields (form uses novalidate — we handle validation here).
+    // Only check fields that are visible — some fields (weight, experience) are hidden
+    // by the tournament's registration field settings and must be skipped when not shown.
+    const _isVisible = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        const group = el.closest('.form-group');
+        return !group || !group.classList.contains('hidden');
+    };
+    const _val = (id) => (document.getElementById(id)?.value || '').trim();
     const missingFields = [];
-    if (!_req('firstName'))   missingFields.push('First Name');
-    if (!_req('lastName'))    missingFields.push('Last Name');
-    if (!_req('dateOfBirth')) missingFields.push('Date of Birth');
-    if (!_req('weight'))      missingFields.push('Weight');
-    if (!_req('rank'))        missingFields.push('Rank');
-    if (!_req('gender'))      missingFields.push('Gender');
-    const clubSelectVal = (document.getElementById('club')?.value || '').trim();
-    const newClubNameVal = (document.getElementById('new-club-name')?.value || '').trim();
+    if (!_val('firstName'))                       missingFields.push('First Name');
+    if (!_val('lastName'))                        missingFields.push('Last Name');
+    if (!_val('dateOfBirth'))                     missingFields.push('Date of Birth');
+    if (_isVisible('weight') && !_val('weight'))  missingFields.push('Weight');
+    if (_isVisible('rank')   && !_val('rank'))    missingFields.push('Rank');
+    if (!_val('gender'))                          missingFields.push('Gender');
+    const clubSelectVal = _val('club');
+    const newClubNameVal = _val('new-club-name');
     if (!clubSelectVal || (clubSelectVal === '__new__' && !newClubNameVal)) missingFields.push('Dojo');
     if (missingFields.length > 0) {
         showMessage(`Please fill in: ${missingFields.join(', ')}`, 'error');
-        // Focus the first missing field
-        const firstMissing = ['firstName','lastName','dateOfBirth','weight','rank','gender'].find(id => !_req(id));
+        const firstMissing = ['firstName','lastName','dateOfBirth','weight','rank','gender'].find(id => _isVisible(id) && !_val(id));
         if (firstMissing) document.getElementById(firstMissing)?.focus();
         return;
     }
