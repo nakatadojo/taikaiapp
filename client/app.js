@@ -844,6 +844,124 @@ async function _syncBracketsToServer() {
     }
 }
 
+// ── Bracket polling (so all operator devices see live match results) ──────────
+
+let _bracketPollInterval = null;
+let _bracketPollId = null; // the bracketId being polled
+
+function startBracketPolling(bracketId) {
+    stopBracketPolling();
+    _bracketPollId = bracketId;
+    _bracketPollInterval = setInterval(async () => {
+        if (!currentTournamentId || !_bracketPollId) return;
+        try {
+            const res = await fetch(
+                `/api/tournaments/${currentTournamentId}/brackets/${_bracketPollId}`,
+                { credentials: 'include' }
+            );
+            if (!res.ok) return;
+            const { bracket } = await res.json();
+            if (!bracket) return;
+            // Update in-memory store with fresh bracket data
+            const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+            const serialized = JSON.stringify(bracket);
+            if (JSON.stringify(brackets[_bracketPollId]) === serialized) return;
+            brackets[_bracketPollId] = bracket;
+            _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+            // Re-render if a render function is available
+            if (typeof renderBrackets === 'function') renderBrackets();
+        } catch (err) {
+            // Non-fatal — display continues from last known state
+            console.warn('[bracket] Poll failed:', err.message);
+        }
+    }, 2000);
+}
+
+function stopBracketPolling() {
+    if (_bracketPollInterval) {
+        clearInterval(_bracketPollInterval);
+        _bracketPollInterval = null;
+    }
+    _bracketPollId = null;
+}
+
+// ── WebSocket client (real-time bracket updates across operator devices) ───────
+
+let _socket = null;
+// Track the bracket ID the operator is currently viewing so we can re-subscribe
+// after a reconnect.
+let _currentBracketId = null;
+
+function _initWebSocket() {
+    if (_socket) return; // Already connected
+    if (typeof io === 'undefined') return; // socket.io not loaded
+
+    _socket = io({ transports: ['websocket', 'polling'] });
+
+    _socket.on('connect', () => {
+        console.log('[ws] Connected');
+        _hideWsIndicator();
+        // Re-subscribe to the bracket the operator has open (if any)
+        if (currentTournamentId && _currentBracketId) {
+            _socket.emit('subscribe:bracket', {
+                tournamentId: currentTournamentId,
+                bracketId: _currentBracketId,
+            });
+        }
+    });
+
+    _socket.on('disconnect', () => {
+        console.warn('[ws] Disconnected');
+        _showWsIndicator('Reconnecting...');
+    });
+
+    _socket.on('connect_error', () => {
+        _showWsIndicator('Connection lost');
+    });
+
+    // When another device updates the bracket the operator is currently viewing,
+    // update the local copy and re-render without requiring a manual refresh.
+    _socket.on('bracket:updated', ({ bracketId, bracket }) => {
+        if (!bracket || bracketId !== _currentBracketId) return;
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        // Only update if the incoming data actually differs (avoid re-render loops)
+        if (JSON.stringify(brackets[bracketId]) === JSON.stringify(bracket)) return;
+        brackets[bracketId] = bracket;
+        _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+        if (typeof renderBrackets === 'function') renderBrackets();
+    });
+}
+
+function _showWsIndicator(msg) {
+    let el = document.getElementById('_ws-indicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_ws-indicator';
+        el.style.cssText = 'position:fixed;bottom:12px;right:12px;background:#f59e0b;color:#000;padding:4px 10px;border-radius:6px;font-size:12px;z-index:9999;';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+function _hideWsIndicator() {
+    const el = document.getElementById('_ws-indicator');
+    if (el) el.style.display = 'none';
+}
+
+/**
+ * Called when the operator opens a bracket for scoring.
+ * Subscribes the socket to that bracket's update channel.
+ */
+function _wsSubscribeToBracket(bracketId) {
+    _currentBracketId = bracketId;
+    if (_socket && _socket.connected && currentTournamentId) {
+        _socket.emit('subscribe:bracket', { tournamentId: currentTournamentId, bracketId });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Persist the live scoreboard state to the server so other devices
  * (TV scoreboards, staff tablets) can poll and display current match state.
@@ -1615,6 +1733,8 @@ loadTournamentSelector();
         // This prevents a flood of 401s when the page loads before Auth.init() resolves.
         _authReady.then(user => {
             if (!user) return; // not logged in — auth-gate handles the redirect
+            // Initialize WebSocket for real-time bracket updates across operator devices
+            _initWebSocket();
             // Hydrate from server — server is source of truth for all data.
             // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
             // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
@@ -11974,6 +12094,8 @@ window.scoreMatch = function(bracketId, matchId) {
             // openOperatorScoreboard handles routing to the correct scoreboard type
             window.currentMatchId = match.id;
             window.currentBracketId = bracketId;
+            // Subscribe via WebSocket so push updates from other devices arrive immediately
+            _wsSubscribeToBracket(bracketId);
 
             // Store the specific match we want to score (will be read by operator)
             window.forceLoadMatchId = match.id;
@@ -15831,6 +15953,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         // Store current match ID for later use when declaring winner
         window.currentMatchId = currentMatch.id;
         window.currentBracketId = Object.keys(brackets).find(id => brackets[id] === currentBracket);
+        // Start polling this bracket so all operator devices stay in sync
+        if (window.currentBracketId) {
+            startBracketPolling(window.currentBracketId);
+            // Also subscribe via WebSocket for push-based updates (faster than polling)
+            _wsSubscribeToBracket(window.currentBracketId);
+        }
     } else {
         console.warn('No current match found!');
         console.warn('Bracket:', currentBracket);
@@ -17930,6 +18058,23 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
 
                 // Save updated bracket
                 saveBrackets(brackets);
+                // Cancel the debounced bulk sync queued by saveBrackets.
+                // We replace it with an immediate single-bracket PUT so the
+                // changed bracket is written without touching other brackets
+                // (prevents Device B overwriting Device A's concurrent results).
+                if (_syncDebounceTimers['brackets']) {
+                    clearTimeout(_syncDebounceTimers['brackets']);
+                    _syncDebounceTimers['brackets'] = null;
+                }
+                // Immediate write of only the modified bracket
+                (function(tid, bid, b) {
+                    fetch(`/api/tournaments/${tid}/brackets/${bid}`, {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bracket: b }),
+                    }).catch(err => console.error('[bracket] Failed to save match result:', err));
+                })(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId]);
                 _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
             }
         }
@@ -19125,6 +19270,9 @@ function closeOperatorScoreboard() {
         operatorTimerInterval = null;
     }
 
+    // Stop bracket polling when operator leaves the scoreboard view
+    stopBracketPolling();
+
     console.log('Operator scoreboard closed and cleaned up');
 }
 
@@ -20264,6 +20412,10 @@ function updateOperatorTVDisplay(winner = null) {
     const state = {
         // Scoreboard type identifier
         scoreboardType: 'kumite',
+
+        // Ring/mat identifier — included so per-ring server storage works for
+        // cross-device scoreboard polling (Fix #2)
+        ring: currentOperatorMat,
 
         // Header info
         matName: matName,

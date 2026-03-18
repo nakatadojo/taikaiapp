@@ -28,6 +28,18 @@ router.put('/:id/brackets/:bracketId/publish',
   c.setBracketPublished
 );
 
+// Single-bracket read (public — needed for display polling)
+router.get('/:id/brackets/:bracketId',
+  requireAuth, requireTournamentPermission('read_data'),
+  c.getSingleBracket
+);
+
+// Single-bracket write (immediate, avoids bulk-sync race condition)
+router.put('/:id/brackets/:bracketId',
+  requireAuth, requireTournamentOwner,
+  c.upsertSingleBracket
+);
+
 router.delete('/:id/brackets/:bracketId',
   requireAuth, requireTournamentOwner,
   c.deleteBracket

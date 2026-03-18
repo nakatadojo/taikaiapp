@@ -12,6 +12,17 @@ async function getAll(tournamentId) {
   return rows;
 }
 
+async function getOne(tournamentId, bracketId) {
+  const { rows } = await pool.query(
+    `SELECT id, tournament_id, event_id, division_name, bracket_type,
+            data, published, created_at, updated_at
+     FROM tournament_brackets
+     WHERE tournament_id = $1 AND id = $2`,
+    [tournamentId, bracketId]
+  );
+  return rows[0] || null;
+}
+
 async function getAllPublished(tournamentId) {
   const { rows } = await pool.query(
     `SELECT id, event_id, division_name, bracket_type, data
@@ -87,4 +98,4 @@ async function remove(tournamentId, bracketId) {
   return rows[0] || null;
 }
 
-module.exports = { getAll, getAllPublished, upsert, bulkUpsert, setPublished, setAllPublished, remove };
+module.exports = { getAll, getOne, getAllPublished, upsert, bulkUpsert, setPublished, setAllPublished, remove };

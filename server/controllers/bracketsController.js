@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const BracketQueries = require('../db/queries/brackets');
+const { broadcastBracketUpdate } = require('../websocket');
 
 async function getBrackets(req, res, next) {
   try {
@@ -7,6 +8,36 @@ async function getBrackets(req, res, next) {
     const byId = {};
     for (const b of rows) { byId[b.id] = b.data; }
     res.json({ brackets: byId });
+  } catch (err) { next(err); }
+}
+
+async function getSingleBracket(req, res, next) {
+  try {
+    const { id: tournamentId, bracketId } = req.params;
+    const row = await BracketQueries.getOne(tournamentId, bracketId);
+    if (!row) return res.status(404).json({ error: 'Bracket not found' });
+    res.json({ bracket: row.data });
+  } catch (err) { next(err); }
+}
+
+async function upsertSingleBracket(req, res, next) {
+  try {
+    const { id: tournamentId, bracketId } = req.params;
+    const { bracket } = req.body;
+    if (!bracket || typeof bracket !== 'object') {
+      return res.status(400).json({ error: 'bracket object is required' });
+    }
+    const row = await BracketQueries.upsert({
+      id: bracketId,
+      tournamentId,
+      eventId: String(bracket.eventId || ''),
+      divisionName: bracket.divisionName || bracket.division || '',
+      bracketType: bracket.type || 'single-elimination',
+      data: bracket,
+    });
+    // Broadcast to all clients subscribed to this bracket's channel
+    broadcastBracketUpdate(tournamentId, bracketId, row.data);
+    res.json({ bracket: row.data });
   } catch (err) { next(err); }
 }
 
@@ -80,4 +111,4 @@ async function setAllBracketsPublished(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getBrackets, syncBrackets, deleteBracket, setBracketPublished, setAllBracketsPublished };
+module.exports = { getBrackets, getSingleBracket, upsertSingleBracket, syncBrackets, deleteBracket, setBracketPublished, setAllBracketsPublished };

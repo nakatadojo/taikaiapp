@@ -17,6 +17,9 @@ if (!process.env.STRIPE_WEBHOOK_SECRET && process.env.NODE_ENV === 'production')
   console.warn('WARNING: STRIPE_WEBHOOK_SECRET is not set. Stripe webhooks will be rejected.');
 }
 
+const { createServer } = require('http');
+const { initWebSocket } = require('./websocket');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -232,7 +235,10 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, () => {
+  const httpServer = createServer(app);
+  initWebSocket(httpServer);
+
+  httpServer.listen(PORT, () => {
     console.log(`Taikai by Kimesoft running on http://localhost:${PORT}`);
     console.log(`Landing:   http://localhost:${PORT}/`);
     console.log(`Director:  http://localhost:${PORT}/director`);
