@@ -123,8 +123,11 @@ function matchCriteria(competitor, criteria) {
       }
 
       case 'experience': {
-        const compExp = (competitor.experience_level || '').toLowerCase();
-        const rangeValue = (range.value || '').toLowerCase();
+        // Guard: if either side is empty, treat as no match to prevent
+        // null experience_level matching a range with no value set.
+        if (!competitor.experience_level || !range.value) break;
+        const compExp = competitor.experience_level.toLowerCase();
+        const rangeValue = range.value.toLowerCase();
         if (compExp === rangeValue) {
           return range.label;
         }

@@ -1084,7 +1084,16 @@
     const slug = pathParts[1] ? decodeURIComponent(pathParts[1]).replace(/\/+$/, '') : null;
 
     if (!slug) {
-        showError('Invalid URL', 'No tournament slug was found in the URL.');
+        // Detect common mis-formatted URLs and show actionable guidance
+        const params = new URLSearchParams(window.location.search);
+        const qSlug = params.get('slug') || params.get('id');
+        if (qSlug) {
+            showError('Invalid URL Format',
+                `This link uses an outdated format. The correct URL should be: <code>/tournaments/${qSlug}</code>. ` +
+                `Try navigating to <a href="/tournaments/${encodeURIComponent(qSlug)}">/tournaments/${qSlug}</a>.`);
+        } else {
+            showError('Invalid URL', 'No tournament was found in the URL. Please check the link and try again.');
+        }
         return;
     }
 
@@ -1967,10 +1976,18 @@
         openRegModal();
     };
 
-    function openRegModal() {
-        regState = { competitors: [makeBlankCompetitor()], step: 1, cart: [], discount: null, profiles: [] };
-        renderRegStep1();
+    async function openRegModal() {
+        regState = { competitors: [makeBlankCompetitor()], step: 1, cart: [], discount: null, profiles: [], fields: null };
         document.getElementById('reg-modal').classList.add('active');
+        // Fetch dynamic field config so the form can show/hide belt rank,
+        // experience level, etc. based on this tournament's division structure.
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentData.id}/registration-fields`);
+            if (res.ok) regState.fields = await res.json();
+        } catch(e) {
+            console.warn('[reg] Could not load registration-fields, defaulting to show all:', e);
+        }
+        renderRegStep1();
     }
 
     window.closeRegModal = function() {
@@ -2010,6 +2027,33 @@
         const removeBtn = regState.competitors.length > 1
             ? `<button class="reg-remove-btn" onclick="removeCompetitor(${index})">Remove</button>` : '';
 
+        // Dynamic field visibility from /api/tournaments/:id/registration-fields.
+        // Fall back to showing both if the endpoint hasn't responded yet.
+        const fields = regState.fields || {};
+        const showBeltRank = fields.showBeltRank !== false;
+        const showExperience = fields.showExperienceLevel !== false;
+        const expOptions = fields.experienceLevelOptions || ['beginner','novice','intermediate','advanced'];
+        const beltOptions = fields.beltRankOptions || ['white','yellow','orange','green','blue','purple','brown','black'];
+        const weightUnit = (t && t.weight_unit) || 'lbs';
+
+        const beltField = showBeltRank ? `
+                <div class="modal-field"><label>Belt Rank</label>
+                    <select onchange="updateCompetitor(${index},'beltRank',this.value)">
+                        <option value="">Select...</option>
+                        ${beltOptions.map(b => `<option value="${b}" ${c.beltRank===b?'selected':''}>${b.charAt(0).toUpperCase()+b.slice(1)}</option>`).join('')}
+                    </select></div>` : '';
+
+        const expField = showExperience ? `
+                <div class="modal-field"><label>Experience Level</label>
+                    <select onchange="updateCompetitor(${index},'experienceLevel',this.value)">
+                        <option value="">Select...</option>
+                        ${expOptions.map(e => `<option value="${e}" ${c.experienceLevel===e?'selected':''}>${e.charAt(0).toUpperCase()+e.slice(1)}</option>`).join('')}
+                    </select></div>` : '';
+
+        // Only show a rank/experience row if at least one field is visible
+        const rankRow = (showBeltRank || showExperience) ? `
+            <div class="reg-form-row">${beltField}${expField}</div>` : '';
+
         return `
         <div class="reg-competitor-form" data-index="${index}">
             <div class="reg-competitor-header">
@@ -2032,6 +2076,10 @@
                         <option value="female" ${c.gender==='female'?'selected':''}>Female</option>
                     </select></div>
             </div>
+            <div class="reg-form-row">
+                <div class="modal-field"><label>Dojo / Academy</label>
+                    <input type="text" value="${esc(c.academyName)}" onchange="updateCompetitor(${index},'academyName',this.value)" placeholder="Start typing..."></div>
+            </div>
             <div id="guardian-fields-${index}" style="display:none;">
                 <div class="reg-form-row">
                     <div class="modal-field"><label>Parent/Guardian Name *</label>
@@ -2040,33 +2088,10 @@
                         <input type="email" value="${esc(c.guardianEmail)}" onchange="updateCompetitor(${index},'guardianEmail',this.value)"></div>
                 </div>
             </div>
+            ${rankRow}
             <div class="reg-form-row">
-                <div class="modal-field"><label>Belt Rank</label>
-                    <select onchange="updateCompetitor(${index},'beltRank',this.value)">
-                        <option value="">Select...</option>
-                        <option value="white" ${c.beltRank==='white'?'selected':''}>White</option>
-                        <option value="yellow" ${c.beltRank==='yellow'?'selected':''}>Yellow</option>
-                        <option value="orange" ${c.beltRank==='orange'?'selected':''}>Orange</option>
-                        <option value="green" ${c.beltRank==='green'?'selected':''}>Green</option>
-                        <option value="blue" ${c.beltRank==='blue'?'selected':''}>Blue</option>
-                        <option value="purple" ${c.beltRank==='purple'?'selected':''}>Purple</option>
-                        <option value="brown" ${c.beltRank==='brown'?'selected':''}>Brown</option>
-                        <option value="black" ${c.beltRank==='black'?'selected':''}>Black</option>
-                    </select></div>
-                <div class="modal-field"><label>Experience Level</label>
-                    <select onchange="updateCompetitor(${index},'experienceLevel',this.value)">
-                        <option value="">Select...</option>
-                        <option value="beginner" ${c.experienceLevel==='beginner'?'selected':''}>Beginner</option>
-                        <option value="novice" ${c.experienceLevel==='novice'?'selected':''}>Novice</option>
-                        <option value="intermediate" ${c.experienceLevel==='intermediate'?'selected':''}>Intermediate</option>
-                        <option value="advanced" ${c.experienceLevel==='advanced'?'selected':''}>Advanced</option>
-                    </select></div>
-            </div>
-            <div class="reg-form-row">
-                <div class="modal-field"><label>Weight (lbs)${regSettings.weightRequired ? ' *' : ''}</label>
+                <div class="modal-field"><label>Weight (${weightUnit})${regSettings.weightRequired ? ' *' : ''}</label>
                     <input type="number" step="0.1" value="${c.weight}" onchange="updateCompetitor(${index},'weight',this.value)"${regSettings.weightRequired ? ' required' : ''}></div>
-                <div class="modal-field"><label>Dojo / Academy</label>
-                    <input type="text" value="${esc(c.academyName)}" onchange="updateCompetitor(${index},'academyName',this.value)" placeholder="Start typing..."></div>
             </div>
             ${regSettings.photoRequired ? `
             <div class="modal-field" style="margin-top:8px;">

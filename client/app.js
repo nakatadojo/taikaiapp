@@ -1977,6 +1977,8 @@ function loadDashboard() {
     let totalRevenue = 0;
     let paidCount = 0;
     let unpaidCount = 0;
+    let cashDueCount = 0;
+    let cashDueAmount = 0;
     competitors.forEach(comp => {
         // Director-added competitors may have comp.pricing.total (old in-memory shape).
         // Stripe-registered competitors arrive with comp.amountPaid from the registrations table.
@@ -1985,8 +1987,14 @@ function loadDashboard() {
 
         // paymentStatus is camelCase from the unified query; 'paid' means Stripe succeeded.
         // Director-added entries have paymentStatus='director' — count them as confirmed.
+        // pay_later means cash-only tournament — track separately as "cash pending".
         const ps = comp.paymentStatus || comp.payment_status || '';
         if (ps === 'paid' || ps === 'director') paidCount++;
+        else if (ps === 'pay_later') {
+            cashDueCount++;
+            // Estimate cash owed from pricing if amountPaid is 0
+            if (!comp.amountPaid && comp.pricing?.total) cashDueAmount += comp.pricing.total;
+        }
         else if (ps !== 'cancelled') unpaidCount++;
     });
     const revenueEl = document.getElementById('stat-revenue');
@@ -1998,6 +2006,15 @@ function loadDashboard() {
     if (paidEl) paidEl.textContent = paidCount;
     const unpaidEl = document.getElementById('stat-unpaid-count');
     if (unpaidEl) unpaidEl.textContent = unpaidCount;
+    // Show cash-pending row only when there are pay_later registrations
+    const cashDueRow = document.getElementById('stat-cash-due-row');
+    if (cashDueRow) {
+        cashDueRow.style.display = cashDueCount > 0 ? '' : 'none';
+        const cashDueCountEl = document.getElementById('stat-cash-due-count');
+        const cashDueAmountEl = document.getElementById('stat-cash-due-amount');
+        if (cashDueCountEl) cashDueCountEl.textContent = cashDueCount;
+        if (cashDueAmountEl) cashDueAmountEl.textContent = cashDueAmount > 0 ? `$${cashDueAmount.toFixed(2)}` : 'TBD';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

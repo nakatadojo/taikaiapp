@@ -30,7 +30,7 @@ async function getPublicCompetitors(req, res, next) {
        JOIN competitor_profiles cp ON r.profile_id = cp.id
        LEFT JOIN registration_events re ON re.registration_id = r.id
        LEFT JOIN tournament_events te ON re.event_id = te.id
-       WHERE r.tournament_id = $1 AND r.payment_status IN ('paid', 'waived')
+       WHERE r.tournament_id = $1 AND r.status != 'cancelled'
        GROUP BY cp.id, cp.first_name, cp.last_name, cp.academy_name
        ORDER BY cp.last_name, cp.first_name`,
       [tournamentId]
