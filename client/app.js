@@ -14046,8 +14046,11 @@ function _renderCheckinList() {
             const name = `${c.first_name} ${c.last_name}`.toLowerCase();
             return !search || name.includes(search);
         });
-        // Director-added competitors (from director_competitors JSONB)
+        // Director-added competitors only — registration-sourced ones are already
+        // shown in filteredReg from _checkinData, so exclude them here to prevent
+        // duplicates when the UNION query includes both sources.
         const filteredDir = _checkinDirectorData.filter(c => {
+            if (c.source !== 'director') return false;
             const name = `${c.firstName} ${c.lastName}`.toLowerCase();
             return !search || name.includes(search);
         });
