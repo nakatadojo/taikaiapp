@@ -7,6 +7,7 @@ const { requireTournamentPermission } = require('../middleware/tournamentPermiss
 const upload = require('../middleware/upload');
 const { validateImageBytes } = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
+const directorCompetitorsController = require('../controllers/directorCompetitorsController');
 
 const router = express.Router();
 
@@ -184,13 +185,22 @@ router.post('/:id/sync',
   tournamentController.syncEvents
 );
 
-// ── Director Competitors / Clubs (JSONB sync) ────────────────────────────────
+// ── Director Competitors — per-record API (DB-first) ────────────────────────
 
-// GET /api/tournaments/:id/competitors — staff can read (for check-in)
-router.get('/:id/competitors', requireAuth, requireTournamentPermission('read_data'), tournamentController.getCompetitors);
+// GET /api/tournaments/:id/competitors — staff can read
+router.get('/:id/competitors', requireAuth, requireTournamentPermission('read_data'), directorCompetitorsController.getCompetitors);
 
-// POST /api/tournaments/:id/competitors/sync — owner or approved staff
+// POST /api/tournaments/:id/competitors/sync — keep for legacy sendBeacon (must be before /:competitorId)
 router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
+
+// POST /api/tournaments/:id/competitors — add a single competitor
+router.post('/:id/competitors', requireAuth, directorCompetitorsController.addCompetitor);
+
+// PUT /api/tournaments/:id/competitors/:competitorId — update a single competitor
+router.put('/:id/competitors/:competitorId', requireAuth, directorCompetitorsController.updateCompetitor);
+
+// DELETE /api/tournaments/:id/competitors/:competitorId — delete a single competitor (must be before checkin routes)
+router.delete('/:id/competitors/:competitorId', requireAuth, directorCompetitorsController.deleteCompetitor);
 
 // POST /api/tournaments/:id/competitors/:competitorId/checkin — staff can check in
 router.post('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentPermission('manage_checkin'), tournamentController.checkInDirectorCompetitor);

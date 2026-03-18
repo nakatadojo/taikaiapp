@@ -147,11 +147,9 @@ const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 // Flush any pending competitors sync before the page unloads (navigation / reload)
 // so data isn't lost when the user moves away before the debounce fires.
 window.addEventListener('beforeunload', () => {
-    if (!_competitorsSyncTimer || !currentTournamentId) return;
-    clearTimeout(_competitorsSyncTimer);
-    _competitorsSyncTimer = null;
+    // Only send clubs beacon — competitors now use per-record API so no batch sync needed
+    if (!currentTournamentId) return;
     const blob = (data) => new Blob([JSON.stringify(data)], { type: 'application/json' });
-    navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/competitors/sync`, blob({ competitors: db.load('competitors') }));
     navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/clubs/sync`, blob({ clubs: db.load('clubs') }));
 });
 function _isServerEventId(id) { return _UUID_RE.test(String(id || '')); }
@@ -908,6 +906,11 @@ function _initWebSocket() {
                 bracketId: _currentBracketId,
             });
         }
+        // Re-subscribe to competitors and divisions channels on reconnect
+        if (currentTournamentId) {
+            _socket.emit('subscribe:competitors', { tournamentId: currentTournamentId });
+            _socket.emit('subscribe:divisions', { tournamentId: currentTournamentId });
+        }
     });
 
     _socket.on('disconnect', () => {
@@ -929,6 +932,57 @@ function _initWebSocket() {
         brackets[bracketId] = bracket;
         _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
         if (typeof renderBrackets === 'function') renderBrackets();
+    });
+
+    // Real-time competitor updates from other devices via the per-record API
+    _socket.on('competitors:updated', ({ action, competitor }) => {
+        const all = db.load('competitors');
+        if (action === 'add') {
+            // Only add if not already in cache (avoid duplicating our own push)
+            if (!all.find(c => String(c.id) === String(competitor.id))) {
+                const normalized = {
+                    ...competitor,
+                    firstName:   competitor.firstName   ?? competitor.first_name   ?? '',
+                    lastName:    competitor.lastName    ?? competitor.last_name    ?? '',
+                    dateOfBirth: competitor.dateOfBirth ?? competitor.date_of_birth ?? null,
+                    tournamentId: currentTournamentId,
+                };
+                all.push(normalized);
+                db.save('competitors', all);
+                if (typeof loadCompetitors === 'function') loadCompetitors(true);
+                if (typeof loadDashboard === 'function') loadDashboard();
+            }
+        } else if (action === 'update') {
+            const idx = all.findIndex(c => String(c.id) === String(competitor.id));
+            if (idx !== -1) {
+                all[idx] = { ...all[idx], ...competitor, tournamentId: currentTournamentId };
+                db.save('competitors', all);
+                if (typeof loadCompetitors === 'function') loadCompetitors(true);
+            }
+        } else if (action === 'delete') {
+            const filtered = all.filter(c => String(c.id) !== String(competitor.id));
+            if (filtered.length !== all.length) {
+                db.save('competitors', filtered);
+                if (typeof loadCompetitors === 'function') loadCompetitors(true);
+                if (typeof loadDashboard === 'function') loadDashboard();
+            }
+        }
+    });
+
+    // Real-time bulk test-data clear from server
+    _socket.on('competitors:test-cleared', ({ tournamentId: tid }) => {
+        if (tid !== currentTournamentId) return;
+        _loadCompetitorsFromServer().then(() => {
+            if (typeof loadCompetitors === 'function') loadCompetitors(true);
+            if (typeof loadDashboard === 'function') loadDashboard();
+        });
+    });
+
+    // Real-time division updates after server auto-assign
+    _socket.on('divisions:updated', ({ generatedDivisions }) => {
+        if (!currentTournamentId) return;
+        _msSet(_scopedKey('divisions'), JSON.stringify(generatedDivisions));
+        if (typeof loadDivisionsView === 'function') loadDivisionsView();
     });
 }
 
@@ -1733,8 +1787,13 @@ loadTournamentSelector();
         // This prevents a flood of 401s when the page loads before Auth.init() resolves.
         _authReady.then(user => {
             if (!user) return; // not logged in — auth-gate handles the redirect
-            // Initialize WebSocket for real-time bracket updates across operator devices
+            // Initialize WebSocket for real-time bracket, competitor, and division updates
             _initWebSocket();
+            // Subscribe to competitors and divisions channels immediately after connect
+            if (_socket && _socket.connected && currentTournamentId) {
+                _socket.emit('subscribe:competitors', { tournamentId: currentTournamentId });
+                _socket.emit('subscribe:divisions', { tournamentId: currentTournamentId });
+            }
             // Hydrate from server — server is source of truth for all data.
             // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
             // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
@@ -3367,56 +3426,57 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         };
 
         const updatedCompetitor = allCompetitors[compIndex];
-        db.save('competitors', allCompetitors);
-        _queueCompetitorsSync();
+
+        // Per-record PUT to server — immediate DB write
+        setSyncIndicator('syncing');
+        const putRes = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${editingCompetitorId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ competitor: { ...updatedCompetitor } }),
+        });
+        if (putRes.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
+        if (!putRes.ok) { showMessage('Could not save competitor — please try again.', 'error'); return; }
+        const { competitor: savedComp } = await putRes.json();
+        // Update local cache with server-confirmed data
+        const freshAll = db.load('competitors');
+        const freshIdx = freshAll.findIndex(c => String(c.id) === String(editingCompetitorId));
+        if (freshIdx !== -1) { freshAll[freshIdx] = { ...freshAll[freshIdx], ...savedComp }; db.save('competitors', freshAll); }
+        setSyncIndicator('ok');
 
         // Update competitor data embedded in brackets (they store full objects, not IDs)
-        updateCompetitorInBrackets(editingCompetitorId, updatedCompetitor);
-
-        // Check if division-affecting fields changed
-        const divisionFieldsChanged =
-            oldCompetitor.dateOfBirth !== updatedCompetitor.dateOfBirth ||
-            oldCompetitor.gender !== updatedCompetitor.gender ||
-            oldCompetitor.rank !== updatedCompetitor.rank ||
-            oldCompetitor.weight !== updatedCompetitor.weight ||
-            oldCompetitor.experience !== updatedCompetitor.experience;
+        updateCompetitorInBrackets(editingCompetitorId, savedComp);
 
         showMessage('Competitor updated successfully!', 'success');
-
-        if (divisionFieldsChanged) {
-            try {
-                autoAssignToDivisions(updatedCompetitor, editingCompetitorId);
-            } catch (error) {
-                console.error('Auto-division re-assignment failed:', error);
-            }
-        }
+        // Server auto-assign handles division re-assignment — no client-side call needed
 
         editingCompetitorId = null;
     } else {
-        // ═══ ADD MODE — create new competitor (existing logic) ═══
+        // ═══ ADD MODE — create new competitor via per-record POST ═══
         const competitor = {
             ...competitorFields,
             registrationDate: new Date().toISOString(),
             tournamentId: currentTournamentId
         };
 
-        db.add('competitors', competitor); // mutates competitor.id in place
+        // Per-record POST to server — immediate DB write with server-assigned UUID
+        setSyncIndicator('syncing');
+        const postRes = await fetch(`/api/tournaments/${currentTournamentId}/competitors`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ competitor }),
+        });
+        if (postRes.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
+        if (!postRes.ok) { showMessage('Could not save competitor — please check your connection.', 'error'); return; }
+        const { competitor: savedComp } = await postRes.json();
+        // Update local cache with server-assigned ID
+        _inMemoryCompetitors.push(savedComp);
+        competitor.id = savedComp.id; // Update the local reference for team code assignment below
+        db.save('competitors', _inMemoryCompetitors);
+        setSyncIndicator('ok');
 
-        // Immediately sync to server — don't debounce for new adds so data is never lost.
-        // Roll back and abort if the sync fails (e.g. session expired).
-        const synced = await _syncCompetitorsToServer();
-        if (!synced) {
-            // Roll back: remove the competitor from memory so UI stays consistent
-            db.save('competitors', db.load('competitors').filter(c => c.id !== competitor.id));
-            showMessage('Could not save competitor — please check your connection and try again.', 'error');
-            return; // Keep form open so the user doesn't lose their input
-        }
-
-        // Reload from server after sync so _inMemoryCompetitors reflects the confirmed server state.
-        // This also guards against the init-time _loadCompetitorsFromServer overwriting memory mid-save.
-        await _loadCompetitorsFromServer();
-
-        const competitorId = competitor.id;
+        const competitorId = savedComp.id;
 
         // Add competitor to team members list
         if (teamCode) {
@@ -3429,15 +3489,11 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
             }
         }
 
-        // AUTO-DIVISION GENERATION: Match competitor to templates and auto-create divisions/brackets
+        // Server handles auto-division assignment — autoUpdateBrackets still runs client-side
         try {
-            autoAssignToDivisions(competitor, competitorId);
-            // If a bracket already exists for the competitor's division, regenerate it
-            // automatically so the bracket stays current without manual intervention.
-            autoUpdateBracketsAfterRegistration(competitor);
+            autoUpdateBracketsAfterRegistration(savedComp);
         } catch (error) {
-            console.error('Auto-division assignment failed:', error);
-            showMessage(`Competitor registered, but auto-division failed: ${error.message}`, 'warning');
+            console.error('Auto-bracket update failed:', error);
         }
 
         // Show success message — team info if applicable
@@ -4384,14 +4440,20 @@ function loadCompetitors(skipSync = false) {
     updateCompetitorSelects();
 }
 
-function deleteCompetitor(id) {
-    if (confirm('Are you sure you want to delete this competitor?')) {
-        db.delete('competitors', id);
-        _queueCompetitorsSync();
-        loadCompetitors();
-        loadDashboard();
-        showMessage('Competitor deleted successfully!');
-    }
+async function deleteCompetitor(id) {
+    if (!currentTournamentId) return;
+    if (!confirm('Are you sure you want to delete this competitor?')) return;
+    const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    });
+    if (res.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
+    if (!res.ok) { showMessage('Could not delete competitor.', 'error'); return; }
+    // Update local cache
+    db.save('competitors', db.load('competitors').filter(c => String(c.id) !== String(id)));
+    loadCompetitors(true);
+    loadDashboard();
+    showMessage('Competitor deleted successfully!');
 }
 
 // Edit competitor — follows exact same pattern as editClub()

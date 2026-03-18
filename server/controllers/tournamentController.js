@@ -705,42 +705,59 @@ async function syncClubs(req, res, next) {
 /**
  * POST /api/tournaments/:id/competitors/:competitorId/checkin
  * Mark a director-added competitor as checked in.
+ * Reads from the new tournament_director_competitors table.
  */
 async function checkInDirectorCompetitor(req, res, next) {
   try {
+    const DirectorCompetitorQueries = require('./directorCompetitorsController').__queries ||
+      require('../db/queries/directorCompetitors');
 
-    const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
-    const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
-    if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+    const competitor = await DirectorCompetitorQueries.update(
+      req.params.competitorId,
+      req.params.id,
+      { checkedIn: true, checkedInAt: new Date().toISOString() }
+    );
 
-    competitors[idx] = {
-      ...competitors[idx],
-      checkedIn: true,
-      checkedInAt: new Date().toISOString(),
-    };
-    await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
-    res.json({ competitor: competitors[idx] });
+    if (!competitor) {
+      // Fallback: try legacy JSONB path for backward compatibility during migration
+      const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
+      const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
+      if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+      competitors[idx] = { ...competitors[idx], checkedIn: true, checkedInAt: new Date().toISOString() };
+      await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
+      return res.json({ competitor: competitors[idx] });
+    }
+
+    res.json({ competitor });
   } catch (err) { next(err); }
 }
 
 /**
  * DELETE /api/tournaments/:id/competitors/:competitorId/checkin
  * Undo check-in for a director-added competitor.
+ * Reads from the new tournament_director_competitors table.
  */
 async function undoCheckInDirectorCompetitor(req, res, next) {
   try {
+    const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 
-    const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
-    const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
-    if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+    const competitor = await DirectorCompetitorQueries.update(
+      req.params.competitorId,
+      req.params.id,
+      { checkedIn: false, checkedInAt: null }
+    );
 
-    competitors[idx] = {
-      ...competitors[idx],
-      checkedIn: false,
-      checkedInAt: null,
-    };
-    await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
-    res.json({ competitor: competitors[idx] });
+    if (!competitor) {
+      // Fallback: try legacy JSONB path for backward compatibility during migration
+      const competitors = await tournamentQueries.getDirectorCompetitors(req.params.id);
+      const idx = competitors.findIndex(c => String(c.id) === String(req.params.competitorId));
+      if (idx === -1) return res.status(404).json({ error: 'Competitor not found' });
+      competitors[idx] = { ...competitors[idx], checkedIn: false, checkedInAt: null };
+      await tournamentQueries.syncDirectorCompetitors(req.params.id, competitors);
+      return res.json({ competitor: competitors[idx] });
+    }
+
+    res.json({ competitor });
   } catch (err) { next(err); }
 }
 

@@ -36,6 +36,18 @@ function initWebSocket(httpServer) {
             socket.join(`tournament:${tournamentId}:ring:${ring}:scoreboard`);
         });
 
+        // Subscribe to a tournament's competitors channel
+        socket.on('subscribe:competitors', ({ tournamentId }) => {
+            if (!tournamentId) return;
+            socket.join(`tournament:${tournamentId}:competitors`);
+        });
+
+        // Subscribe to a tournament's divisions channel
+        socket.on('subscribe:divisions', ({ tournamentId }) => {
+            if (!tournamentId) return;
+            socket.join(`tournament:${tournamentId}:divisions`);
+        });
+
         // socket.io handles room cleanup automatically on disconnect
     });
 
@@ -71,4 +83,25 @@ function broadcastScoreboardUpdate(tournamentId, ring, state) {
     });
 }
 
-module.exports = { initWebSocket, getIO, broadcastBracketUpdate, broadcastScoreboardUpdate };
+/**
+ * Emit competitor update to all subscribers of this tournament's competitors channel.
+ * Called by directorCompetitorsController after each write.
+ */
+function broadcastCompetitorUpdate(tournamentId, action, competitor) {
+    if (!io) return;
+    io.to(`tournament:${tournamentId}:competitors`).emit('competitors:updated', {
+        action, // 'add' | 'update' | 'delete'
+        competitor,
+    });
+}
+
+/**
+ * Emit division update to all subscribers of this tournament's divisions channel.
+ * Called by divisionsController after auto-assign.
+ */
+function broadcastDivisionUpdate(tournamentId, generatedDivisions) {
+    if (!io) return;
+    io.to(`tournament:${tournamentId}:divisions`).emit('divisions:updated', { generatedDivisions });
+}
+
+module.exports = { initWebSocket, getIO, broadcastBracketUpdate, broadcastScoreboardUpdate, broadcastCompetitorUpdate, broadcastDivisionUpdate };
