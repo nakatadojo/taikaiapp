@@ -129,11 +129,14 @@ router.get('/users', async (req, res, next) => {
     const result = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name,
               u.credit_balance, u.created_at, u.email_verified,
-              COUNT(DISTINCT t.id)::int AS tournament_count,
+              COUNT(DISTINCT t.id)::int AS owned_count,
+              COUNT(DISTINCT r.tournament_id)::int AS registered_count,
+              (COUNT(DISTINCT t.id) + COUNT(DISTINCT r.tournament_id))::int AS tournament_count,
               (SELECT a.name FROM academies a WHERE a.head_coach_id = u.id LIMIT 1) AS dojo_name,
               (SELECT a.id FROM academies a WHERE a.head_coach_id = u.id LIMIT 1) AS dojo_id
        FROM users u
        LEFT JOIN tournaments t ON t.created_by = u.id
+       LEFT JOIN registrations r ON r.user_id = u.id AND r.status NOT IN ('cancelled')
        GROUP BY u.id
        ORDER BY u.created_at DESC`
     );

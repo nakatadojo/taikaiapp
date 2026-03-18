@@ -293,7 +293,7 @@ function renderUsers(users) {
       <td><strong>${u.first_name || ''} ${u.last_name || ''}</strong></td>
       <td>${u.email}</td>
       <td>${u.dojo_name || '—'}</td>
-      <td>${u.tournament_count}</td>
+      <td title="${u.owned_count || 0} owned · ${u.registered_count || 0} registered as competitor">${u.tournament_count}</td>
       <td>${formatDate(u.created_at)}</td>
       <td class="actions-cell">
         <button class="btn btn-ghost btn-xs" onclick="viewUserDetail('${u.id}')" title="View Details">
