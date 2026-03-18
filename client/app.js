@@ -1103,11 +1103,25 @@ async function _loadPublicSiteConfigFromServer() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        const serverConfig = data.tournament?.public_site_config || {};
-        const coverImageUrl = data.tournament?.cover_image_url;
-        // Merge: publicSiteConfig.coverImage takes precedence, fall back to cover_image_url column
-        const merged = { ...serverConfig };
-        if (!merged.coverImage && coverImageUrl) merged.coverImage = coverImageUrl;
+        const t = data.tournament || {};
+        const serverConfig = t.public_site_config || {};
+
+        // Normalize date to YYYY-MM-DD for the date input (strip time component)
+        const rawDate = t.date ? t.date.split('T')[0] : '';
+
+        // Seed from the tournament's own columns first, then let publicSiteConfig override.
+        // This ensures wizard-provided name/date/location/description always show in settings.
+        const merged = {
+            tournamentName: serverConfig.tournamentName || t.name || '',
+            tournamentDate: serverConfig.tournamentDate || rawDate || '',
+            location:       serverConfig.location       || t.location    || '',
+            description:    serverConfig.description    || t.description || '',
+            ...serverConfig,
+        };
+
+        // Fall back to cover_image_url column if no custom cover set in publicSiteConfig
+        if (!merged.coverImage && t.cover_image_url) merged.coverImage = t.cover_image_url;
+
         if (Object.keys(merged).length > 0) {
             _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(merged));
             console.log('[sync] Loaded public site config from server');
