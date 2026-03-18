@@ -2068,7 +2068,7 @@
             </div>
             <div class="reg-form-row">
                 <div class="modal-field"><label>Date of Birth *</label>
-                    <input type="date" value="${esc(c.dob)}" onchange="updateCompetitor(${index},'dob',this.value);checkMinor(${index})" required></div>
+                    <input type="date" value="${esc(c.dob)}" max="${new Date().toISOString().split('T')[0]}" onchange="updateCompetitor(${index},'dob',this.value);checkMinor(${index})" required></div>
                 <div class="modal-field"><label>Gender *</label>
                     <select onchange="updateCompetitor(${index},'gender',this.value)">
                         <option value="">Select...</option>

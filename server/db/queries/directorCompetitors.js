@@ -30,7 +30,8 @@ async function getAll(tournamentId) {
        NULL::uuid                          AS registration_id,
        'director'                          AS payment_status,
        NULL::numeric                       AS amount_paid,
-       tdc.created_at
+       tdc.created_at,
+       NULL::text[]                        AS event_ids
      FROM tournament_director_competitors tdc
      WHERE tdc.tournament_id = $1
 
@@ -54,12 +55,15 @@ async function getAll(tournamentId) {
        r.id                               AS registration_id,
        r.payment_status                   AS payment_status,
        r.amount_paid                      AS amount_paid,
-       r.created_at
+       r.created_at,
+       array_agg(re.event_id::text) FILTER (WHERE re.event_id IS NOT NULL) AS event_ids
      FROM registrations r
      LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
      LEFT JOIN users u ON u.id = r.user_id
+     LEFT JOIN registration_events re ON re.registration_id = r.id
      WHERE r.tournament_id = $1
        AND r.status != 'cancelled'
+     GROUP BY r.id, cp.id, u.email
 
      ORDER BY created_at ASC`,
     [tournamentId]
@@ -84,6 +88,9 @@ async function getAll(tournamentId) {
     club:            r.club      || null,
     email:           r.email     || null,
     phone:           r.phone     || null,
+    // Registration-sourced competitors: event IDs from registration_events table.
+    // Director-added competitors: events array comes from raw_data spread below.
+    ...(Array.isArray(r.event_ids) && r.event_ids.length > 0 ? { events: r.event_ids } : {}),
     // Preserve any extra fields stored in raw_data (director-added only)
     ...(r.raw_data && typeof r.raw_data === 'object' ? r.raw_data : {}),
   }));
