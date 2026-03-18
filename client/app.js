@@ -294,6 +294,8 @@ function _autoSyncIfBracketComplete(bracket) {
  * Called before writing brackets to localStorage.
  */
 function slimBracketForStorage(bracket) {
+    // Never persist cached timing — it is always recomputed on render
+    delete bracket.timing;
     const slimSlot = (m) => {
         if (!m) return;
         if (m.redCorner)  m.redCorner  = slimCompetitor(m.redCorner);
@@ -11452,8 +11454,8 @@ function renderBracketPreview(bracket) {
         bracket.matches = [];
     }
 
-    // Calculate timing if not already present
-    if (!bracket.timing && bracket.scoreboardConfig) {
+    // Always recalculate timing so progress % reflects current match state
+    if (bracket.scoreboardConfig) {
         bracket.timing = calculateBracketTiming(bracket, bracket.scoreboardConfig);
     }
 
@@ -19624,6 +19626,18 @@ function closeOperatorScoreboard() {
 
     // Stop bracket polling when operator leaves the scoreboard view
     stopBracketPolling();
+
+    // Refresh the bracket list so progress/match counts reflect the completed match
+    const _justScoredBracketId = window.currentBracketId;
+    if (typeof loadBrackets === 'function') loadBrackets();
+
+    // If the bracket detail modal was open for the just-scored bracket, refresh it
+    if (_justScoredBracketId && currentViewingBracket) {
+        const modalId = currentViewingBracket.id || currentViewingBracket._id;
+        if (String(modalId) === String(_justScoredBracketId)) {
+            viewBracket(_justScoredBracketId);
+        }
+    }
 
     console.log('Operator scoreboard closed and cleaned up');
 }
