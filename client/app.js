@@ -1584,10 +1584,7 @@ function switchTournament() {
         // Reload server-side competitors/clubs when switching to a server-managed tournament.
         // _activateTournament handles the initial URL-load path; switchTournament must also refresh.
         if (_isServerTournamentId(currentTournamentId)) {
-            _loadCompetitorsFromServer().then(async () => {
-                loadCompetitors();
-                loadDashboard();
-                await syncRegistrationsFromServer(true);
+            _loadCompetitorsFromServer().then(() => {
                 loadCompetitors();
                 loadDashboard();
             });
@@ -1805,13 +1802,9 @@ loadTournamentSelector();
             }).then(() => {
                 if (typeof loadDivisions === 'function') loadDivisions();
             });
-            _loadCompetitorsFromServer().then(async () => {
+            _loadCompetitorsFromServer().then(() => {
                 loadCompetitors();
                 loadDashboard(); // Refresh dashboard stats after competitors load from server
-                // Auto-sync portal registrations so they appear without a manual button press
-                await syncRegistrationsFromServer(true);
-                loadCompetitors();
-                loadDashboard();
             });
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
@@ -23843,131 +23836,6 @@ async function handleReviewRequest(requestId, action) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SERVER SYNC — Pull external registrations (Smoothcomp integration) from server
-// ═══════════════════════════════════════════════════════════════════════════
-
-let syncInterval = null;
-
-async function syncRegistrationsFromServer(silent = false) {
-    // Skip for localStorage-only (non-UUID) tournament IDs — server doesn't know them
-    if (currentTournamentId && !_isServerTournamentId(currentTournamentId)) return;
-
-    const btn = document.getElementById('sync-server-btn');
-    const status = document.getElementById('sync-status');
-    if (!silent && btn) { btn.disabled = true; btn.textContent = '🔄 Syncing...'; }
-
-    try {
-        const tournamentId = currentTournamentId || '';
-        const url = tournamentId
-            ? `/api/registrations?tournamentId=${tournamentId}`
-            : '/api/registrations';
-
-        const res = await fetch(url, { credentials: 'include' });
-        if (!res.ok) {
-            if (res.status === 401) {
-                // No Smoothcomp integration for this tournament — stop polling to avoid spam
-                stopSyncPolling();
-                throw new Error('Not authenticated');
-            }
-            throw new Error('Sync failed');
-        }
-        const data = await res.json();
-        const serverRegistrations = data.registrations || [];
-
-        // Filter to competitors only
-        const serverCompetitors = serverRegistrations.filter(r => !r.type || r.type === undefined);
-
-        if (serverCompetitors.length === 0) {
-            if (!silent && status) {
-                status.textContent = 'No server registrations found.';
-                status.classList.remove('hidden');
-                setTimeout(() => status.classList.add('hidden'), 3000);
-            }
-            return;
-        }
-
-        // Merge into localStorage — dedup by email OR firstName+lastName+dateOfBirth
-        const existing = db.load('competitors');
-        let added = 0;
-
-        serverCompetitors.forEach(sc => {
-            const isDuplicate = existing.some(ec => {
-                // Match by email
-                if (sc.email && ec.email && sc.email.toLowerCase() === ec.email.toLowerCase()) return true;
-                // Match by name + DOB
-                if (sc.firstName && ec.firstName && sc.lastName && ec.lastName &&
-                    sc.firstName.toLowerCase() === ec.firstName.toLowerCase() &&
-                    sc.lastName.toLowerCase() === ec.lastName.toLowerCase() &&
-                    sc.dateOfBirth === ec.dateOfBirth) return true;
-                // Match by serverRegistrationId (already synced)
-                if (sc.serverRegistrationId && ec.serverRegistrationId &&
-                    sc.serverRegistrationId === ec.serverRegistrationId) return true;
-                return false;
-            });
-
-            if (!isDuplicate) {
-                // Assign a numeric ID for localStorage compatibility
-                sc.id = Date.now() + Math.random();
-                existing.push(sc);
-                added++;
-            }
-        });
-
-        if (added > 0) {
-            db.save('competitors', existing);
-            loadCompetitors();
-            // Re-run division assignment so newly-synced competitors are placed
-            // into the correct divisions automatically (mirrors the manual "Generate" button).
-            if (typeof autoAssignToDivisions === 'function' && existing.length > 0) {
-                try { autoAssignToDivisions(existing[0], existing[0].id); } catch(e) { /* non-critical */ }
-            }
-        }
-
-        if (!silent && status) {
-            status.textContent = added > 0
-                ? `Synced ${added} new registration${added > 1 ? 's' : ''} from server.`
-                : 'All server registrations already synced.';
-            status.classList.remove('hidden');
-            setTimeout(() => status.classList.add('hidden'), 4000);
-        }
-    } catch (err) {
-        if (!silent && status && err.message !== 'Not authenticated') {
-            status.textContent = 'Sync failed: ' + err.message;
-            status.style.borderColor = 'rgba(239,68,68,0.3)';
-            status.style.background = 'rgba(239,68,68,0.1)';
-            status.style.color = 'var(--red)';
-            status.classList.remove('hidden');
-            setTimeout(() => {
-                status.classList.add('hidden');
-                status.style.borderColor = '';
-                status.style.background = '';
-                status.style.color = '';
-            }, 4000);
-        }
-    } finally {
-        if (!silent && btn) { btn.disabled = false; btn.textContent = '🔄 Refresh from Server'; }
-    }
-}
-
-// Auto-poll every 30 seconds when competitor view is active
-function startSyncPolling() {
-    stopSyncPolling();
-    syncInterval = setInterval(() => {
-        const competitorView = document.getElementById('competitors-view');
-        if (competitorView && !competitorView.classList.contains('hidden') && Auth.isLoggedIn()) {
-            syncRegistrationsFromServer();
-        }
-    }, 30000);
-}
-
-function stopSyncPolling() {
-    if (syncInterval) {
-        clearInterval(syncInterval);
-        syncInterval = null;
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // AUTH GATE — Login/Signup UI handlers
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -24203,7 +24071,6 @@ window.addEventListener('load', () => {
         if (user) {
             gate.classList.add('hidden');
             updateUserMenu(user);
-            startSyncPolling();
             applyRoleBasedNavVisibility(user);
 
             // Reload the tournament selector so this user only sees their own tournaments.
@@ -24215,7 +24082,6 @@ window.addEventListener('load', () => {
         } else {
             gate.classList.remove('hidden');
             updateUserMenu(null);
-            stopSyncPolling();
             if (academyNavGroup) academyNavGroup.style.display = 'none';
         }
     };
