@@ -20,4 +20,9 @@ router.post('/:id/events/:eventId/templates/sync',
   c.syncTemplates
 );
 
+router.post('/:id/divisions/auto-assign',
+  requireAuth, requireTournamentOwner,
+  c.autoAssignDivisions
+);
+
 module.exports = router;

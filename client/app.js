@@ -8436,6 +8436,32 @@ function saveDivisionTemplate() {
     loadTemplatesList();
 }
 
+// ── Server-side Division Auto-Assign ─────────────────────────────────────────
+
+/**
+ * Call the server's auto-assign endpoint and broadcast results to all devices.
+ * This replaces the client-side autoAssignToDivisions() trigger on the "Generate Divisions" button.
+ */
+async function triggerServerAutoAssign() {
+    if (!currentTournamentId) return;
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
+            method: 'POST',
+            credentials: 'include',
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { generatedDivisions } = await res.json();
+        _msSet(_scopedKey('divisions'), JSON.stringify(generatedDivisions));
+        setSyncIndicator('ok');
+        showMessage('Divisions updated.', 'success');
+        if (typeof loadDivisionsView === 'function') loadDivisionsView();
+    } catch (e) {
+        setSyncIndicator('error');
+        showMessage('Auto-assign failed — please try again.', 'error');
+    }
+}
+
 // Division Generation
 function generateDivisions() {
     console.log('=== GENERATE DIVISIONS CALLED ===');
