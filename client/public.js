@@ -184,6 +184,58 @@ function updatePublicPriceSummary() {
     summaryContainer.style.display = 'block';
 }
 
+// ── Load dynamic registration field options from server ──────────────────────
+async function loadRegistrationFields(tournamentId) {
+  try {
+    const res = await fetch(`/api/tournaments/${tournamentId}/registration-fields`);
+    if (!res.ok) return;
+    const fields = await res.json();
+
+    // Populate rank dropdown
+    const rankSel = document.getElementById('pub-rank');
+    if (rankSel && fields.showBeltRank && fields.beltRankOptions.length) {
+      rankSel.innerHTML = '<option value="">Select Rank</option>' +
+        fields.beltRankOptions.map(o => `<option value="${o}">${o}</option>`).join('');
+      rankSel.closest('.form-group')?.classList.remove('hidden');
+    } else if (rankSel) {
+      rankSel.closest('.form-group')?.classList.add('hidden');
+    }
+
+    // Populate or hide experience field
+    const expGroup = document.getElementById('pub-experience')?.closest('.form-group');
+    if (expGroup) {
+      if (fields.showExperienceLevel && fields.experienceLevelOptions.length) {
+        // Replace number input with select
+        const expInput = document.getElementById('pub-experience');
+        if (expInput && expInput.type === 'number') {
+          const sel = document.createElement('select');
+          sel.id = 'pub-experience';
+          sel.name = expInput.name || 'experience';
+          sel.required = expInput.required;
+          sel.innerHTML = '<option value="">Select Level</option>' +
+            fields.experienceLevelOptions.map(o => `<option value="${o}">${o}</option>`).join('');
+          expInput.replaceWith(sel);
+          const label = expGroup.querySelector('label');
+          if (label) label.textContent = 'Experience Level';
+        }
+        expGroup.classList.remove('hidden');
+      } else {
+        expGroup.classList.add('hidden');
+      }
+    }
+
+    // Show/hide weight
+    const weightGroup = document.getElementById('pub-weight')?.closest('.form-group');
+    if (weightGroup) {
+      fields.showWeight ? weightGroup.classList.remove('hidden') : weightGroup.classList.add('hidden');
+    }
+
+    return fields;
+  } catch (e) {
+    console.warn('[reg-fields] Failed to load:', e);
+  }
+}
+
 // ── Load tournament configuration from server ────────────────────────────────
 async function loadTournamentConfig() {
     const tid = _getTournamentIdFromURL();
@@ -913,6 +965,9 @@ function setupAcademyAutocomplete() {
 // Initialize on page load
 window.addEventListener('load', async () => {
     await loadTournamentConfig();
+    // Load dynamic registration field options (rank, experience, weight)
+    const _regFieldsTid = _getTournamentIdFromURL();
+    if (_regFieldsTid) loadRegistrationFields(_regFieldsTid);
     setupScrollAnimations();
     setupAcademyAutocomplete();
 

@@ -133,6 +133,9 @@ function generateUniqueId() {
 // Active tournament — declared early so scoped-storage helpers can reference it.
 let currentTournamentId = null;
 
+// Cache for registration fields fetched from the server (avoids re-fetching on every modal open)
+let _registrationFields = null;
+
 // Auth-ready promise — resolves with the user (or null) once Auth.init() completes.
 // Used to defer authenticated API calls until auth state is known, preventing 401 noise.
 let _resolveAuthReady;
@@ -2479,6 +2482,63 @@ function clearPhoto() {
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+// ── Registration Fields (director form) ─────────────────────────────────────
+
+async function _loadRegistrationFieldsForDirector(tournamentId) {
+    try {
+        const res = await fetch(`/api/tournaments/${tournamentId}/registration-fields`, { credentials: 'include' });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (e) { return null; }
+}
+
+/**
+ * Apply registration field options to the director competitor form.
+ * Populates rank select, replaces experience input with select if needed,
+ * and shows/hides the weight field.
+ */
+function _applyRegistrationFieldsToDirectorForm(fields) {
+    if (!fields) return;
+
+    // Populate rank dropdown
+    const rankSel = document.getElementById('rank');
+    if (rankSel && fields.showBeltRank && fields.beltRankOptions.length) {
+        rankSel.innerHTML = '<option value="">Select Rank</option>' +
+            fields.beltRankOptions.map(o => `<option value="${o}">${o}</option>`).join('');
+    }
+
+    // Populate or replace experience field
+    const expEl = document.getElementById('experience');
+    if (expEl) {
+        const expGroup = expEl.closest('.form-group');
+        if (fields.showExperienceLevel && fields.experienceLevelOptions.length) {
+            if (expEl.tagName === 'INPUT' && expEl.type === 'number') {
+                const sel = document.createElement('select');
+                sel.id = 'experience';
+                sel.name = expEl.name || 'experience';
+                sel.required = expEl.required;
+                sel.innerHTML = '<option value="">Select Level</option>' +
+                    fields.experienceLevelOptions.map(o => `<option value="${o}">${o}</option>`).join('');
+                expEl.replaceWith(sel);
+                const label = expGroup?.querySelector('label');
+                if (label) label.textContent = 'Experience Level *';
+            }
+            expGroup?.classList.remove('hidden');
+        } else {
+            expGroup?.classList.add('hidden');
+        }
+    }
+
+    // Show/hide weight field
+    const weightEl = document.getElementById('weight');
+    if (weightEl) {
+        const weightGroup = weightEl.closest('.form-group');
+        if (weightGroup) {
+            fields.showWeight ? weightGroup.classList.remove('hidden') : weightGroup.classList.add('hidden');
+        }
+    }
+}
+
 // Competitor Form
 function showCompetitorForm() {
     // If not in edit mode, reset to add mode
@@ -2490,6 +2550,18 @@ function showCompetitorForm() {
     document.getElementById('competitor-form-container').classList.remove('hidden');
     loadClubDropdown();
     loadEventCheckboxes();
+
+    // Load registration fields (use cache if available)
+    if (_registrationFields) {
+        _applyRegistrationFieldsToDirectorForm(_registrationFields);
+    } else if (currentTournamentId) {
+        _loadRegistrationFieldsForDirector(currentTournamentId).then(fields => {
+            if (fields) {
+                _registrationFields = fields;
+                _applyRegistrationFieldsToDirectorForm(fields);
+            }
+        });
+    }
 }
 
 /**

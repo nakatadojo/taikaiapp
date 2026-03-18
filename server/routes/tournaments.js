@@ -8,6 +8,7 @@ const upload = require('../middleware/upload');
 const { validateImageBytes } = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
 const directorCompetitorsController = require('../controllers/directorCompetitorsController');
+const { getRegistrationFields } = require('../controllers/registrationFieldsController');
 
 const router = express.Router();
 
@@ -23,6 +24,9 @@ router.get('/slug/:slug', tournamentController.getTournamentBySlug);
 router.get('/:id/registration-settings',
   require('../controllers/documentController').getRegistrationSettings
 );
+
+// GET /api/tournaments/:id/registration-fields — Dynamic form field options (public)
+router.get('/:id/registration-fields', getRegistrationFields);
 
 // GET /api/tournaments — List all tournaments (legacy)
 router.get('/', optionalAuth, tournamentController.getTournaments);
