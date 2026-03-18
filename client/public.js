@@ -211,6 +211,8 @@ async function loadTournamentConfig() {
             tournamentDate: stored.tournamentDate || t.date,
             location: stored.location || t.location,
             description: stored.description || t.description,
+            // Fall back to the dedicated cover_image_url column (set by wizard / director tools)
+            coverImage: stored.coverImage || t.cover_image_url || null,
         };
 
         // Cache the tournament for getActiveTournament()

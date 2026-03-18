@@ -1103,9 +1103,13 @@ async function _loadPublicSiteConfigFromServer() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        const serverConfig = data.tournament?.public_site_config;
-        if (serverConfig && Object.keys(serverConfig).length > 0) {
-            _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(serverConfig));
+        const serverConfig = data.tournament?.public_site_config || {};
+        const coverImageUrl = data.tournament?.cover_image_url;
+        // Merge: publicSiteConfig.coverImage takes precedence, fall back to cover_image_url column
+        const merged = { ...serverConfig };
+        if (!merged.coverImage && coverImageUrl) merged.coverImage = coverImageUrl;
+        if (Object.keys(merged).length > 0) {
+            _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(merged));
             console.log('[sync] Loaded public site config from server');
         }
     } catch (err) {
@@ -22866,19 +22870,16 @@ document.getElementById('competitor-search')?.addEventListener('input', (e) => {
 });
 
 // Public Site Configuration
-let currentPublicCoverData = null;
+let currentPublicCoverData = null;  // committed URL (string) or null
+let currentPublicCoverFile = null;  // pending File to upload
 let currentPublicLogoData = null;
 
 document.getElementById('public-cover-image')?.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            currentPublicCoverData = event.target.result;
-            document.getElementById('public-cover-preview-img').src = currentPublicCoverData;
-            document.getElementById('public-cover-preview').classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
+        currentPublicCoverFile = file;
+        document.getElementById('public-cover-preview-img').src = URL.createObjectURL(file);
+        document.getElementById('public-cover-preview').classList.remove('hidden');
     }
 });
 
@@ -22897,6 +22898,7 @@ document.getElementById('public-logo')?.addEventListener('change', function(e) {
 
 function clearPublicCover() {
     currentPublicCoverData = null;
+    currentPublicCoverFile = null;
     document.getElementById('public-cover-image').value = '';
     document.getElementById('public-cover-preview').classList.add('hidden');
 }
@@ -22909,10 +22911,33 @@ function clearPublicLogo() {
 
 const publicSiteForm = document.getElementById('public-site-form');
 if (publicSiteForm) {
-    publicSiteForm.addEventListener('submit', (e) => {
+    publicSiteForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         try {
+            const existingConfig = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
+            let coverImageUrl = currentPublicCoverData || existingConfig.coverImage || null;
+
+            // Upload new cover image file via the dedicated endpoint (stores as WebP, not base64)
+            if (currentPublicCoverFile && currentTournamentId) {
+                const formData = new FormData();
+                formData.append('coverImage', currentPublicCoverFile);
+                const uploadRes = await fetch(`/api/tournaments/${currentTournamentId}/cover-image`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData,
+                });
+                if (uploadRes.ok) {
+                    const uploadData = await uploadRes.json();
+                    coverImageUrl = uploadData.coverImageUrl || coverImageUrl;
+                    currentPublicCoverData = coverImageUrl;
+                    currentPublicCoverFile = null;
+                } else {
+                    showMessage('Failed to upload cover image. Other settings were not saved.', 'error');
+                    return;
+                }
+            }
+
             const config = {
                 tournamentId: currentTournamentId || null,
                 tournamentName: document.getElementById('public-tournament-name')?.value || '',
@@ -22920,8 +22945,8 @@ if (publicSiteForm) {
                 location: document.getElementById('public-location')?.value || '',
                 description: document.getElementById('public-description')?.value || '',
                 primaryColor: document.getElementById('public-primary-color')?.value || '#0071e3',
-                coverImage: currentPublicCoverData || JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}').coverImage || null,
-                logo: currentPublicLogoData || JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}').logo || null,
+                coverImage: coverImageUrl,
+                logo: currentPublicLogoData || existingConfig.logo || null,
                 footerText: document.getElementById('public-footer-text')?.value || '',
                 showSchedule: document.getElementById('public-show-schedule')?.checked || false,
                 showResults: document.getElementById('public-show-results')?.checked || false,
@@ -23802,9 +23827,28 @@ window.addEventListener('load', () => {
     }
 
     // Auth initialization
+    let _authUserId = null; // track the currently authenticated user ID
     Auth.onAuthChange = (user) => {
         // Resolve the auth-ready promise on first call so deferred API calls can proceed.
+        const isFirstCall = !!_resolveAuthReady;
         if (_resolveAuthReady) { _resolveAuthReady(user); _resolveAuthReady = null; }
+
+        const newUserId = user?.id || null;
+        const userChanged = newUserId !== _authUserId;
+        _authUserId = newUserId;
+
+        // If the user changed (including logout), clear all tournament state so a
+        // new session never sees a previous user's tournaments.
+        if (userChanged && !isFirstCall) {
+            // Wipe the in-memory store and reset tournament selection
+            Object.keys(_msData).forEach(k => delete _msData[k]);
+            _inMemoryCompetitors = [];
+            currentTournamentId = null;
+            const sel = document.getElementById('active-tournament');
+            if (sel) sel.innerHTML = '<option value="">Select Tournament</option>';
+            document.getElementById('main-nav')?.classList.add('hidden');
+        }
+
         // Reveal the page now that auth state is known (prevents login-screen flash on refresh)
         document.body.style.visibility = 'visible';
         const gate = document.getElementById('auth-gate');
@@ -23814,6 +23858,10 @@ window.addEventListener('load', () => {
             updateUserMenu(user);
             startSyncPolling();
             applyRoleBasedNavVisibility(user);
+
+            // Reload the tournament selector so this user only sees their own tournaments.
+            // This is essential when a second user logs in on the same tab without a page reload.
+            if (userChanged) loadTournamentSelector();
 
             // Academy nav is hidden — dojo management moved to account.html
             if (academyNavGroup) academyNavGroup.style.display = 'none';
