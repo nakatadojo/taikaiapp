@@ -61,7 +61,13 @@ function calculateAge(dateOfBirth, tournamentDate) {
  * Returns the matching range label, or null if no match.
  */
 function matchCriteria(competitor, criteria) {
-  for (const range of criteria.ranges) {
+  // Normalise legacy format: { type:"gender", options:["Male","Female"] }
+  // → { type:"gender", ranges:[{ value:"Male", label:"Male" },...] }
+  // Old division builder versions saved gender as `options` (string array) instead of `ranges`.
+  const ranges = criteria.ranges ||
+    (Array.isArray(criteria.options) ? criteria.options.map(o => ({ value: o, label: o })) : []);
+
+  for (const range of ranges) {
     switch (criteria.type) {
       case 'age':
         if (competitor.age >= range.min && competitor.age <= range.max) {

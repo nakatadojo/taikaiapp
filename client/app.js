@@ -8367,10 +8367,20 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
     }
 
     const currentCriteria = criteria[index];
+    // Normalise legacy format: { type:"gender", options:["Male","Female"] }
+    // → { type:"gender", ranges:[{ value:"Male", label:"Male" },...] }
+    // Old division builder versions saved gender as `options` (string array) instead of `ranges`.
+    if (!currentCriteria.ranges && Array.isArray(currentCriteria.options)) {
+        currentCriteria = {
+            ...currentCriteria,
+            ranges: currentCriteria.options.map(o => ({ value: o, label: o })),
+        };
+    }
+
     console.log(`  → Processing criteria type: ${currentCriteria.type}, Ranges:`, currentCriteria.ranges);
     const divisions = {};
 
-    currentCriteria.ranges.forEach((range, rangeIdx) => {
+    (currentCriteria.ranges || []).forEach((range, rangeIdx) => {
         console.log(`    → Range ${rangeIdx}:`, range);
         let filtered;
 
