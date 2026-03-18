@@ -122,6 +122,7 @@ function updatePublicEventOrder(eventId) {
     }
     updatePublicEventBadges();
     updatePublicPriceSummary();
+    _updateTeamPanelVisibility();
 }
 
 function updatePublicEventBadges() {
@@ -586,6 +587,32 @@ document.getElementById('public-competitor-form')?.addEventListener('submit', as
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
         const totalMsg = pricingData.total > 0 ? ` Total registration fee: $${pricingData.total.toFixed(2)}.` : '';
+
+        // Team registration: create team record after competitor registration succeeds
+        const teamPending = window._pubTeamCreatePending;
+        if (teamPending && teamPending.teamName && data.tournament_id) {
+            const registrantFullName = `${competitor.firstName} ${competitor.lastName}`.trim();
+            const members = [
+                { name: registrantFullName, email: competitor.email, is_registrant: true },
+                ...(teamPending.teammates || []).filter(Boolean),
+            ];
+            try {
+                await fetch(`/api/tournaments/${data.tournament_id}/teams`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        event_id: teamPending.selectedTeamEventId,
+                        team_name: teamPending.teamName,
+                        members,
+                    }),
+                });
+            } catch (teamErr) {
+                console.warn('Team registration failed (non-fatal):', teamErr.message);
+            }
+        }
+        window._pubTeamCreatePending = null;
+
         showSuccessMessage(`Registration submitted successfully!${totalMsg} We will contact you via email with confirmation.`);
         closeRegistrationForm();
         pubSelectedEventOrder = [];
@@ -999,6 +1026,146 @@ window.addEventListener('load', async () => {
         history.replaceState(null, '', window.location.pathname);
     }
 });
+
+// ── Team Registration Panel ───────────────────────────────────────────────────
+
+// Tracks selected teammate data (user_id + name + email) chosen from search
+const _pubTeammates = { 2: null, 3: null };
+
+/**
+ * Show or hide the team panel based on whether any team event is currently selected.
+ */
+function _updateTeamPanelVisibility() {
+    const panel = document.getElementById('team-registration-panel');
+    if (!panel) return;
+    const eventTypes = db.load('eventTypes');
+    const hasTeamEvent = pubSelectedEventOrder.some(id => {
+        const ev = eventTypes.find(e => e.id === id);
+        return ev && ['team-kata', 'team-kumite'].includes(ev.eventType || ev.event_type);
+    });
+    if (hasTeamEvent) {
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
+/**
+ * Search for a competitor to add as teammate n (2 or 3).
+ * Calls GET /api/academies/search?q=...
+ */
+async function searchTeammate(n) {
+    const input = document.getElementById(`pub-teammate${n}-search`);
+    const resultsDiv = document.getElementById(`pub-teammate${n}-results`);
+    if (!input || !resultsDiv) return;
+    const q = input.value.trim();
+    if (q.length < 2) {
+        resultsDiv.innerHTML = '<p style="font-size:13px; color:var(--text-muted);">Enter at least 2 characters to search.</p>';
+        resultsDiv.classList.remove('hidden');
+        return;
+    }
+    resultsDiv.innerHTML = '<p style="font-size:13px; color:var(--text-muted);">Searching...</p>';
+    resultsDiv.classList.remove('hidden');
+    try {
+        const res = await fetch(`/api/academies/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        const academies = data.academies || [];
+        if (!academies.length) {
+            resultsDiv.innerHTML = '<p style="font-size:13px; color:var(--text-muted);">No members found. Enter details manually below.</p>';
+            return;
+        }
+        resultsDiv.innerHTML = academies.slice(0, 8).map(a =>
+            `<div style="padding:8px; cursor:pointer; border-radius:6px; font-size:13px;"
+                  onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                  onmouseout="this.style.background=''"
+                  onclick="selectTeammate(${n}, '${a.id}', ${JSON.stringify((a.name || '').replace(/'/g, "\\'")).replace(/"/g, '&quot;')}, '')">
+               ${a.name}
+             </div>`
+        ).join('');
+    } catch (err) {
+        resultsDiv.innerHTML = '<p style="font-size:13px; color:#ef4444;">Search failed. Enter details manually below.</p>';
+    }
+}
+
+/**
+ * Populate teammate fields when a search result is clicked.
+ */
+function selectTeammate(n, userId, name, email) {
+    _pubTeammates[n] = { user_id: userId, name, email };
+    const parts = name.split(' ');
+    const first = parts[0] || '';
+    const last = parts.slice(1).join(' ') || '';
+    const firstEl = document.getElementById(`pub-teammate${n}-first`);
+    const lastEl = document.getElementById(`pub-teammate${n}-last`);
+    const emailEl = document.getElementById(`pub-teammate${n}-email`);
+    if (firstEl) firstEl.value = first;
+    if (lastEl) lastEl.value = last;
+    if (emailEl) emailEl.value = email || '';
+    const resultsDiv = document.getElementById(`pub-teammate${n}-results`);
+    if (resultsDiv) resultsDiv.classList.add('hidden');
+}
+
+/**
+ * Collect team data from the panel fields for form submission.
+ * Returns null if no team event is selected.
+ */
+function _collectTeamData() {
+    const panel = document.getElementById('team-registration-panel');
+    if (!panel || panel.classList.contains('hidden')) return null;
+
+    const eventTypes = db.load('eventTypes');
+    const selectedTeamEventId = pubSelectedEventOrder.find(id => {
+        const ev = eventTypes.find(e => e.id === id);
+        return ev && ['team-kata', 'team-kumite'].includes(ev.eventType || ev.event_type);
+    });
+    if (!selectedTeamEventId) return null;
+
+    const teamName = (document.getElementById('pub-team-name')?.value || '').trim();
+
+    const getTeammateData = (n) => {
+        if (_pubTeammates[n]) return { ..._pubTeammates[n] };
+        const first = (document.getElementById(`pub-teammate${n}-first`)?.value || '').trim();
+        const last = (document.getElementById(`pub-teammate${n}-last`)?.value || '').trim();
+        const email = (document.getElementById(`pub-teammate${n}-email`)?.value || '').trim();
+        if (!first && !last && !email) return null;
+        return { first_name: first, last_name: last, email, user_id: null };
+    };
+
+    return {
+        selectedTeamEventId,
+        teamName,
+        teammates: [getTeammateData(2), getTeammateData(3)],
+    };
+}
+
+// ── Modify competitor form submit to handle team creation ─────────────────────
+// (patched after the original submit listener is defined — wraps the result handler)
+
+const _origCompetitorSubmit = document.getElementById('public-competitor-form');
+if (_origCompetitorSubmit) {
+    _origCompetitorSubmit.addEventListener('submit', async (e) => {
+        // The original listener fires first (registered earlier) and does the
+        // registration POST. We hook a second listener to create the team afterward.
+        // Because the original listener calls e.preventDefault() we cannot use
+        // a second listener reliably — instead we rely on the modified block below.
+    });
+}
+
+// Override: team creation runs inside the existing submit handler in-place.
+// We add a _pendingTeamData global that the original handler can read after POSTing.
+window._pubTeamCreatePending = null;
+
+// Patch: intercept the form's submit to inject team creation after success.
+(function patchCompetitorFormForTeams() {
+    const form = document.getElementById('public-competitor-form');
+    if (!form) return;
+
+    // We patch by adding a capture-phase listener that stores team data
+    form.addEventListener('submit', (e) => {
+        const td = _collectTeamData();
+        window._pubTeamCreatePending = td;
+    }, true /* capture, fires before bubble */);
+})();
 
 // Close modals on escape key
 document.addEventListener('keydown', (e) => {

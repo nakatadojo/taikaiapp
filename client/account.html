@@ -1056,9 +1056,44 @@
                         : `<div class="member-list">${members.map(m => renderMemberRow(m, academy.id)).join('')}</div>`
                     }
                 </div>
+
+                <!-- Register a Team -->
+                <div class="dojo-teams-section" style="margin-top:32px; border-top:1px solid var(--border); padding-top:24px;">
+                  <h3 style="font-size:16px; margin:0 0 12px;">Register a Team</h3>
+                  <div style="display:grid; gap:12px; max-width:500px;">
+                    <div class="form-group">
+                      <label>Tournament</label>
+                      <select id="dojo-team-tournament" onchange="loadTeamEvents()" style="width:100%;">
+                        <option value="">Select tournament...</option>
+                      </select>
+                    </div>
+                    <div class="form-group hidden" id="dojo-team-event-group">
+                      <label>Team Event</label>
+                      <select id="dojo-team-event" style="width:100%;">
+                        <option value="">Select event...</option>
+                      </select>
+                    </div>
+                    <div class="form-group hidden" id="dojo-team-name-group">
+                      <label>Team Name</label>
+                      <input type="text" id="dojo-team-name" placeholder="e.g. Dragon Dojo A" maxlength="60" class="form-input">
+                    </div>
+                    <div id="dojo-team-members-section" class="hidden">
+                      <label style="font-size:13px; font-weight:600; color:var(--text); display:block; margin-bottom:8px;">Select 3 Members from Roster</label>
+                      <div id="dojo-team-member-list" style="display:grid; gap:6px;"></div>
+                      <p id="dojo-team-member-count" style="font-size:12px; color:var(--text-muted); margin-top:8px;">0/3 selected</p>
+                    </div>
+                    <button class="btn btn-primary hidden" id="dojo-team-submit-btn" onclick="submitDojoTeamRegistration()">
+                      Register Team
+                    </button>
+                    <div id="dojo-team-result" style="font-size:13px;"></div>
+                  </div>
+                </div>
             `;
-            // Track the academy id for CSV import
+            // Track the academy id for CSV import and team registration
             window._currentAcademyId = academy.id;
+
+            // Load tournaments for the team registration select
+            loadTeamTournaments();
 
             // Wire up the CSV file-picker change handler (re-attach after innerHTML replace)
             const csvInput = document.getElementById('csv-import-input');
@@ -1155,6 +1190,110 @@
                 if (btn) btn.disabled = true;
             } else {
                 if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(data.error || 'Import failed')}</span>`;
+            }
+        } catch (e) {
+            if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(e.message)}</span>`;
+        }
+    };
+
+    // ── Dojo Team Registration ────────────────────────────────────────────────
+
+    window.loadTeamTournaments = async function() {
+        const sel = document.getElementById('dojo-team-tournament');
+        if (!sel) return;
+        try {
+            const res = await fetch('/api/tournaments', { credentials: 'include' });
+            const data = await res.json();
+            const tournaments = (data.tournaments || []).filter(t => t.registration_open || t.registrationOpen);
+            sel.innerHTML = '<option value="">Select tournament...</option>' +
+                tournaments.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+        } catch (e) {
+            console.warn('loadTeamTournaments failed:', e.message);
+        }
+    };
+
+    window.loadTeamEvents = async function() {
+        const tId = document.getElementById('dojo-team-tournament')?.value;
+        if (!tId) return;
+        try {
+            const res = await fetch(`/api/tournaments/${tId}/events`, { credentials: 'include' });
+            const data = await res.json();
+            // Events may be at top level or in events/eventTypes array
+            const allEvents = data.events || data.eventTypes || [];
+            const teamEvents = allEvents.filter(e => ['team-kata', 'team-kumite'].includes(e.event_type || e.eventType));
+            const sel = document.getElementById('dojo-team-event');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Select event...</option>' +
+                teamEvents.map(e => `<option value="${esc(e.id)}" data-price="${e.team_price || 0}">${esc(e.name)} — $${parseFloat(e.team_price || 0).toFixed(2)}</option>`).join('');
+            document.getElementById('dojo-team-event-group')?.classList.remove('hidden');
+            document.getElementById('dojo-team-name-group')?.classList.remove('hidden');
+            await loadDojoMembersForTeam();
+        } catch (e) {
+            console.warn('loadTeamEvents failed:', e.message);
+        }
+    };
+
+    async function loadDojoMembersForTeam() {
+        const academyId = window._currentAcademyId;
+        if (!academyId) return;
+        try {
+            const res = await fetch(`/api/academies/${academyId}/members`, { credentials: 'include' });
+            const data = await res.json();
+            const section = document.getElementById('dojo-team-members-section');
+            const list = document.getElementById('dojo-team-member-list');
+            if (!section || !list) return;
+            section.classList.remove('hidden');
+            const membersArr = data.members || [];
+            list.innerHTML = membersArr.map(m => `
+                <label style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--surface); border-radius:8px; cursor:pointer;">
+                  <input type="checkbox" value="${esc(m.user_id || m.id)}" data-name="${esc((m.first_name || '') + ' ' + (m.last_name || ''))}" data-email="${esc(m.email || '')}" onchange="updateTeamMemberCount()">
+                  <span style="font-size:14px;">${esc((m.first_name || m.firstName || '') + ' ' + (m.last_name || m.lastName || ''))}</span>
+                  ${m.belt_rank ? `<span style="font-size:11px; color:var(--text-muted);">${esc(m.belt_rank)}</span>` : ''}
+                </label>
+            `).join('');
+            const btn = document.getElementById('dojo-team-submit-btn');
+            if (btn) btn.classList.remove('hidden');
+        } catch (e) {
+            console.warn('loadDojoMembersForTeam failed:', e.message);
+        }
+    }
+
+    window.updateTeamMemberCount = function() {
+        const checked = document.querySelectorAll('#dojo-team-member-list input:checked');
+        const countEl = document.getElementById('dojo-team-member-count');
+        if (countEl) countEl.textContent = `${checked.length}/3 selected`;
+    };
+
+    window.submitDojoTeamRegistration = async function() {
+        const tId = document.getElementById('dojo-team-tournament')?.value;
+        const eventId = document.getElementById('dojo-team-event')?.value;
+        const teamName = document.getElementById('dojo-team-name')?.value.trim();
+        const checked = [...document.querySelectorAll('#dojo-team-member-list input:checked')];
+        const resultDiv = document.getElementById('dojo-team-result');
+
+        if (!tId || !eventId || !teamName || checked.length !== 3) {
+            if (resultDiv) resultDiv.innerHTML = '<span style="color:#ef4444">Please fill all fields and select exactly 3 members.</span>';
+            return;
+        }
+
+        const members = checked.map(c => ({
+            name: c.dataset.name,
+            email: c.dataset.email,
+            user_id: c.value,
+        }));
+
+        try {
+            const res = await fetch(`/api/tournaments/${tId}/teams`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ event_id: eventId, team_name: teamName, members }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (resultDiv) resultDiv.innerHTML = '<span style="color:#22c55e">&#10003; Team registered! Director will confirm payment.</span>';
+            } else {
+                if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(data.error || 'Failed')}</span>`;
             }
         } catch (e) {
             if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(e.message)}</span>`;

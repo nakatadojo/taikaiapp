@@ -455,4 +455,19 @@ const testDataController = require('../controllers/testDataController');
 router.post('/:id/generate-test-data', requireAuth, requireTournamentOwner, testDataController.generateTestData);
 router.post('/:id/clear-test-data', requireAuth, requireTournamentOwner, testDataController.clearTestData);
 
+// ── Team Registration ────────────────────────────────────────────────────────
+const { getTeams, createTeam, updateTeam, markTeamPayment } = require('../controllers/teamsController');
+
+// GET /api/tournaments/:id/teams — list teams (director + authenticated users)
+router.get('/:id/teams', requireAuth, getTeams);
+
+// POST /api/tournaments/:id/teams — create a team
+router.post('/:id/teams', requireAuth, createTeam);
+
+// PUT /api/tournaments/:id/teams/:teamId — update team (creator or director)
+router.put('/:id/teams/:teamId', requireAuth, updateTeam);
+
+// PATCH /api/tournaments/:id/teams/:teamId/payment — mark payment (director only)
+router.patch('/:id/teams/:teamId/payment', requireAuth, markTeamPayment);
+
 module.exports = router;

@@ -2290,6 +2290,9 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'checkin') {
             loadCheckinView();
         }
+        if (view === 'teams') {
+            loadTeamsDashboard();
+        }
     });
 });
 
@@ -24968,4 +24971,125 @@ function exportFeedbackCSV() {
     const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
     if (!tid) return;
     window.open(`/api/tournaments/${tid}/feedback-form/export.csv`, '_blank');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TEAMS DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function loadTeamsDashboard() {
+    if (!currentTournamentId) return;
+
+    const filterEventId = document.getElementById('teams-event-filter')?.value || '';
+    const list = document.getElementById('teams-list');
+    const empty = document.getElementById('teams-empty');
+    if (!list) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams`, { credentials: 'include' });
+        if (!res.ok) {
+            list.innerHTML = '<p style="color:var(--text-muted)">Failed to load teams.</p>';
+            return;
+        }
+        const data = await res.json();
+        let teams = data.teams || [];
+
+        // Populate event filter on first load
+        const filterSel = document.getElementById('teams-event-filter');
+        if (filterSel && filterSel.options.length <= 1 && teams.length > 0) {
+            const seen = new Set();
+            teams.forEach(t => {
+                if (!seen.has(t.event_id)) {
+                    seen.add(t.event_id);
+                    const opt = document.createElement('option');
+                    opt.value = t.event_id;
+                    opt.textContent = t.event_name || t.event_id;
+                    filterSel.appendChild(opt);
+                }
+            });
+        }
+
+        if (filterEventId) teams = teams.filter(t => t.event_id === filterEventId);
+
+        if (!teams.length) {
+            list.innerHTML = '';
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+
+        list.innerHTML = teams.map(team => {
+            const members = team.members || [];
+            const unclaimedCount = members.filter(m => !m.user_id && !m.account_claimed).length;
+
+            const payBadge = team.payment_status === 'paid'
+                ? '<span style="background:#22c55e22; color:#22c55e; padding:2px 8px; border-radius:4px; font-size:11px;">Paid</span>'
+                : team.payment_status === 'waived'
+                ? '<span style="background:#7c3aed22; color:#a78bfa; padding:2px 8px; border-radius:4px; font-size:11px;">Waived</span>'
+                : '<span style="background:#f59e0b22; color:#f59e0b; padding:2px 8px; border-radius:4px; font-size:11px;">Unpaid</span>';
+
+            const unclaimedBadge = unclaimedCount > 0
+                ? `<span style="background:#fbbf2422; color:#fbbf24; padding:2px 8px; border-radius:4px; font-size:11px;">&#9888; ${unclaimedCount} unregistered</span>`
+                : '';
+
+            const memberRows = members.map((m, i) => {
+                const name = m.name || ((m.first_name || '') + ' ' + (m.last_name || '')).trim() || '—';
+                const noAccount = !m.user_id ? '<span style="font-size:10px; color:#f59e0b; margin-left:4px;">no account</span>' : '';
+                return `<div style="font-size:13px; color:var(--text); display:flex; align-items:center; gap:6px;">
+                    <span style="color:var(--text-muted); font-size:11px;">${i + 1}.</span>
+                    ${_escapeHtml(name)}${noAccount}
+                </div>`;
+            }).join('');
+
+            const teamIdEsc = _escapeHtml(team.id);
+            const markPaidBtn = team.payment_status !== 'paid'
+                ? `<button class="btn btn-secondary btn-small" onclick="markTeamPaid('${teamIdEsc}')">Mark Paid</button>`
+                : '';
+
+            return `
+                <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+                        <div>
+                            <div style="font-size:15px; font-weight:600; color:var(--text);">${_escapeHtml(team.team_name)}</div>
+                            <div style="font-size:12px; color:var(--text-muted);">${_escapeHtml(team.event_name || '')}</div>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">${payBadge}${unclaimedBadge}</div>
+                    </div>
+                    <div style="display:grid; gap:4px; margin-bottom:12px;">${memberRows}</div>
+                    <div style="display:flex; gap:8px;">
+                        ${markPaidBtn}
+                        <button class="btn btn-secondary btn-small" onclick="editTeamMembers('${teamIdEsc}')">Edit Members</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        if (list) list.innerHTML = `<p style="color:var(--text-muted)">Error loading teams: ${_escapeHtml(err.message)}</p>`;
+    }
+}
+
+async function markTeamPaid(teamId) {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/${teamId}/payment`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ payment_status: 'paid' }),
+        });
+        if (res.ok) {
+            showMessage('Team marked as paid');
+            loadTeamsDashboard();
+        } else {
+            const d = await res.json();
+            showMessage('Error: ' + (d.error || 'Failed'), 'error');
+        }
+    } catch (err) {
+        showMessage('Error: ' + err.message, 'error');
+    }
+}
+
+function editTeamMembers(teamId) {
+    // Placeholder — opens a simple prompt for now; can be expanded to a full modal
+    showMessage('Edit team members coming soon. Use the API directly to update.', 'info');
 }

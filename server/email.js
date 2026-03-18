@@ -248,6 +248,42 @@ async function sendDojoMemberNotification({ toEmail, toName, dojoName, competito
   return sendEmail(toEmail, `New member added to your dojo: ${competitorName}`, html);
 }
 
+/**
+ * Send team invite email to a competitor added to a team.
+ * For members who don't have an account yet, includes a claim/setup link.
+ */
+async function sendTeamInviteEmail({ toEmail, toName, teamName, tournamentName, addedByName, claimUrl }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background:#0d0d0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+      <div style="max-width:520px;margin:40px auto;padding:32px 28px;background:#1a1a1e;border-radius:16px;border:1px solid rgba(255,255,255,0.08);">
+        <div style="margin-bottom:24px;">
+          <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Taikai</span>
+          <span style="font-size:12px;color:#888;margin-left:8px;">by Kimesoft</span>
+        </div>
+        <h2 style="color:#ffffff;font-size:20px;font-weight:600;margin:0 0 12px;">You've been added to team <span style="color:#e67e22;">${escHtml(teamName)}</span></h2>
+        <p style="color:#aaa;font-size:15px;line-height:1.6;margin:0 0 24px;">
+          Hi ${escHtml(toName)},<br><br>
+          <strong style="color:#ddd;">${escHtml(addedByName)}</strong> has added you to team
+          <strong style="color:#ddd;">${escHtml(teamName)}</strong> for
+          <strong style="color:#ddd;">${escHtml(tournamentName)}</strong>.
+          Set up your account to view your team details and registration status.
+        </p>
+        <a href="${claimUrl}" style="display:inline-block;padding:14px 28px;background:#e67e22;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">
+          View your team &amp; set up account
+        </a>
+        <p style="color:#555;font-size:12px;margin-top:32px;line-height:1.5;">
+          If you weren't expecting this, you can ignore this email. This link expires in 7 days.
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+  return sendEmail(toEmail, `You've been added to team ${teamName} at ${tournamentName}`, html);
+}
+
 /** Minimal HTML entity escaper for inline email templates. */
 function escHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -267,6 +303,7 @@ module.exports = {
   sendTournamentInviteEmail,
   sendDojoInviteEmail,
   sendDojoMemberNotification,
+  sendTeamInviteEmail,
   APP_URL,
   EMAIL_FROM,
   templates,

@@ -408,6 +408,7 @@
                     <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
                     <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> Officials</button>
                     <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> Staff</button>
+                    <button class="nav-btn" data-view="teams"><i data-lucide="users-round" class="nav-icon"></i> Teams</button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
@@ -2915,6 +2916,21 @@
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- ===== TEAMS VIEW ===== -->
+            <section id="teams-view" class="view">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <h2 style="margin-bottom:4px;">Registered Teams</h2>
+                        <p class="hint" style="margin:0;">View and manage team registrations for this tournament.</p>
+                    </div>
+                    <select id="teams-event-filter" onchange="loadTeamsDashboard()" style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:13px;">
+                        <option value="">All Events</option>
+                    </select>
+                </div>
+                <div id="teams-list" style="display:grid; gap:12px;"></div>
+                <p id="teams-empty" style="text-align:center; color:var(--text-muted); padding:40px 0; display:none;">No teams registered yet.</p>
             </section>
 
             </main>
