@@ -1,46 +1,51 @@
+/**
+ * Migration 050 — Team Registration Schema
+ *
+ * Written as pure pgm.sql() calls with IF NOT EXISTS guards on every statement.
+ * This is the safest pattern for this runner — avoids all pgm helper edge cases.
+ */
 exports.up = pgm => {
-  // tournament_events: flat team price
-  pgm.addColumn('tournament_events', {
-    team_price: { type: 'decimal(10,2)' },
-  });
-
-  // registrations: link to team
-  pgm.addColumn('registrations', {
-    team_id: { type: 'uuid', references: '"tournament_teams"', onDelete: 'SET NULL' },
-  });
-
-  // tournament_teams: payment tracking + ownership
-  pgm.addColumn('tournament_teams', {
-    payment_status: { type: 'varchar(20)', default: "'unpaid'" },
-    registered_by:  { type: 'uuid', references: '"users"', onDelete: 'SET NULL' },
-    stripe_session_id: { type: 'varchar(255)' },
-  });
-
-  // users: explicit account activation flag
-  pgm.addColumn('users', {
-    account_claimed: { type: 'boolean', notNull: true, default: false },
-  });
-  // Backfill: anyone with a password_hash already has an active account
-  pgm.sql(`UPDATE users SET account_claimed = true WHERE password_hash IS NOT NULL;`);
-
-  // tournaments: weight field requirement toggle
-  pgm.addColumn('tournaments', {
-    require_weight_at_registration: { type: 'boolean', notNull: true, default: false },
-  });
-
-  // tournament_teams: unique team name per tournament (case-insensitive)
-  // Must use raw SQL — pgm.createIndex does not support functional expressions
   pgm.sql(`
+    -- tournament_events: flat team price
+    ALTER TABLE tournament_events
+      ADD COLUMN IF NOT EXISTS team_price DECIMAL(10,2);
+
+    -- registrations: FK to the team this registration belongs to
+    ALTER TABLE registrations
+      ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES tournament_teams(id) ON DELETE SET NULL;
+
+    -- tournament_teams: payment tracking + ownership
+    ALTER TABLE tournament_teams
+      ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'unpaid',
+      ADD COLUMN IF NOT EXISTS registered_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(255);
+
+    -- users: explicit account activation flag
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS account_claimed BOOLEAN NOT NULL DEFAULT false;
+
+    -- Backfill: anyone who already has a password is claimed
+    UPDATE users SET account_claimed = true WHERE password_hash IS NOT NULL;
+
+    -- tournaments: weight requirement toggle
+    ALTER TABLE tournaments
+      ADD COLUMN IF NOT EXISTS require_weight_at_registration BOOLEAN NOT NULL DEFAULT false;
+
+    -- team name must be unique within a tournament (case-insensitive)
     CREATE UNIQUE INDEX IF NOT EXISTS idx_tournament_teams_name_lower
       ON tournament_teams (tournament_id, lower(team_name));
   `);
 };
 
 exports.down = pgm => {
-  pgm.sql(`DROP INDEX IF EXISTS idx_tournament_teams_name_lower;`);
-  pgm.dropColumn('tournaments', 'require_weight_at_registration', { ifExists: true });
-  pgm.dropColumn('users', 'account_claimed', { ifExists: true });
-  pgm.dropColumn('tournament_teams', ['stripe_session_id', 'registered_by', 'payment_status'], { ifExists: true });
-  pgm.dropColumn('registrations', 'team_id', { ifExists: true });
-  pgm.dropColumn('tournament_events', 'team_price', { ifExists: true });
+  pgm.sql(`
+    DROP INDEX IF EXISTS idx_tournament_teams_name_lower;
+    ALTER TABLE tournaments       DROP COLUMN IF EXISTS require_weight_at_registration;
+    ALTER TABLE users             DROP COLUMN IF EXISTS account_claimed;
+    ALTER TABLE tournament_teams  DROP COLUMN IF EXISTS stripe_session_id,
+                                  DROP COLUMN IF EXISTS registered_by,
+                                  DROP COLUMN IF EXISTS payment_status;
+    ALTER TABLE registrations     DROP COLUMN IF EXISTS team_id;
+    ALTER TABLE tournament_events DROP COLUMN IF EXISTS team_price;
+  `);
 };
