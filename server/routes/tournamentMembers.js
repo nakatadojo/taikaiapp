@@ -4,8 +4,17 @@ const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/tournamentMemberController');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
+
+// POST /api/tournament-members/photo — Upload a member application photo
+// Must be before /:id routes to avoid UUID conflict
+router.post('/photo',
+  requireAuth,
+  upload.single('photo'),
+  controller.uploadPhoto
+);
 
 // POST /api/tournament-members — Apply for a role
 router.post('/',

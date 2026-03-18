@@ -10,7 +10,7 @@ const QRCode = require('qrcode');
  */
 async function apply(req, res, next) {
   try {
-    const { tournamentId, role, staffRole } = req.body;
+    const { tournamentId, role, staffRole, phone, dob, nationality, classification, school, alsoCompeting, photoUrl } = req.body;
     const validRoles = ['coach', 'judge', 'staff', 'parent'];
     if (!validRoles.includes(role)) {
       return res.status(400).json({ error: 'Invalid role. Must be coach, judge, staff, or parent.' });
@@ -21,11 +21,22 @@ async function apply(req, res, next) {
       return res.status(404).json({ error: 'Tournament not found' });
     }
 
+    // Build metadata object with any extra application fields
+    const metadata = {};
+    if (phone)          metadata.phone          = phone;
+    if (dob)            metadata.dob            = dob;
+    if (nationality)    metadata.nationality    = nationality;
+    if (classification) metadata.classification = classification;
+    if (school)         metadata.school         = school;
+    if (alsoCompeting !== undefined) metadata.alsoCompeting = !!alsoCompeting;
+
     const member = await tournamentMemberQueries.create({
       userId: req.user.id,
       tournamentId,
       role,
       staffRole: role === 'staff' ? staffRole : null,
+      metadata: Object.keys(metadata).length ? metadata : null,
+      photoUrl: photoUrl || null,
     });
 
     // Create notification for tournament director
@@ -343,4 +354,22 @@ async function getMembershipQR(req, res, next) {
   }
 }
 
-module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, getMembershipQR, staffDashboard, checkIn, undoCheckIn };
+/**
+ * POST /api/tournament-members/photo
+ * Upload a photo for a tournament member application.
+ * Returns the stored URL which the client includes when submitting the application.
+ */
+async function uploadPhoto(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo uploaded' });
+    }
+    const { uploadFile } = require('../config/storage');
+    const photoUrl = await uploadFile(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.json({ photoUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { apply, list, listPublic, approve, decline, myTournaments, getMembership, getMembershipQR, staffDashboard, checkIn, undoCheckIn, uploadPhoto };

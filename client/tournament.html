@@ -1650,6 +1650,14 @@
     </div>
 </div>
 
+<!-- Judge Registration Modal -->
+<div class="modal-overlay" id="judge-modal">
+    <div class="modal" style="position:relative;">
+        <button class="modal-close" onclick="closeJudgeModal()">&times;</button>
+        <div id="judge-modal-content"></div>
+    </div>
+</div>
+
 <!-- Staff Sub-Role Modal -->
 <div class="modal-overlay" id="staff-modal">
     <div class="modal" style="position:relative;">
@@ -2408,31 +2416,91 @@
 
     function doCoachRegistration() {
         const content = document.getElementById('coach-modal-content');
+        const u = currentUser || {};
         content.innerHTML = `
             <div class="reg-step-title">Register as Coach</div>
             <div class="reg-step-subtitle">Support your athletes at ${esc(currentTournamentData.name)}</div>
-            <div class="modal-field">
-                <label>Dojo / Academy Name *</label>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div class="modal-field">
+                    <label>First Name</label>
+                    <input type="text" id="coach-first-name" value="${esc(u.first_name||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Last Name</label>
+                    <input type="text" id="coach-last-name" value="${esc(u.last_name||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Email</label>
+                    <input type="email" id="coach-email" value="${esc(u.email||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Phone *</label>
+                    <input type="tel" id="coach-phone" placeholder="+1 (555) 000-0000" value="${esc(u.phone||'')}">
+                </div>
+                <div class="modal-field">
+                    <label>Date of Birth *</label>
+                    <input type="date" id="coach-dob">
+                </div>
+                <div class="modal-field">
+                    <label>Nationality</label>
+                    <input type="text" id="coach-nationality" placeholder="e.g. Mexican, American...">
+                </div>
+            </div>
+
+            <div class="modal-field" style="margin-bottom:12px;">
+                <label>Dojo / School *</label>
                 <input type="text" id="coach-dojo-name" placeholder="Enter your dojo name or search existing..." oninput="searchDojos(this.value)">
                 <div id="dojo-suggestions" style="margin-top:4px;"></div>
             </div>
-            <div id="dojo-create-fields" style="display:none;">
-                <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Creating a new dojo — you'll be able to manage its profile later.</p>
-                <div class="modal-field">
-                    <label>City</label>
-                    <input type="text" id="coach-dojo-city" placeholder="City (optional)">
-                </div>
-                <div class="modal-field">
-                    <label>State</label>
-                    <input type="text" id="coach-dojo-state" placeholder="State (optional)">
+            <div id="dojo-create-fields" style="display:none;margin-bottom:12px;">
+                <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Creating a new dojo — you can manage its profile later.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="modal-field">
+                        <label>City</label>
+                        <input type="text" id="coach-dojo-city" placeholder="City (optional)">
+                    </div>
+                    <div class="modal-field">
+                        <label>State</label>
+                        <input type="text" id="coach-dojo-state" placeholder="State (optional)">
+                    </div>
                 </div>
             </div>
+
+            <div class="modal-field" style="margin-bottom:12px;">
+                <label>Photo</label>
+                <input type="file" id="coach-photo" accept="image/*" style="margin-top:4px;">
+                <div id="coach-photo-preview" style="margin-top:8px;display:none;">
+                    <img id="coach-photo-img" style="width:80px;height:80px;object-fit:cover;border-radius:50%;border:2px solid var(--border);">
+                </div>
+            </div>
+
+            <div class="modal-field" style="margin-bottom:16px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="coach-also-competing" style="width:auto;">
+                    <span>I am also competing as an athlete in this tournament</span>
+                </label>
+            </div>
+
             <div class="modal-error" id="coach-error"></div>
             <div class="reg-nav-btns">
                 <button class="reg-nav-btn secondary" onclick="closeCoachModal()">Cancel</button>
                 <button class="reg-nav-btn primary" onclick="submitCoachRegistration()" id="coach-submit-btn">Submit Application</button>
             </div>
         `;
+
+        // Photo preview
+        document.getElementById('coach-photo').addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('coach-photo-img').src = e.target.result;
+                document.getElementById('coach-photo-preview').style.display = '';
+            };
+            reader.readAsDataURL(file);
+        });
+
         document.getElementById('coach-modal').classList.add('active');
     }
 
@@ -2472,22 +2540,36 @@
         errEl.style.display = 'none';
         const btn = document.getElementById('coach-submit-btn');
         const dojoName = document.getElementById('coach-dojo-name').value.trim();
+        const phone    = document.getElementById('coach-phone').value.trim();
+        const dob      = document.getElementById('coach-dob').value;
 
-        if (!dojoName) {
-            errEl.textContent = 'Please enter your dojo name.'; errEl.style.display = 'block'; return;
-        }
+        if (!dojoName) { errEl.textContent = 'Please enter your dojo / school name.'; errEl.style.display = 'block'; return; }
+        if (!phone)    { errEl.textContent = 'Please enter your phone number.'; errEl.style.display = 'block'; return; }
+        if (!dob)      { errEl.textContent = 'Please enter your date of birth.'; errEl.style.display = 'block'; return; }
 
         btn.disabled = true; btn.textContent = 'Submitting...';
 
         try {
-            // Create dojo if new
+            // 1. Upload photo if provided
+            let photoUrl = null;
+            const photoFile = document.getElementById('coach-photo').files[0];
+            if (photoFile) {
+                const fd = new FormData();
+                fd.append('photo', photoFile);
+                const photoRes = await fetch('/api/tournament-members/photo', { method: 'POST', credentials: 'include', body: fd });
+                const photoData = await photoRes.json();
+                if (!photoRes.ok) throw new Error(photoData.error || 'Photo upload failed');
+                photoUrl = photoData.photoUrl;
+            }
+
+            // 2. Create dojo if new
             if (!selectedAcademyId) {
                 const dojoRes = await fetch('/api/academies', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                     body: JSON.stringify({
                         name: dojoName,
-                        city: document.getElementById('coach-dojo-city').value.trim() || undefined,
-                        state: document.getElementById('coach-dojo-state').value.trim() || undefined,
+                        city: document.getElementById('coach-dojo-city')?.value.trim() || undefined,
+                        state: document.getElementById('coach-dojo-state')?.value.trim() || undefined,
                     }),
                 });
                 const dojoData = await dojoRes.json();
@@ -2495,10 +2577,19 @@
                 selectedAcademyId = dojoData.academy ? dojoData.academy.id : dojoData.id;
             }
 
-            // Submit tournament member application
+            // 3. Submit application
             const res = await fetch('/api/tournament-members', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-                body: JSON.stringify({ tournamentId: currentTournamentData.id, role: 'coach' }),
+                body: JSON.stringify({
+                    tournamentId: currentTournamentData.id,
+                    role: 'coach',
+                    phone,
+                    dob,
+                    school: dojoName,
+                    nationality: document.getElementById('coach-nationality').value.trim() || undefined,
+                    alsoCompeting: document.getElementById('coach-also-competing').checked,
+                    photoUrl,
+                }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to submit application');
@@ -2520,19 +2611,147 @@
         doJudgeRegistration();
     };
 
-    async function doJudgeRegistration() {
+    function doJudgeRegistration() {
+        const content = document.getElementById('judge-modal-content');
+        const u = currentUser || {};
+        content.innerHTML = `
+            <div class="reg-step-title">Register as Official / Judge</div>
+            <div class="reg-step-subtitle">Apply to officiate at ${esc(currentTournamentData.name)}</div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div class="modal-field">
+                    <label>First Name</label>
+                    <input type="text" id="judge-first-name" value="${esc(u.first_name||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Last Name</label>
+                    <input type="text" id="judge-last-name" value="${esc(u.last_name||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Email</label>
+                    <input type="email" id="judge-email" value="${esc(u.email||'')}" readonly style="opacity:.6;">
+                </div>
+                <div class="modal-field">
+                    <label>Phone *</label>
+                    <input type="tel" id="judge-phone" placeholder="+1 (555) 000-0000" value="${esc(u.phone||'')}">
+                </div>
+                <div class="modal-field">
+                    <label>Date of Birth *</label>
+                    <input type="date" id="judge-dob">
+                </div>
+                <div class="modal-field">
+                    <label>Nationality *</label>
+                    <input type="text" id="judge-nationality" placeholder="e.g. Mexican, American...">
+                </div>
+                <div class="modal-field">
+                    <label>Classification / Judging Level *</label>
+                    <select id="judge-classification">
+                        <option value="">Select level...</option>
+                        <option value="International">International</option>
+                        <option value="National">National</option>
+                        <option value="Regional">Regional</option>
+                        <option value="State">State</option>
+                        <option value="Local">Local</option>
+                        <option value="Trainee">Trainee</option>
+                    </select>
+                </div>
+                <div class="modal-field">
+                    <label>School / Academy *</label>
+                    <input type="text" id="judge-school" placeholder="Your dojo or affiliation">
+                </div>
+            </div>
+
+            <div class="modal-field" style="margin-bottom:12px;">
+                <label>Photo</label>
+                <input type="file" id="judge-photo" accept="image/*" style="margin-top:4px;">
+                <div id="judge-photo-preview" style="margin-top:8px;display:none;">
+                    <img id="judge-photo-img" style="width:80px;height:80px;object-fit:cover;border-radius:50%;border:2px solid var(--border);">
+                </div>
+            </div>
+
+            <div class="modal-field" style="margin-bottom:16px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="judge-also-competing" style="width:auto;">
+                    <span>I am also competing as an athlete in this tournament</span>
+                </label>
+            </div>
+
+            <div class="modal-error" id="judge-error"></div>
+            <div class="reg-nav-btns">
+                <button class="reg-nav-btn secondary" onclick="closeJudgeModal()">Cancel</button>
+                <button class="reg-nav-btn primary" onclick="submitJudgeRegistration()" id="judge-submit-btn">Submit Application</button>
+            </div>
+        `;
+
+        // Photo preview
+        document.getElementById('judge-photo').addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('judge-photo-img').src = e.target.result;
+                document.getElementById('judge-photo-preview').style.display = '';
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('judge-modal').classList.add('active');
+    }
+
+    window.closeJudgeModal = function() { document.getElementById('judge-modal').classList.remove('active'); };
+
+    window.submitJudgeRegistration = async function() {
+        const errEl = document.getElementById('judge-error');
+        errEl.style.display = 'none';
+        const btn = document.getElementById('judge-submit-btn');
+        const phone          = document.getElementById('judge-phone').value.trim();
+        const dob            = document.getElementById('judge-dob').value;
+        const nationality    = document.getElementById('judge-nationality').value.trim();
+        const classification = document.getElementById('judge-classification').value;
+        const school         = document.getElementById('judge-school').value.trim();
+
+        if (!phone)          { errEl.textContent = 'Please enter your phone number.';       errEl.style.display = 'block'; return; }
+        if (!dob)            { errEl.textContent = 'Please enter your date of birth.';       errEl.style.display = 'block'; return; }
+        if (!nationality)    { errEl.textContent = 'Please enter your nationality.';          errEl.style.display = 'block'; return; }
+        if (!classification) { errEl.textContent = 'Please select your classification level.'; errEl.style.display = 'block'; return; }
+        if (!school)         { errEl.textContent = 'Please enter your school / academy.';    errEl.style.display = 'block'; return; }
+
+        btn.disabled = true; btn.textContent = 'Submitting...';
+
         try {
+            // Upload photo if provided
+            let photoUrl = null;
+            const photoFile = document.getElementById('judge-photo').files[0];
+            if (photoFile) {
+                const fd = new FormData();
+                fd.append('photo', photoFile);
+                const photoRes = await fetch('/api/tournament-members/photo', { method: 'POST', credentials: 'include', body: fd });
+                const photoData = await photoRes.json();
+                if (!photoRes.ok) throw new Error(photoData.error || 'Photo upload failed');
+                photoUrl = photoData.photoUrl;
+            }
+
             const res = await fetch('/api/tournament-members', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-                body: JSON.stringify({ tournamentId: currentTournamentData.id, role: 'judge' }),
+                body: JSON.stringify({
+                    tournamentId: currentTournamentData.id,
+                    role: 'judge',
+                    phone, dob, nationality, classification, school,
+                    alsoCompeting: document.getElementById('judge-also-competing').checked,
+                    photoUrl,
+                }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to submit application');
-            showSuccessModal({ type: 'application', role: 'Judge', tournamentName: currentTournamentData.name });
+
+            closeJudgeModal();
+            showSuccessModal({ type: 'application', role: 'Official', tournamentName: currentTournamentData.name });
         } catch (err) {
-            alert(err.message);
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.textContent = 'Submit Application';
         }
-    }
+    };
 
     // ── Staff ──
     window.startStaffRegistration = function() {
@@ -2835,30 +3054,105 @@ function filterCompetitors() {
 // ── Coaches / Judges / Staff Tabs ────────────────────────────────────
 async function loadMembersTab(tournamentId, role, containerId) {
     const container = document.getElementById(containerId);
+    const roleLabel = role === 'coach' ? 'coaches' : role === 'judge' ? 'officials' : 'staff';
+
     try {
-        const res = await fetch(`/api/tournament-members/${tournamentId}/public`);
+        // Directors see all members (pending + approved); public sees approved only
+        const isDirector = currentTournamentData && currentUser &&
+            currentTournamentData.created_by === currentUser.id;
+        const endpoint = isDirector
+            ? `/api/tournament-members/${tournamentId}`
+            : `/api/tournament-members/${tournamentId}/public`;
+
+        const res = await fetch(endpoint, { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to load');
         const data = await res.json();
         const members = (data.members || []).filter(m => m.role === role);
 
         if (members.length === 0) {
-            const roleLabel = role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff';
             container.innerHTML = `<div class="tab-empty">No ${roleLabel} registered yet.</div>`;
             return;
         }
 
         container.innerHTML = members.map(m => {
-            const badge = m.staff_role ? `<span class="member-role-badge">${esc(m.staff_role)}</span>` : '';
-            return `<div class="member-row">
-                <div class="member-name">${esc(m.first_name)} ${esc(m.last_name)}</div>
-                ${badge}
+            const isPending  = m.status === 'pending';
+            const isApproved = m.status === 'approved';
+            const meta = m.metadata || {};
+            const statusBadge = isPending
+                ? `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(234,179,8,0.2);color:#eab308;border:1px solid rgba(234,179,8,0.4);">Pending Approval</span>`
+                : isApproved
+                ? `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.35);">Approved</span>`
+                : `<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Declined</span>`;
+
+            const photoEl = m.photo_url
+                ? `<img src="${esc(m.photo_url)}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;" loading="lazy">`
+                : `<div style="width:44px;height:44px;border-radius:50%;background:var(--glass);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">👤</div>`;
+
+            const detailLines = [];
+            if (meta.school || meta.classification) detailLines.push([meta.classification, meta.school].filter(Boolean).join(' · '));
+            if (meta.nationality) detailLines.push(meta.nationality);
+            if (meta.alsoCompeting) detailLines.push('Also competing as athlete');
+            const detailHtml = detailLines.map(l => `<div style="font-size:12px;color:var(--text-muted);">${esc(l)}</div>`).join('');
+
+            const directorActions = isDirector && isPending ? `
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button onclick="approveMember('${m.id}','${containerId}','${role}')"
+                        style="padding:4px 14px;font-size:12px;border-radius:6px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-weight:600;">
+                        ✓ Approve
+                    </button>
+                    <button onclick="declineMember('${m.id}','${containerId}','${role}')"
+                        style="padding:4px 14px;font-size:12px;border-radius:6px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);cursor:pointer;">
+                        ✕ Decline
+                    </button>
+                </div>` : '';
+
+            const contactHtml = isDirector && (m.email || meta.phone) ? `
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                    ${m.email ? `<span>${esc(m.email)}</span>` : ''}
+                    ${meta.phone ? `<span style="margin-left:8px;">📞 ${esc(meta.phone)}</span>` : ''}
+                </div>` : '';
+
+            return `<div class="member-row" style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;">
+                ${photoEl}
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span class="member-name" style="font-weight:600;">${esc(m.first_name)} ${esc(m.last_name)}</span>
+                        ${statusBadge}
+                    </div>
+                    ${detailHtml}
+                    ${contactHtml}
+                    ${directorActions}
+                </div>
             </div>`;
         }).join('');
+
     } catch (err) {
-        const roleLabel = role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff';
         container.innerHTML = `<div class="tab-empty">Unable to load ${roleLabel}.</div>`;
     }
 }
+
+window.approveMember = async function(memberId, containerId, role) {
+    try {
+        const res = await fetch(`/api/tournament-members/${memberId}/approve`, {
+            method: 'PATCH', credentials: 'include',
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+        tabsLoaded[role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff'] = false;
+        loadMembersTab(currentTournamentData.id, role, containerId);
+    } catch (err) { alert(err.message); }
+};
+
+window.declineMember = async function(memberId, containerId, role) {
+    if (!confirm('Decline this application?')) return;
+    try {
+        const res = await fetch(`/api/tournament-members/${memberId}/decline`, {
+            method: 'PATCH', credentials: 'include',
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
+        tabsLoaded[role === 'coach' ? 'coaches' : role === 'judge' ? 'judges' : 'staff'] = false;
+        loadMembersTab(currentTournamentData.id, role, containerId);
+    } catch (err) { alert(err.message); }
+};
 
 // ── Divisions Tab ───────────────────────────────────────────────────
 function loadDivisionsTab(tournamentId) {

@@ -3,15 +3,19 @@ const pool = require('../pool');
 /**
  * Create a tournament member application (or re-apply if previously declined).
  */
-async function create({ userId, tournamentId, role, staffRole }) {
+async function create({ userId, tournamentId, role, staffRole, metadata, photoUrl }) {
   const result = await pool.query(
-    `INSERT INTO tournament_members (user_id, tournament_id, role, staff_role)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO tournament_members (user_id, tournament_id, role, staff_role, metadata, photo_url)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (user_id, tournament_id, role) DO UPDATE
        SET status = 'pending', applied_at = NOW(), reviewed_at = NULL, reviewed_by = NULL,
-           staff_role = COALESCE($4, tournament_members.staff_role)
+           staff_role   = COALESCE($4, tournament_members.staff_role),
+           metadata     = COALESCE($5, tournament_members.metadata),
+           photo_url    = COALESCE($6, tournament_members.photo_url)
      RETURNING *`,
-    [userId, tournamentId, role, staffRole || null]
+    [userId, tournamentId, role, staffRole || null,
+     metadata ? JSON.stringify(metadata) : null,
+     photoUrl || null]
   );
   return result.rows[0];
 }

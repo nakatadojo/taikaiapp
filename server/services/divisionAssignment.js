@@ -8,13 +8,38 @@
  * each criteria range are concatenated with spaces (e.g., "Kids Male Beginner").
  */
 
+// Must match RANK_ORDER in client/app.js exactly (kyu/dan format).
+// Criteria templates stored by the wizard use kyu values like '10th kyu', '1st dan'.
 const RANK_ORDER = [
-  'white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown',
-  'black', '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
+  '10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu',
+  '4th kyu', '3rd kyu', '2nd kyu', '1st kyu',
+  '1st dan', '2nd dan', '3rd dan', '4th dan', '5th dan',
   '6th dan', '7th dan', '8th dan', '9th dan', '10th dan',
 ];
 
 const BELT_ORDER = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'red', 'black'];
+
+/**
+ * Normalize a rank/belt string to canonical kyu/dan format.
+ * Handles:
+ *   - Belt colors from the registration form ("Blue", "Blue Belt") → '6th kyu'
+ *   - Dan values from the form ("1st Dan", "2nd Dan") → '1st dan', '2nd dan'
+ *   - Already-normalized kyu values ('10th kyu') → pass-through
+ */
+function normalizeRank(r) {
+  const s = (r || '').toLowerCase().replace(/ belt$/i, '').trim();
+  const colorToKyu = {
+    'white':  '10th kyu',
+    'yellow': '9th kyu',
+    'orange': '8th kyu',
+    'green':  '7th kyu',
+    'blue':   '6th kyu',
+    'purple': '5th kyu',
+    'brown':  '3rd kyu',
+    'black':  '1st dan',
+  };
+  return colorToKyu[s] || s;
+}
 
 /**
  * Calculate competitor age on tournament date.
@@ -59,18 +84,20 @@ function matchCriteria(competitor, criteria) {
       }
 
       case 'rank': {
-        const compRankIdx = competitor.belt_rank
-          ? RANK_ORDER.indexOf(competitor.belt_rank.toLowerCase())
-          : -1;
+        // Normalize both the competitor rank and the criteria bounds to kyu/dan format
+        // so belt-color profiles ("Blue") match kyu-based templates ("10th kyu"–"1st kyu").
+        const compRankNorm = normalizeRank(competitor.belt_rank);
+        const compRankIdx = RANK_ORDER.indexOf(compRankNorm);
 
         if (range.rankMin !== undefined && range.rankMax !== undefined) {
-          const minIdx = RANK_ORDER.indexOf(range.rankMin.toLowerCase());
-          const maxIdx = RANK_ORDER.indexOf(range.rankMax.toLowerCase());
-          if (compRankIdx >= minIdx && compRankIdx <= maxIdx) {
+          const minIdx = RANK_ORDER.indexOf(normalizeRank(range.rankMin));
+          const maxIdx = RANK_ORDER.indexOf(normalizeRank(range.rankMax));
+          if (compRankIdx !== -1 && minIdx !== -1 && maxIdx !== -1 &&
+              compRankIdx >= minIdx && compRankIdx <= maxIdx) {
             return range.label;
           }
         } else if (range.value) {
-          if (competitor.belt_rank === range.value) {
+          if (compRankNorm === normalizeRank(range.value)) {
             return range.label;
           }
         }

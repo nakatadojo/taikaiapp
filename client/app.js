@@ -23544,6 +23544,11 @@ async function syncRegistrationsFromServer(silent = false) {
         if (added > 0) {
             db.save('competitors', existing);
             loadCompetitors();
+            // Re-run division assignment so newly-synced competitors are placed
+            // into the correct divisions automatically (mirrors the manual "Generate" button).
+            if (typeof autoAssignToDivisions === 'function' && existing.length > 0) {
+                try { autoAssignToDivisions(existing[0], existing[0].id); } catch(e) { /* non-critical */ }
+            }
         }
 
         if (!silent && status) {
