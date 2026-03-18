@@ -29,18 +29,15 @@ exports.up = pgm => {
   });
 
   // tournament_teams: unique team name per tournament (case-insensitive)
-  pgm.createIndex('tournament_teams', pgm.func('lower(team_name)'), {
-    name: 'idx_tournament_teams_name_lower',
-    unique: true,
-    where: 'tournament_id IS NOT NULL',
-  });
+  // Must use raw SQL — pgm.createIndex does not support functional expressions
+  pgm.sql(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tournament_teams_name_lower
+      ON tournament_teams (tournament_id, lower(team_name));
+  `);
 };
 
 exports.down = pgm => {
-  pgm.dropIndex('tournament_teams', pgm.func('lower(team_name)'), {
-    name: 'idx_tournament_teams_name_lower',
-    ifExists: true,
-  });
+  pgm.sql(`DROP INDEX IF EXISTS idx_tournament_teams_name_lower;`);
   pgm.dropColumn('tournaments', 'require_weight_at_registration', { ifExists: true });
   pgm.dropColumn('users', 'account_claimed', { ifExists: true });
   pgm.dropColumn('tournament_teams', ['stripe_session_id', 'registered_by', 'payment_status'], { ifExists: true });
