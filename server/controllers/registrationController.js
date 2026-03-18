@@ -1244,7 +1244,8 @@ async function createRegistrationsFromCart(
 }
 
 /**
- * Helper: Create registration records with payment_status='unpaid' (pay-later flow).
+ * Helper: Create registration records with payment_status='pay_later'.
+ * Used by the pay-later (cash-only) registration flow.
  */
 async function createRegistrationsFromCartUnpaid(
   userId, tournamentId, competitors, discountData, totalDue
@@ -1259,7 +1260,7 @@ async function createRegistrationsFromCartUnpaid(
         `INSERT INTO registrations
           (tournament_id, user_id, profile_id, registered_by, payment_status,
            amount_paid, total_due, status)
-         VALUES ($1, $2, $3, $4, 'unpaid', 0, $5, 'active')
+         VALUES ($1, $2, $3, $4, 'pay_later', 0, $5, 'active')
          RETURNING *`,
         [tournamentId, userId, comp.profileId, userId, comp.subtotal]
       );

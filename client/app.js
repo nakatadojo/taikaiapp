@@ -622,7 +622,7 @@ async function _loadCompetitorsFromServer() {
                 ...c,
                 firstName:   c.firstName   ?? c.first_name   ?? '',
                 lastName:    c.lastName    ?? c.last_name    ?? '',
-                dateOfBirth: c.dateOfBirth ?? c.date_of_birth ?? null,
+                dateOfBirth: c.dateOfBirth ?? c.date_of_birth ?? c.dob ?? null,
                 rank:        c.rank        ?? c.belt         ?? '',
                 weight:      c.weight      ?? c.weight_kg    ?? null,
                 checkedIn:   c.checkedIn   ?? c.checked_in   ?? false,
@@ -1414,10 +1414,12 @@ function calculatePricingBreakdown(selectedEventIds, eventTypes, tournament) {
 
 function getPaymentStatusBadge(status) {
     const colors = {
-        paid:    { bg: 'rgba(39,174,96,0.15)', text: '#27ae60', label: 'Paid' },
-        unpaid:  { bg: 'rgba(231,76,60,0.15)', text: '#e74c3c', label: 'Unpaid' },
-        partial: { bg: 'rgba(243,156,18,0.15)', text: '#f39c12', label: 'Partial' },
-        waived:  { bg: 'rgba(149,165,166,0.15)', text: '#95a5a6', label: 'Waived' },
+        paid:      { bg: 'rgba(39,174,96,0.15)',  text: '#27ae60', label: 'Paid' },
+        unpaid:    { bg: 'rgba(231,76,60,0.15)',  text: '#e74c3c', label: 'Unpaid' },
+        partial:   { bg: 'rgba(243,156,18,0.15)', text: '#f39c12', label: 'Partial' },
+        waived:    { bg: 'rgba(149,165,166,0.15)',text: '#95a5a6', label: 'Waived' },
+        pay_later: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b', label: 'Cash Due' },
+        director:  { bg: 'rgba(99,102,241,0.15)', text: '#6366f1', label: 'Director' },
     };
     const s = colors[status] || colors.unpaid;
     return `<span style="padding:2px 8px;border-radius:4px;font-size:12px;background:${s.bg};color:${s.text};font-weight:600;">${s.label}</span>`;
@@ -1427,7 +1429,7 @@ window.togglePaymentStatus = function(competitorId) {
     const competitors = db.load('competitors');
     const comp = competitors.find(c => c.id === competitorId);
     if (!comp) return;
-    const cycle = ['unpaid', 'paid', 'partial', 'waived'];
+    const cycle = ['unpaid', 'pay_later', 'partial', 'paid', 'waived'];
     const idx = cycle.indexOf(comp.paymentStatus || 'unpaid');
     comp.paymentStatus = cycle[(idx + 1) % cycle.length];
     db.save('competitors', competitors);
@@ -5956,6 +5958,15 @@ let currentInstructorClubLogoData = null;
 function showInstructorForm() {
     document.getElementById('instructor-form-container').classList.remove('hidden');
     loadClubDropdown();
+}
+
+function hideInstructorForm() {
+    const container = document.getElementById('instructor-form-container');
+    if (container) container.classList.add('hidden');
+    // Reset all form fields
+    const form = document.getElementById('instructor-form');
+    if (form) form.reset();
+    clearInstructorClubLogo();
 }
 
 // Instructor club logo preview
