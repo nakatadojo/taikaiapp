@@ -9824,14 +9824,43 @@ function generateBrackets(event) {
     let successCount = 0;
     const skippedNames = [];
 
+    // Detect team-kumite event type
+    const eventTypes = db.load('eventTypes');
+    const currentEvent = eventTypes.find(e => String(e.id) === String(eventId));
+    const isTeamKumite = currentEvent?.eventType === 'team-kumite' || currentEvent?.event_type === 'team-kumite';
+
+    // For team-kumite, load teams and use them as bracket seeds instead of individual competitors
+    const teamsByCode = isTeamKumite ? JSON.parse(_msGet(_scopedKey('teams')) || '{}') : {};
+    const teamsForEvent = isTeamKumite
+        ? Object.values(teamsByCode)
+            .filter(t => !eventId || String(t.eventId) === String(eventId))
+            .map(t => ({
+                id: t.code || t.id,
+                firstName: t.name || t.code, // bracket display uses firstName
+                lastName: '',
+                teamId: t.code || t.id,
+                teamName: t.name || t.code,
+                members: Array.isArray(t.members) ? t.members : [],
+                isTeam: true,
+                club: Array.isArray(t.members) ? t.members.slice(0, 2).join(', ') : '',
+            }))
+        : [];
+
     divisionNames.forEach(divisionName => {
-        // Deduplicate competitors by ID
-        const seenIds = new Set();
-        let competitors = (eventData.generated[divisionName] || []).filter(c => {
-            if (!c?.id || seenIds.has(c.id)) return false;
-            seenIds.add(c.id);
-            return true;
-        });
+        let competitors;
+
+        if (isTeamKumite) {
+            // Team kumite: use teams as bracket seeds
+            competitors = teamsForEvent.length >= 2 ? teamsForEvent : [];
+        } else {
+            // Individual: deduplicate competitors by ID
+            const seenIds = new Set();
+            competitors = (eventData.generated[divisionName] || []).filter(c => {
+                if (!c?.id || seenIds.has(c.id)) return false;
+                seenIds.add(c.id);
+                return true;
+            });
+        }
 
         if (competitors.length < 2) {
             skippedNames.push(divisionName);
@@ -9855,6 +9884,25 @@ function generateBrackets(event) {
         bracket.timing             = calculateBracketTiming(bracket, scoreboardConfig);
         bracket.seedingMethod      = seedingMethod;
         bracket.matAssignment      = matAssignment;
+        if (isTeamKumite) {
+            bracket.isTeamKumite = true;
+            // Mark each match as a team match
+            if (bracket.matches) {
+                bracket.matches.forEach(m => {
+                    if (m.redCorner?.isTeam || m.blueCorner?.isTeam) {
+                        m.isTeamMatch = true;
+                        m.bouts = [
+                            { boutNumber: 1, fighterA: null, fighterB: null, scoresA: 0, scoresB: 0, penaltiesA: 0, penaltiesB: 0, winner: null, status: 'pending' },
+                            { boutNumber: 2, fighterA: null, fighterB: null, scoresA: 0, scoresB: 0, penaltiesA: 0, penaltiesB: 0, winner: null, status: 'pending' },
+                            { boutNumber: 3, fighterA: null, fighterB: null, scoresA: 0, scoresB: 0, penaltiesA: 0, penaltiesB: 0, winner: null, status: 'pending' },
+                        ];
+                        m.teamMatchScore = { teamAWins: 0, teamBWins: 0 };
+                        m.teamMatchWinner = null;
+                        m.teamMatchStatus = 'pending';
+                    }
+                });
+            }
+        }
 
         brackets[`${eventId}_${divisionName}_${generateUniqueId()}`] = bracket;
 
@@ -11929,10 +11977,20 @@ function renderMatchCard(match, matchIdx, roundNum) {
         return '';
     }
 
-    const redName = redCompetitor ? `${redCompetitor.firstName} ${redCompetitor.lastName}` : 'TBD';
-    const blueName = blueCompetitor ? `${blueCompetitor.firstName} ${blueCompetitor.lastName}` : 'TBD';
-    const redClub = redCompetitor?.club || '';
-    const blueClub = blueCompetitor?.club || '';
+    // Team kumite: use teamName as primary display
+    const isTeamMatch = match.isTeamMatch || redCompetitor?.isTeam || blueCompetitor?.isTeam;
+    const redName = redCompetitor
+        ? (isTeamMatch && redCompetitor.teamName ? redCompetitor.teamName : `${redCompetitor.firstName || ''} ${redCompetitor.lastName || ''}`.trim())
+        : 'TBD';
+    const blueName = blueCompetitor
+        ? (isTeamMatch && blueCompetitor.teamName ? blueCompetitor.teamName : `${blueCompetitor.firstName || ''} ${blueCompetitor.lastName || ''}`.trim())
+        : 'TBD';
+    const redClub = isTeamMatch
+        ? (redCompetitor?.members ? redCompetitor.members.slice(0, 3).join(', ') : '')
+        : (redCompetitor?.club || '');
+    const blueClub = isTeamMatch
+        ? (blueCompetitor?.members ? blueCompetitor.members.slice(0, 3).join(', ') : '')
+        : (blueCompetitor?.club || '');
 
     // Determine if match can be scored (both corners must be filled, not bye/empty/completed)
     const canScore = !isBye && !isEmpty && !isCompleted && redCompetitor && blueCompetitor;
