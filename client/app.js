@@ -3333,6 +3333,26 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         return;
     }
 
+    // Validate required fields (form uses novalidate — we handle validation here)
+    const _req = (id) => (document.getElementById(id)?.value || '').trim();
+    const missingFields = [];
+    if (!_req('firstName'))   missingFields.push('First Name');
+    if (!_req('lastName'))    missingFields.push('Last Name');
+    if (!_req('dateOfBirth')) missingFields.push('Date of Birth');
+    if (!_req('weight'))      missingFields.push('Weight');
+    if (!_req('rank'))        missingFields.push('Rank');
+    if (!_req('gender'))      missingFields.push('Gender');
+    const clubSelectVal = (document.getElementById('club')?.value || '').trim();
+    const newClubNameVal = (document.getElementById('new-club-name')?.value || '').trim();
+    if (!clubSelectVal || (clubSelectVal === '__new__' && !newClubNameVal)) missingFields.push('Dojo');
+    if (missingFields.length > 0) {
+        showMessage(`Please fill in: ${missingFields.join(', ')}`, 'error');
+        // Focus the first missing field
+        const firstMissing = ['firstName','lastName','dateOfBirth','weight','rank','gender'].find(id => !_req(id));
+        if (firstMissing) document.getElementById(firstMissing)?.focus();
+        return;
+    }
+
     const clubSelect = document.getElementById('club');
     let clubName = clubSelect.value;
     let clubLogo = null;
