@@ -1,15 +1,78 @@
 const pool = require('../pool');
 
 async function getAll(tournamentId) {
+  // Unified query: director-added competitors UNION Stripe/public registrations.
+  // Both sources are normalised into the same shape so the client sees one list.
   const { rows } = await pool.query(
-    `SELECT id, data, is_test, created_at, updated_at
-     FROM tournament_director_competitors
-     WHERE tournament_id = $1
+    `SELECT
+       tdc.id                              AS id,
+       tdc.is_test                         AS is_test,
+       'director'                          AS source,
+       (tdc.data->>'firstName')            AS "firstName",
+       (tdc.data->>'lastName')             AS "lastName",
+       (tdc.data->>'dob')                  AS dob,
+       (tdc.data->>'gender')               AS gender,
+       (tdc.data->>'rank')                 AS rank,
+       (tdc.data->>'experience')           AS experience,
+       (tdc.data->>'weight')               AS weight,
+       (tdc.data->>'club')                 AS club,
+       (tdc.data->>'email')                AS email,
+       (tdc.data->>'phone')                AS phone,
+       tdc.data                            AS raw_data,
+       NULL::uuid                          AS registration_id,
+       NULL::text                          AS payment_status,
+       tdc.created_at
+     FROM tournament_director_competitors tdc
+     WHERE tdc.tournament_id = $1
+
+     UNION ALL
+
+     SELECT
+       COALESCE(cp.id, r.id)              AS id,
+       FALSE                              AS is_test,
+       'registration'                     AS source,
+       cp.first_name                      AS "firstName",
+       cp.last_name                       AS "lastName",
+       cp.date_of_birth::text             AS dob,
+       cp.gender                          AS gender,
+       cp.belt_rank                       AS rank,
+       cp.experience_level                AS experience,
+       cp.weight::text                    AS weight,
+       cp.academy_name                    AS club,
+       r.email                            AS email,
+       NULL::text                         AS phone,
+       NULL::jsonb                        AS raw_data,
+       r.id                               AS registration_id,
+       r.status                           AS payment_status,
+       r.created_at
+     FROM registrations r
+     LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+     WHERE r.tournament_id = $1
+       AND r.status IN ('paid', 'pay_later', 'approved', 'pending')
+
      ORDER BY created_at ASC`,
     [tournamentId]
   );
-  // Return each row as a competitor object with the id merged into data
-  return rows.map(r => ({ id: r.id, is_test: r.is_test, ...r.data }));
+
+  return rows.map(r => ({
+    id:              r.id,
+    is_test:         r.is_test,
+    source:          r.source,
+    registration_id: r.registration_id || null,
+    payment_status:  r.payment_status  || null,
+    firstName:       r.firstName || '',
+    lastName:        r.lastName  || '',
+    dob:             r.dob       || null,
+    gender:          r.gender    || null,
+    rank:            r.rank      || null,
+    experience:      r.experience|| null,
+    weight:          r.weight    || null,
+    club:            r.club      || null,
+    email:           r.email     || null,
+    phone:           r.phone     || null,
+    // Preserve any extra fields stored in raw_data (director-added only)
+    ...(r.raw_data && typeof r.raw_data === 'object' ? r.raw_data : {}),
+  }));
 }
 
 async function create(tournamentId, competitorData, isTest = false) {
@@ -21,7 +84,7 @@ async function create(tournamentId, competitorData, isTest = false) {
     [tournamentId, JSON.stringify(dataWithoutId), isTest]
   );
   const r = rows[0];
-  return { id: r.id, is_test: r.is_test, ...r.data };
+  return { id: r.id, is_test: r.is_test, source: 'director', ...r.data };
 }
 
 async function update(id, tournamentId, competitorData) {
@@ -35,7 +98,7 @@ async function update(id, tournamentId, competitorData) {
   );
   if (!rows[0]) return null;
   const r = rows[0];
-  return { id: r.id, is_test: r.is_test, ...r.data };
+  return { id: r.id, is_test: r.is_test, source: 'director', ...r.data };
 }
 
 async function remove(id, tournamentId) {
