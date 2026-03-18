@@ -9,8 +9,9 @@ const creditQueries = require('../db/queries/credits');
 const notificationQueries = require('../db/queries/notifications');
 const pool = require('../db/pool');
 const { sendGuardianConfirmationEmail } = require('../config/email');
-const { sendRegistrationConfirmationEmail } = require('../email');
+const { sendRegistrationConfirmationEmail, sendDojoMemberNotification } = require('../email');
 const { assignDivision } = require('../services/divisionAssignment');
+const academyQueries = require('../db/queries/academies');
 
 /**
  * POST /api/registrations/competitor
@@ -77,12 +78,53 @@ async function registerCompetitor(req, res, next) {
       }
     }
 
-    // If academy selected, create membership request
-    if (academyId && req.user?.id) {
+    // If academy selected, auto-link competitor to dojo roster (fire-and-forget)
+    if (academyId) {
       try {
-        await membershipRequestQueries.createRequest(academyId, req.user.id);
-      } catch (err) {
-        // Ignore errors (e.g., already requested)
+        const academy = await academyQueries.findById(academyId);
+        if (academy) {
+          // Resolve the user_id that was created/linked for this registration
+          const regUserId = registration.user_id;
+          if (regUserId) {
+            // Insert into academy_members — ON CONFLICT DO NOTHING so we don't overwrite roles
+            const existing = await pool.query(
+              'SELECT id FROM academy_members WHERE academy_id = $1 AND user_id = $2',
+              [academyId, regUserId]
+            );
+            if (existing.rows.length === 0) {
+              await pool.query(
+                `INSERT INTO academy_members (academy_id, user_id, role, added_by)
+                 VALUES ($1, $2, 'competitor', NULL)
+                 ON CONFLICT DO NOTHING`,
+                [academyId, regUserId]
+              );
+
+              // Notify head coach (fire-and-forget)
+              try {
+                const coach = await userQueries.findById(academy.head_coach_id);
+                if (coach && coach.email) {
+                  const tournament = await tournamentQueries.findById(tournamentId);
+                  await sendDojoMemberNotification({
+                    toEmail: coach.email,
+                    toName: `${coach.first_name || ''} ${coach.last_name || ''}`.trim() || coach.email,
+                    dojoName: academy.name,
+                    competitorName: `${firstName} ${lastName}`,
+                    tournamentName: tournament ? tournament.name : 'a tournament',
+                  });
+                }
+              } catch (notifyErr) {
+                console.warn('Auto-link: failed to notify coach:', notifyErr.message);
+              }
+            }
+          } else if (req.user?.id) {
+            // Fallback: logged-in user — create membership request
+            try {
+              await membershipRequestQueries.createRequest(academyId, req.user.id);
+            } catch (_) { /* ignore duplicate */ }
+          }
+        }
+      } catch (linkErr) {
+        console.warn('Auto-link dojo membership failed:', linkErr.message);
       }
     }
 

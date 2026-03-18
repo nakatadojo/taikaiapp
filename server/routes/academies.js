@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const academyController = require('../controllers/academyController');
 const upload = require('../middleware/upload');
 const { validateImageBytes } = require('../middleware/upload');
+const { csvImportMembers, uploadCsv } = require('../controllers/academyCsvController');
 
 const router = express.Router();
 
@@ -145,6 +146,13 @@ router.post('/:id/transfer',
 // PUT /api/academies/:id/members/:userId/rank — Update member rank (ownership verified in controller)
 router.put('/:id/members/:userId/rank',
   academyController.updateMemberRank
+);
+
+// POST /api/academies/:id/members/csv-import — Bulk import from CSV (ownership verified in controller)
+router.post('/:id/members/csv-import',
+  requireAuth,
+  uploadCsv,
+  csvImportMembers
 );
 
 module.exports = router;

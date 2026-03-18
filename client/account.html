@@ -1032,6 +1032,24 @@
 
                 <div id="add-member-area"></div>
 
+                <div class="csv-import-section" style="margin: 16px 0;">
+                  <label style="font-size:13px; color:var(--text-muted);">Bulk import students from CSV</label>
+                  <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+                    <input type="file" id="csv-import-input" accept=".csv" style="display:none">
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('csv-import-input').click()">
+                      Choose CSV File
+                    </button>
+                    <span id="csv-import-filename" style="font-size:13px; color:var(--text-muted);">No file selected</span>
+                    <button class="btn btn-primary btn-sm" id="csv-import-btn" onclick="importMembersFromCSV()" disabled>
+                      Import Members
+                    </button>
+                  </div>
+                  <div id="csv-import-result" style="margin-top:8px; font-size:13px;"></div>
+                  <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                    CSV format: first_name, last_name, email (required) &middot; belt_rank, date_of_birth (optional)
+                  </p>
+                </div>
+
                 <div id="dojo-members">
                     ${members.length === 0
                         ? '<div style="color:var(--text-muted);font-size:14px;padding:20px 0;">No members yet. Add students and assistant coaches to your dojo.</div>'
@@ -1039,6 +1057,24 @@
                     }
                 </div>
             `;
+            // Track the academy id for CSV import
+            window._currentAcademyId = academy.id;
+
+            // Wire up the CSV file-picker change handler (re-attach after innerHTML replace)
+            const csvInput = document.getElementById('csv-import-input');
+            if (csvInput) {
+                csvInput.addEventListener('change', function() {
+                    const btn = document.getElementById('csv-import-btn');
+                    const nameSpan = document.getElementById('csv-import-filename');
+                    if (this.files.length > 0) {
+                        nameSpan.textContent = this.files[0].name;
+                        btn.disabled = false;
+                    } else {
+                        nameSpan.textContent = 'No file selected';
+                        btn.disabled = true;
+                    }
+                });
+            }
         } catch (err) {
             main.innerHTML = errorState('Failed to load dojo data');
         }
@@ -1059,6 +1095,71 @@
             </div>
         `;
     }
+
+    // ── CSV Member Import ─────────────────────────────────────────────────────
+
+    /**
+     * Reload the dojo members list after a CSV import.
+     * Fetches fresh member data and replaces only the #dojo-members div.
+     */
+    async function loadDojoMembers(academyId) {
+        try {
+            const data = await apiFetch(`/api/academies/${academyId}/members`);
+            const members = data.members || [];
+            const container = document.getElementById('dojo-members');
+            if (!container) return;
+            const academy = { id: academyId };
+            container.innerHTML = members.length === 0
+                ? '<div style="color:var(--text-muted);font-size:14px;padding:20px 0;">No members yet.</div>'
+                : `<div class="member-list">${members.map(m => renderMemberRow(m, academyId)).join('')}</div>`;
+
+            // Update member count stat if present
+            const statEl = document.querySelector('.stat-value');
+            if (statEl) statEl.textContent = members.length;
+        } catch (e) {
+            console.warn('loadDojoMembers failed:', e.message);
+        }
+    }
+
+    window.importMembersFromCSV = async function() {
+        const input = document.getElementById('csv-import-input');
+        if (!input || !input.files.length) return;
+        const academyId = window._currentAcademyId;
+        if (!academyId) return;
+
+        const formData = new FormData();
+        formData.append('csv', input.files[0]);
+
+        const resultDiv = document.getElementById('csv-import-result');
+        if (resultDiv) resultDiv.textContent = 'Importing...';
+
+        try {
+            const res = await fetch(`/api/academies/${academyId}/members/csv-import`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData,
+            });
+            const data = await res.json();
+            if (res.ok) {
+                let html = `<span style="color:#22c55e">&#10003; Added ${data.added} member(s). Skipped ${data.skipped}.</span>`;
+                if (data.errors && data.errors.length) {
+                    html += `<br><span style="color:#f59e0b">Errors: ${data.errors.map(e => esc(e.reason)).join(', ')}</span>`;
+                }
+                if (resultDiv) resultDiv.innerHTML = html;
+                await loadDojoMembers(academyId);
+                // Reset file input
+                input.value = '';
+                const nameSpan = document.getElementById('csv-import-filename');
+                const btn = document.getElementById('csv-import-btn');
+                if (nameSpan) nameSpan.textContent = 'No file selected';
+                if (btn) btn.disabled = true;
+            } else {
+                if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(data.error || 'Import failed')}</span>`;
+            }
+        } catch (e) {
+            if (resultDiv) resultDiv.innerHTML = `<span style="color:#ef4444">Error: ${esc(e.message)}</span>`;
+        }
+    };
 
     // ── Dojo Create Form ──
     window.showDojoCreateForm = function() {
