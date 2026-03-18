@@ -3087,6 +3087,8 @@
                     if (brkData.brackets && Object.keys(brkData.brackets).length > 0) {
                         _msSet(_scopedKey('brackets'), JSON.stringify(brkData.brackets));
                     }
+                    // Track published state from server (prevents button always showing "Publish All" after reload)
+                    window._bracketsPublished = Object.values(brkData.brackets || {}).some(b => b.published);
                 }
 
                 // Seed teams from server
@@ -3138,11 +3140,15 @@
             const lbl = document.getElementById('schedule-publish-label');
             if (lbl) lbl.textContent = 'Unpublish Schedule';
         }
+        if (window._bracketsPublished) {
+            const lbl = document.getElementById('brackets-publish-label');
+            if (lbl) lbl.textContent = 'Unpublish All Brackets';
+        }
     })();
 
     // ── Publish toggle functions ─────────────────────────────────────
     window._schedulePublished = window._schedulePublished || false;
-    window._bracketsPublished = false;
+    window._bracketsPublished = window._bracketsPublished || false;
 
     window.toggleSchedulePublished = async function() {
         if (!currentTournamentId) return;

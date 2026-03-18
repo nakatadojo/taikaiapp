@@ -14114,7 +14114,7 @@ async function loadCheckinView() {
         _checkinDirectorData = [];
     }
 
-    // Fetch approved members
+    // Fetch approved members (self-registered via public page)
     try {
         const res = await fetch(`/api/tournament-members/${currentTournamentId}`, { credentials: 'include' });
         if (res.ok) {
@@ -14123,6 +14123,28 @@ async function loadCheckinView() {
         }
     } catch(e) {
         _checkinMembers = [];
+    }
+
+    // Also include director-added officials (not in tournament_members table)
+    // Deduplicate by name to avoid showing duplicates when the same person self-registered AND was added manually.
+    const dirOfficials = db.load('officials').filter(o => !currentTournamentId || o.tournamentId === currentTournamentId);
+    if (dirOfficials.length > 0) {
+        const memberNames = new Set(_checkinMembers.map(m => `${m.first_name} ${m.last_name}`.toLowerCase().trim()));
+        for (const o of dirOfficials) {
+            const fullName = `${o.firstName || ''} ${o.lastName || ''}`.toLowerCase().trim();
+            if (fullName && !memberNames.has(fullName)) {
+                _checkinMembers.push({
+                    id: `director_${o.id}`,
+                    first_name: o.firstName || '',
+                    last_name: o.lastName || '',
+                    role: 'judge',
+                    staff_role: null,
+                    email: o.email || null,
+                    checked_in_at: null,
+                    _director_added: true,
+                });
+            }
+        }
     }
 
     _renderCheckinStats(_computeCheckinStats());
@@ -14188,10 +14210,10 @@ function _renderCheckinList() {
             ? '<p class="hint" style="padding:16px;">No personnel found.</p>'
             : filtered.map(m => {
                 const checked = !!m.checked_in_at;
-                const roleLabel = m.role === 'judge' ? 'Official' : m.role === 'coach' ? 'Coach' : 'Staff';
+                const roleLabel = m._director_added ? 'Official (Director Added)' : m.role === 'judge' ? 'Official' : m.role === 'coach' ? 'Coach' : 'Staff';
                 return `<div class="checkin-list-item" onclick="renderMemberCheckinDetail('${m.id}')">
                     <span>${m.first_name} ${m.last_name}<br><small style="color:var(--text-secondary);">${roleLabel}${m.staff_role ? ' · '+m.staff_role : ''}</small></span>
-                    <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ Present' : 'Not In'}</span>
+                    <span class="${m._director_added ? 'ci-missing-badge' : checked ? 'ci-checked-badge' : 'ci-missing-badge'}" style="${m._director_added ? 'opacity:0.5;' : ''}">${m._director_added ? 'Director' : checked ? '✓ Present' : 'Not In'}</span>
                 </div>`;
             }).join('');
     }
@@ -14527,6 +14549,25 @@ function renderMemberCheckinDetail(memberId) {
 
     const checked = !!member.checked_in_at;
     const roleLabel = member.role === 'judge' ? 'Official' : member.role === 'coach' ? 'Coach' : 'Staff';
+
+    if (member._director_added) {
+        // Director-added officials are not in tournament_members — show info only, no API check-in
+        content.innerHTML = `
+            <div class="ci-person-header">
+                <div class="ci-photo" style="background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">👤</div>
+                <div>
+                    <div style="font-weight:700;font-size:1.05rem;">${member.first_name} ${member.last_name}</div>
+                    <div style="font-size:0.85rem;color:var(--text-secondary);">Official (Director Added)</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${member.email || ''}</div>
+                </div>
+            </div>
+            <div style="padding:10px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-size:0.85rem;color:var(--text-secondary);">
+                Added directly by the director. Check-in is tracked in the Officials roster.
+            </div>
+        `;
+        if (_checkinTab !== 'members') switchCheckinTab('members');
+        return;
+    }
 
     content.innerHTML = `
         <div class="ci-person-header">

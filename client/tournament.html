@@ -3294,7 +3294,7 @@ async function loadScheduleTab(tournamentId) {
         const schedule = data.schedule || {};
         const matIds = Object.keys(schedule);
         if (matIds.length === 0) {
-            container.innerHTML = '<div class="tab-empty">Schedule not yet published.</div>';
+            container.innerHTML = '<div class="tab-empty">Schedule has been published — divisions not yet assigned to mats.</div>';
             return;
         }
 
