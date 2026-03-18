@@ -20615,6 +20615,30 @@ function updateOperatorTVDisplay(winner = null) {
         nextDivision: nextDivision
     };
 
+    // Team kumite: add teamMatchContext to state if current match is a team match
+    if (window.currentBracketId && window.currentMatchId) {
+        const _tmBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        const _tmBracket = _tmBrackets[window.currentBracketId];
+        if (_tmBracket && _tmBracket.isTeamKumite) {
+            const _tmMatch = (_tmBracket.matches || []).find(m => m.id === window.currentMatchId);
+            if (_tmMatch && _tmMatch.isTeamMatch) {
+                const _tms = _tmMatch.teamMatchScore || { teamAWins: 0, teamBWins: 0 };
+                const _currentBout = (_tmMatch.bouts || []).findIndex(b => b.status === 'pending') + 1 || 3;
+                state.teamMatchContext = {
+                    teamAName: _tmMatch.redCorner?.teamName || state.redName,
+                    teamBName: _tmMatch.blueCorner?.teamName || state.blueName,
+                    teamAWins: _tms.teamAWins || 0,
+                    teamBWins: _tms.teamBWins || 0,
+                    currentBout: _currentBout,
+                    teamMatchStatus: _tmMatch.teamMatchStatus || 'pending',
+                    boutResults: (_tmMatch.bouts || [])
+                        .filter(b => b.status !== 'pending')
+                        .map(b => ({ boutNumber: b.boutNumber, winner: b.winner })),
+                };
+            }
+        }
+    }
+
     _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
 }
