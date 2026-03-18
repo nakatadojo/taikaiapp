@@ -1712,6 +1712,8 @@
         } catch (e) {
             currentUser = null;
         }
+        // Expose to tab system (currentUser is IIFE-scoped; _pageUser is global)
+        window._pageUser = currentUser;
         renderNavAuth();
         updateRegButtons();
     }
@@ -1944,6 +1946,7 @@
     window.handleLogout = async function() {
         await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
         currentUser = null;
+        window._pageUser = null;
         renderNavAuth();
         updateRegButtons();
     };
@@ -3083,8 +3086,10 @@ async function loadMembersTab(tournamentId, role, containerId) {
 
     try {
         // Directors see all members (pending + approved); public sees approved only
-        const isDirector = currentTournamentData && currentUser &&
-            currentTournamentData.created_by === currentUser.id;
+        // Note: currentUser is IIFE-scoped; use window._pageUser exposed by checkAuth()
+        const _cu = window._pageUser || null;
+        const isDirector = currentTournamentData && _cu &&
+            currentTournamentData.created_by === _cu.id;
         const endpoint = isDirector
             ? `/api/tournament-members/${tournamentId}`
             : `/api/tournament-members/${tournamentId}/public`;
