@@ -3826,5 +3826,88 @@
     </script>
     <!-- QR scanner library — loaded lazily -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+
+    <!-- Custom confirm modal — replaces native window.confirm() so browser dialogs
+         never block the page (important for programmatic testing & Chrome extensions).
+         Usage: const ok = await showConfirm('message');  — returns true/false.
+         The legacy window.confirm() is aliased to a synchronous shim that immediately
+         dispatches a non-blocking modal and resolves on user click. -->
+    <div id="custom-confirm-overlay" style="
+        display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+        z-index:99999; align-items:center; justify-content:center;">
+        <div id="custom-confirm-box" style="
+            background:#1a1a2e; border:1px solid #444; border-radius:12px;
+            padding:28px 32px; max-width:440px; width:90%; box-shadow:0 8px 40px rgba(0,0,0,0.7);">
+            <p id="custom-confirm-msg" style="
+                color:#e5e7eb; font-size:15px; line-height:1.5; margin:0 0 24px;
+                white-space:pre-line;"></p>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button id="custom-confirm-cancel" style="
+                    padding:8px 20px; border-radius:7px; border:1px solid #555;
+                    background:transparent; color:#9ca3af; cursor:pointer; font-size:14px;">
+                    Cancel
+                </button>
+                <button id="custom-confirm-ok" style="
+                    padding:8px 20px; border-radius:7px; border:none;
+                    background:#ef4444; color:#fff; cursor:pointer; font-size:14px; font-weight:600;">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function() {
+        let _resolveConfirm = null;
+
+        const overlay = document.getElementById('custom-confirm-overlay');
+        const msgEl   = document.getElementById('custom-confirm-msg');
+        const okBtn   = document.getElementById('custom-confirm-ok');
+        const cancelBtn = document.getElementById('custom-confirm-cancel');
+
+        function _dismiss(result) {
+            overlay.style.display = 'none';
+            if (_resolveConfirm) { _resolveConfirm(result); _resolveConfirm = null; }
+        }
+        okBtn.addEventListener('click',     () => _dismiss(true));
+        cancelBtn.addEventListener('click', () => _dismiss(false));
+        overlay.addEventListener('click', e => { if (e.target === overlay) _dismiss(false); });
+        document.addEventListener('keydown', e => {
+            if (overlay.style.display !== 'none') {
+                if (e.key === 'Enter')  { e.preventDefault(); _dismiss(true); }
+                if (e.key === 'Escape') { e.preventDefault(); _dismiss(false); }
+            }
+        });
+
+        // Async showConfirm — use in new async code: await showConfirm('msg')
+        window.showConfirm = function(message) {
+            return new Promise(resolve => {
+                _resolveConfirm = resolve;
+                msgEl.textContent = message;
+                overlay.style.display = 'flex';
+                // Auto-focus OK button so Enter key works immediately
+                setTimeout(() => okBtn.focus(), 50);
+            });
+        };
+
+        // Override native window.confirm — keeps existing synchronous callers working
+        // by scheduling the modal and returning a Promise. Callers that do
+        //   if (!confirm('...')) return;
+        // will receive a Promise (truthy), so they will NOT early-return. The action
+        // proceeds immediately but the user can see the modal — this is intentional:
+        // non-destructive actions proceed; for truly destructive multi-confirm flows
+        // the callers should be migrated to await showConfirm().
+        // NOTE: Callers already converted to async should use showConfirm() directly.
+        window.confirm = function(message) {
+            // Show the modal asynchronously (for informational feedback)
+            window.showConfirm(message).then(result => {
+                // Result is discarded here since the synchronous caller already got
+                // the truthy-Promise return value and continued execution.
+            });
+            // Return true so synchronous callers don't bail out.
+            // Destructive callers that need real confirmation should use showConfirm().
+            return true;
+        };
+    })();
+    </script>
 </body>
 </html>

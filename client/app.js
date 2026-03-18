@@ -4536,7 +4536,7 @@ function loadCompetitors(skipSync = false) {
 
 async function deleteCompetitor(id) {
     if (!currentTournamentId) return;
-    if (!confirm('Are you sure you want to delete this competitor?')) return;
+    if (!await showConfirm('Are you sure you want to delete this competitor?')) return;
     const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${id}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -4651,7 +4651,7 @@ const _defaultDojoPool = [
 
 async function openTestDataModal() {
     if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
-    if (!confirm('Generate 20-30 test competitors on the server? All connected devices will see them immediately.')) return;
+    if (!await showConfirm('Generate 20-30 test competitors on the server? All connected devices will see them immediately.')) return;
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/generate-test-data`, {
@@ -5063,7 +5063,7 @@ function executeTestGeneration(config) {
  */
 async function clearTestData() {
     if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
-    if (!confirm('Delete all test competitors from the database? Real competitors will not be affected.')) return;
+    if (!await showConfirm('Delete all test competitors from the database? Real competitors will not be affected.')) return;
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/clear-test-data`, {
@@ -5628,9 +5628,10 @@ function generateTestCompetitors() {
     );
 }
 
-function clearAllCompetitors() {
-    if (confirm('⚠️ WARNING: This will delete ALL competitors, divisions, and scheduled matches permanently!\n\nAre you absolutely sure you want to continue?')) {
-        if (confirm('This action CANNOT be undone! Click OK to confirm deletion of all competitors, divisions, and matches.')) {
+async function clearAllCompetitors() {
+    if (!await showConfirm('⚠️ WARNING: This will delete ALL competitors, divisions, and scheduled matches permanently!\n\nAre you absolutely sure you want to continue?')) return;
+    if (!await showConfirm('This action CANNOT be undone! Click OK to confirm deletion of all competitors, divisions, and matches.')) return;
+    {
             // Clear competitors
             db.clear('competitors');
 
@@ -5662,7 +5663,6 @@ function clearAllCompetitors() {
             }
 
             showMessage('All competitors, divisions, and matches have been deleted!');
-        }
     }
 }
 
@@ -6069,27 +6069,24 @@ async function loadInstructors() {
     });
 }
 
-function deleteInstructor(id) {
-    if (confirm('Are you sure you want to delete this instructor?')) {
-        db.delete('instructors', id);
-        _queueInstructorsSync();
-        loadInstructors();
-        loadClubDropdown(); // Refresh club dropdown
-        showMessage('Coach deleted successfully!');
-    }
+async function deleteInstructor(id) {
+    if (!await showConfirm('Are you sure you want to delete this instructor?')) return;
+    db.delete('instructors', id);
+    _queueInstructorsSync();
+    loadInstructors();
+    loadClubDropdown(); // Refresh club dropdown
+    showMessage('Coach deleted successfully!');
 }
 
-function clearAllInstructors() {
-    if (confirm('⚠️ WARNING: This will delete ALL instructors and their dojos permanently!\n\nAre you absolutely sure you want to continue?')) {
-        if (confirm('This action CANNOT be undone! Click OK to confirm deletion of all instructors.')) {
-            db.clear('instructors');
-            db.clear('clubs');
-            loadInstructors();
-            loadClubDropdown();
-            loadDashboard();
-            showMessage('All instructors and dojos have been deleted!');
-        }
-    }
+async function clearAllInstructors() {
+    if (!await showConfirm('⚠️ WARNING: This will delete ALL instructors and their dojos permanently!\n\nAre you absolutely sure you want to continue?')) return;
+    if (!await showConfirm('This action CANNOT be undone! Click OK to confirm deletion of all instructors.')) return;
+    db.clear('instructors');
+    db.clear('clubs');
+    loadInstructors();
+    loadClubDropdown();
+    loadDashboard();
+    showMessage('All instructors and dojos have been deleted!');
 }
 
 function filterInstructors() {
