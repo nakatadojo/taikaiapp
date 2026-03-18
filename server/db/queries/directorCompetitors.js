@@ -48,7 +48,7 @@ async function getAll(tournamentId) {
        cp.experience_level                AS experience,
        cp.weight::text                    AS weight,
        cp.academy_name                    AS club,
-       r.email                            AS email,
+       COALESCE(u.email, cp.guardian_email) AS email,
        NULL::text                         AS phone,
        NULL::jsonb                        AS raw_data,
        r.id                               AS registration_id,
@@ -57,6 +57,7 @@ async function getAll(tournamentId) {
        r.created_at
      FROM registrations r
      LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+     LEFT JOIN users u ON u.id = r.user_id
      WHERE r.tournament_id = $1
        AND r.status != 'cancelled'
 
