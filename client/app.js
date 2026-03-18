@@ -8865,13 +8865,16 @@ function loadDivisions() {
                             <td>${comp.rank || '-'}</td>
                             <td>${comp.club || '-'}</td>
                             <td>${getCountryFallback(comp)}</td>
-                            <td><button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Move to another division">Move</button></td>
+                            <td style="white-space:nowrap;">
+                                <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Move to another division">Move</button>
+                                <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                            </td>
                         </tr>`).join('');
                     sheet.innerHTML = `
                         <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
                         <div class="division-content">
                             <table class="division-table">
-                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th><th style="width:60px;"></th></tr></thead>
+                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th><th style="width:120px;"></th></tr></thead>
                                 <tbody>${tableRows}</tbody>
                             </table>
                         </div>`;
@@ -8940,7 +8943,10 @@ function loadDivisions() {
                 <td>${comp.rank || '-'}</td>
                 <td>${comp.club || '-'}</td>
                 <td>${getCompetitorCountry(comp)}</td>
-                <td><button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Move to another division">Move</button></td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Move to another division">Move</button>
+                    <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                </td>
             </tr>
         `).join('');
 
@@ -8959,7 +8965,7 @@ function loadDivisions() {
                             <th>Rank</th>
                             <th>Dojo</th>
                             <th>Country</th>
-                            <th style="width:60px;"></th>
+                            <th style="width:120px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -9079,6 +9085,102 @@ function executeCompetitorMove(fromDivision, competitorId) {
     if (overlay) overlay.remove();
 
     showToast(`Moved ${moved.firstName} ${moved.lastName} → ${target}`, 'success');
+    loadDivisions();
+}
+
+function showCopyCompetitorModal(fromDivision, competitorId) {
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId) return;
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData || !eventData.generated) return;
+
+    const divisions = eventData.generated;
+    const divisionKeys = Object.keys(divisions).sort();
+
+    const fromComps = divisions[fromDivision];
+    if (!Array.isArray(fromComps)) return;
+    const comp = fromComps.find(c => {
+        const cid = c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+        return String(cid) === String(competitorId);
+    });
+    if (!comp) { showToast('Competitor not found', 'error'); return; }
+
+    const otherDivs = divisionKeys.filter(d => d !== fromDivision);
+    if (otherDivs.length === 0) { showToast('No other divisions to copy to', 'error'); return; }
+
+    const compName = `${comp.firstName || '?'} ${comp.lastName || '?'}`;
+
+    let overlay = document.getElementById('copy-comp-overlay');
+    if (overlay) overlay.remove();
+    overlay = document.createElement('div');
+    overlay.id = 'copy-comp-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+        <div style="background:var(--bg-secondary,#1a1a24);border:1px solid var(--glass-border,#333);border-radius:12px;padding:24px;max-width:420px;width:90%;color:var(--text-primary,#fff);">
+            <h3 style="margin:0 0 8px 0;font-size:16px;">Copy Competitor</h3>
+            <p style="margin:0 0 4px 0;font-size:14px;color:var(--text-secondary,#aaa);">
+                Copy <strong>${_escapeHtml(compName)}</strong> from <em>${_escapeHtml(fromDivision)}</em>
+            </p>
+            <p style="margin:0 0 16px 0;font-size:12px;color:var(--text-secondary,#888);">
+                The competitor stays in the original division and is also added to the target.
+            </p>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;margin-bottom:6px;font-size:13px;">Target Division</label>
+                <select id="copy-comp-target" class="form-input" style="width:100%;">
+                    ${otherDivs.map(d => {
+                        const cnt = (divisions[d] || []).length;
+                        return `<option value="${_escapeHtml(d)}">${_escapeHtml(d)} (${cnt})</option>`;
+                    }).join('')}
+                </select>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('copy-comp-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="executeCompetitorCopy('${_escapeHtml(fromDivision)}','${competitorId}')">Copy</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function executeCompetitorCopy(fromDivision, competitorId) {
+    const target = document.getElementById('copy-comp-target')?.value;
+    if (!target) return;
+
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId) return;
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData || !eventData.generated) return;
+
+    const divisions = eventData.generated;
+    const fromComps = divisions[fromDivision];
+    if (!Array.isArray(fromComps)) return;
+
+    const comp = fromComps.find(c => {
+        const cid = c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+        return String(cid) === String(competitorId);
+    });
+    if (!comp) { showToast('Competitor not found', 'error'); return; }
+
+    // Shallow clone so the two division entries are independent objects
+    const copy = Object.assign({}, comp);
+
+    if (!Array.isArray(divisions[target])) divisions[target] = [];
+    divisions[target].push(copy);
+
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+
+    const overlay = document.getElementById('copy-comp-overlay');
+    if (overlay) overlay.remove();
+
+    showToast(`Copied ${comp.firstName} ${comp.lastName} → ${target}`, 'success');
     loadDivisions();
 }
 
