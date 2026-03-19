@@ -9768,11 +9768,27 @@ function loadDivisions() {
         return;
     }
 
-    const divisions = eventData.generated;
+    // Work on a shallow copy so we can safely inject empty slots without
+    // mutating what is stored in localStorage.
+    const divisions = { ...eventData.generated };
+
+    // When the director unchecks "show only divisions with competitors", fill in
+    // any tree-template leaf divisions that were never stored because they were
+    // empty at generate-time (or pre-date the empty-seeding fix).
+    const isTreeTpl = eventData.templates && eventData.templates.length > 0
+        && typeof eventData.templates[0].name === 'string'
+        && typeof eventData.templates[0].id   === 'string';
+
+    if (!hideEmpty && isTreeTpl) {
+        eventData.templates.forEach(t => {
+            if (!(t.name in divisions)) divisions[t.name] = [];
+        });
+    }
+
     const divisionKeys = Object.keys(divisions).sort();
 
     if (divisionKeys.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Add competitors to see divisions appear automatically.</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Click Edit on an event card and use Generate Divisions to set up your division structure.</p>';
         return;
     }
 
