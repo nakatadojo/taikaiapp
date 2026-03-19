@@ -156,6 +156,31 @@
       this.container.style.minHeight = '';
     }
 
+    // Returns a short human-readable description of a node's criteria value
+    _criteriaDetail(node) {
+      const cv = node.criteriaValue;
+      if (!cv) return '';
+      switch (node.criteriaType) {
+        case 'age':
+          if (cv.min == null && cv.max == null) return '';
+          return cv.max >= 99 ? `${cv.min}+ yrs` : `${cv.min}-${cv.max} yrs`;
+        case 'weight':
+          if (cv.min == null && cv.max == null) return '';
+          return cv.max >= 999 ? `${cv.min}+ kg` : `${cv.min}-${cv.max} kg`;
+        case 'experience':
+          if (cv.min == null && cv.max == null) return '';
+          return cv.max >= 99 ? `${cv.min}+ yrs exp` : `${cv.min}-${cv.max} yrs exp`;
+        case 'rank':
+          if (!cv.rankMin && !cv.rankMax) return '';
+          if (cv.rankMin === cv.rankMax) return cv.rankMin || '';
+          return `${cv.rankMin || '?'} \u2192 ${cv.rankMax || '?'}`;
+        case 'gender':
+        case 'custom':
+        default:
+          return ''; // label already is the value
+      }
+    }
+
     _buildToolbar() {
       const bar = document.createElement('div');
       bar.className = 'dtb-toolbar';
@@ -254,6 +279,7 @@
           td.className = 'dtb-cell';
           td.dataset.nodeId = node.id;
 
+          const detail = this._criteriaDetail(node);
           td.innerHTML = `
             <div class="dtb-cell-inner">
               <input class="dtb-code-input" type="text"
@@ -261,7 +287,10 @@
                 maxlength="5" placeholder="..."
                 title="Code prefix (max 5 chars, contributes to division code)"
                 data-node-id="${node.id}">
-              <span class="dtb-label">${_esc(node.label)}</span>
+              <div class="dtb-label-wrap">
+                <span class="dtb-label">${_esc(node.label)}</span>
+                ${detail ? `<span class="dtb-criteria-detail">${_esc(detail)}</span>` : ''}
+              </div>
               <button class="dtb-menu-btn" data-node-id="${node.id}" title="Options">&#x25BC;</button>
             </div>
           `;
