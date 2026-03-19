@@ -129,10 +129,14 @@
       this._closeMenu();
       document.removeEventListener('click', this._boundClose);
 
-      // Save scroll position of the modal body before wiping DOM
+      // Lock the container's height before clearing so the modal body's
+      // scrollTop is never out-of-bounds during the DOM swap — the browser
+      // clamps scrollTop to (scrollHeight - clientHeight) the moment content
+      // collapses, making save+restore useless without this guard.
       const fsBody = this.container.closest('.dtb-fs-body');
       const savedTop  = fsBody ? fsBody.scrollTop  : 0;
       const savedLeft = fsBody ? fsBody.scrollLeft : 0;
+      if (fsBody) fsBody.style.minHeight = fsBody.scrollHeight + 'px';
 
       this.container.innerHTML = '';
       this.container.className = 'dtb-wrapper';
@@ -143,13 +147,11 @@
       this.container.appendChild(scroll);
       document.addEventListener('click', this._boundClose);
 
-      // Restore scroll after browser layout — rAF ensures focus/layout events
-      // that browsers fire after DOM insertion don't override the saved position.
+      // Restore scroll then release the height lock
       if (fsBody) {
-        requestAnimationFrame(() => {
-          fsBody.scrollTop  = savedTop;
-          fsBody.scrollLeft = savedLeft;
-        });
+        fsBody.scrollTop  = savedTop;
+        fsBody.scrollLeft = savedLeft;
+        fsBody.style.minHeight = '';
       }
     }
 
