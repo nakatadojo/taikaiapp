@@ -5025,10 +5025,49 @@ let _csvImportRows = [];
 
 /** Download a blank template CSV so directors know the expected column names. */
 function downloadCSVTemplate() {
-    const headers = ['firstName','lastName','dateOfBirth','gender','weight','rank','experience','club','events','paymentStatus'];
-    const example = ['Jane','Doe','2010-03-15','Female','32.5','3rd Kyu','2','Sunrise Dojo','Kumite','unpaid'];
-    const csv = [headers.join(','), example.join(',')].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const weightUnit  = getTournamentWeightUnit();        // 'kg' or 'lbs'
+    const exampleWt   = weightUnit === 'lbs' ? '72' : '32.5';
+
+    // Pull real event names from the current tournament so the Events column
+    // shows what values are actually valid.
+    const eventTypes  = db.load('eventTypes') || [];
+    const eventNames  = eventTypes.map(e => e.name).join(' | ');
+    const exampleEvt  = eventTypes.length > 0 ? eventTypes[0].name : 'Kumite';
+
+    // Instruction rows start with # so spreadsheet apps can show them as comments
+    // while the importer (which strips blank/# lines) can safely ignore them.
+    const notes = [
+        '# ── Competitor Import Template ──────────────────────────────────────────────',
+        '# Required columns : firstName, lastName, dateOfBirth, gender, club',
+        '# Optional columns : weight, rank, experience, events, paymentStatus',
+        `# weight           : number in ${weightUnit} (e.g. ${exampleWt})`,
+        '# dateOfBirth      : YYYY-MM-DD format (e.g. 2010-03-15)',
+        '# gender           : Male or Female',
+        '# experience       : years of training as a whole number (e.g. 3)',
+        '# paymentStatus    : paid | unpaid | waived   (default: unpaid)',
+        eventNames
+            ? `# events           : one or more event names separated by ;  Valid values: ${eventNames}`
+            : '# events           : one or more event names separated by ;',
+        '# ────────────────────────────────────────────────────────────────────────────',
+    ].join('\n');
+
+    const headers = [
+        'firstName', 'lastName', 'dateOfBirth', 'gender',
+        `weight (${weightUnit})`, 'rank', 'experience (yrs)', 'club',
+        'events', 'paymentStatus',
+    ];
+
+    const example = [
+        'Jane', 'Doe', '2010-03-15', 'Female',
+        exampleWt, '3rd Kyu', '2', 'Sunrise Dojo',
+        exampleEvt, 'unpaid',
+    ];
+
+    // Quote any field that contains a comma
+    const csvRow = row => row.map(v => String(v).includes(',') ? `"${v}"` : v).join(',');
+
+    const csv = [notes, csvRow(headers), csvRow(example)].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
@@ -5087,14 +5126,19 @@ function _parseCSVLine(line) {
  * @param {string} text - Full contents of the uploaded CSV file.
  */
 function parseAndPreviewCSV(text) {
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    // Strip blank lines and comment lines (lines starting with #) so that
+    // our template's instruction block doesn't break the parse.
+    const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.trim().startsWith('#'));
     if (lines.length < 2) {
         showMessage('CSV file must have a header row and at least one data row.', 'error');
         return;
     }
 
     // Normalise header names: lowercase, strip spaces
-    const headers = _parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, ''));
+    // Normalise: lowercase, strip spaces, strip parenthetical unit hints like "(kg)" or "(yrs)"
+    const headers = _parseCSVLine(lines[0]).map(h =>
+        h.toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, '')
+    );
 
     const requiredCols = ['firstname', 'lastname', 'dateofbirth', 'gender', 'club'];
     const missing = requiredCols.filter(c => !headers.includes(c));
