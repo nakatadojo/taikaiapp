@@ -1,4 +1,4 @@
-const { pool } = require('../db');
+const pool = require('../db/pool');
 const academyQueries = require('../db/queries/academies');
 const userQueries = require('../db/queries/users');
 const registrationQueries = require('../db/queries/registrations');

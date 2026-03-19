@@ -3,7 +3,7 @@ const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const creditQueries = require('../db/queries/credits');
 const { broadcastCompetitorUpdate } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
-const { pool } = require('../db');
+const pool = require('../db/pool');
 const { sendCompetitorInviteEmail } = require('../email');
 
 async function getCompetitors(req, res, next) {
