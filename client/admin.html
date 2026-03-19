@@ -102,6 +102,12 @@
                     <i data-lucide="file-text"></i>
                     <span>Templates</span>
                 </button>
+
+                <div class="nav-section-label">Platform</div>
+                <button class="nav-item" data-view="platform-settings" onclick="switchView('platform-settings')">
+                    <i data-lucide="settings"></i>
+                    <span>Platform Settings</span>
+                </button>
             </nav>
 
             <div class="sidebar-footer">
@@ -489,6 +495,58 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                <!-- ═══ PLATFORM SETTINGS VIEW ═══ -->
+                <section id="platform-settings-view" class="admin-view hidden">
+                    <div class="view-header">
+                        <h2>Platform Settings</h2>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:14px;">Configure platform-level keys used for credit sales and the default registration payment flow.</p>
+                    </div>
+
+                    <!-- Stripe Keys -->
+                    <div class="glass-panel" style="margin-top:24px;">
+                        <h3 style="margin:0 0 4px 0;display:flex;align-items:center;gap:8px;">
+                            <i data-lucide="credit-card" style="width:18px;height:18px;"></i> Stripe Payment Keys
+                        </h3>
+                        <p style="margin:0 0 16px; color:var(--text-secondary); font-size:13px;">
+                            These keys are used when directors sell credits through this platform and for tournaments set to <strong>Platform Stripe</strong> payment mode.
+                            Get your keys from the <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener" style="color:var(--primary);">Stripe Dashboard → API keys</a>.
+                        </p>
+
+                        <div id="platform-stripe-status" style="margin-bottom:16px; padding:10px 14px; border-radius:8px; background:var(--glass); border:1px solid var(--glass-border); font-size:13px;">
+                            Loading…
+                        </div>
+
+                        <form id="platform-stripe-form" onsubmit="savePlatformStripeKeys(event)" autocomplete="off">
+                            <div style="display:grid; gap:14px;">
+                                <div class="form-group" style="margin:0;">
+                                    <label for="ps-secret-key">Secret Key <span style="color:var(--text-secondary);font-weight:400;">(sk_live_… or sk_test_…)</span></label>
+                                    <input type="password" id="ps-secret-key" class="form-input" placeholder="Leave blank to keep current value" autocomplete="new-password">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label for="ps-publishable-key">Publishable Key <span style="color:var(--text-secondary);font-weight:400;">(pk_live_… or pk_test_…)</span></label>
+                                    <input type="text" id="ps-publishable-key" class="form-input" placeholder="Leave blank to keep current value">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label for="ps-webhook-secret">Webhook Signing Secret <span style="color:var(--text-secondary);font-weight:400;">(whsec_…)</span></label>
+                                    <input type="password" id="ps-webhook-secret" class="form-input" placeholder="Leave blank to keep current value" autocomplete="new-password">
+                                    <p class="hint" style="margin-top:4px;">Add a webhook endpoint in your Stripe Dashboard pointing to <code style="background:var(--glass);padding:2px 6px;border-radius:4px;">/api/webhooks/stripe</code> and paste the signing secret here.</p>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+                                <button type="submit" class="btn btn-primary" id="ps-save-btn">Save Keys</button>
+                                <button type="button" class="btn btn-secondary" onclick="loadPlatformStripeSettings()">Reload</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="glass-panel" style="margin-top:16px; border:1px solid var(--warning,#f59e0b)20;">
+                        <h3 style="margin:0 0 8px;font-size:15px;">Security Note</h3>
+                        <p style="margin:0; color:var(--text-secondary); font-size:13px;">
+                            Secret keys are stored in the database and only accessible via this super-admin interface. Never share secret keys publicly. Use <strong>test keys</strong> (sk_test_…) during development and switch to <strong>live keys</strong> only in production.
+                        </p>
                     </div>
                 </section>
 

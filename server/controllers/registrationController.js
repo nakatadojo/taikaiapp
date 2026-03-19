@@ -12,6 +12,7 @@ const { sendGuardianConfirmationEmail } = require('../config/email');
 const { sendRegistrationConfirmationEmail, sendDojoMemberNotification } = require('../email');
 const { assignDivision } = require('../services/divisionAssignment');
 const academyQueries = require('../db/queries/academies');
+const platformSettings = require('../config/platformSettings');
 
 /**
  * POST /api/registrations/competitor
@@ -527,88 +528,123 @@ async function checkout(req, res, next) {
 
     const finalTotal = Math.max(0, cartTotal - discountAmount);
 
-    // Create Stripe Checkout Session
+    // Determine payment mode for this tournament
+    const paymentMode = tournament.payment_mode || 'stripe'; // 'stripe' | 'direct' | 'cash'
+
+    // Create Stripe Checkout Session (or handle cash / free cases)
     let stripeSessionUrl = null;
-    let stripeSessionId = null;
+    let stripeSessionId  = null;
+    let isCashPayment    = false;
 
-    if (finalTotal > 0 && process.env.STRIPE_SECRET_KEY) {
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-      // Ensure user has a Stripe Customer ID for future payment method storage
-      let stripeCustomerId = null;
-      const userRow = await pool.query('SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = $1', [req.user.id]);
-      const userData = userRow.rows[0];
-      if (userData) {
-        stripeCustomerId = userData.stripe_customer_id;
-        if (!stripeCustomerId) {
-          try {
-            const customer = await stripe.customers.create({
-              email: userData.email,
-              name: `${userData.first_name} ${userData.last_name}`,
-              metadata: { userId: req.user.id },
-            });
-            stripeCustomerId = customer.id;
-            await pool.query('UPDATE users SET stripe_customer_id = $1 WHERE id = $2', [stripeCustomerId, req.user.id]);
-          } catch (e) {
-            console.warn('Failed to create Stripe customer:', e.message);
-          }
-        }
-      }
-
-      // Use tournament currency (lowercase for Stripe), fallback to usd
-      const stripeCurrency = (tournament.currency || 'usd').toLowerCase();
-
-      const lineItems = validatedCompetitors.map(comp => ({
-        price_data: {
-          currency: stripeCurrency,
-          product_data: {
-            name: `${comp.name} — ${comp.events.map(e => e.name).join(', ')}`,
-          },
-          unit_amount: Math.round(comp.subtotal * 100), // cents (or smallest unit)
-        },
-        quantity: 1,
-      }));
-
-      const appUrl = process.env.APP_URL || 'http://localhost:3000';
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        ...(stripeCustomerId && { customer: stripeCustomerId }),
-        line_items: discountAmount > 0
-          ? [{
-            price_data: {
-              currency: stripeCurrency,
-              product_data: {
-                name: `${tournament.name} — Tournament Registration`,
-                description: validatedCompetitors.map(c => `${c.name}: ${c.events.length} event(s)`).join('; '),
-              },
-              unit_amount: Math.round(finalTotal * 100),
-            },
-            quantity: 1,
-          }]
-          : lineItems,
-        success_url: `${appUrl}/register.html?session_id={CHECKOUT_SESSION_ID}#success`,
-        cancel_url: `${appUrl}/register.html#cart`,
-        metadata: {
-          userId: req.user.id,
-          tournamentId,
-          discountCode: discountCode || '',
-          cartData: JSON.stringify({
-            competitors: validatedCompetitors,
-            discountAmount,
-            total: finalTotal,
-          }),
-        },
-      });
-
-      stripeSessionUrl = session.url;
-      stripeSessionId = session.id;
+    if (paymentMode === 'cash') {
+      // ── Cash / offline payment — register immediately, director collects on-site ──
+      isCashPayment    = true;
+      stripeSessionId  = `cash_${Date.now()}_${req.user.id}`;
     } else if (finalTotal === 0) {
       // Free registration (100% discount) — auto-confirm
       stripeSessionId = `free_${Date.now()}_${req.user.id}`;
+    } else {
+      // Stripe payment: use director's own key ('direct') or platform key ('stripe')
+      let stripeKey = null;
+      if (paymentMode === 'direct') {
+        const dirRow = await pool.query(
+          'SELECT stripe_secret_key FROM users WHERE id = $1',
+          [tournament.created_by]
+        );
+        stripeKey = dirRow.rows[0]?.stripe_secret_key || null;
+        if (!stripeKey) {
+          return res.status(503).json({
+            error: 'Online payment is not yet configured for this tournament. Please contact the organizer.',
+            code: 'DIRECTOR_STRIPE_NOT_CONFIGURED',
+          });
+        }
+      } else {
+        stripeKey = await platformSettings.getStripeSecretKey();
+      }
+
+      if (stripeKey) {
+        const stripe = require('stripe')(stripeKey);
+
+        // Ensure the user has a Stripe Customer ID (only for platform mode — customer IDs are account-scoped)
+        let stripeCustomerId = null;
+        if (paymentMode !== 'direct') {
+          const userRow = await pool.query('SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = $1', [req.user.id]);
+          const userData = userRow.rows[0];
+          if (userData) {
+            stripeCustomerId = userData.stripe_customer_id;
+            if (!stripeCustomerId) {
+              try {
+                const customer = await stripe.customers.create({
+                  email: userData.email,
+                  name: `${userData.first_name} ${userData.last_name}`,
+                  metadata: { userId: req.user.id },
+                });
+                stripeCustomerId = customer.id;
+                await pool.query('UPDATE users SET stripe_customer_id = $1 WHERE id = $2', [stripeCustomerId, req.user.id]);
+              } catch (e) {
+                console.warn('Failed to create Stripe customer:', e.message);
+              }
+            }
+          }
+        }
+
+        // Use tournament currency (lowercase for Stripe), fallback to usd
+        const stripeCurrency = (tournament.currency || 'usd').toLowerCase();
+
+        const lineItems = validatedCompetitors.map(comp => ({
+          price_data: {
+            currency: stripeCurrency,
+            product_data: {
+              name: `${comp.name} — ${comp.events.map(e => e.name).join(', ')}`,
+            },
+            unit_amount: Math.round(comp.subtotal * 100),
+          },
+          quantity: 1,
+        }));
+
+        const appUrl = process.env.APP_URL || 'http://localhost:3000';
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: ['card'],
+          ...(stripeCustomerId && { customer: stripeCustomerId }),
+          line_items: discountAmount > 0
+            ? [{
+              price_data: {
+                currency: stripeCurrency,
+                product_data: {
+                  name: `${tournament.name} — Tournament Registration`,
+                  description: validatedCompetitors.map(c => `${c.name}: ${c.events.length} event(s)`).join('; '),
+                },
+                unit_amount: Math.round(finalTotal * 100),
+              },
+              quantity: 1,
+            }]
+            : lineItems,
+          success_url: `${appUrl}/register.html?session_id={CHECKOUT_SESSION_ID}#success`,
+          cancel_url:  `${appUrl}/register.html#cart`,
+          metadata: {
+            userId:       req.user.id,
+            tournamentId,
+            paymentMode,
+            discountCode: discountCode || '',
+            cartData: JSON.stringify({
+              competitors: validatedCompetitors,
+              discountAmount,
+              total: finalTotal,
+            }),
+          },
+        });
+
+        stripeSessionUrl = session.url;
+        stripeSessionId  = session.id;
+      }
+      // If no stripeKey at all (not configured), stripeSessionId remains null and falls through
+      // to a pending payment_transaction without a checkout URL — director can mark paid manually.
     }
 
     // Create payment transaction record
+    // Cash and free registrations are immediately created; Stripe is pending until webhook/confirm.
+    const isImmediateRegistration = finalTotal === 0 || isCashPayment;
     const txResult = await pool.query(
       `INSERT INTO payment_transactions
         (user_id, tournament_id, stripe_session_id, amount_total,
@@ -622,12 +658,12 @@ async function checkout(req, res, next) {
         Math.round(finalTotal * 100),
         discountData?.id || null,
         Math.round(discountAmount * 100),
-        finalTotal === 0 ? 'completed' : 'pending',
+        isImmediateRegistration ? (isCashPayment ? 'pending' : 'completed') : 'pending',
       ]
     );
 
-    // If free (0 total), create registrations immediately
-    if (finalTotal === 0) {
+    // If free (0 total) OR cash mode — create registrations immediately
+    if (isImmediateRegistration) {
       const freeRegIds = await createRegistrationsFromCart(
         req.user.id, tournamentId, validatedCompetitors,
         txResult.rows[0].id, stripeSessionId, discountData
@@ -687,6 +723,16 @@ async function checkout(req, res, next) {
         }
       }
 
+      if (isCashPayment) {
+        return res.json({
+          status: 'cash_pending',
+          message: 'Registration submitted. Payment to be collected on-site.',
+          sessionId: stripeSessionId,
+          total: finalTotal,
+          requiresPayment: false,
+        });
+      }
+
       return res.json({
         status: 'completed',
         message: 'Registration confirmed (free with discount)',
@@ -739,9 +785,28 @@ async function confirmPayment(req, res, next) {
       return res.json({ status: 'already_confirmed', message: 'Registration already confirmed' });
     }
 
-    // Verify payment with Stripe
-    if (process.env.STRIPE_SECRET_KEY && !sessionId.startsWith('free_')) {
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    // Verify payment with Stripe (skip for free_ and cash_ sessions)
+    const isSpecialSession = sessionId.startsWith('free_') || sessionId.startsWith('cash_');
+
+    // Determine which Stripe key to use based on the tournament's payment_mode.
+    // The tournament_id is stored on the payment_transaction row, so no metadata peek needed.
+    let confirmStripeKey = null;
+    if (!isSpecialSession && existing.rows[0].tournament_id) {
+      const txTournament = await tournamentQueries.findById(existing.rows[0].tournament_id);
+      const txPaymentMode = txTournament?.payment_mode || 'stripe';
+      if (txPaymentMode === 'direct' && txTournament?.created_by) {
+        const dirRow = await pool.query(
+          'SELECT stripe_secret_key FROM users WHERE id = $1',
+          [txTournament.created_by]
+        );
+        confirmStripeKey = dirRow.rows[0]?.stripe_secret_key || null;
+      } else {
+        confirmStripeKey = await platformSettings.getStripeSecretKey();
+      }
+    }
+
+    if (confirmStripeKey && !isSpecialSession) {
+      const stripe = require('stripe')(confirmStripeKey);
       const session = await stripe.checkout.sessions.retrieve(sessionId);
 
       if (session.payment_status !== 'paid') {

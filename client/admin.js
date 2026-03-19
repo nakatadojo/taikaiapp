@@ -198,6 +198,7 @@ function switchView(view) {
     case 'discounts': loadDiscounts(); break;
     case 'templates': break; // static content
     case 'judge-analytics': loadAdminJudgeAnalytics(); break;
+    case 'platform-settings': loadPlatformStripeSettings(); break;
   }
 
   lucide.createIcons();
@@ -916,4 +917,70 @@ function esc(str) {
   const d = document.createElement('div');
   d.textContent = str || '';
   return d.innerHTML;
+}
+
+// ── Platform Stripe Settings ─────────────────────────────────────────────────
+
+async function loadPlatformStripeSettings() {
+  const statusEl = document.getElementById('platform-stripe-status');
+  if (!statusEl) return;
+  statusEl.textContent = 'Loading…';
+  try {
+    const data = await apiRequest('/api/admin/platform-settings/stripe');
+    const badges = (label, set, masked) => {
+      const colour = set ? '#22c55e' : '#6b7280';
+      const txt    = set ? `${label}: <code style="background:var(--glass);padding:1px 5px;border-radius:4px;">${esc(masked)}</code>` : `${label}: <span style="color:var(--text-secondary);">not set</span>`;
+      return `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${colour};flex-shrink:0;"></span>${txt}</span>`;
+    };
+    statusEl.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+        ${badges('Secret key',      data.secretKeySet,     data.secretKey)}
+        ${badges('Publishable key', data.publishableKeySet, data.publishableKey)}
+        ${badges('Webhook secret',  data.webhookSecretSet,  data.webhookSecret)}
+      </div>`;
+    lucide.createIcons();
+  } catch (err) {
+    statusEl.textContent = 'Failed to load settings.';
+  }
+}
+
+async function savePlatformStripeKeys(e) {
+  e.preventDefault();
+  const btn = document.getElementById('ps-save-btn');
+  const secretKey     = document.getElementById('ps-secret-key').value.trim();
+  const publishableKey= document.getElementById('ps-publishable-key').value.trim();
+  const webhookSecret = document.getElementById('ps-webhook-secret').value.trim();
+
+  // Only send fields that have been filled in (blank = keep current)
+  const payload = {};
+  if (secretKey)      payload.secretKey      = secretKey;
+  if (publishableKey) payload.publishableKey = publishableKey;
+  if (webhookSecret)  payload.webhookSecret  = webhookSecret;
+
+  if (Object.keys(payload).length === 0) {
+    showToast('No changes — enter at least one key to update.', 'info');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await apiRequest('/api/admin/platform-settings/stripe', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    showToast('Platform Stripe keys saved.', 'success');
+    // Clear the inputs and reload status
+    document.getElementById('ps-secret-key').value = '';
+    document.getElementById('ps-publishable-key').value = '';
+    document.getElementById('ps-webhook-secret').value = '';
+    await loadPlatformStripeSettings();
+  } catch (err) {
+    showToast(err.message || 'Failed to save keys.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Keys';
+  }
 }

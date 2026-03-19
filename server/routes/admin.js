@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roles');
 const adminController = require('../controllers/adminController');
 const discountController = require('../controllers/discountController');
+const platformSettingsController = require('../controllers/platformSettingsController');
 
 const router = express.Router();
 
@@ -76,5 +77,13 @@ router.put('/discount-codes/:id',
 
 // DELETE /api/admin/discount-codes/:id — Delete discount code
 router.delete('/discount-codes/:id', discountController.deleteDiscount);
+
+// ── Platform Stripe Settings ──────────────────────────────────────────────────
+
+// GET  /api/admin/platform-settings/stripe — Read masked platform Stripe keys
+router.get('/platform-settings/stripe', platformSettingsController.getStripeSettings);
+
+// PUT  /api/admin/platform-settings/stripe — Update platform Stripe keys
+router.put('/platform-settings/stripe', platformSettingsController.updateStripeSettings);
 
 module.exports = router;

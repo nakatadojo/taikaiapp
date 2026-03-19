@@ -9,6 +9,7 @@ const { validateImageBytes } = require('../middleware/upload');
 const tournamentController = require('../controllers/tournamentController');
 const directorCompetitorsController = require('../controllers/directorCompetitorsController');
 const { getRegistrationFields } = require('../controllers/registrationFieldsController');
+const directorSettingsController = require('../controllers/directorSettingsController');
 
 const router = express.Router();
 
@@ -475,5 +476,16 @@ router.put('/:id/teams/:teamId', requireAuth, updateTeam);
 
 // PATCH /api/tournaments/:id/teams/:teamId/payment — mark payment (director only)
 router.patch('/:id/teams/:teamId/payment', requireAuth, markTeamPayment);
+
+// ── Director Stripe & Payment Settings ───────────────────────────────────────
+
+// GET  /api/director/stripe-settings — read director's own masked Stripe keys
+router.get('/director/stripe-settings', requireAuth, directorSettingsController.getStripeSettings);
+
+// PUT  /api/director/stripe-settings — save director's Stripe keys
+router.put('/director/stripe-settings', requireAuth, directorSettingsController.updateStripeSettings);
+
+// PATCH /api/tournaments/:id/payment-mode — set payment_mode for a tournament
+router.patch('/:id/payment-mode', requireAuth, tournamentController.setPaymentMode);
 
 module.exports = router;

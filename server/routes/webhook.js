@@ -23,6 +23,7 @@ const discountQueries = require('../db/queries/discounts');
 const userQueries = require('../db/queries/users');
 const notificationQueries = require('../db/queries/notifications');
 const { sendRegistrationConfirmationEmail } = require('../email');
+const platformSettings = require('../config/platformSettings');
 
 const router = express.Router();
 
@@ -43,23 +44,26 @@ router.post(
   '/stripe',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
-    if (!process.env.STRIPE_SECRET_KEY) {
+    const stripeKey     = await platformSettings.getStripeSecretKey();
+    const webhookSecret = await platformSettings.getStripeWebhookSecret();
+
+    if (!stripeKey) {
       return res.status(500).json({ error: 'Stripe not configured' });
     }
 
-    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const stripe = require('stripe')(stripeKey);
     const sig = req.headers['stripe-signature'];
 
     let event;
 
     // STRIPE_WEBHOOK_SECRET is required — reject all webhooks without it
-    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    if (!webhookSecret) {
       console.error('STRIPE_WEBHOOK_SECRET not configured — rejecting incoming webhook');
       return res.status(400).json({ error: 'Webhook not configured' });
     }
 
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err) {
       console.warn('⚠ Webhook signature verification failed:', err.message);
       return res.status(400).json({ error: 'Webhook signature verification failed' });
@@ -422,9 +426,12 @@ async function handleDisputeCreated(dispute) {
   // try to find the payment by charge lookup.
   let paymentIntentId = null;
   try {
-    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-    const chargeObj = await stripe.charges.retrieve(chargeId);
-    paymentIntentId = chargeObj.payment_intent;
+    const dispKey = await platformSettings.getStripeSecretKey();
+    if (dispKey) {
+      const stripe = require('stripe')(dispKey);
+      const chargeObj = await stripe.charges.retrieve(chargeId);
+      paymentIntentId = chargeObj.payment_intent;
+    }
   } catch (err) {
     console.warn(`Webhook [charge.dispute.created]: Failed to retrieve charge ${chargeId}:`, err.message);
   }
@@ -507,9 +514,12 @@ async function handleDisputeClosed(dispute) {
   // Retrieve the charge to find our payment_intent
   let paymentIntentId = null;
   try {
-    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-    const chargeObj = await stripe.charges.retrieve(chargeId);
-    paymentIntentId = chargeObj.payment_intent;
+    const closeKey = await platformSettings.getStripeSecretKey();
+    if (closeKey) {
+      const stripe = require('stripe')(closeKey);
+      const chargeObj = await stripe.charges.retrieve(chargeId);
+      paymentIntentId = chargeObj.payment_intent;
+    }
   } catch (err) {
     console.warn(`Webhook [charge.dispute.closed]: Failed to retrieve charge ${chargeId}:`, err.message);
   }

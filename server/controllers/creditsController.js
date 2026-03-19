@@ -1,6 +1,7 @@
 const creditQueries = require('../db/queries/credits');
 const creditPackageQueries = require('../db/queries/creditPackages');
 const pool = require('../db/pool');
+const platformSettings = require('../config/platformSettings');
 
 /**
  * GET /api/credits/packages
@@ -65,11 +66,12 @@ async function checkout(req, res, next) {
       return res.status(400).json({ error: 'Invalid package ID' });
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
+    const stripeKey = await platformSettings.getStripeSecretKey();
+    if (!stripeKey) {
       return res.status(500).json({ error: 'Payment processing is not configured' });
     }
 
-    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const stripe = require('stripe')(stripeKey);
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
 
     // Ensure user has a Stripe Customer ID
@@ -139,11 +141,12 @@ async function confirm(req, res, next) {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
+    const stripeKeyConfirm = await platformSettings.getStripeSecretKey();
+    if (!stripeKeyConfirm) {
       return res.status(500).json({ error: 'Payment processing is not configured' });
     }
 
-    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const stripe = require('stripe')(stripeKeyConfirm);
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     if (session.payment_status !== 'paid') {

@@ -793,6 +793,36 @@ async function undoCheckInDirectorCompetitor(req, res, next) {
   } catch (err) { next(err); }
 }
 
+/**
+ * PATCH /api/tournaments/:id/payment-mode
+ * Set the payment_mode for a tournament (owner only).
+ * Body: { paymentMode: 'stripe' | 'direct' | 'cash' }
+ */
+async function setPaymentMode(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const { paymentMode } = req.body;
+
+    const valid = ['stripe', 'direct', 'cash'];
+    if (!valid.includes(paymentMode)) {
+      return res.status(400).json({ error: `paymentMode must be one of: ${valid.join(', ')}` });
+    }
+
+    const t = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
+    if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
+    if (t.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    await pool.query(
+      'UPDATE tournaments SET payment_mode = $1, updated_at = NOW() WHERE id = $2',
+      [paymentMode, tournamentId]
+    );
+
+    res.json({ paymentMode });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getTournaments,
   getDirectory,
@@ -824,6 +854,7 @@ module.exports = {
   syncStaff,
   getInstructors,
   syncInstructors,
+  setPaymentMode,
 };
 
 // ── Director Officials / Staff / Instructors ──────────────────────────────────

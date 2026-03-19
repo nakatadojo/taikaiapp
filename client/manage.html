@@ -443,6 +443,7 @@
                         <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
                         <button class="nav-sub-btn" data-view="settings-feedback">Feedback</button>
                         <button class="nav-sub-btn" data-view="settings">Staff Roles</button>
+                        <button class="nav-sub-btn" data-view="settings-payment">Payment</button>
                     </div>
                 </div>
             </nav>
@@ -2190,6 +2191,79 @@
                 </div>
             </section>
 
+            <!-- Payment Settings View (Settings sub-page) -->
+            <section id="settings-payment-view" class="view">
+                <h2>Payment Settings</h2>
+
+                <!-- Per-tournament payment mode -->
+                <div class="glass-panel">
+                    <h3 style="margin:0 0 6px;">Payment Mode for This Tournament</h3>
+                    <p class="hint" style="margin:0 0 16px;">Choose how competitors pay their registration fees for this tournament.</p>
+
+                    <div style="display:flex;flex-direction:column;gap:10px;" id="payment-mode-options">
+                        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:8px;border:1px solid var(--glass-border);cursor:pointer;background:var(--glass);">
+                            <input type="radio" name="payment-mode" value="stripe" style="margin-top:3px;flex-shrink:0;">
+                            <div>
+                                <strong>Platform Stripe</strong>
+                                <p class="hint" style="margin:2px 0 0;">Online payments via the platform's Stripe account (configured by the admin). Default mode.</p>
+                            </div>
+                        </label>
+                        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:8px;border:1px solid var(--glass-border);cursor:pointer;background:var(--glass);">
+                            <input type="radio" name="payment-mode" value="direct" style="margin-top:3px;flex-shrink:0;">
+                            <div>
+                                <strong>Direct Stripe (My Account)</strong>
+                                <p class="hint" style="margin:2px 0 0;">Registration fees go directly to your Stripe account. Requires your Stripe keys to be configured below.</p>
+                            </div>
+                        </label>
+                        <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:8px;border:1px solid var(--glass-border);cursor:pointer;background:var(--glass);">
+                            <input type="radio" name="payment-mode" value="cash" style="margin-top:3px;flex-shrink:0;">
+                            <div>
+                                <strong>Cash / Offline</strong>
+                                <p class="hint" style="margin:2px 0 0;">No online payment required. Competitors register and pay on-site. You collect all fees manually.</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <button class="btn btn-primary" style="margin-top:16px;" onclick="savePaymentMode()">Save Payment Mode</button>
+                </div>
+
+                <!-- Director's own Stripe keys -->
+                <div class="glass-panel">
+                    <h3 style="margin:0 0 6px;">Your Stripe Keys</h3>
+                    <p class="hint" style="margin:0 0 16px;">
+                        Required when using <strong>Direct Stripe</strong> mode. Get your keys from the
+                        <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener" style="color:var(--primary);">Stripe Dashboard → API keys</a>.
+                        These keys are stored securely and only used for tournaments where you choose Direct Stripe.
+                    </p>
+
+                    <div id="director-stripe-status" style="margin-bottom:16px; padding:10px 14px; border-radius:8px; background:var(--glass); border:1px solid var(--glass-border); font-size:13px;">
+                        Loading…
+                    </div>
+
+                    <form id="director-stripe-form" onsubmit="saveDirectorStripeKeys(event)" autocomplete="off">
+                        <div style="display:grid;gap:14px;">
+                            <div class="form-group" style="margin:0;">
+                                <label for="dir-secret-key">Secret Key <span style="color:var(--text-secondary);font-weight:400;">(sk_live_… or sk_test_…)</span></label>
+                                <input type="password" id="dir-secret-key" class="form-input" placeholder="Leave blank to keep current value" autocomplete="new-password">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="dir-publishable-key">Publishable Key <span style="color:var(--text-secondary);font-weight:400;">(pk_live_… or pk_test_…)</span></label>
+                                <input type="text" id="dir-publishable-key" class="form-input" placeholder="Leave blank to keep current value">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="dir-webhook-secret">Webhook Signing Secret <span style="color:var(--text-secondary);font-weight:400;">(whsec_… — optional)</span></label>
+                                <input type="password" id="dir-webhook-secret" class="form-input" placeholder="Leave blank to keep current value" autocomplete="new-password">
+                                <p class="hint" style="margin-top:4px;">Optional but recommended. Point your Stripe webhook to <code style="background:var(--glass);padding:2px 6px;border-radius:4px;">/api/webhooks/stripe</code>.</p>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+                            <button type="submit" class="btn btn-primary" id="dir-stripe-save-btn">Save My Stripe Keys</button>
+                            <button type="button" class="btn btn-secondary" onclick="loadDirectorStripeSettings()">Reload</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
             <!-- Certificates View (Settings sub-page) -->
             <section id="settings-certificates-view" class="view">
                 <h2>Certificates</h2>
@@ -3551,6 +3625,9 @@
             if (viewName === 'settings') {
                 loadStaffRoles();
             }
+            if (viewName === 'settings-payment') {
+                loadPaymentSettings();
+            }
         };
     })();
 
@@ -3974,6 +4051,131 @@
             // Return true so synchronous callers don't bail out.
             // Destructive callers that need real confirmation should use showConfirm().
             return true;
+        };
+    })();
+    </script>
+
+    <!-- ═══ Payment Settings JS ═══ -->
+    <script>
+    (function() {
+        function _esc(s) {
+            const d = document.createElement('div');
+            d.textContent = String(s || '');
+            return d.innerHTML;
+        }
+
+        // Load tournament payment mode + director stripe status
+        window.loadPaymentSettings = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+
+            // Load tournament payment_mode
+            try {
+                const res = await fetch(`/api/tournaments/${tid}`, { credentials: 'include' });
+                const data = await res.json();
+                const t = data.tournament || data;
+                const mode = t.payment_mode || 'stripe';
+                const radios = document.querySelectorAll('input[name="payment-mode"]');
+                radios.forEach(r => { r.checked = r.value === mode; });
+            } catch (err) {
+                console.error('Failed to load payment mode:', err);
+            }
+
+            // Load director stripe key status
+            loadDirectorStripeSettings();
+        };
+
+        window.savePaymentMode = async function() {
+            const tid = typeof currentTournamentId !== 'undefined' ? currentTournamentId : null;
+            if (!tid) return;
+            const selected = document.querySelector('input[name="payment-mode"]:checked');
+            if (!selected) return;
+            const paymentMode = selected.value;
+            try {
+                const res = await fetch(`/api/tournaments/${tid}/payment-mode`, {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paymentMode }),
+                });
+                if (!res.ok) {
+                    const d = await res.json();
+                    throw new Error(d.error || 'Failed to save');
+                }
+                const modeLabels = { stripe: 'Platform Stripe', direct: 'Direct Stripe', cash: 'Cash / Offline' };
+                if (typeof showToast === 'function') showToast(`Payment mode set to: ${modeLabels[paymentMode] || paymentMode}`, 'success');
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message || 'Failed to save payment mode', 'error');
+            }
+        };
+
+        window.loadDirectorStripeSettings = async function() {
+            const statusEl = document.getElementById('director-stripe-status');
+            if (!statusEl) return;
+            statusEl.textContent = 'Loading…';
+            try {
+                const res = await fetch('/api/tournaments/director/stripe-settings', { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+                const badge = (label, set, masked) => {
+                    const color = set ? '#22c55e' : '#6b7280';
+                    const text  = set
+                        ? `${_esc(label)}: <code style="background:var(--glass);padding:1px 5px;border-radius:4px;">${_esc(masked)}</code>`
+                        : `${_esc(label)}: <span style="color:var(--text-secondary);">not set</span>`;
+                    return `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:12px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>${text}</span>`;
+                };
+                statusEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;">
+                    ${badge('Secret key',      data.secretKeySet,      data.secretKey)}
+                    ${badge('Publishable key', data.publishableKeySet,  data.publishableKey)}
+                    ${badge('Webhook secret',  data.webhookSecretSet,   data.webhookSecret)}
+                </div>`;
+            } catch (err) {
+                statusEl.textContent = 'Failed to load settings.';
+            }
+        };
+
+        window.saveDirectorStripeKeys = async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('dir-stripe-save-btn');
+            const secretKey      = (document.getElementById('dir-secret-key')?.value || '').trim();
+            const publishableKey = (document.getElementById('dir-publishable-key')?.value || '').trim();
+            const webhookSecret  = (document.getElementById('dir-webhook-secret')?.value || '').trim();
+
+            const payload = {};
+            if (secretKey)      payload.secretKey      = secretKey;
+            if (publishableKey) payload.publishableKey = publishableKey;
+            if (webhookSecret)  payload.webhookSecret  = webhookSecret;
+
+            if (Object.keys(payload).length === 0) {
+                if (typeof showToast === 'function') showToast('No changes — enter at least one key to update.', 'info');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                const res = await fetch('/api/tournaments/director/stripe-settings', {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const d = await res.json();
+                    throw new Error(d.error || 'Failed to save');
+                }
+                if (typeof showToast === 'function') showToast('Stripe keys saved.', 'success');
+                document.getElementById('dir-secret-key').value = '';
+                document.getElementById('dir-publishable-key').value = '';
+                document.getElementById('dir-webhook-secret').value = '';
+                await loadDirectorStripeSettings();
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message || 'Failed to save keys.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save My Stripe Keys';
+            }
         };
     })();
     </script>

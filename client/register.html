@@ -3306,6 +3306,9 @@
             } else if (data.success || data.confirmed || data.status === 'completed') {
                 // Free registration or already confirmed
                 onPaymentSuccess(data);
+            } else if (data.status === 'cash_pending') {
+                // Cash / offline payment — registration submitted, payment collected on-site
+                onPaymentSuccess({ ...data, cashPayment: true });
             } else {
                 // Try to confirm directly
                 try {
@@ -3370,7 +3373,13 @@
 
         // Coach mode: update success message and actions
         const isCoach = state.isCoachMode || sessionStorage.getItem('taikai_coach_mode') === 'true';
-        if (isPayLater) {
+        if (data.cashPayment) {
+            document.getElementById('success-text').textContent = 'Registration submitted. Payment will be collected on-site — please bring cash or arrange payment with the event organizer.';
+            document.getElementById('success-actions').innerHTML = `
+                <button class="btn-accent" onclick="navigate('registrations')">View My Registrations</button>
+                <button class="btn-ghost" onclick="navigate('dashboard')">Register More</button>
+            `;
+        } else if (isPayLater) {
             document.getElementById('success-text').textContent = 'Registration submitted. You have an outstanding balance due — please arrange payment with the event organizer.';
             document.getElementById('success-actions').innerHTML = `
                 <button class="btn-accent" onclick="navigate('registrations')">View My Registrations</button>
