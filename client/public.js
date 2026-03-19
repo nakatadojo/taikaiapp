@@ -953,11 +953,17 @@ function setupAcademyAutocomplete() {
         debounceTimer = setTimeout(async () => {
             try {
                 const res = await fetch(`/api/academies/search?q=${encodeURIComponent(q)}`);
+                if (!res.ok) {
+                    console.error('[dojo search] HTTP', res.status, await res.text());
+                    dropdown.innerHTML = '<div class="autocomplete-item hint">Search unavailable</div>';
+                    dropdown.style.display = 'block';
+                    return;
+                }
                 const data = await res.json();
                 const academies = data.academies || [];
 
                 if (academies.length === 0) {
-                    dropdown.innerHTML = '<div class="autocomplete-item hint">No academies found</div>';
+                    dropdown.innerHTML = '<div class="autocomplete-item hint">No registered dojos found — type to use this name</div>';
                     dropdown.style.display = 'block';
                     return;
                 }
@@ -967,8 +973,9 @@ function setupAcademyAutocomplete() {
                 ).join('');
                 dropdown.style.display = 'block';
             } catch (err) {
-                dropdown.innerHTML = '';
-                dropdown.style.display = 'none';
+                console.error('[dojo search] failed:', err);
+                dropdown.innerHTML = '<div class="autocomplete-item hint">Search unavailable — type dojo name manually</div>';
+                dropdown.style.display = 'block';
             }
         }, 300);
     });

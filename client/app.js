@@ -2788,7 +2788,7 @@ function showCompetitorForm() {
         if (formTitle) formTitle.textContent = 'Competitor Registration';
     }
     document.getElementById('competitor-form-container').classList.remove('hidden');
-    loadClubDropdown();
+    setupDirectorAcademyAutocomplete();
     loadEventCheckboxes();
 
     // Load registration fields (use cache if available)
@@ -3434,37 +3434,89 @@ function hideCompetitorForm() {
     currentPhotoData = null;
     currentNewClubLogoData = null;
     document.getElementById('photo-preview')?.classList.add('hidden');
-    document.getElementById('new-club-name-group').style.display = 'none';
-    document.getElementById('new-club-logo-group').style.display = 'none';
     document.getElementById('new-club-logo-preview')?.classList.add('hidden');
+    const _clubDd = document.getElementById('club-autocomplete');
+    if (_clubDd) { _clubDd.innerHTML = ''; _clubDd.style.display = 'none'; }
+    const _clubAcadId = document.getElementById('club-academy-id');
+    if (_clubAcadId) _clubAcadId.value = '';
 
     // Reset form title back to add mode
     const formTitle = document.querySelector('#competitor-form-container h3');
     if (formTitle) formTitle.textContent = 'Competitor Registration';
 }
 
-// Club dropdown handler
+// Dojo autocomplete for director competitor form
 let currentNewClubLogoData = null;
+let _directorAcademyAutocompleteSetup = false;
 
-function handleClubSelection() {
-    const clubSelect = document.getElementById('club');
-    const newClubGroup = document.getElementById('new-club-name-group');
-    const newClubLogoGroup = document.getElementById('new-club-logo-group');
-    const newClubInput = document.getElementById('new-club-name');
+function setupDirectorAcademyAutocomplete() {
+    const input = document.getElementById('club');
+    const dropdown = document.getElementById('club-autocomplete');
+    const hiddenId = document.getElementById('club-academy-id');
+    if (!input || !dropdown) return;
+    if (_directorAcademyAutocompleteSetup) return;
+    _directorAcademyAutocompleteSetup = true;
 
-    if (clubSelect.value === '__new__') {
-        newClubGroup.style.display = 'block';
-        newClubLogoGroup.style.display = 'block';
-        newClubInput.required = true;
-    } else {
-        newClubGroup.style.display = 'none';
-        newClubLogoGroup.style.display = 'none';
-        newClubInput.required = false;
-        newClubInput.value = '';
-        currentNewClubLogoData = null;
-        document.getElementById('new-club-logo-preview')?.classList.add('hidden');
-    }
+    let debounceTimer = null;
+
+    input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        const q = input.value.trim();
+        if (hiddenId) hiddenId.value = '';
+        if (q.length < 2) {
+            dropdown.innerHTML = '';
+            dropdown.style.display = 'none';
+            return;
+        }
+        debounceTimer = setTimeout(async () => {
+            const localClubs = db.load('clubs');
+            const localMatches = localClubs
+                .filter(c => c.name.toLowerCase().includes(q.toLowerCase()))
+                .map(c => ({ id: null, name: c.name }));
+
+            let remoteAcademies = [];
+            try {
+                const res = await fetch(`/api/academies/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+                if (res.ok) {
+                    const data = await res.json();
+                    remoteAcademies = (data.academies || []).map(a => ({ id: a.id, name: a.name, registered: true }));
+                }
+            } catch (_) {}
+
+            const seen = new Set(remoteAcademies.map(a => a.name.toLowerCase()));
+            const combined = [
+                ...remoteAcademies,
+                ...localMatches.filter(c => !seen.has(c.name.toLowerCase())),
+            ];
+
+            if (combined.length === 0) {
+                dropdown.innerHTML = `<div class="autocomplete-item" style="color:var(--text-secondary);cursor:default;font-size:13px;">No matches — type to use this name</div>`;
+            } else {
+                dropdown.innerHTML = combined.map(a =>
+                    `<div class="autocomplete-item" data-id="${a.id || ''}" data-name="${a.name.replace(/"/g, '&quot;')}">${a.name}${a.registered ? ' <span style="font-size:11px;opacity:0.6;">&#10003; Registered</span>' : ''}</div>`
+                ).join('');
+            }
+            dropdown.style.display = 'block';
+        }, 300);
+    });
+
+    dropdown.addEventListener('click', (e) => {
+        const item = e.target.closest('.autocomplete-item[data-name]');
+        if (!item) return;
+        input.value = item.dataset.name;
+        if (hiddenId) hiddenId.value = item.dataset.id || '';
+        dropdown.innerHTML = '';
+        dropdown.style.display = 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#club') && !e.target.closest('#club-autocomplete')) {
+            dropdown.style.display = 'none';
+        }
+    });
 }
+
+function handleClubSelection() { /* replaced by setupDirectorAcademyAutocomplete */ }
 
 // Handle club logo upload in competitor form (with compression)
 document.getElementById('new-club-logo')?.addEventListener('change', function(e) {
@@ -3519,37 +3571,7 @@ function getClubLogo(clubName) {
 }
 
 // Load clubs into dropdown
-function loadClubDropdown() {
-    const clubs = db.load('clubs');
-    const competitors = db.load('competitors');
-    const clubSelect = document.getElementById('club');
-
-    if (!clubSelect) return;
-
-    // Get unique club names from clubs table
-    const clubTableNames = clubs.map(c => c.name);
-
-    // Also get club names from existing competitors (for legacy data)
-    const competitorClubNames = competitors.map(c => c.club).filter(Boolean);
-
-    // Combine and get unique, sorted list
-    const allClubNames = [...new Set([...clubTableNames, ...competitorClubNames])].sort();
-
-    clubSelect.innerHTML = '<option value="">Select Dojo</option>';
-
-    allClubNames.forEach(clubName => {
-        const option = document.createElement('option');
-        option.value = clubName;
-        option.textContent = clubName;
-        clubSelect.appendChild(option);
-    });
-
-    // Add "New Dojo" option
-    const newOption = document.createElement('option');
-    newOption.value = '__new__';
-    newOption.textContent = '+ Add New Dojo';
-    clubSelect.appendChild(newOption);
-}
+function loadClubDropdown() { /* no-op — replaced by setupDirectorAcademyAutocomplete */ }
 
 // Competitor Registration
 document.getElementById('competitor-form').addEventListener('submit', async (e) => {
@@ -3577,9 +3599,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
     if (_isVisible('weight') && !_val('weight'))  missingFields.push('Weight');
     if (_isVisible('rank')   && !_val('rank'))    missingFields.push('Rank');
     if (!_val('gender'))                          missingFields.push('Gender');
-    const clubSelectVal = _val('club');
-    const newClubNameVal = _val('new-club-name');
-    if (!clubSelectVal || (clubSelectVal === '__new__' && !newClubNameVal)) missingFields.push('Dojo');
+    if (!_val('club')) missingFields.push('Dojo');
     if (missingFields.length > 0) {
         showMessage(`Please fill in: ${missingFields.join(', ')}`, 'error');
         const firstMissing = ['firstName','lastName','dateOfBirth','weight','rank','gender'].find(id => _isVisible(id) && !_val(id));
@@ -3587,41 +3607,20 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         return;
     }
 
-    const clubSelect = document.getElementById('club');
-    let clubName = clubSelect.value;
+    const clubName = _val('club');
+    const _clubAcademyId = document.getElementById('club-academy-id')?.value || null;
     let clubLogo = null;
 
-    // If new club, use the input field value and save club
-    if (clubName === '__new__') {
-        clubName = document.getElementById('new-club-name').value;
-        if (clubName) {
-            // Save the new club with logo
-            const newClub = {
-                name: clubName,
-                logo: currentNewClubLogoData || null,
-                country: '',
-                createdAt: new Date().toISOString()
-            };
-            db.add('clubs', newClub);
-            clubLogo = currentNewClubLogoData;
-        }
-    } else if (clubName) {
-        // Existing club selected - ensure it exists in clubs table
+    if (clubName) {
         const clubs = db.load('clubs');
         const existingClub = clubs.find(c => c.name === clubName);
-
         if (!existingClub) {
-            // Club doesn't exist in clubs table yet (legacy data), add it
-            const newClub = {
-                name: clubName,
-                logo: null,
-                country: '',
-                createdAt: new Date().toISOString()
-            };
-            db.add('clubs', newClub);
+            db.add('clubs', { name: clubName, logo: currentNewClubLogoData || null, country: '', createdAt: new Date().toISOString() });
+        } else if (currentNewClubLogoData) {
+            existingClub.logo = currentNewClubLogoData;
+            db.save('clubs', clubs);
         }
-
-        clubLogo = getClubLogo(clubName);
+        clubLogo = currentNewClubLogoData || getClubLogo(clubName);
     }
 
     // Use the ordered selection array maintained by loadEventCheckboxes/updateEventOrder
@@ -3740,6 +3739,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         gender: document.getElementById('gender').value,
         club: clubName,
         clubLogo: clubLogo,
+        academyId: _clubAcademyId || null,
         photo: currentPhotoData || null,
         events: selectedEvents,
         primaryEventId: selectedEvents[0] || null,
@@ -5093,20 +5093,11 @@ window.editCompetitor = function(id) {
     const dobInput = document.getElementById('dateOfBirth');
     if (dobInput) dobInput.dispatchEvent(new Event('change'));
 
-    // Set club dropdown
-    const clubSelect = document.getElementById('club');
-    if (clubSelect && comp.club) {
-        // Check if club exists in dropdown options
-        const clubOption = Array.from(clubSelect.options).find(opt => opt.value === comp.club);
-        if (clubOption) {
-            clubSelect.value = comp.club;
-        } else {
-            // Club not in dropdown — select "new" and fill in the name
-            clubSelect.value = '__new__';
-            handleClubSelection();
-            document.getElementById('new-club-name').value = comp.club;
-        }
-    }
+    // Set club text input
+    const clubInput = document.getElementById('club');
+    if (clubInput && comp.club) clubInput.value = comp.club;
+    const clubAcadIdInput = document.getElementById('club-academy-id');
+    if (clubAcadIdInput) clubAcadIdInput.value = comp.academyId || '';
 
     // Reload event checkboxes with saved ordered selection
     selectedEventOrder = comp.events ? [...comp.events] : [];
