@@ -3803,6 +3803,23 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         editingCompetitorId = null;
     } else {
         // ═══ ADD MODE — create new competitor via per-record POST ═══
+
+        // ── Duplicate guard ──────────────────────────────────────────────────
+        const _existingAll = db.load('competitors') || [];
+        const _dup = _existingAll.find(c =>
+            c.firstName?.toLowerCase()  === competitorFields.firstName.toLowerCase()  &&
+            c.lastName?.toLowerCase()   === competitorFields.lastName.toLowerCase()   &&
+            c.dateOfBirth               === competitorFields.dateOfBirth
+        );
+        if (_dup) {
+            showMessage(
+                `${competitorFields.firstName} ${competitorFields.lastName} (DOB ${competitorFields.dateOfBirth}) is already registered. Use Edit to make changes.`,
+                'error'
+            );
+            return;
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         const competitor = {
             ...competitorFields,
             registrationDate: new Date().toISOString(),
@@ -5222,7 +5239,7 @@ function parseAndPreviewCSV(text) {
                 c.dateOfBirth === row.dateofbirth
             );
             if (isDuplicate) {
-                warnings.push('Possible duplicate — a competitor with this name and DOB already exists');
+                errors.push('Already registered — a competitor with this name and DOB exists. Delete the duplicate first or use Edit to update them.');
             }
         }
 
