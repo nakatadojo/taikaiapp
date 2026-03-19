@@ -419,6 +419,62 @@
     }
     .dsr-sep { font-size:12px;color:var(--text-secondary);flex-shrink:0; }
 
+    /* ── Event-type stat cards (Divisions view) ──────────────── */
+    .div-evt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    /* Reuse glass-panel + stat-card base; extend for event cards */
+    .div-evt-card {
+      text-align: center;
+      padding: 28px 20px 18px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: border-color .18s, background .18s, transform .18s;
+      position: relative;
+    }
+    .div-evt-card:hover { border-color: rgba(124,58,237,.5); transform: translateY(-2px); }
+    .div-evt-card.active {
+      border-color: #7c3aed !important;
+      background: rgba(124,58,237,.1);
+      box-shadow: 0 4px 24px rgba(124,58,237,.18);
+    }
+    .div-evt-card h3 {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      margin: 0 0 10px;
+      word-break: break-word;
+    }
+    .div-evt-card .stat-number {
+      font-size: 3.2em;
+      letter-spacing: -2px;
+      margin-bottom: 4px;
+    }
+    .div-evt-card-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+    .div-evt-card-actions {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      margin-top: auto;
+    }
+    .div-evt-card-actions .btn { flex: 1; font-size: 12px; padding: 6px 4px; }
+    .div-evt-empty {
+      color: var(--text-secondary);
+      font-size: 14px;
+      padding: 24px 0;
+    }
+
     /* ── Division Tree Full-Screen Modal ─────────────────────── */
     .dtb-fs-modal {
       position: fixed; inset: 0; z-index: 10000;
@@ -1503,24 +1559,28 @@
             <!-- Divisions View -->
             <section id="divisions-view" class="view">
                 <h2>Divisions</h2>
-                <p class="hint">Select an event type to configure its divisions</p>
+                <p class="hint">Select an event type to view or configure its divisions.</p>
 
-                <div class="glass-panel" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                    <label for="division-event-selector" style="flex-shrink:0;">Event Type:</label>
-                    <select id="division-event-selector" onchange="loadDivisionTemplate()" style="flex:1;min-width:160px;">
-                        <option value="">Select Event Type</option>
-                    </select>
-                    <button id="btn-edit-divisions" class="btn btn-secondary btn-small hidden" onclick="openDivisionTreeModal()" style="flex-shrink:0;">
-                        &#x270E; Edit Divisions
-                    </button>
-                </div>
+                <!-- Hidden select kept for backward-compatibility: JS reads .value from here -->
+                <select id="division-event-selector" class="hidden" onchange="loadDivisionTemplate()">
+                    <option value="">Select Event Type</option>
+                </select>
+
+                <!-- Event-type cards -->
+                <div id="division-event-cards" class="div-evt-grid"></div>
 
                 <div id="division-template-container" class="hidden">
 
+                    <!-- Viewing-event header -->
+                    <div class="glass-panel" style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0;border-radius:var(--radius) var(--radius) 0 0;">
+                        <span id="div-viewing-label" style="font-weight:600;font-size:15px;flex:1;"></span>
+                        <button class="btn btn-secondary btn-small" onclick="closeDivisionsView()">&#x2715; Close</button>
+                    </div>
+
                     <!-- Actions bar -->
-                    <div class="glass-panel" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;">
-                        <button class="btn btn-secondary" onclick="showBracketGenerator()">📊 Generate Brackets</button>
-                        <button class="btn btn-danger" onclick="deleteDivisions()">🗑️ Delete Generated Divisions</button>
+                    <div class="glass-panel" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;margin-top:0;border-top:none;border-radius:0 0 var(--radius) var(--radius);">
+                        <button class="btn btn-secondary" onclick="showBracketGenerator()">&#x1F4CA; Generate Brackets</button>
+                        <button class="btn btn-danger" onclick="deleteDivisions()">Delete Divisions</button>
                         <label class="checkbox-label" style="margin-left:auto;">
                             <input type="checkbox" id="hide-empty-divisions" checked onchange="renderDivisions()">
                             Show only divisions with competitors

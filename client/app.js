@@ -7233,15 +7233,90 @@ function loadEventTypeSelector() {
         option.textContent = '(No add-on events - create event types first)';
         option.disabled = true;
         selector.appendChild(option);
+    } else {
+        nonDefaultEvents.forEach(event => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            option.textContent = event.name;
+            selector.appendChild(option);
+        });
+    }
+
+    // Always refresh the visual card grid alongside the hidden select
+    loadEventTypeCards();
+}
+
+/** Render event-type stat cards in the Divisions view. */
+function loadEventTypeCards() {
+    const grid = document.getElementById('division-event-cards');
+    if (!grid) return;
+
+    const eventTypes = db.load('eventTypes');
+    const nonDefault = eventTypes.filter(e => !e.isDefault);
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const currentSel  = document.getElementById('division-event-selector')?.value || '';
+
+    if (nonDefault.length === 0) {
+        grid.innerHTML = '<p class="div-evt-empty">No event types yet. Create event types first.</p>';
         return;
     }
 
-    nonDefaultEvents.forEach(event => {
-        const option = document.createElement('option');
-        option.value = event.id;
-        option.textContent = event.name;
-        selector.appendChild(option);
+    grid.innerHTML = '';
+    nonDefault.forEach(evt => {
+        const evtData   = allDivisions[evt.id];
+        const generated = evtData?.generated || {};
+        const divCount  = Object.keys(generated).length;
+        const compCount = Object.values(generated).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+
+        const card = document.createElement('div');
+        card.className = 'glass-panel stat-card div-evt-card' + (String(evt.id) === String(currentSel) ? ' active' : '');
+        card.dataset.eventId = evt.id;
+        card.innerHTML = `
+            <h3>${_escapeHtml(evt.name)}</h3>
+            <div class="stat-number">${divCount}</div>
+            <div class="div-evt-card-sub">${compCount} competitor${compCount !== 1 ? 's' : ''}</div>
+            <div class="div-evt-card-actions">
+                <button class="btn btn-secondary btn-small"
+                    onclick="viewEventDivisions('${_escapeHtml(String(evt.id))}')">View</button>
+                <button class="btn btn-primary btn-small"
+                    onclick="openDivisionTreeModal('${_escapeHtml(String(evt.id))}')">Edit</button>
+            </div>
+        `;
+        grid.appendChild(card);
     });
+}
+
+/** Show the divisions list for a given event; mark its card active. */
+function viewEventDivisions(eventId) {
+    const selector  = document.getElementById('division-event-selector');
+    const container = document.getElementById('division-template-container');
+    const label     = document.getElementById('div-viewing-label');
+
+    if (selector)  selector.value = eventId;
+    if (container) container.classList.remove('hidden');
+
+    // Active card highlight
+    document.querySelectorAll('.div-evt-card').forEach(c => {
+        c.classList.toggle('active', String(c.dataset.eventId) === String(eventId));
+    });
+
+    // Update "Viewing:" label
+    if (label) {
+        const eventTypes = db.load('eventTypes');
+        const evt = eventTypes.find(e => String(e.id) === String(eventId));
+        label.textContent = 'Viewing: ' + (evt?.name || eventId);
+    }
+
+    loadDivisions();
+}
+
+/** Hide the divisions list and deactivate all cards. */
+function closeDivisionsView() {
+    const container = document.getElementById('division-template-container');
+    const selector  = document.getElementById('division-event-selector');
+    if (container) container.classList.add('hidden');
+    if (selector)  selector.value = '';
+    document.querySelectorAll('.div-evt-card').forEach(c => c.classList.remove('active'));
 }
 
 /**
@@ -7932,13 +8007,15 @@ function loadDivisionTemplate() {
     if (divisions[eventId]?.generated) loadDivisions();
 }
 
-function openDivisionTreeModal() {
+function openDivisionTreeModal(passedEventId) {
     const selector = document.getElementById('division-event-selector');
     const modal    = document.getElementById('dtb-fullscreen-modal');
-    if (!modal || !selector) return;
+    if (!modal) return;
 
-    const eventId = selector.value;
+    // Accept eventId from card buttons directly, or fall back to hidden selector
+    const eventId = passedEventId || (selector && selector.value);
     if (!eventId) return;
+    if (selector) selector.value = eventId;   // keep hidden select in sync
 
     const eventTypes = db.load('eventTypes');
     const event      = eventTypes.find(e => String(e.id) === String(eventId));
@@ -7971,8 +8048,11 @@ function closeDivisionTreeModal() {
     const modal = document.getElementById('dtb-fullscreen-modal');
     if (modal) modal.classList.add('hidden');
     document.body.style.overflow = '';
-    // Refresh generated divisions panel underneath
-    loadDivisions();
+    // Refresh the card grid (division/competitor counts may have changed)
+    loadEventTypeCards();
+    // Refresh generated divisions list if a card is still selected
+    const eventId = document.getElementById('division-event-selector')?.value;
+    if (eventId) loadDivisions();
 }
 
 // Template Management
