@@ -143,10 +143,13 @@
       this.container.appendChild(scroll);
       document.addEventListener('click', this._boundClose);
 
-      // Restore scroll position so the user stays where they were
+      // Restore scroll after browser layout — rAF ensures focus/layout events
+      // that browsers fire after DOM insertion don't override the saved position.
       if (fsBody) {
-        fsBody.scrollTop  = savedTop;
-        fsBody.scrollLeft = savedLeft;
+        requestAnimationFrame(() => {
+          fsBody.scrollTop  = savedTop;
+          fsBody.scrollLeft = savedLeft;
+        });
       }
     }
 

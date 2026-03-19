@@ -2140,6 +2140,24 @@ function renderReadinessChecklist() {
             link:    'bracket',
             linkLabel: 'Go to Brackets',
         },
+        (() => {
+            const certTemplate = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
+            const certConfig   = JSON.parse(_msGet(_scopedKey('certificateConfig'))   || 'null');
+            const hasTemplate  = !!(certTemplate?.data || certTemplate?.dataUrl);
+            const enabledTags  = certConfig?.tags
+                ? Object.values(certConfig.tags).filter(t => t.enabled).length : 0;
+            return {
+                label:     'Certificate template',
+                detail:    !hasTemplate
+                    ? 'No certificate template uploaded'
+                    : enabledTags === 0
+                        ? 'Template uploaded — merge tags not yet configured'
+                        : `Template ready, ${enabledTags} tag${enabledTags !== 1 ? 's' : ''} configured`,
+                ok:        hasTemplate && enabledTags > 0,
+                link:      'settings-certificates',
+                linkLabel: 'Go to Certificates',
+            };
+        })(),
     ];
 
     const passedCount = checks.filter(c => c.ok).length;
@@ -23108,10 +23126,81 @@ function loadCertificatesView() {
         if (previewImg && previewDiv) {
             previewImg.src = template.data;
             previewDiv.style.display = 'block';
+            // Init chips once image dimensions are known
+            if (previewImg.complete && previewImg.naturalWidth) {
+                _initCertDragUI();
+            } else {
+                previewImg.onload = _initCertDragUI;
+            }
         }
         const mergePanel = document.getElementById('merge-tag-config-panel');
         if (mergePanel) mergePanel.style.display = 'block';
         loadMergeTagEditors();
+        setTimeout(_initCertDragUI, 150); // fallback if already cached
+    }
+}
+
+/** Render draggable {{Tag}} chips over the certificate preview image.
+ *  Dragging a chip updates the X/Y number inputs in real time. */
+function _initCertDragUI() {
+    const zone = document.getElementById('cert-drag-zone');
+    const img  = document.getElementById('certificate-preview-img');
+    if (!zone || !img || !img.naturalWidth) return;
+
+    const SHORT    = { name:'Name', place:'Place', division:'Division', tournament:'Tournament', date:'Date', club:'Club' };
+    const tagNames = ['name', 'place', 'division', 'tournament', 'date', 'club'];
+
+    // Remove stale chips
+    zone.querySelectorAll('.cert-tag-chip').forEach(el => el.remove());
+
+    for (const tag of tagNames) {
+        const enabledEl = document.getElementById(`tag-${tag}-enabled`);
+        if (!enabledEl?.checked) continue;
+
+        const xPct = parseFloat(document.getElementById(`tag-${tag}-x`)?.value) || 50;
+        const yPct = parseFloat(document.getElementById(`tag-${tag}-y`)?.value) || 50;
+
+        const chip = document.createElement('div');
+        chip.className = 'cert-tag-chip';
+        chip.dataset.tag = tag;
+        chip.textContent = `{{${SHORT[tag]}}}`;
+        chip.style.left = `${xPct}%`;
+        chip.style.top  = `${yPct}%`;
+
+        chip.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            chip.setPointerCapture(e.pointerId);
+            chip.classList.add('dragging');
+
+            const onMove = ev => {
+                const rect = img.getBoundingClientRect();
+                const x = Math.max(0, Math.min(100, ((ev.clientX - rect.left) / rect.width)  * 100));
+                const y = Math.max(0, Math.min(100, ((ev.clientY - rect.top)  / rect.height) * 100));
+                chip.style.left = `${x}%`;
+                chip.style.top  = `${y}%`;
+            };
+
+            const onUp = ev => {
+                chip.classList.remove('dragging');
+                chip.removeEventListener('pointermove', onMove);
+                chip.removeEventListener('pointerup',   onUp);
+
+                const rect = img.getBoundingClientRect();
+                const x = Math.round(Math.max(0, Math.min(100, ((ev.clientX - rect.left) / rect.width)  * 100)) * 10) / 10;
+                const y = Math.round(Math.max(0, Math.min(100, ((ev.clientY - rect.top)  / rect.height) * 100)) * 10) / 10;
+
+                const xEl = document.getElementById(`tag-${tag}-x`);
+                const yEl = document.getElementById(`tag-${tag}-y`);
+                if (xEl) xEl.value = x;
+                if (yEl) yEl.value = y;
+                updateCertificatePreview();
+            };
+
+            chip.addEventListener('pointermove', onMove);
+            chip.addEventListener('pointerup',   onUp);
+        });
+
+        zone.appendChild(chip);
     }
 }
 
@@ -23316,6 +23405,15 @@ function saveCertificateTemplate() {
         // Show merge tag config
         document.getElementById('merge-tag-config-panel').style.display = 'block';
         loadMergeTagEditors();
+
+        // Show image and init drag chips
+        const previewImg = document.getElementById('certificate-preview-img');
+        const previewDiv = document.getElementById('certificate-template-preview');
+        if (previewImg && previewDiv) {
+            previewImg.src = template.data;
+            previewDiv.style.display = 'block';
+            previewImg.onload = _initCertDragUI;
+        }
     };
 
     reader.readAsDataURL(file);
@@ -23413,6 +23511,9 @@ function saveCertificateConfig() {
 }
 
 function updateCertificatePreview() {
+    // Always refresh drag chips when any tag config changes (checkbox, position, color…)
+    _initCertDragUI();
+
     const previewPanel = document.getElementById('certificate-live-preview-panel');
     if (!previewPanel || previewPanel.style.display === 'none') return;
 
