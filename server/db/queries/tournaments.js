@@ -503,8 +503,9 @@ async function getEligibleEvents(tournamentId, profile) {
         return true;
       });
 
-  const basePrice = parseFloat(tournament.base_event_price) || 75;
-  const addonPrice = parseFloat(tournament.addon_event_price) || 25;
+  const _p = (v, fb) => (v != null && v !== '') ? parseFloat(v) : fb;
+  const basePrice = _p(tournament.base_event_price, 75);
+  const addonPrice = _p(tournament.addon_event_price, 25);
 
   const enriched = eligible.map(event => ({
     ...event,

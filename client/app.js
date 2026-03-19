@@ -1693,10 +1693,10 @@ document.getElementById('tournament-form')?.addEventListener('submit', (e) => {
             corner1Color: defaults.corner1Color,
             corner2Color: defaults.corner2Color
         },
-        // Registration pricing defaults
+        // Registration pricing defaults — use != null so $0 is preserved (0 || 75 would be wrong)
         pricing: {
-            basePrice: parseFloat(document.getElementById('tournament-base-price')?.value) || 75.00,
-            addOnPrice: parseFloat(document.getElementById('tournament-addon-price')?.value) || 25.00
+            basePrice: (() => { const v = document.getElementById('tournament-base-price')?.value; return (v !== '' && v != null) ? parseFloat(v) : 75.00; })(),
+            addOnPrice: (() => { const v = document.getElementById('tournament-addon-price')?.value; return (v !== '' && v != null) ? parseFloat(v) : 25.00; })(),
         },
         createdAt: new Date().toISOString()
     };
@@ -3859,8 +3859,10 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         if (postRes.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
         if (!postRes.ok) { showMessage('Could not save competitor — please check your connection.', 'error'); return; }
         const { competitor: savedComp } = await postRes.json();
-        // Update local cache with server-assigned ID
-        _inMemoryCompetitors.push(savedComp);
+        // Update local cache — skip if WebSocket already added this record (race condition)
+        if (!_inMemoryCompetitors.find(c => String(c.id) === String(savedComp.id))) {
+            _inMemoryCompetitors.push(savedComp);
+        }
         competitor.id = savedComp.id; // Update the local reference for team code assignment below
         db.save('competitors', _inMemoryCompetitors);
         setSyncIndicator('ok');

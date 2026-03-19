@@ -116,11 +116,13 @@ async function getEligibleEvents(req, res, next) {
     // Apply active pricing period — same logic used by checkout/pay-later
     const PricingPeriodQueries = require('../db/queries/pricingPeriods');
     const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
-    let baseEventPrice = parseFloat(result.tournament.base_event_price) || 75;
-    let addonEventPrice = parseFloat(result.tournament.addon_event_price) || 25;
+    // Use != null so that 0 is preserved as a valid price (0 || 75 would coerce to 75).
+    const _p = (v, fallback) => (v != null && v !== '') ? parseFloat(v) : fallback;
+    let baseEventPrice = _p(result.tournament.base_event_price, 75);
+    let addonEventPrice = _p(result.tournament.addon_event_price, 25);
     if (activePeriod) {
-      baseEventPrice = parseFloat(activePeriod.base_event_price) || baseEventPrice;
-      addonEventPrice = parseFloat(activePeriod.addon_event_price) || addonEventPrice;
+      baseEventPrice = _p(activePeriod.base_event_price, baseEventPrice);
+      addonEventPrice = _p(activePeriod.addon_event_price, addonEventPrice);
     }
 
     // Check for existing registrations for this profile in this tournament

@@ -626,10 +626,11 @@ async function bulkRegisterForEvents(req, res, next) {
 
         const isPrimary = i === 0;
         let price;
+        const _p = (v, fb) => (v != null && v !== '') ? parseFloat(v) : fb;
         if (isPrimary) {
-          price = parseFloat(event.price_override || tournament.base_event_price || 75);
+          price = event.price_override != null ? _p(event.price_override, 0) : _p(tournament.base_event_price, 75);
         } else {
-          price = parseFloat(event.addon_price_override || tournament.addon_event_price || 25);
+          price = event.addon_price_override != null ? _p(event.addon_price_override, 0) : _p(tournament.addon_event_price, 25);
         }
 
         competitorBreakdown.events.push({

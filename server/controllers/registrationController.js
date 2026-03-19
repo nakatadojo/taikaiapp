@@ -410,12 +410,13 @@ async function checkout(req, res, next) {
     const PricingPeriodQueries = require('../db/queries/pricingPeriods');
     const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
 
+    const _p = (v, fb) => (v != null && v !== '') ? parseFloat(v) : fb;
     const basePrice = activePeriod
-      ? parseFloat(activePeriod.base_event_price)
-      : (parseFloat(tournament.base_event_price) || 75);
+      ? _p(activePeriod.base_event_price, 75)
+      : _p(tournament.base_event_price, 75);
     const addonPrice = activePeriod
-      ? parseFloat(activePeriod.addon_event_price)
-      : (parseFloat(tournament.addon_event_price) || 25);
+      ? _p(activePeriod.addon_event_price, 25)
+      : _p(tournament.addon_event_price, 25);
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
 
     // Validate cart and calculate server-side pricing
@@ -1048,12 +1049,13 @@ async function payLater(req, res, next) {
     const PricingPeriodQueries = require('../db/queries/pricingPeriods');
     const activePeriod = await PricingPeriodQueries.getActivePeriod(tournamentId);
 
+    const _p = (v, fb) => (v != null && v !== '') ? parseFloat(v) : fb;
     const basePrice = activePeriod
-      ? parseFloat(activePeriod.base_event_price)
-      : (parseFloat(tournament.base_event_price) || 75);
+      ? _p(activePeriod.base_event_price, 75)
+      : _p(tournament.base_event_price, 75);
     const addonPrice = activePeriod
-      ? parseFloat(activePeriod.addon_event_price)
-      : (parseFloat(tournament.addon_event_price) || 25);
+      ? _p(activePeriod.addon_event_price, 25)
+      : _p(tournament.addon_event_price, 25);
     const eventMap = new Map(tournament.events.map(e => [e.id, e]));
 
     // Validate cart and calculate server-side pricing
