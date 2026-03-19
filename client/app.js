@@ -4687,6 +4687,26 @@ function loadCompetitors(skipSync = false) {
         const testBadge = comp.is_test
             ? `<span style="background:rgba(245,158,11,0.2);color:#f59e0b;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-right:5px;vertical-align:middle;">TEST</span>`
             : '';
+
+        // Approval status — only director-added competitors have this concept.
+        // Stripe registrations always arrive approved.
+        const isDirector = comp.source === 'director';
+        const isApproved = comp.approved === true || comp.source === 'registration';
+        const isBracketLocked = comp.bracket_placed === true && !comp.is_test;
+
+        let approvalCell = '-'; // Stripe registrations: no toggle needed
+        if (isDirector) {
+            if (isApproved) {
+                const lockIcon = isBracketLocked ? ' 🔒' : '';
+                const unapproveBtn = isBracketLocked
+                    ? `<button class="btn btn-small btn-secondary" disabled title="Competitor is in a bracket — delete the bracket first">Approved${lockIcon}</button>`
+                    : `<button class="btn btn-small btn-secondary" onclick="unapproveCompetitor('${comp.id}')">Approved ✓</button>`;
+                approvalCell = unapproveBtn;
+            } else {
+                approvalCell = `<button class="btn btn-small btn-primary" onclick="approveCompetitor('${comp.id}')">Approve</button>`;
+            }
+        }
+
         tr.innerHTML = `
             <td>${photoHtml}</td>
             <td>${testBadge}${_escapeHtml(comp.firstName)} ${_escapeHtml(comp.lastName)}</td>
@@ -4698,9 +4718,10 @@ function loadCompetitors(skipSync = false) {
             <td style="font-size: 12px;">${eventsHtml}</td>
             <td style="font-size: 13px; font-weight: 600;">${totalDue}</td>
             <td style="cursor: pointer;" onclick="togglePaymentStatus(${comp.id})">${paymentBadge}</td>
+            <td>${approvalCell}</td>
             <td>
-                ${comp.is_test ? '' : `<button class="btn btn-small" onclick="editCompetitor(${comp.id})">Edit</button>`}
-                <button class="btn btn-small btn-danger" onclick="deleteCompetitor(${comp.id})">Delete</button>
+                ${(isDirector && !comp.is_test) ? `<button class="btn btn-small" onclick="editCompetitor(${comp.id})">Edit</button>` : ''}
+                <button class="btn btn-small btn-danger" onclick="deleteCompetitor('${comp.id}')">Delete</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -4730,6 +4751,107 @@ async function deleteCompetitor(id) {
     loadCompetitors(true);
     loadDashboard();
     showMessage('Competitor deleted successfully!');
+}
+
+/**
+ * Approve a director-added competitor so they flow into divisions.
+ * Deducts 1 credit for real competitors; free for test competitors.
+ * Hard-blocks with a "buy credits" message if the director has insufficient credits.
+ */
+async function approveCompetitor(id) {
+    if (!currentTournamentId) return;
+    const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${id}/approve`, {
+        method: 'PATCH',
+        credentials: 'include',
+    });
+    if (res.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
+    if (res.status === 402) {
+        const data = await res.json().catch(() => ({}));
+        showMessage(
+            `Not enough credits to approve this competitor (balance: ${data.balance ?? 0}). ` +
+            `Purchase credits from the Credits section.`,
+            'error'
+        );
+        return;
+    }
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showMessage(data.error || 'Could not approve competitor.', 'error');
+        return;
+    }
+    const data = await res.json();
+    // Update local cache
+    const all = db.load('competitors');
+    const idx = all.findIndex(c => String(c.id) === String(id));
+    if (idx !== -1) { all[idx].approved = true; db.save('competitors', all); }
+    loadCompetitors(true);
+    loadDashboard();
+    if (data.newCreditBalance !== undefined) {
+        showMessage(`Competitor approved. Credit balance: ${data.newCreditBalance}`, 'success');
+        _refreshCreditBadge(data.newCreditBalance);
+    } else {
+        showMessage('Competitor approved.', 'success');
+    }
+}
+
+/**
+ * Unapprove a competitor, removing them from divisions.
+ * Refunds 1 credit for real competitors — unless they are bracket-placed
+ * (then the server blocks with 403 and the button should already be disabled).
+ */
+async function unapproveCompetitor(id) {
+    if (!currentTournamentId) return;
+    const competitors = db.load('competitors');
+    const comp = competitors.find(c => String(c.id) === String(id));
+    const name = comp ? `${comp.firstName} ${comp.lastName}` : 'this competitor';
+    const isReal = comp && !comp.is_test;
+    const confirmMsg = isReal
+        ? `Unapprove <strong>${_escapeHtml(name)}</strong>?<br><br>They will be removed from all divisions and 1 credit will be refunded.`
+        : `Unapprove test competitor <strong>${_escapeHtml(name)}</strong>? They will be removed from all divisions.`;
+    if (!await showConfirm(confirmMsg, { confirmText: 'Unapprove', danger: true })) return;
+
+    const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${id}/approve`, {
+        method: 'DELETE',
+        credentials: 'include',
+    });
+    if (res.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
+    if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        if (data.code === 'BRACKET_LOCKED') {
+            showMessage('This competitor is in a bracket. Delete the bracket first to unapprove them.', 'error');
+        } else {
+            showMessage(data.error || 'Not authorized.', 'error');
+        }
+        return;
+    }
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showMessage(data.error || 'Could not unapprove competitor.', 'error');
+        return;
+    }
+    const data = await res.json();
+    // Update local cache
+    const all = db.load('competitors');
+    const idx = all.findIndex(c => String(c.id) === String(id));
+    if (idx !== -1) { all[idx].approved = false; db.save('competitors', all); }
+    loadCompetitors(true);
+    loadDashboard();
+    if (data.newCreditBalance !== undefined) {
+        showMessage(`Competitor unapproved. Credit refunded — balance: ${data.newCreditBalance}`, 'success');
+        _refreshCreditBadge(data.newCreditBalance);
+    } else {
+        showMessage('Competitor unapproved.', 'success');
+    }
+}
+
+/**
+ * Update the credit balance badge in the nav (if present).
+ * Called after approve/unapprove so the director sees their live balance
+ * without needing a page reload.
+ */
+function _refreshCreditBadge(newBalance) {
+    const badge = document.getElementById('navbar-credit-count');
+    if (badge) badge.textContent = newBalance;
 }
 
 // Edit competitor — follows exact same pattern as editClub()

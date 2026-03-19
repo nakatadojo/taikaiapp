@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const BracketQueries = require('../db/queries/brackets');
+const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const { broadcastBracketUpdate } = require('../websocket');
 
 async function getBrackets(req, res, next) {
@@ -20,6 +21,33 @@ async function getSingleBracket(req, res, next) {
   } catch (err) { next(err); }
 }
 
+/**
+ * Extract all UUID-like strings from a serialised bracket object.
+ * Used to identify which director competitors appear in a bracket so we can
+ * set bracket_placed = true on them (preventing credit refunds).
+ */
+function _extractUUIDs(obj) {
+  const str = JSON.stringify(obj);
+  const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  return [...new Set(str.match(uuidRegex) || [])];
+}
+
+/**
+ * Return true if a bracket contains any entered results.
+ * Checks for winner fields (non-null) or completed/scored matches.
+ */
+function _bracketHasResults(bracketData) {
+  if (!bracketData) return false;
+  const str = JSON.stringify(bracketData);
+  // winner field with a non-null value
+  if (/"winner"\s*:\s*(?!null\b)[^,}\]\s]/.test(str)) return true;
+  // completed flag
+  if (/"completed"\s*:\s*true/.test(str)) return true;
+  // numeric score fields (score1/score2/score/points with a number)
+  if (/"(?:score1?|score2|points|redScore|blueScore)"\s*:\s*[0-9]/.test(str)) return true;
+  return false;
+}
+
 async function upsertSingleBracket(req, res, next) {
   try {
     const { id: tournamentId, bracketId } = req.params;
@@ -35,6 +63,16 @@ async function upsertSingleBracket(req, res, next) {
       bracketType: bracket.type || 'single-elimination',
       data: bracket,
     });
+
+    // Mark any director competitors that appear in this bracket as bracket_placed.
+    // We do this fire-and-forget so it never blocks the response.
+    const uuids = _extractUUIDs(bracket);
+    if (uuids.length > 0) {
+      DirectorCompetitorQueries.setBracketPlaced(uuids, tournamentId).catch(err =>
+        console.warn('[bracket] setBracketPlaced failed:', err.message)
+      );
+    }
+
     // Broadcast to all clients subscribed to this bracket's channel
     broadcastBracketUpdate(tournamentId, bracketId, row.data);
     res.json({ bracket: row.data });
@@ -56,6 +94,15 @@ async function syncBrackets(req, res, next) {
     if (bracketArray.length === 0) return res.json({ message: 'No brackets to sync', count: 0 });
 
     const results = await BracketQueries.bulkUpsert(tournamentId, bracketArray);
+
+    // Mark bracket_placed for all director competitors found across all brackets
+    const allUUIDs = [...new Set(bracketArray.flatMap(_extractUUIDs))];
+    if (allUUIDs.length > 0) {
+      DirectorCompetitorQueries.setBracketPlaced(allUUIDs, tournamentId).catch(err =>
+        console.warn('[bracket] setBracketPlaced (bulk) failed:', err.message)
+      );
+    }
+
     res.json({ message: `Synced ${results.length} bracket(s)`, count: results.length });
   } catch (err) { next(err); }
 }
@@ -69,6 +116,17 @@ async function deleteBracket(req, res, next) {
     if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
     if (t.rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    // Prevent deletion of any bracket that has results entered
+    const existing = await BracketQueries.getOne(tournamentId, bracketId);
+    if (!existing) return res.status(404).json({ error: 'Bracket not found' });
+
+    if (_bracketHasResults(existing.data)) {
+      return res.status(409).json({
+        error: 'This bracket has recorded results and cannot be deleted. Edit results directly.',
+        code: 'BRACKET_HAS_RESULTS',
+      });
     }
 
     const deleted = await BracketQueries.remove(tournamentId, bracketId);

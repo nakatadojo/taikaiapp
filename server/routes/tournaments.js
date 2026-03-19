@@ -206,6 +206,12 @@ router.put('/:id/competitors/:competitorId', requireAuth, directorCompetitorsCon
 // DELETE /api/tournaments/:id/competitors/:competitorId — delete a single competitor (must be before checkin routes)
 router.delete('/:id/competitors/:competitorId', requireAuth, directorCompetitorsController.deleteCompetitor);
 
+// PATCH /api/tournaments/:id/competitors/:competitorId/approve — approve a competitor (deducts credit for real competitors)
+router.patch('/:id/competitors/:competitorId/approve', requireAuth, directorCompetitorsController.approveCompetitor);
+
+// DELETE /api/tournaments/:id/competitors/:competitorId/approve — unapprove (refunds credit if not bracket-placed)
+router.delete('/:id/competitors/:competitorId/approve', requireAuth, directorCompetitorsController.unapproveCompetitor);
+
 // POST /api/tournaments/:id/competitors/:competitorId/checkin — staff can check in
 router.post('/:id/competitors/:competitorId/checkin', requireAuth, requireTournamentPermission('manage_checkin'), tournamentController.checkInDirectorCompetitor);
 

@@ -26,8 +26,11 @@ async function runAutoAssign(tournamentId) {
   if (!t.rows[0]) throw new Error('Tournament not found');
   const tournamentDate = t.rows[0].date;
 
-  // Load all competitors and all event templates
-  const competitors = await DirectorCompetitorQueries.getAll(tournamentId);
+  // Load all competitors and all event templates.
+  // Only approved competitors flow into divisions — unapproved ones are
+  // registered but not yet competing. Stripe registrations are always approved.
+  const allCompetitors = await DirectorCompetitorQueries.getAll(tournamentId);
+  const competitors = allCompetitors.filter(c => c.approved !== false);
   const eventsResult = await pool.query(
     `SELECT id, name, event_type, criteria_templates FROM tournament_events WHERE tournament_id = $1`,
     [tournamentId]
