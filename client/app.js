@@ -4873,6 +4873,21 @@ function _silentlyRegenerateDivisionsForEvents(eventIds) {
     if (!eventIds || eventIds.length === 0) return;
     if (!currentTournamentId) return;
 
+    // If the division tree modal is still open, flush live templates from the
+    // in-memory builder instances into localStorage first.  Without this, the
+    // templates are only written on Save & Close, so approvals made while the
+    // modal is open would silently find no templates and place no one.
+    eventIds.forEach(eid => {
+        const liveBuilder = window._dtbRegistry && window._dtbRegistry[eid];
+        if (!liveBuilder) return;
+        const liveTemplates = liveBuilder.toCriteriaTemplates();
+        if (liveTemplates.length === 0) return;
+        const snapshot = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        if (!snapshot[eid]) snapshot[eid] = { generated: {} };
+        snapshot[eid].templates = liveTemplates;
+        _msSet(_scopedKey('divisions'), JSON.stringify(snapshot));
+    });
+
     const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const allCompetitors = db.load('competitors');
     const competitors = allCompetitors.filter(c =>
