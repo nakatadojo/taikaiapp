@@ -4849,6 +4849,71 @@ async function deleteCompetitor(id) {
 }
 
 /**
+ * Silently re-run division generation for a specific set of event IDs.
+ * Called after approve/unapprove so the competitor immediately appears (or
+ * disappears) in their division slots without the director having to manually
+ * close/reopen the division tree modal.
+ *
+ * Mirrors generateDivisions() logic but takes an explicit eventId list,
+ * skips UI toasts, and does not require the hidden event selector to be set.
+ */
+function _silentlyRegenerateDivisionsForEvents(eventIds) {
+    if (!eventIds || eventIds.length === 0) return;
+    if (!currentTournamentId) return;
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const allCompetitors = db.load('competitors');
+    const competitors = allCompetitors.filter(c =>
+        c.tournamentId === currentTournamentId && c.approved !== false
+    );
+
+    const tournaments = db.load('tournaments');
+    const currentTournament = tournaments.find(t => t.id === currentTournamentId);
+    const ageCalculationMethod = currentTournament?.ageCalculationMethod || 'aau-standard';
+    const eventDate = currentTournament?.date || new Date();
+
+    const competitorsWithAge = competitors.map(comp => ({
+        ...comp,
+        age: comp.dateOfBirth ? calculateAge(comp.dateOfBirth, ageCalculationMethod, eventDate) : (comp.age || 0),
+    }));
+
+    let anyChanged = false;
+    eventIds.forEach(eventId => {
+        const eventData = allDivisions[eventId];
+        if (!eventData || !eventData.templates || eventData.templates.length === 0) return;
+
+        // Tree-style templates only — legacy templates are unchanged
+        const isTree = typeof eventData.templates[0]?.id === 'string'
+                    && typeof eventData.templates[0]?.name === 'string';
+        if (!isTree) return;
+
+        const generatedDivisions = {};
+        eventData.templates.forEach(template => {
+            generatedDivisions[template.name] = [];
+            if (!template.criteria || template.criteria.length === 0) return;
+            generatedDivisions[template.name] = competitorsWithAge.filter(comp =>
+                template.criteria.every(c => _matchesLeafCriterion(comp, c))
+            );
+        });
+
+        allDivisions[eventId] = {
+            ...eventData,
+            generated: generatedDivisions,
+            updatedAt: new Date().toISOString(),
+        };
+        anyChanged = true;
+    });
+
+    if (!anyChanged) return;
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    // Refresh divisions panel if it's currently visible
+    if (typeof loadDivisionsView === 'function') {
+        try { loadDivisionsView(); } catch (_) {}
+    }
+}
+
+/**
  * Approve a director-added competitor so they flow into divisions.
  * Deducts 1 credit for real competitors; free for test competitors.
  * Hard-blocks with a "buy credits" message if the director has insufficient credits.
@@ -4881,6 +4946,12 @@ async function approveCompetitor(id) {
     if (idx !== -1) { all[idx].approved = true; db.save('competitors', all); }
     loadCompetitors(true);
     loadDashboard();
+    // Re-generate divisions so the newly approved competitor immediately appears
+    // in their division slots (credit was spent — they should show up right away).
+    const approvedComp = all[idx];
+    if (approvedComp?.events?.length) {
+        _silentlyRegenerateDivisionsForEvents(approvedComp.events);
+    }
     if (data.newCreditBalance !== undefined) {
         showMessage(`Competitor approved. Credit balance: ${data.newCreditBalance}`, 'success');
         _refreshCreditBadge(data.newCreditBalance);
@@ -4928,9 +4999,15 @@ async function unapproveCompetitor(id) {
     // Update local cache
     const all = db.load('competitors');
     const idx = all.findIndex(c => String(c.id) === String(id));
+    const unapprovedComp = idx !== -1 ? { ...all[idx] } : null;
     if (idx !== -1) { all[idx].approved = false; db.save('competitors', all); }
     loadCompetitors(true);
     loadDashboard();
+    // Re-generate divisions so the unapproved competitor is immediately removed
+    // from their division slots (credit was refunded — slot should be freed).
+    if (unapprovedComp?.events?.length) {
+        _silentlyRegenerateDivisionsForEvents(unapprovedComp.events);
+    }
     if (data.newCreditBalance !== undefined) {
         showMessage(`Competitor unapproved. Credit refunded — balance: ${data.newCreditBalance}`, 'success');
         _refreshCreditBadge(data.newCreditBalance);
@@ -9735,8 +9812,14 @@ function _matchesLeafCriterion(comp, criterion) {
                 return ci !== -1 && ci >= lo && ci <= hi;
             }
             return normRank(comp.rank) === normRank(r.value);
-        case 'weight':
-            return (comp.weight || 0) >= r.min && (comp.weight || 0) <= r.max;
+        case 'weight': {
+            const compW = _normaliseWeightForComparison(
+                comp.weight || 0,
+                getTournamentWeightUnit(),
+                criterion.weightUnit || getTournamentWeightUnit()
+            );
+            return compW >= r.min && compW <= r.max;
+        }
         case 'experience':
             return (comp.experience || 0) >= r.min && (comp.experience || 0) <= r.max;
         case 'custom':
