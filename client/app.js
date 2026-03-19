@@ -9400,13 +9400,33 @@ function generateDivisions() {
         showMessage(`⚠️ ${invalidAgeComps.length} competitor(s) have an invalid date of birth and won't be placed in age-based divisions: ${names}. Please fix their DOB.`, 'error');
     }
 
-    // Generate divisions for each template (AAU has multiple age-tier templates)
+    // Generate divisions for each template.
+    // Tree-builder templates have { id, name, criteria } per leaf — use the pre-computed
+    // name directly and pre-seed every leaf so empty divisions still appear in the list.
+    // Legacy templates (old wizard) use the cross-product buildDivisions() path.
+    const isTreeTemplate = eventData.templates.length > 0
+        && typeof eventData.templates[0].name === 'string'
+        && typeof eventData.templates[0].id   === 'string';
 
     const generatedDivisions = {};
-    eventData.templates.forEach(template => {
-        const result = buildDivisions(competitorsWithAge, template.criteria);
-        Object.assign(generatedDivisions, result);
-    });
+
+    if (isTreeTemplate) {
+        eventData.templates.forEach(template => {
+            const divName = template.name;
+            // Always create the key so the division appears even when no one is placed yet
+            generatedDivisions[divName] = [];
+            if (!template.criteria || template.criteria.length === 0) return;
+            generatedDivisions[divName] = competitorsWithAge.filter(comp =>
+                template.criteria.every(c => _matchesLeafCriterion(comp, c))
+            );
+        });
+    } else {
+        // Legacy cross-product builder (old event-type wizard)
+        eventData.templates.forEach(template => {
+            const result = buildDivisions(competitorsWithAge, template.criteria || template);
+            Object.assign(generatedDivisions, result);
+        });
+    }
 
 
     // Validate division sizes and warn user
@@ -9427,6 +9447,54 @@ function generateDivisions() {
     loadDivisions();
     loadDashboard();
     showMessage('Divisions generated successfully!');
+}
+
+/**
+ * _matchesLeafCriterion — checks whether a single competitor satisfies one
+ * criterion from a tree-builder leaf template (each criterion has exactly one
+ * range since the tree already split each level into individual nodes).
+ */
+function _matchesLeafCriterion(comp, criterion) {
+    const ranges = criterion.ranges || [];
+    if (ranges.length === 0) return true;
+    const r = ranges[0]; // tree leaves always have one range per criterion level
+
+    const RANK_ORD = [
+        '10th kyu','9th kyu','8th kyu','7th kyu','6th kyu','5th kyu',
+        '4th kyu','3rd kyu','2nd kyu','1st kyu',
+        '1st dan','2nd dan','3rd dan','4th dan','5th dan',
+        '6th dan','7th dan','8th dan','9th dan','10th dan',
+    ];
+    const normRank = s => {
+        const t = (s || '').toLowerCase().replace(/ belt$/i, '').trim();
+        const map = { white:'10th kyu', yellow:'9th kyu', orange:'8th kyu',
+                      green:'7th kyu', blue:'6th kyu', purple:'5th kyu',
+                      brown:'3rd kyu', black:'1st dan' };
+        return map[t] || t;
+    };
+
+    switch (criterion.type) {
+        case 'gender':
+            return (comp.gender || '').toLowerCase() === (r.value || r.label || '').toLowerCase();
+        case 'age':
+            return (comp.age || 0) >= r.min && (comp.age || 0) <= r.max;
+        case 'rank':
+            if (r.rankMin !== undefined && r.rankMax !== undefined) {
+                const lo = RANK_ORD.indexOf(normRank(r.rankMin));
+                const hi = RANK_ORD.indexOf(normRank(r.rankMax));
+                const ci = RANK_ORD.indexOf(normRank(comp.rank));
+                return ci !== -1 && ci >= lo && ci <= hi;
+            }
+            return normRank(comp.rank) === normRank(r.value);
+        case 'weight':
+            return (comp.weight || 0) >= r.min && (comp.weight || 0) <= r.max;
+        case 'experience':
+            return (comp.experience || 0) >= r.min && (comp.experience || 0) <= r.max;
+        case 'custom':
+            return false; // custom = manual placement only, never auto-matched
+        default:
+            return true;
+    }
 }
 
 function buildDivisions(competitors, criteria, prefix = '', index = 0) {
