@@ -926,7 +926,7 @@ async function loadPlatformStripeSettings() {
   if (!statusEl) return;
   statusEl.textContent = 'Loading…';
   try {
-    const data = await apiRequest('/api/admin/platform-settings/stripe');
+    const data = await apiFetch('/api/admin/platform-settings/stripe');
     const badges = (label, set, masked) => {
       const colour = set ? '#22c55e' : '#6b7280';
       const txt    = set ? `${label}: <code style="background:var(--glass);padding:1px 5px;border-radius:4px;">${esc(masked)}</code>` : `${label}: <span style="color:var(--text-secondary);">not set</span>`;
@@ -966,7 +966,7 @@ async function savePlatformStripeKeys(e) {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
-    await apiRequest('/api/admin/platform-settings/stripe', {
+    await apiFetch('/api/admin/platform-settings/stripe', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
