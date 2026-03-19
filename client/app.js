@@ -19529,14 +19529,17 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
         }
     }
 
-    // Send winner to TV display (with rich data for audience celebration)
-    updateOperatorTVDisplay({
+    // Hold the winner object — operator presses "Announce on TV" when ready
+    // (TV continues showing the live match scores until then)
+    window._pendingTVWinner = {
         name: `${winner.firstName} ${winner.lastName}`.toUpperCase(),
         photo: winner.photo || null,
         club: winner.club || null,
         clubLogo: winner.clubLogo || null,
         corner: corner,
-    });
+    };
+    // Refresh TV with current scores but NO winner overlay yet
+    updateOperatorTVDisplay(null);
 
     // Show inline winner result on operator side (no full-screen overlay)
     const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
@@ -19559,7 +19562,11 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
         <div style="font-size: 16px; color: var(--text-secondary); margin-bottom: 12px;">
             ${winnerCornerName} Corner — Score: ${corner === 'red' ? operatorRedScore : operatorBlueScore} - ${corner === 'red' ? operatorBlueScore : operatorRedScore}
         </div>
-        <div style="display: flex; gap: 8px; justify-content: center;">
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center;">
+            <button class="btn" id="announce-winner-tv-btn" onclick="announceWinnerOnTV()"
+                style="font-size: 14px; padding: 8px 20px; background: #7c3aed; color: #fff; border: none; border-radius: 8px;">
+                📺 Announce on TV
+            </button>
             <button class="btn btn-primary" onclick="operatorNextAfterWin()" style="font-size: 14px; padding: 8px 24px;">
                 ${divisionComplete ? 'View Results →' : 'Next Match →'}
             </button>
@@ -19888,12 +19895,32 @@ async function kataFlagsMarkAbsent(absentCorner) {
     window._kataFlagsDeclaring = false;
 }
 
+/**
+ * Operator presses this when the centre referee physically raises the winner's hand.
+ * Sends the pending winner object to the TV display so the audience sees it at the
+ * right moment rather than the instant the operator enters the result.
+ */
+function announceWinnerOnTV() {
+    if (!window._pendingTVWinner) return;
+    updateOperatorTVDisplay(window._pendingTVWinner);
+    // Visually confirm the button was pressed
+    const btn = document.getElementById('announce-winner-tv-btn');
+    if (btn) {
+        btn.textContent = '✅ Announced';
+        btn.disabled = true;
+        btn.style.background = '#22c55e';
+    }
+}
+
 function operatorNextAfterWin() {
     // Clear countdown if still running
     if (window._winnerCountdownInterval) {
         clearInterval(window._winnerCountdownInterval);
         window._winnerCountdownInterval = null;
     }
+
+    // Discard any un-announced pending winner
+    window._pendingTVWinner = null;
 
     // Clear winner from audience display (works for all scoreboard types)
     try {
