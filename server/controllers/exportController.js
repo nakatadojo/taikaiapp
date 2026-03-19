@@ -4,24 +4,28 @@ const tournamentQueries = require('../db/queries/tournaments');
 const ResultsQueries = require('../db/queries/results');
 const CheckinQueries = require('../db/queries/checkins');
 
-// ── CSV Helpers ─────────────────────────────────────────────────────────────
+const { csvEscape, buildCSV } = require('../utils/csv');
+
+// ── Currency Formatting ──────────────────────────────────────────────────────
 
 /**
- * Escape a value for CSV output. Wraps in quotes and escapes internal quotes.
+ * Format a numeric amount with the tournament's currency symbol.
+ * Uses Intl.NumberFormat when the runtime supports the currency code;
+ * falls back to a simple `${symbol}${amount}` pattern otherwise.
  */
-function csvEscape(value) {
-  const str = value == null ? '' : String(value);
-  // Always wrap in quotes to handle commas, newlines, and quotes inside values
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
-/**
- * Build a CSV string from headers + rows (arrays of strings).
- */
-function buildCSV(headers, rows) {
-  const headerLine = headers.map(csvEscape).join(',');
-  const dataLines = rows.map(row => row.map(csvEscape).join(','));
-  return [headerLine, ...dataLines].join('\r\n');
+function formatCurrency(amount, currencyCode) {
+  const num = parseFloat(amount) || 0;
+  const code = (currencyCode || 'USD').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: code === 'JPY' ? 0 : 2,
+      maximumFractionDigits: code === 'JPY' ? 0 : 2,
+    }).format(num);
+  } catch {
+    return `${code} ${num.toFixed(2)}`;
+  }
 }
 
 // ── Ownership Check ─────────────────────────────────────────────────────────
@@ -200,7 +204,7 @@ async function exportRegistrantsPDF(req, res, next) {
       (sum, r) => sum + parseFloat(r.amount_paid || 0), 0
     );
     doc.fontSize(10).font('Helvetica')
-      .text(`Total Registrants: ${registrants.length}    |    Total Revenue: $${totalRevenue.toFixed(2)}`);
+      .text(`Total Registrants: ${registrants.length}    |    Total Revenue: ${formatCurrency(totalRevenue, tournament.currency)}`);
     doc.moveDown(0.5);
 
     // Table
@@ -256,7 +260,7 @@ async function exportRegistrantsPDF(req, res, next) {
         .filter(e => e.eventName)
         .map(e => e.eventName)
         .join(', ');
-      const paid = `$${parseFloat(r.amount_paid || 0).toFixed(2)}`;
+      const paid = formatCurrency(r.amount_paid || 0, tournament.currency);
 
       const rowY = doc.y;
       const values = [

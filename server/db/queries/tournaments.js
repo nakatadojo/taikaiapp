@@ -296,21 +296,22 @@ async function createEvent({
   tournamentId, name, eventType, division, gender,
   ageMin, ageMax, rankMin, rankMax,
   priceOverride, addonPriceOverride, maxCompetitors,
-  isDefault, teamSize, description,
+  isDefault, teamSize, description, prerequisiteEventId,
 }) {
   const result = await pool.query(
     `INSERT INTO tournament_events
       (tournament_id, name, event_type, division, gender,
        age_min, age_max, rank_min, rank_max,
        price_override, addon_price_override, max_competitors,
-       is_default, team_size, description)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       is_default, team_size, description, prerequisite_event_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING *`,
     [
       tournamentId, name, eventType || null, division || null, gender || null,
       ageMin || null, ageMax || null, rankMin || null, rankMax || null,
       priceOverride || null, addonPriceOverride || null, maxCompetitors || null,
       isDefault || false, teamSize || null, description || null,
+      prerequisiteEventId || null,
     ]
   );
   return result.rows[0];
@@ -324,7 +325,7 @@ async function updateEvent(eventId, updates) {
     'name', 'event_type', 'division', 'gender',
     'age_min', 'age_max', 'rank_min', 'rank_max',
     'price_override', 'addon_price_override', 'max_competitors',
-    'is_default', 'team_size', 'description',
+    'is_default', 'team_size', 'description', 'prerequisite_event_id',
   ];
   const fields = [];
   const values = [];

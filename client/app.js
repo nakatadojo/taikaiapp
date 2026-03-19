@@ -529,6 +529,7 @@ async function _syncEventTypeToServer(eventType, method = 'POST') {
                 isDefault: eventType.isDefault || false,
                 priceOverride: eventType.basePrice || null,
                 addonPriceOverride: eventType.addOnPrice || null,
+                prerequisiteEventId: eventType.prerequisiteEventId || null,
             }),
         });
         if (res.ok && method === 'POST') {
@@ -686,7 +687,6 @@ async function _hydrateEventTypesFromServer() {
                 // Server always wins on templates (wizard is the canonical source)
                 currentDivisions[e.id].templates = templates;
                 divisionsUpdated = true;
-                console.log(`[sync] Hydrated ${templates.length} template(s) for event: ${e.name}`);
             }
         });
         if (divisionsUpdated) {
@@ -902,7 +902,6 @@ function _initWebSocket() {
     _socket = io({ transports: ['websocket', 'polling'] });
 
     _socket.on('connect', () => {
-        console.log('[ws] Connected');
         _hideWsIndicator();
         // Re-subscribe to the bracket the operator has open (if any)
         if (currentTournamentId && _currentBracketId) {
@@ -1057,6 +1056,8 @@ async function _syncStagingSettingsToServer() {
 
 async function _syncDivisionsToServer() {
     if (!currentTournamentId) return;
+    if (_divisionOpInProgress) return; // generate in progress — debounce will retry
+    _divisionOpInProgress = true;
     const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
     const generatedDivisions = {};
     Object.keys(allDivisions).forEach(eventId => {
@@ -1079,6 +1080,8 @@ async function _syncDivisionsToServer() {
     } catch (err) {
         setSyncIndicator('error');
         throw err;
+    } finally {
+        _divisionOpInProgress = false;
     }
 }
 
@@ -1131,7 +1134,6 @@ async function _syncJudgeVotesToServer() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         // Clear the log after successful sync
         _msSet(_scopedKey('judgeVoteLog'), '[]');
-        console.log('[Judge Analytics] Synced', judgeVoteLog.length, 'votes to server');
     } catch (err) {
         console.warn('[Judge Analytics] Sync failed:', err.message);
         // Don't clear — will retry on next debounce
@@ -1156,7 +1158,6 @@ async function _loadTeamsFromServer() {
             // Server always wins — always overwrite local so data is consistent across browsers
             _msSet(_scopedKey('teams'), JSON.stringify(data.teams));
             if (Object.keys(data.teams).length > 0) {
-                console.log(`[sync] Loaded ${Object.keys(data.teams).length} team(s) from server`);
             }
         }
     } catch (err) {
@@ -1182,7 +1183,6 @@ async function _loadBracketsFromServer() {
         // Always write server response (even empty {}) so contaminated local data is cleared.
         _msSet(_scopedKey('brackets'), JSON.stringify(serverBrackets));
         if (Object.keys(serverBrackets).length > 0) {
-            console.log(`[sync] Loaded ${Object.keys(serverBrackets).length} bracket(s) from server`);
         }
     } catch (err) {
         console.warn('[sync] Failed to load brackets from server:', err.message);
@@ -1204,7 +1204,6 @@ async function _loadResultsFromServer() {
         // Server always wins — write regardless of local state
         db.save('results', serverResults);
         if (serverResults.length > 0) {
-            console.log(`[sync] Loaded ${serverResults.length} result(s) from server`);
         }
     } catch (err) {
         console.warn('[sync] Failed to load results from server:', err.message);
@@ -1222,7 +1221,6 @@ async function _syncScoreboardConfigToServer(config) {
             body: JSON.stringify({ config }),
         });
         if (res.ok) {
-            console.log('[sync] Scoreboard config saved to server');
         }
     } catch (err) {
         console.warn('[sync] Failed to sync scoreboard config:', err.message);
@@ -1248,7 +1246,6 @@ async function _loadScoreboardConfigFromServer() {
                     corner2Custom: data.config.kumite.corner2Color,
                 }));
             }
-            console.log('[sync] Loaded scoreboard config from server');
             if (typeof loadUnifiedScoreboardConfig === 'function') loadUnifiedScoreboardConfig();
         }
     } catch (err) {
@@ -1266,7 +1263,6 @@ async function _syncPublicSiteConfigToServer(config) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ publicSiteConfig: config }),
         });
-        console.log('[sync] Public site config saved to server');
     } catch (err) {
         console.warn('[sync] Failed to sync public site config:', err.message);
     }
@@ -1301,7 +1297,6 @@ async function _loadPublicSiteConfigFromServer() {
 
         if (Object.keys(merged).length > 0) {
             _msSet(_scopedKey('publicSiteConfig'), JSON.stringify(merged));
-            console.log('[sync] Loaded public site config from server');
         }
     } catch (err) {
         console.warn('[sync] Failed to load public site config:', err.message);
@@ -1318,7 +1313,6 @@ async function _loadStagingSettingsFromServer() {
         const data = await res.json();
         if (data.settings && Object.keys(data.settings).length > 0) {
             _msSet(_scopedKey('stagingSettings'), JSON.stringify(data.settings));
-            console.log('[sync] Loaded staging settings from server');
         }
     } catch (err) {
         console.warn('[sync] Failed to load staging settings:', err.message);
@@ -1356,7 +1350,6 @@ async function _loadDivisionsFromServer() {
             }
         });
         _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
-        console.log(`[sync] Loaded generated divisions for ${Object.keys(serverGenerated).length} event(s) from server`);
     } catch (err) {
         console.warn('[sync] Failed to load divisions from server:', err.message);
     }
@@ -1887,7 +1880,6 @@ function migrateLegacyCompetitors() {
     if (migrated > 0) {
         try {
             db.save('competitors', competitors);
-            console.log(`Migrated ${migrated} legacy competitors to tournament ID: ${targetTournamentId}`);
         } catch (e) {
             console.warn('[migration] Could not save migrateLegacyCompetitors — quota exceeded, skipping.');
         }
@@ -1924,7 +1916,6 @@ function migrateLegacyPricing() {
     if (migrated > 0) {
         try {
             db.save('competitors', competitors);
-            console.log(`Migrated pricing data for ${migrated} competitors`);
         } catch (e) {
             console.warn('[migration] Could not save migrateLegacyPricing — quota exceeded, skipping.');
         }
@@ -2003,7 +1994,7 @@ function loadDashboard() {
     });
     const revenueEl = document.getElementById('stat-revenue');
     if (revenueEl) {
-        revenueEl.textContent = `$${totalRevenue.toFixed(2)}`;
+        revenueEl.textContent = formatPrice(totalRevenue, getTournamentCurrency());
         fitStatNumber(revenueEl);
     }
     const paidEl = document.getElementById('stat-paid-count');
@@ -2017,8 +2008,168 @@ function loadDashboard() {
         const cashDueCountEl = document.getElementById('stat-cash-due-count');
         const cashDueAmountEl = document.getElementById('stat-cash-due-amount');
         if (cashDueCountEl) cashDueCountEl.textContent = cashDueCount;
-        if (cashDueAmountEl) cashDueAmountEl.textContent = cashDueAmount > 0 ? `$${cashDueAmount.toFixed(2)}` : 'TBD';
+        if (cashDueAmountEl) cashDueAmountEl.textContent = cashDueAmount > 0 ? formatPrice(cashDueAmount, getTournamentCurrency()) : 'TBD';
     }
+
+    // Update readiness checklist (runs async-safe — reads only local state)
+    renderReadinessChecklist();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOURNAMENT READINESS CHECKLIST
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute and render the Tournament Readiness checklist on the dashboard.
+ * Called at the end of loadDashboard() so it always reflects fresh data.
+ *
+ * Steps checked:
+ *   1. Tournament published (open for registration)
+ *   2. Event types created (≥ 1)
+ *   3. Competitors registered (≥ 2 real competitors)
+ *   4. Divisions generated for every non-default event that has competitors
+ *   5. No unpaid / unresolved registrations
+ *   6. Mat schedule published
+ *   7. At least one bracket created
+ */
+function renderReadinessChecklist() {
+    const panel = document.getElementById('readiness-checklist');
+    if (!panel) return; // only exists on manage.html dashboard
+
+    const tournaments     = db.load('tournaments');
+    const tournament      = tournaments.find(t => t.id === currentTournamentId);
+    const eventTypes      = db.load('eventTypes') || [];
+    const allCompetitors  = db.load('competitors');
+    const divisions       = db.load('divisions');
+    const brackets        = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+
+    const competitors = currentTournamentId
+        ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
+        : allCompetitors;
+
+    const realCompetitors = competitors.filter(c => !c.is_test);
+    const unpaidCount     = realCompetitors.filter(c => {
+        const ps = c.paymentStatus || c.payment_status || '';
+        return !['paid', 'director', 'waived'].includes(ps) && ps !== 'cancelled';
+    }).length;
+
+    // ── Division coverage ──────────────────────────────────────────────────
+    // An event "needs" divisions if it has ≥ 1 competitor enrolled and it is
+    // not the default base-registration event.
+    const competingEvents = eventTypes.filter(et => !et.isDefault && realCompetitors.some(c =>
+        Array.isArray(c.events) && c.events.map(String).includes(String(et.id))
+    ));
+    const eventsWithDivisions = competingEvents.filter(et => {
+        const d = divisions[et.id];
+        return d && d.generated && Object.keys(d.generated).length > 0;
+    });
+    const divisionsCoverage  = `${eventsWithDivisions.length}/${competingEvents.length}`;
+    const divisionsOk        = competingEvents.length > 0 && eventsWithDivisions.length === competingEvents.length;
+
+    // ── Bracket coverage ───────────────────────────────────────────────────
+    const bracketCount = Object.values(brackets).filter(b =>
+        !currentTournamentId || String(b.tournamentId) === String(currentTournamentId)
+    ).length;
+
+    // ── Check-in progress ──────────────────────────────────────────────────
+    const checkedInCount = realCompetitors.filter(c => c.checkedIn || c.checked_in).length;
+
+    // ── Build checklist items ──────────────────────────────────────────────
+    const checks = [
+        {
+            label:   'Tournament published',
+            detail:  tournament?.published ? 'Open for registration' : 'Not visible to public',
+            ok:      !!tournament?.published,
+            link:    null, // Settings are on the director.html tournament page, not this tab
+            linkLabel: null,
+        },
+        {
+            label:   'Event types configured',
+            detail:  eventTypes.length > 0
+                ? `${eventTypes.length} event type${eventTypes.length !== 1 ? 's' : ''}`
+                : 'No event types created',
+            ok:      eventTypes.length > 0,
+            link:    'events',
+            linkLabel: 'Go to Events',
+        },
+        {
+            label:   'Competitors registered',
+            detail:  realCompetitors.length >= 2
+                ? `${realCompetitors.length} competitor${realCompetitors.length !== 1 ? 's' : ''} registered`
+                : realCompetitors.length === 1
+                    ? '1 competitor — need at least 2'
+                    : 'No competitors registered',
+            ok:      realCompetitors.length >= 2,
+            link:    'competitors',
+            linkLabel: 'Go to Competitors',
+        },
+        {
+            label:   'Divisions generated',
+            detail:  competingEvents.length === 0
+                ? 'No events with competitors yet'
+                : divisionsOk
+                    ? `All ${competingEvents.length} event${competingEvents.length !== 1 ? 's' : ''} have divisions`
+                    : `${divisionsCoverage} events have divisions`,
+            ok:      divisionsOk,
+            link:    'divisions',
+            linkLabel: 'Go to Divisions',
+        },
+        {
+            label:   'Payments resolved',
+            detail:  unpaidCount === 0
+                ? 'All competitors paid or waived'
+                : `${unpaidCount} competitor${unpaidCount !== 1 ? 's' : ''} with unresolved payment`,
+            ok:      unpaidCount === 0,
+            link:    'competitors',
+            linkLabel: 'View Competitors',
+        },
+        {
+            label:   'Schedule published',
+            detail:  window._schedulePublished ? 'Schedule is live' : 'Schedule not yet published',
+            ok:      !!window._schedulePublished,
+            link:    'schedule',
+            linkLabel: 'Go to Schedule',
+        },
+        {
+            label:   'Brackets created',
+            detail:  bracketCount > 0
+                ? `${bracketCount} bracket${bracketCount !== 1 ? 's' : ''} created`
+                : 'No brackets created yet',
+            ok:      bracketCount > 0,
+            link:    'bracket',
+            linkLabel: 'Go to Brackets',
+        },
+    ];
+
+    const passedCount = checks.filter(c => c.ok).length;
+    const pct         = Math.round((passedCount / checks.length) * 100);
+
+    // ── Render progress bar ────────────────────────────────────────────────
+    const bar   = document.getElementById('readiness-bar');
+    const score = document.getElementById('readiness-score');
+    if (bar)   bar.style.width = `${pct}%`;
+    if (bar)   bar.style.background = pct === 100 ? '#22c55e' : pct >= 57 ? '#f59e0b' : '#ef4444';
+    if (score) score.textContent = `${passedCount} / ${checks.length} complete`;
+
+    // ── Render item rows ───────────────────────────────────────────────────
+    panel.innerHTML = checks.map(c => {
+        const icon     = c.ok
+            ? `<span style="color:#22c55e;font-size:16px;flex-shrink:0;">✓</span>`
+            : `<span style="color:#ef4444;font-size:16px;flex-shrink:0;">✕</span>`;
+        const linkHtml = (!c.ok && c.link)
+            ? `<button class="btn btn-small btn-secondary" style="margin-left:auto;flex-shrink:0;"
+                       onclick="navigateTo('${c.link}')">${c.linkLabel}</button>`
+            : '';
+        return `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary);">
+                ${icon}
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:13px;font-weight:600;${c.ok ? '' : 'color:var(--text-primary);'}">${c.label}</div>
+                    <div style="font-size:12px;color:var(--text-secondary);">${c.detail}</div>
+                </div>
+                ${linkHtml}
+            </div>`;
+    }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3489,6 +3640,18 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
 
     const dateOfBirth = document.getElementById('dateOfBirth').value;
 
+    // Reject future dates of birth — a negative age breaks division auto-assignment.
+    if (dateOfBirth) {
+        const dobDate = new Date(dateOfBirth + 'T00:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (dobDate > today) {
+            showMessage('Date of birth cannot be in the future.', 'error');
+            document.getElementById('dateOfBirth').focus();
+            return;
+        }
+    }
+
     const tournament = getCurrentTournament();
 
     const competitorFields = {
@@ -3745,7 +3908,6 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
 
     if (changed) {
         saveBrackets(brackets);
-        console.log(`Updated competitor ${competitorId} in brackets`);
     }
 }
 
@@ -3769,7 +3931,6 @@ function updateCompetitorInBrackets(competitorId, updatedCompetitor) {
  */
 
 function autoAssignToDivisions(competitor, competitorId) {
-    console.log('=== AUTO-DIVISION ASSIGNMENT START ===');
 
     const eventTypes = db.load('eventTypes');
     const freshDivisions = db.load('divisions');
@@ -3781,7 +3942,6 @@ function autoAssignToDivisions(competitor, competitorId) {
     });
 
     if (eventsWithTemplates.length === 0) {
-        console.log('No division templates configured, skipping auto-division');
         return;
     }
 
@@ -3808,7 +3968,6 @@ function autoAssignToDivisions(competitor, competitorId) {
     eventsWithTemplates.forEach(eventId => {
         const event = eventTypes.find(e => String(e.id) === String(eventId));
         const eventData = freshDivisions[eventId];
-        console.log(`Auto-regenerating divisions for: ${event.name}`);
 
         const generatedDivisions = {};
         eventData.templates.forEach(template => {
@@ -3826,7 +3985,6 @@ function autoAssignToDivisions(competitor, competitorId) {
     _msSet(_scopedKey('divisions'), JSON.stringify(freshDivisions));
     // Persist auto-generated divisions to server so they survive page refreshes
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
-    console.log('=== AUTO-DIVISION ASSIGNMENT COMPLETE ===');
 }
 
 /**
@@ -4031,11 +4189,9 @@ function competitorMatchesCriterion(competitor, competitorAge, criterion) {
 }
 
 function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, template, competitorAge) {
-    console.log(`Assigning to template: ${template.name}`);
 
     // Build division name from template criteria
     const divisionName = buildDivisionNameFromTemplate(competitor, competitorAge, template);
-    console.log(`Division name: ${divisionName}`);
 
     // Get or create division
     const divisions = db.load('divisions');
@@ -4056,7 +4212,6 @@ function assignToDivisionAndGenerateBracket(competitor, competitorId, eventId, t
     const divisionCompetitors = divisions[eventId].generated[divisionName];
     if (!divisionCompetitors.find(c => c.id === competitorId)) {
         divisionCompetitors.push(competitor);
-        console.log(`Added competitor to division. Total competitors: ${divisionCompetitors.length}`);
     }
 
     // Save updated divisions
@@ -4163,8 +4318,6 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
 }
 
 function autoGenerateBracket(eventId, divisionName, competitors, template) {
-    console.log(`Auto-generating bracket for: ${divisionName}`);
-    console.log(`Competitors: ${competitors.length}`);
 
     // Deduplicate competitors by ID
     const seenIds = new Set();
@@ -4176,7 +4329,6 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     });
 
     if (competitors.length === 0) {
-        console.log('No competitors, skipping bracket generation');
         return;
     }
 
@@ -4201,7 +4353,6 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
         } else {
             bracketType = 'single-elimination';
         }
-        console.log(`  No bracketType on template, defaulting to "${bracketType}" (scoreboard: ${baseType})`);
     }
 
     const bracket = {
@@ -4231,18 +4382,15 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     if (existingBracketKey) {
         // Check if bracket is locked
         if (brackets[existingBracketKey].locked) {
-            console.log('Bracket is locked, cannot regenerate');
             throw new Error(`Division "${divisionName}" bracket is locked (match in progress). Cannot add new competitors.`);
         }
 
-        console.log('Regenerating existing bracket');
         delete brackets[existingBracketKey]; // Delete old bracket
     }
 
     brackets[bracketId] = bracket;
     saveBrackets(brackets);
 
-    console.log(`Bracket generated: ${bracketId}`);
 }
 
 function generateMatchesForBracket(bracket) {
@@ -4459,7 +4607,6 @@ function autoLockBracketOnMatchStart(bracketId) {
 
     if (!bracket || bracket.locked) return;
 
-    console.log(`Auto-locking bracket ${bracketId} (first match started)`);
 
     bracket.locked = true;
     bracket.lockedAt = new Date().toISOString();
@@ -4534,7 +4681,7 @@ function loadCompetitors(skipSync = false) {
             eventsHtml = eventNames.join('<br>');
         }
 
-        const totalDue = comp.pricing?.total != null ? `$${comp.pricing.total.toFixed(2)}` : '-';
+        const totalDue = comp.pricing?.total != null ? formatPrice(comp.pricing.total, getTournamentCurrency()) : '-';
         const paymentBadge = getPaymentStatusBadge(comp.paymentStatus || 'unpaid');
 
         const testBadge = comp.is_test
@@ -4542,12 +4689,12 @@ function loadCompetitors(skipSync = false) {
             : '';
         tr.innerHTML = `
             <td>${photoHtml}</td>
-            <td>${testBadge}${comp.firstName} ${comp.lastName}</td>
+            <td>${testBadge}${_escapeHtml(comp.firstName)} ${_escapeHtml(comp.lastName)}</td>
             <td>${ageDisplay}</td>
-            <td>${comp.gender || '-'}</td>
+            <td>${_escapeHtml(comp.gender || '-')}</td>
             <td>${comp.weight ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
-            <td>${comp.rank}</td>
-            <td>${comp.club}</td>
+            <td>${_escapeHtml(comp.rank || '-')}</td>
+            <td>${_escapeHtml(comp.club || '-')}</td>
             <td style="font-size: 12px;">${eventsHtml}</td>
             <td style="font-size: 13px; font-weight: 600;">${totalDue}</td>
             <td style="cursor: pointer;" onclick="togglePaymentStatus(${comp.id})">${paymentBadge}</td>
@@ -4565,7 +4712,13 @@ function loadCompetitors(skipSync = false) {
 
 async function deleteCompetitor(id) {
     if (!currentTournamentId) return;
-    if (!await showConfirm('Are you sure you want to delete this competitor?')) return;
+    const competitors = db.load('competitors');
+    const comp = competitors.find(c => String(c.id) === String(id));
+    const name = comp ? `${comp.firstName} ${comp.lastName}` : 'this competitor';
+    if (!await showConfirm(
+        `Delete <strong>${_escapeHtml(name)}</strong>?<br><br>This will permanently remove the competitor from the tournament.`,
+        { confirmText: 'Delete', danger: true }
+    )) return;
     const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/${id}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -4662,6 +4815,349 @@ window.editCompetitor = function(id) {
     // Scroll form into view
     document.getElementById('competitor-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV BULK IMPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Rows parsed & validated from the most recent CSV file selection. */
+let _csvImportRows = [];
+
+/** Download a blank template CSV so directors know the expected column names. */
+function downloadCSVTemplate() {
+    const headers = ['firstName','lastName','dateOfBirth','gender','weight','rank','experience','club','events','paymentStatus'];
+    const example = ['Jane','Doe','2010-03-15','Female','32.5','3rd Kyu','2','Sunrise Dojo','Kumite','unpaid'];
+    const csv = [headers.join(','), example.join(',')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'competitor-import-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/** Open the OS file picker to choose a CSV file. */
+function triggerCSVImport() {
+    if (!currentTournamentId) {
+        showMessage('Please select a tournament first.', 'error');
+        return;
+    }
+    document.getElementById('csv-import-file')?.click();
+}
+
+// Wire up file input → parse + preview
+document.getElementById('csv-import-file')?.addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => parseAndPreviewCSV(ev.target.result);
+    reader.readAsText(file);
+    // Reset so the same file can be re-chosen after a cancel
+    e.target.value = '';
+});
+
+/**
+ * Parse a single CSV line, respecting double-quoted fields that may contain commas.
+ * @param {string} line
+ * @returns {string[]}
+ */
+function _parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+            else { inQuotes = !inQuotes; }
+        } else if (ch === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += ch;
+        }
+    }
+    result.push(current.trim());
+    return result;
+}
+
+/**
+ * Parse raw CSV text, validate every data row, and open the preview modal.
+ * @param {string} text - Full contents of the uploaded CSV file.
+ */
+function parseAndPreviewCSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) {
+        showMessage('CSV file must have a header row and at least one data row.', 'error');
+        return;
+    }
+
+    // Normalise header names: lowercase, strip spaces
+    const headers = _parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, ''));
+
+    const requiredCols = ['firstname', 'lastname', 'dateofbirth', 'gender', 'club'];
+    const missing = requiredCols.filter(c => !headers.includes(c));
+    if (missing.length > 0) {
+        showMessage(`CSV is missing required columns: ${missing.join(', ')}`, 'error');
+        return;
+    }
+
+    const existingCompetitors = db.load('competitors');
+    const eventTypes           = db.load('eventTypes');
+    const validPaymentStatuses = ['unpaid', 'paid', 'partial', 'pay_later', 'waived'];
+
+    _csvImportRows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const values = _parseCSVLine(lines[i]);
+        const row    = {};
+        headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+
+        const errors   = [];
+        const warnings = [];
+
+        // ── Required field presence ──
+        if (!row.firstname)    errors.push('First name required');
+        if (!row.lastname)     errors.push('Last name required');
+        if (!row.dateofbirth)  errors.push('Date of birth required');
+        if (!row.gender)       errors.push('Gender required');
+        if (!row.club)         errors.push('Club / Dojo required');
+
+        // ── Date of birth validation ──
+        if (row.dateofbirth) {
+            const dob   = new Date(row.dateofbirth + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (isNaN(dob.getTime())) {
+                errors.push('Invalid date of birth — use YYYY-MM-DD');
+            } else if (dob > today) {
+                errors.push('Date of birth cannot be in the future');
+            }
+        }
+
+        // ── Gender validation ──
+        if (row.gender && !['male', 'female'].includes(row.gender.toLowerCase())) {
+            errors.push('Gender must be "Male" or "Female"');
+        }
+
+        // ── Numeric field validation ──
+        if (row.weight     && isNaN(parseFloat(row.weight)))     errors.push('Weight must be a number');
+        if (row.experience && isNaN(parseFloat(row.experience))) errors.push('Experience must be a number');
+
+        // ── Payment status ──
+        const psRaw = (row.paymentstatus || '').toLowerCase();
+        if (psRaw && !validPaymentStatuses.includes(psRaw)) {
+            warnings.push(`Unknown payment status "${row.paymentstatus}" — will default to unpaid`);
+        }
+
+        // ── Event name matching ──
+        // Events column supports pipe or semicolon as delimiter in addition to comma
+        const rawEvents     = row.events || '';
+        const matchedEventIds = [];
+        const unmatchedEvents = [];
+        if (rawEvents) {
+            rawEvents.split(/[;|,]/).map(e => e.trim()).filter(Boolean).forEach(evName => {
+                const match = eventTypes.find(et =>
+                    et.name.toLowerCase() === evName.toLowerCase() ||
+                    et.name.toLowerCase().includes(evName.toLowerCase())
+                );
+                if (match) { matchedEventIds.push(match.id); }
+                else       { unmatchedEvents.push(evName); }
+            });
+        }
+        if (unmatchedEvents.length > 0) {
+            warnings.push(`Event(s) not found: ${unmatchedEvents.join(', ')}`);
+        }
+
+        // ── Duplicate detection ──
+        if (row.firstname && row.lastname && row.dateofbirth) {
+            const isDuplicate = existingCompetitors.some(c =>
+                c.firstName?.toLowerCase() === row.firstname.toLowerCase() &&
+                c.lastName?.toLowerCase()  === row.lastname.toLowerCase()  &&
+                c.dateOfBirth === row.dateofbirth
+            );
+            if (isDuplicate) {
+                warnings.push('Possible duplicate — a competitor with this name and DOB already exists');
+            }
+        }
+
+        // Normalise gender casing (Male / Female)
+        const genderNorm = row.gender
+            ? row.gender.charAt(0).toUpperCase() + row.gender.slice(1).toLowerCase()
+            : '';
+
+        _csvImportRows.push({
+            rowNum:        i,
+            firstName:     row.firstname,
+            lastName:      row.lastname,
+            dateOfBirth:   row.dateofbirth,
+            gender:        genderNorm,
+            weight:        row.weight     ? parseFloat(row.weight)     : null,
+            rank:          row.rank       || null,
+            experience:    row.experience ? parseFloat(row.experience) : null,
+            club:          row.club,
+            events:        matchedEventIds,
+            paymentStatus: validPaymentStatuses.includes(psRaw) ? psRaw : 'unpaid',
+            errors,
+            warnings,
+            // Auto-exclude rows with hard errors; director can uncheck valid rows too
+            skip: errors.length > 0,
+        });
+    }
+
+    _renderCSVPreviewModal();
+}
+
+/** Render (or re-render) the preview table inside the CSV import modal. */
+function _renderCSVPreviewModal() {
+    const validCount = _csvImportRows.filter(r => r.errors.length === 0).length;
+    const errorCount = _csvImportRows.filter(r => r.errors.length > 0).length;
+    const warnCount  = _csvImportRows.filter(r => r.errors.length === 0 && r.warnings.length > 0).length;
+    const eventTypes = db.load('eventTypes');
+
+    const rows = _csvImportRows.map((r, idx) => {
+        const hasErrors   = r.errors.length > 0;
+        const hasWarnings = r.warnings.length > 0;
+        const rowClass    = hasErrors ? 'csv-row-error' : hasWarnings ? 'csv-row-warn' : 'csv-row-ok';
+
+        const issues = [
+            ...r.errors.map(e   => `<span style="color:#ef4444">✕ ${_escapeHtml(e)}</span>`),
+            ...r.warnings.map(w => `<span style="color:#f59e0b">⚠ ${_escapeHtml(w)}</span>`),
+        ].join('<br>');
+
+        const eventNames = r.events.map(id => {
+            const ev = eventTypes.find(e => e.id === id);
+            return ev ? _escapeHtml(ev.name) : String(id);
+        }).join(', ') || '-';
+
+        const checkboxDisabled = hasErrors ? 'disabled title="Fix errors to enable import"' : '';
+
+        return `
+            <tr class="${rowClass}" data-idx="${idx}">
+                <td style="text-align:center;">
+                    <input type="checkbox" ${r.skip ? '' : 'checked'} ${checkboxDisabled}
+                           onchange="_csvToggleRow(${idx}, this.checked)">
+                </td>
+                <td>${r.rowNum}</td>
+                <td>${_escapeHtml(r.firstName)} ${_escapeHtml(r.lastName)}</td>
+                <td>${r.dateOfBirth || '-'}</td>
+                <td>${r.gender || '-'}</td>
+                <td>${r.weight != null ? r.weight : '-'}</td>
+                <td>${_escapeHtml(r.rank || '-')}</td>
+                <td>${_escapeHtml(r.club)}</td>
+                <td style="font-size:12px;">${eventNames}</td>
+                <td style="font-size:11px;line-height:1.6;">${issues || '<span style="color:var(--green)">✓ OK</span>'}</td>
+            </tr>`;
+    }).join('');
+
+    document.getElementById('csv-import-summary').innerHTML =
+        `<strong>${validCount}</strong> valid &nbsp;·&nbsp; ` +
+        `<strong style="color:#f59e0b">${warnCount}</strong> with warnings &nbsp;·&nbsp; ` +
+        `<strong style="color:#ef4444">${errorCount}</strong> with errors`;
+
+    document.getElementById('csv-import-tbody').innerHTML = rows;
+    document.getElementById('csv-import-confirm-btn').disabled = validCount === 0;
+    document.getElementById('csv-import-progress').classList.add('hidden');
+    document.getElementById('csv-import-modal').classList.remove('hidden');
+}
+
+/**
+ * Toggle whether a CSV row will be included in the import.
+ * Called by the checkbox in each preview row.
+ */
+function _csvToggleRow(idx, checked) {
+    if (_csvImportRows[idx]) _csvImportRows[idx].skip = !checked;
+}
+
+/**
+ * POST each selected row to the server, one at a time, showing live progress.
+ * On completion, refreshes the competitors list and closes the modal.
+ */
+async function executeCSVImport() {
+    if (!currentTournamentId) return;
+
+    const toImport = _csvImportRows.filter(r => !r.skip && r.errors.length === 0);
+    if (toImport.length === 0) {
+        showMessage('No valid rows selected for import.', 'error');
+        return;
+    }
+
+    const confirmBtn = document.getElementById('csv-import-confirm-btn');
+    const progressEl = document.getElementById('csv-import-progress');
+    confirmBtn.disabled = true;
+    progressEl.textContent = `Importing 0 / ${toImport.length}…`;
+    progressEl.classList.remove('hidden');
+
+    const tournament = getCurrentTournament();
+    const eventTypes = db.load('eventTypes');
+    let imported = 0;
+    let failed   = 0;
+
+    for (const row of toImport) {
+        const pricing = calculatePricingBreakdown(row.events, eventTypes, tournament);
+
+        const competitorData = {
+            firstName:      row.firstName,
+            lastName:       row.lastName,
+            dateOfBirth:    row.dateOfBirth,
+            gender:         row.gender,
+            weight:         row.weight,
+            rank:           row.rank,
+            experience:     row.experience,
+            club:           row.club,
+            events:         row.events,
+            primaryEventId: row.events[0] || null,
+            pricing,
+            paymentStatus:  row.paymentStatus,
+        };
+
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ competitor: competitorData, is_test: false }),
+            });
+            if (res.ok) {
+                const { competitor: created } = await res.json();
+                const all = db.load('competitors');
+                all.push(created);
+                db.save('competitors', all);
+                imported++;
+            } else {
+                failed++;
+            }
+        } catch {
+            failed++;
+        }
+
+        progressEl.textContent = `Importing ${imported + failed} / ${toImport.length}…`;
+    }
+
+    const succeeded = imported > 0;
+    progressEl.textContent = `Done — ${imported} imported${failed > 0 ? `, ${failed} failed` : ''}.`;
+
+    if (succeeded) {
+        loadCompetitors(true);
+        loadDashboard();
+        showMessage(
+            `Imported ${imported} competitor${imported !== 1 ? 's' : ''} successfully` +
+            (failed > 0 ? ` (${failed} row${failed !== 1 ? 's' : ''} failed)` : '') + '.',
+            'success'
+        );
+        setTimeout(() => closeCSVImportModal(), 2500);
+    } else {
+        showMessage('Import failed — no competitors were added. Check the server logs.', 'error');
+        confirmBtn.disabled = false;
+    }
+}
+
+/** Hide and reset the CSV import modal. */
+function closeCSVImportModal() {
+    document.getElementById('csv-import-modal')?.classList.add('hidden');
+    _csvImportRows = [];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TEST DATA MODAL
@@ -5092,7 +5588,12 @@ function executeTestGeneration(config) {
  */
 async function clearTestData() {
     if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
-    if (!await showConfirm('Delete all test competitors from the database? Real competitors will not be affected.')) return;
+    const testCount = db.load('competitors').filter(c => c.is_test).length;
+    if (testCount === 0) { showMessage('No test competitors to remove.', 'error'); return; }
+    if (!await showConfirm(
+        `Delete <strong>${testCount} test competitor${testCount !== 1 ? 's' : ''}</strong> from the database?<br><br>Real competitors will not be affected.`,
+        { confirmText: 'Delete Test Data', danger: true }
+    )) return;
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/clear-test-data`, {
@@ -5224,7 +5725,6 @@ function generateTestCompetitors() {
     }
 
     // ── STEP 1: Clear existing data (scoped to currentTournamentId) ──
-    console.log('=== GENERATE TEST COMPETITORS: STEP 1 — Clearing existing data ===');
 
     // Delete competitors for current tournament only
     const allCompetitors = db.load('competitors');
@@ -5232,7 +5732,6 @@ function generateTestCompetitors() {
         ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
         : allCompetitors;
     tournamentCompetitors.forEach(c => db.delete('competitors', c.id));
-    console.log(`  Deleted ${tournamentCompetitors.length} competitors`);
 
     // Clear generated divisions (keep templates)
     const eventIds = nonDefaultEvents.map(e => e.id);
@@ -5242,7 +5741,6 @@ function generateTestCompetitors() {
         }
     }
     _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
-    console.log('  Cleared generated divisions');
 
     // Clear brackets for current tournament's events
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
@@ -5254,7 +5752,6 @@ function generateTestCompetitors() {
     }
     bracketIdsToDelete.forEach(id => delete brackets[id]);
     saveBrackets(brackets);
-    console.log(`  Deleted ${bracketIdsToDelete.length} brackets`);
 
     // Clear teams for current tournament's events
     const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
@@ -5267,10 +5764,8 @@ function generateTestCompetitors() {
     teamCodesToDelete.forEach(code => delete teams[code]);
     _msSet(_scopedKey('teams'), JSON.stringify(teams));
     _debouncedSync('teams', _syncTeamsToServer, 2000);
-    console.log(`  Deleted ${teamCodesToDelete.length} teams`);
 
     // ── STEP 2: Ensure 6-8 clubs ──
-    console.log('=== STEP 2 — Ensuring clubs ===');
     let existingClubs = db.load('clubs');
     const existingClubNames = new Set(existingClubs.map(c => c.name));
     const shuffledClubPool = shuffle(clubPool);
@@ -5289,17 +5784,14 @@ function generateTestCompetitors() {
     }
     existingClubs = db.load('clubs');
     const clubNames = existingClubs.map(c => c.name);
-    console.log(`  ${clubNames.length} clubs available: ${clubNames.join(', ')}`);
 
     // ── STEP 3: Read tournament structure ──
-    console.log('=== STEP 3 — Reading tournament structure ===');
     const tournaments = db.load('tournaments');
     const currentTournament = tournaments.find(t => t.id === currentTournamentId);
     const ageMethod = currentTournament?.ageCalculationMethod || 'aau-standard';
     const eventDate = currentTournament?.date || new Date().toISOString();
 
     // ── STEP 4: Enumerate all division slots from templates ──
-    console.log('=== STEP 4 — Enumerating division slots ===');
 
     // Build Cartesian product of ranges for each template
     function enumerateRangeCombinations(criteria) {
@@ -5363,7 +5855,6 @@ function generateTestCompetitors() {
     for (const event of nonDefaultEvents) {
         const eventData = divisions[event.id];
         if (!eventData || !eventData.templates || eventData.templates.length === 0) {
-            console.log(`  Skipping event "${event.name}" — no templates`);
             continue;
         }
 
@@ -5382,7 +5873,6 @@ function generateTestCompetitors() {
         }
     }
 
-    console.log(`  Found ${divisionSlots.length} division slots across all events`);
 
     if (divisionSlots.length === 0) {
         showMessage('No division templates found. Please create templates first.', 'error');
@@ -5416,7 +5906,6 @@ function generateTestCompetitors() {
     }
 
     // ── STEP 5: Generate competitors ──
-    console.log('=== STEP 5 — Generating competitors ===');
 
     const shuffledFirst = shuffle(firstNames);
     const shuffledMaleFirst = shuffle(maleFirstNames);
@@ -5582,10 +6071,8 @@ function generateTestCompetitors() {
         };
     }
 
-    console.log(`  Prepared ${competitorsToCreate.length} competitors`);
 
     // ── STEP 6: Save competitors and auto-assign to divisions ──
-    console.log('=== STEP 6 — Saving and auto-assigning ===');
 
     let successCount = 0;
     let failCount = 0;
@@ -5635,17 +6122,9 @@ function generateTestCompetitors() {
     loadDashboard();
 
     // Log summary
-    console.log('=== TEST COMPETITOR GENERATION SUMMARY ===');
-    console.log(`  Total created: ${competitorsToCreate.length}`);
-    console.log(`  Successfully assigned: ${successCount}`);
-    console.log(`  Failed assignments: ${failCount}`);
-    console.log('  Per-event breakdown:');
     for (const [name, count] of Object.entries(perEventCount).sort((a, b) => b[1] - a[1])) {
-        console.log(`    ${name}: ${count}`);
     }
-    console.log('  Per-club breakdown:');
     for (const [name, count] of Object.entries(perClubCount).sort((a, b) => b[1] - a[1])) {
-        console.log(`    ${name}: ${count}`);
     }
 
     const teamCount = Object.keys(teamRegistry).length - teamCodesToDelete.length;
@@ -5658,8 +6137,29 @@ function generateTestCompetitors() {
 }
 
 async function clearAllCompetitors() {
-    if (!await showConfirm('⚠️ WARNING: This will delete ALL competitors, divisions, and scheduled matches permanently!\n\nAre you absolutely sure you want to continue?')) return;
-    if (!await showConfirm('This action CANNOT be undone! Click OK to confirm deletion of all competitors, divisions, and matches.')) return;
+    const competitors = db.load('competitors');
+    const realCount   = competitors.filter(c => !c.is_test).length;
+    const testCount   = competitors.filter(c => c.is_test).length;
+    const totalCount  = competitors.length;
+
+    if (totalCount === 0) { showMessage('No competitors to clear.', 'error'); return; }
+
+    const countSummary = [
+        realCount > 0 ? `<strong>${realCount}</strong> real competitor${realCount !== 1 ? 's' : ''}` : null,
+        testCount > 0 ? `<strong>${testCount}</strong> test competitor${testCount !== 1 ? 's' : ''}` : null,
+    ].filter(Boolean).join(' and ');
+
+    // Step 1: plain confirm with counts
+    if (!await showConfirm(
+        `⚠️ This will permanently delete ${countSummary}, all generated divisions, and all scheduled matches for this tournament.<br><br>Division templates will be preserved.`,
+        { confirmText: 'Yes, continue', danger: true }
+    )) return;
+
+    // Step 2: typing confirmation for the irreversible action
+    if (!await showTypingConfirm(
+        `You are about to delete <strong>${totalCount} competitor${totalCount !== 1 ? 's' : ''}</strong> and all associated matches. This cannot be undone.`,
+        'DELETE'
+    )) return;
     {
             // Clear competitors
             db.clear('competitors');
@@ -5872,7 +6372,6 @@ function syncCompetitorClubsToTable() {
     competitors.forEach(comp => {
         if (comp.club && !existingClubNames.includes(comp.club.toLowerCase())) {
             // This club doesn't exist in clubs table, add it
-            console.log('Adding club to table:', comp.club);
             const newClub = {
                 name: comp.club,
                 logo: comp.clubLogo || null,
@@ -5886,7 +6385,6 @@ function syncCompetitorClubsToTable() {
     });
 
     if (addedCount > 0) {
-        console.log(`Added ${addedCount} clubs from competitors to clubs table`);
     }
 }
 
@@ -5934,41 +6432,51 @@ function loadClubs(skipSync = false) {
     });
 }
 
-function deleteClub(id) {
+async function deleteClub(id) {
     const clubs = db.load('clubs');
-    const club = clubs.find(c => c.id === id);
-
+    const club  = clubs.find(c => c.id === id);
     if (!club) return;
 
-    // Check if club has members
     const competitors = db.load('competitors');
     const memberCount = competitors.filter(c => c.club === club.name).length;
 
-    let confirmMsg = `Are you sure you want to delete "${club.name}"?`;
-    if (memberCount > 0) {
-        confirmMsg += `\n\nWarning: This dojo has ${memberCount} registered competitor(s). They will still show the dojo name but the dojo logo will be removed.`;
-    }
+    const memberWarning = memberCount > 0
+        ? `<br><strong style="color:#f59e0b">${memberCount} competitor${memberCount !== 1 ? 's are' : ' is'} registered to this dojo.</strong> Their dojo name will remain but the logo will be removed.`
+        : '';
 
-    if (confirm(confirmMsg)) {
-        db.delete('clubs', id);
-        _queueCompetitorsSync();
-        loadClubs();
-        loadClubDropdown();
-        showMessage('Dojo deleted successfully!');
-    }
+    if (!await showConfirm(
+        `Delete dojo "<strong>${_escapeHtml(club.name)}</strong>"?${memberWarning}`,
+        { confirmText: 'Delete Dojo', danger: true }
+    )) return;
+
+    db.delete('clubs', id);
+    _queueCompetitorsSync();
+    loadClubs();
+    loadClubDropdown();
+    showMessage('Dojo deleted successfully!');
 }
 
-function clearAllClubs() {
-    const clubs = db.load('clubs');
+async function clearAllClubs() {
+    const clubs       = db.load('clubs');
     const competitors = db.load('competitors');
-    const totalMembers = competitors.length;
+    const clubCount   = clubs.length;
 
-    if (confirm(`⚠️ WARNING: This will delete ALL ${clubs.length} dojos!\n\n${totalMembers} competitors are registered. Their dojo names will remain but dojo logos will be removed.\n\nAre you sure?`)) {
-        db.clear('clubs');
-        loadClubs();
-        loadClubDropdown();
-        showMessage('All dojos deleted!');
-    }
+    if (clubCount === 0) { showMessage('No dojos to clear.', 'error'); return; }
+
+    const affectedCount = competitors.length;
+    const affectedLine  = affectedCount > 0
+        ? `<br><strong style="color:#f59e0b">${affectedCount} registered competitor${affectedCount !== 1 ? 's' : ''} will keep their dojo name but lose the logo.</strong>`
+        : '';
+
+    if (!await showConfirm(
+        `Delete all <strong>${clubCount}</strong> dojo${clubCount !== 1 ? 's' : ''}?${affectedLine}`,
+        { confirmText: 'Delete All Dojos', danger: true }
+    )) return;
+
+    db.clear('clubs');
+    loadClubs();
+    loadClubDropdown();
+    showMessage('All dojos deleted!');
 }
 
 function filterClubs() {
@@ -6108,8 +6616,12 @@ async function deleteInstructor(id) {
 }
 
 async function clearAllInstructors() {
-    if (!await showConfirm('⚠️ WARNING: This will delete ALL instructors and their dojos permanently!\n\nAre you absolutely sure you want to continue?')) return;
-    if (!await showConfirm('This action CANNOT be undone! Click OK to confirm deletion of all instructors.')) return;
+    const instructorCount = db.load('instructors').length;
+    if (instructorCount === 0) { showMessage('No coaches to delete.', 'error'); return; }
+    if (!await showConfirm(
+        `Delete all <strong>${instructorCount}</strong> coach${instructorCount !== 1 ? 'es' : ''} and all dojos permanently?<br><br>This action cannot be undone.`,
+        { confirmText: 'Delete All', danger: true }
+    )) return;
     db.clear('instructors');
     db.clear('clubs');
     loadInstructors();
@@ -6459,20 +6971,52 @@ function loadEventTypes() {
     });
 }
 
-function deleteEventType(id) {
-    if (confirm('Are you sure you want to delete this event type? Any division templates configured for this event will also be removed.')) {
-        _deleteEventTypeFromServer(id); // fire-and-forget before local delete
-        db.delete('eventTypes', id);
-        // Also clean up any division templates/generated data stored for this event
-        const divisions = db.load('divisions');
-        if (divisions[id]) {
-            delete divisions[id];
-            _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
-        }
-        loadEventTypes();
-        loadEventTypeSelector();
-        showMessage('Event type deleted successfully!');
+async function deleteEventType(id) {
+    const eventTypes  = db.load('eventTypes');
+    const event       = eventTypes.find(e => String(e.id) === String(id));
+    const eventName   = event?.name || 'this event';
+
+    // Count competitors enrolled in this event
+    const competitors     = db.load('competitors');
+    const enrolledCount   = competitors.filter(c =>
+        Array.isArray(c.events) && c.events.map(String).includes(String(id))
+    ).length;
+
+    const enrolledLine = enrolledCount > 0
+        ? `<br><strong style="color:#ef4444">${enrolledCount} competitor${enrolledCount !== 1 ? 's are' : ' is'} currently enrolled in this event.</strong>`
+        : '';
+
+    if (!await showConfirm(
+        `Delete event "<strong>${_escapeHtml(eventName)}</strong>"?${enrolledLine}<br><br>All division templates, generated divisions, and brackets for this event will be permanently removed.`,
+        { confirmText: 'Delete Event', danger: true }
+    )) return;
+
+    _deleteEventTypeFromServer(id); // fire-and-forget before local delete
+    db.delete('eventTypes', id);
+
+    // Clean up local division data (templates + generated) for this event
+    const divisions = db.load('divisions');
+    if (divisions[id]) {
+        delete divisions[id];
+        _msSet(_scopedKey('divisions'), JSON.stringify(divisions));
     }
+
+    // Clean up local brackets that belong to this event
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    let bracketsChanged = false;
+    for (const bracketId of Object.keys(brackets)) {
+        if (String(brackets[bracketId]?.eventId) === String(id)) {
+            delete brackets[bracketId];
+            bracketsChanged = true;
+        }
+    }
+    if (bracketsChanged) {
+        _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+    }
+
+    loadEventTypes();
+    loadEventTypeSelector();
+    showMessage('Event type deleted successfully!');
 }
 
 function _toggleEventTemplates(eventId) {
@@ -7204,7 +7748,6 @@ function autoGenerateScoreboardConfig(sanctioningBody) {
         corner2Custom: config.kumite.corner2Color,
     }));
 
-    console.log(`Auto-generated scoreboard config for ${sanctioningBody}:`, config);
 }
 
 function loadDivisionTemplate() {
@@ -8027,12 +8570,6 @@ function validateDivisionSizes(divisions, template) {
     const emptyDivisions = divisionNames.filter(name => divisions[name].length === 0).length;
     const viableDivisions = divisionNames.filter(name => divisions[name].length >= minViable).length;
 
-    console.log('=== DIVISION VALIDATION ===');
-    console.log(`Total divisions: ${totalDivisions}`);
-    console.log(`Empty divisions: ${emptyDivisions}`);
-    console.log(`Viable divisions: ${viableDivisions}`);
-    console.log('Warnings:', warnings);
-    console.log('Info:', info);
 
     // Show user feedback if there are warnings
     if (warnings.length > 0) {
@@ -8568,12 +9105,21 @@ function saveDivisionTemplate() {
 
 // ── Server-side Division Auto-Assign ─────────────────────────────────────────
 
+// Mutex: prevents a save and a generate from overlapping and clobbering each other.
+// Set to true at the start of either operation; cleared when it completes or errors.
+let _divisionOpInProgress = false;
+
 /**
  * Call the server's auto-assign endpoint and broadcast results to all devices.
  * This replaces the client-side autoAssignToDivisions() trigger on the "Generate Divisions" button.
  */
 async function triggerServerAutoAssign() {
     if (!currentTournamentId) return;
+    if (_divisionOpInProgress) {
+        showMessage('A division operation is already in progress — please wait.', 'error');
+        return;
+    }
+    _divisionOpInProgress = true;
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
@@ -8589,16 +9135,16 @@ async function triggerServerAutoAssign() {
     } catch (e) {
         setSyncIndicator('error');
         showMessage('Auto-assign failed — please try again.', 'error');
+    } finally {
+        _divisionOpInProgress = false;
     }
 }
 
 // Division Generation
 function generateDivisions() {
-    console.log('=== GENERATE DIVISIONS CALLED ===');
 
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
-    console.log('Event ID:', eventId);
 
     if (!eventId) {
         console.error('No event ID');
@@ -8613,10 +9159,8 @@ function generateDivisions() {
 
     // Get the division template for this event
     const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
-    console.log('All divisions before generation:', allDivisions);
 
     const eventData = allDivisions[eventId];
-    console.log('Event data:', eventData);
 
     if (!eventData || !eventData.templates || eventData.templates.length === 0) {
         console.error('No templates configured');
@@ -8624,7 +9168,6 @@ function generateDivisions() {
         return;
     }
 
-    console.log('Templates:', eventData.templates);
 
     // Get tournament-scoped competitors
     const allCompetitors = db.load('competitors');
@@ -8632,8 +9175,6 @@ function generateDivisions() {
         ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
         : allCompetitors;
 
-    console.log('Competitors count:', competitors.length);
-    console.log('Tournament ID:', currentTournamentId);
 
     if (competitors.length === 0) {
         console.error('No competitors for this tournament');
@@ -8661,17 +9202,13 @@ function generateDivisions() {
     }
 
     // Generate divisions for each template (AAU has multiple age-tier templates)
-    console.log('Generating divisions for all templates...');
 
     const generatedDivisions = {};
     eventData.templates.forEach(template => {
-        console.log('Using template:', template.name || template.id);
         const result = buildDivisions(competitorsWithAge, template.criteria);
         Object.assign(generatedDivisions, result);
     });
 
-    console.log('Generated divisions:', generatedDivisions);
-    console.log('Generated division keys:', Object.keys(generatedDivisions));
 
     // Validate division sizes and warn user
     validateDivisionSizes(generatedDivisions, eventData.templates[0]);
@@ -8683,24 +9220,19 @@ function generateDivisions() {
         updatedAt: new Date().toISOString()
     };
 
-    console.log('Saving divisions:', allDivisions[eventId]);
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
     // Sync generated divisions to server (debounced)
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
 
-    console.log('Calling loadDivisions...');
     loadDivisions();
     loadDashboard();
-    console.log('=== GENERATE DIVISIONS COMPLETE ===');
     showMessage('Divisions generated successfully!');
 }
 
 function buildDivisions(competitors, criteria, prefix = '', index = 0) {
-    console.log(`buildDivisions called - Index: ${index}, Prefix: "${prefix}", Competitors: ${competitors.length}`);
 
     if (index >= criteria.length) {
-        console.log(`  → Final division: "${prefix.trim()}" with ${competitors.length} competitors`);
         return { [prefix.trim()]: competitors };
     }
 
@@ -8715,28 +9247,22 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
         };
     }
 
-    console.log(`  → Processing criteria type: ${currentCriteria.type}, Ranges:`, currentCriteria.ranges);
     const divisions = {};
 
     (currentCriteria.ranges || []).forEach((range, rangeIdx) => {
-        console.log(`    → Range ${rangeIdx}:`, range);
         let filtered;
 
         switch(currentCriteria.type) {
             case 'age':
                 filtered = competitors.filter(c => c.age >= range.min && c.age <= range.max);
-                console.log(`      → Age filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'gender':
                 filtered = competitors.filter(c => (c.gender || '').toLowerCase() === (range.value || '').toLowerCase());
-                console.log(`      → Gender filter (${range.value}): ${filtered.length} matches`);
                 if (filtered.length === 0 && competitors.length > 0) {
-                    console.log(`      → Sample competitor gender:`, competitors[0].gender);
                 }
                 break;
             case 'weight':
                 filtered = competitors.filter(c => c.weight >= range.min && c.weight <= range.max);
-                console.log(`      → Weight filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 break;
             case 'rank':
                 // Normalize rank values from both old (belt colors) and new (Kyu/Dan) formats
@@ -8759,10 +9285,8 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                         const cIdx = RANK_ORDER.indexOf(normalizeRank(c.rank));
                         return cIdx >= minIdx && cIdx <= maxIdx;
                     });
-                    console.log(`      → Rank range filter (${range.rankMin}-${range.rankMax}): ${filtered.length} matches`);
                 } else {
                     filtered = competitors.filter(c => normalizeRank(c.rank) === normalizeRank(range.value));
-                    console.log(`      → Rank filter (${range.value}): ${filtered.length} matches`);
                 }
                 break;
             case 'belt': {
@@ -8774,33 +9298,20 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
                     const cIdx = BELT_ORDER.indexOf(normBelt(c.rank || c.belt_rank));
                     return cIdx !== -1 && cIdx >= beltMinIdx && cIdx <= beltMaxIdx;
                 });
-                console.log(`      → Belt range filter (${range.beltMin}-${range.beltMax}): ${filtered.length} matches`);
                 break;
             }
             case 'experience':
-                // DEBUG: Check what experience values we're working with
-                if (competitors.length > 0 && rangeIdx === 0) {
-                    console.log(`      → DEBUG: Sample experience values:`, competitors.slice(0, 5).map(c => ({
-                        name: `${c.firstName} ${c.lastName}`,
-                        experience: c.experience,
-                        type: typeof c.experience
-                    })));
-                }
                 filtered = competitors.filter(c => c.experience >= range.min && c.experience <= range.max);
-                console.log(`      → Experience filter (${range.min}-${range.max}): ${filtered.length} matches`);
                 if (filtered.length === 0 && competitors.length > 0) {
-                    console.log(`      → DEBUG: First competitor experience value:`, competitors[0].experience, `(type: ${typeof competitors[0].experience})`);
                 }
                 break;
         }
 
         if (filtered.length > 0) {
             const newPrefix = prefix ? `${prefix} | ${range.label}` : range.label;
-            console.log(`      → Creating sub-divisions with prefix: "${newPrefix}"`);
             const subDivisions = buildDivisions(filtered, criteria, newPrefix, index + 1);
             Object.assign(divisions, subDivisions);
         } else {
-            console.log(`      → Skipping - no competitors matched`);
         }
     });
 
@@ -8812,20 +9323,15 @@ function renderDivisions() {
 }
 
 function loadDivisions() {
-    console.log('=== LOAD DIVISIONS START ===');
 
     const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
-    console.log('All divisions from memory:', allDivisions);
 
     const container = document.getElementById('divisions-container');
-    console.log('Container element:', container);
 
     const hideEmpty = document.getElementById('hide-empty-divisions')?.checked || false;
-    console.log('Hide empty checkbox:', hideEmpty);
 
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
-    console.log('Event selector:', eventSelector, 'Event ID:', eventId);
 
     if (!container) {
         console.error('Container not found!');
@@ -8835,13 +9341,11 @@ function loadDivisions() {
     container.innerHTML = '';
 
     if (!eventId) {
-        console.log('No event ID selected');
         container.innerHTML = '<p style="color: var(--text-secondary);">Select an event type to view divisions.</p>';
         return;
     }
 
     const eventData = allDivisions[eventId];
-    console.log('Event data for', eventId, ':', eventData);
 
     if (!eventData || !eventData.generated) {
         // Auto-generate from existing competitors before giving up
@@ -8913,18 +9417,14 @@ function loadDivisions() {
             }
         }
 
-        console.log('No event data or generated divisions');
         container.innerHTML = '<p style="color: var(--text-secondary);">No competitors registered for this event yet.</p>';
         return;
     }
 
     const divisions = eventData.generated;
     const divisionKeys = Object.keys(divisions).sort();
-    console.log('Division keys:', divisionKeys);
-    console.log('Number of divisions:', divisionKeys.length);
 
     if (divisionKeys.length === 0) {
-        console.log('No division keys found');
         container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Add competitors to see divisions appear automatically.</p>';
         return;
     }
@@ -8940,24 +9440,17 @@ function loadDivisions() {
     let displayedCount = 0;
 
     divisionKeys.forEach((divisionName, index) => {
-        console.log(`Processing division ${index + 1}:`, divisionName);
         const competitors = divisions[divisionName];
-        console.log(`  - Competitors:`, competitors);
-        console.log(`  - Is array:`, Array.isArray(competitors));
-        console.log(`  - Length:`, competitors?.length);
 
         if (!Array.isArray(competitors)) {
-            console.log(`  - SKIPPED: Not an array`);
             return; // Skip if not an array
         }
 
         if (hideEmpty && competitors.length === 0) {
-            console.log(`  - SKIPPED: Empty and hideEmpty is true`);
             return;
         }
 
         displayedCount++;
-        console.log(`  - DISPLAYING (count: ${displayedCount})`);
 
         const sheet = document.createElement('div');
         sheet.className = 'division-sheet';
@@ -9003,19 +9496,14 @@ function loadDivisions() {
                 </table>
             </div>
         `;
-        console.log(`  - Appending sheet to container`);
         container.appendChild(sheet);
     });
 
-    console.log('Total displayed:', displayedCount);
 
     if (displayedCount === 0 && hideEmpty) {
-        console.log('No divisions displayed - all empty');
         container.innerHTML = '<p style="color: var(--text-secondary);">All divisions are empty. Uncheck "Show only divisions with competitors" to see all divisions.</p>';
     }
 
-    console.log('Container children count:', container.children.length);
-    console.log('=== LOAD DIVISIONS END ===');
 }
 
 /* ── Move Competitor Between Divisions ────────────────── */
@@ -9533,14 +10021,10 @@ function deleteCriteria() {
 
 // Bracket Management
 function showBracketGenerator() {
-    console.log('=== SHOW BRACKET GENERATOR ===');
     const modal = document.getElementById('bracket-generator-modal');
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
 
-    console.log('Modal:', modal);
-    console.log('Event selector:', eventSelector);
-    console.log('Event ID:', eventId);
 
     if (!eventId) {
         console.error('No event ID selected');
@@ -9671,7 +10155,6 @@ function showBracketGenerator() {
     modal.style.display = 'flex';
     modal.style.zIndex = '10000';
 
-    console.log('Modal should be visible now! Display:', modal.style.display, 'Z-index:', modal.style.zIndex);
 }
 
 /**
@@ -9842,11 +10325,9 @@ function getDivisionMatchDuration(divisionName, eventId) {
 }
 
 function generateBracketsForAllDivisions() {
-    console.log('=== GENERATE BRACKETS FOR ALL DIVISIONS ===');
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
 
-    console.log('Event ID:', eventId);
 
     if (!eventId) {
         showMessage('Please select an event type first', 'error');
@@ -9858,10 +10339,6 @@ function generateBracketsForAllDivisions() {
     const matchDuration = parseInt(document.getElementById('match-duration').value);
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
 
-    console.log('Bracket Type:', bracketType);
-    console.log('Seeding Method:', seedingMethod);
-    console.log('Match Duration:', matchDuration);
-    console.log('Scoreboard Type:', scoreboardType);
 
     if (!scoreboardType) {
         showMessage('Please select a scoreboard configuration', 'error');
@@ -9987,7 +10464,6 @@ function generateBracketsForAllDivisions() {
 }
 
 function generateBrackets(event) {
-    console.log('=== GENERATE BRACKETS CALLED ===');
     event.preventDefault();
 
     // Collect checked division names from the checklist
@@ -11371,7 +11847,6 @@ function loadBrackets() {
     let cleaned = false;
     Object.keys(brackets).forEach(bracketId => {
         if (!brackets[bracketId].competitors || brackets[bracketId].competitors.length === 0) {
-            console.log(`Cleaning up empty bracket: ${bracketId}`);
             delete brackets[bracketId];
             cleaned = true;
         }
@@ -12379,12 +12854,8 @@ function handleDrop(event, targetMatchIdx, targetCorner, targetRoundNum) {
 }
 
 window.scoreMatch = function(bracketId, matchId) {
-    console.log('=== SCORE MATCH ===');
-    console.log('Bracket ID:', bracketId);
-    console.log('Match ID:', matchId);
 
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
-    console.log('Available bracket IDs:', Object.keys(brackets));
 
     const bracket = brackets[bracketId];
 
@@ -12763,11 +13234,6 @@ function transferCompetitor(targetDivisionName, eventId) {
     }
 
     try {
-        console.log('=== TRANSFER START ===');
-        console.log('Competitor:', competitor);
-        console.log('From:', currentDivision);
-        console.log('To:', targetDivisionName);
-        console.log('Event ID:', eventId);
 
         // Get all data
         const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
@@ -12778,17 +13244,13 @@ function transferCompetitor(targetDivisionName, eventId) {
             throw new Error('Event data not found');
         }
 
-        console.log('Current division competitors BEFORE:', eventData.generated[currentDivision]?.length);
-        console.log('Target division competitors BEFORE:', eventData.generated[targetDivisionName]?.length);
 
         // Remove from current division
         if (eventData.generated[currentDivision]) {
             eventData.generated[currentDivision] = eventData.generated[currentDivision].filter(c => c.id !== competitor.id);
-            console.log('Removed competitor. Remaining:', eventData.generated[currentDivision].length);
 
             // Clean up: Remove division if now empty
             if (eventData.generated[currentDivision].length === 0) {
-                console.log('Division is now empty, removing from divisions');
                 delete eventData.generated[currentDivision];
             }
         }
@@ -12798,12 +13260,10 @@ function transferCompetitor(targetDivisionName, eventId) {
             eventData.generated[targetDivisionName] = [];
         }
         eventData.generated[targetDivisionName].push(competitor);
-        console.log('Added competitor. Target now has:', eventData.generated[targetDivisionName].length);
 
         // Save divisions
         allDivisions[eventId] = eventData;
         _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-        console.log('Divisions saved');
 
         // Find target bracket before deleting anything
         const targetBracketEntry = Object.entries(allBrackets).find(([id, b]) =>
@@ -12816,24 +13276,18 @@ function transferCompetitor(targetDivisionName, eventId) {
             throw new Error('Target bracket is locked');
         }
 
-        console.log('Source bracket ID:', currentViewingBracket.id);
-        console.log('Target bracket ID:', targetBracketEntry ? targetBracketEntry[0] : 'none');
 
         // Delete current bracket (source)
         delete allBrackets[currentViewingBracket.id];
-        console.log('Deleted source bracket');
 
         // Delete target bracket if it exists (will be regenerated)
         if (targetBracketEntry) {
             delete allBrackets[targetBracketEntry[0]];
-            console.log('Deleted target bracket');
         }
 
         // Save brackets (with deletions)
         saveBrackets(allBrackets);
-        console.log('Brackets saved after deletions');
 
-        console.log('=== TRANSFER COMPLETE ===');
 
         // Success! Brackets were deleted and need to be regenerated from the Brackets page.
         showMessage(`✓ ${competitorName} transferred from "${currentDivision}" to "${targetDivisionName}". Regenerate brackets from the Brackets page.`, 'success');
@@ -14208,7 +14662,7 @@ function _renderCheckinList() {
         const regHTML = filteredReg.map(c => {
             const checked = !!c.checkin_id;
             return `<div class="checkin-list-item" onclick="renderCheckinDetail('${c.registration_id}', 'competitor')">
-                <span>${c.first_name} ${c.last_name}<br><small style="color:var(--text-secondary);">${c.academy_name || ''}</small></span>
+                <span>${_escapeHtml(c.first_name)} ${_escapeHtml(c.last_name)}<br><small style="color:var(--text-secondary);">${_escapeHtml(c.academy_name || '')}</small></span>
                 <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
             </div>`;
         }).join('');
@@ -14216,7 +14670,7 @@ function _renderCheckinList() {
         const dirHTML = filteredDir.map(c => {
             const checked = !!c.checkedIn;
             return `<div class="checkin-list-item" onclick="renderDirectorCompetitorCheckinDetail('${c.id}')">
-                <span>${c.firstName} ${c.lastName}<br><small style="color:var(--text-secondary);">${c.club || ''}</small></span>
+                <span>${_escapeHtml(c.firstName)} ${_escapeHtml(c.lastName)}<br><small style="color:var(--text-secondary);">${_escapeHtml(c.club || '')}</small></span>
                 <span class="${checked ? 'ci-checked-badge' : 'ci-missing-badge'}">${checked ? '✓ In' : 'Missing'}</span>
             </div>`;
         }).join('');
@@ -14239,7 +14693,7 @@ function _renderCheckinList() {
                 const checked = !!m.checked_in_at;
                 const roleLabel = m._director_added ? 'Official (Director Added)' : m.role === 'judge' ? 'Official' : m.role === 'coach' ? 'Coach' : 'Staff';
                 return `<div class="checkin-list-item" onclick="renderMemberCheckinDetail('${m.id}')">
-                    <span>${m.first_name} ${m.last_name}<br><small style="color:var(--text-secondary);">${roleLabel}${m.staff_role ? ' · '+m.staff_role : ''}</small></span>
+                    <span>${_escapeHtml(m.first_name)} ${_escapeHtml(m.last_name)}<br><small style="color:var(--text-secondary);">${_escapeHtml(roleLabel)}${m.staff_role ? ' · ' + _escapeHtml(m.staff_role) : ''}</small></span>
                     <span class="${m._director_added ? 'ci-missing-badge' : checked ? 'ci-checked-badge' : 'ci-missing-badge'}" style="${m._director_added ? 'opacity:0.5;' : ''}">${m._director_added ? 'Director' : checked ? '✓ Present' : 'Not In'}</span>
                 </div>`;
             }).join('');
@@ -14813,7 +15267,6 @@ function loadScheduleGrid() {
             const division = scheduledDiv.dataset.division;
             const eventId = scheduledDiv.dataset.eventId;
 
-            console.log('Clicking scheduled division:', { matId, division, eventId });
             openOperatorScoreboard(matId, division, eventId);
         }
     });
@@ -15629,7 +16082,6 @@ function cleanOrphanScheduleEntries() {
     if (removedCount > 0) {
         saveMatScheduleData(schedule);
         recalculateScheduleTimes();
-        console.log(`Cleaned ${removedCount} orphan schedule entries`);
     }
 
     return removedCount;
@@ -16113,8 +16565,6 @@ function generatePenaltyButtons(corner, org, rules, cornerTextColor) {
 }
 
 function openOperatorScoreboard(matId, divisionName, eventId) {
-    console.log('=== OPEN OPERATOR SCOREBOARD ===');
-    console.log('matId:', matId, 'divisionName:', divisionName, 'eventId:', eventId);
 
     currentOperatorMat = matId;
     currentOperatorDivision = divisionName;
@@ -16123,7 +16573,6 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     // Get event type to determine scoreboard type
     const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
-    console.log('Event Type:', eventType);
 
     // Find bracket for this division
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
@@ -16142,7 +16591,6 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     let scoreboardType = 'kumite'; // default to kumite
     let scoreboardConfig = null;
 
-    console.log('Current Bracket:', currentBracket);
 
     if (currentBracket && currentBracket.scoreboardConfigId) {
         // Bracket has explicit scoreboard configuration
@@ -16170,18 +16618,14 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                 }
             }
         }
-        console.log('Using bracket scoreboard config:', scoreboardConfig, 'type:', scoreboardType);
     } else if (currentBracket && currentBracket.scoreboardType) {
         // Legacy: Bracket has explicit scoreboard type override
         scoreboardType = currentBracket.scoreboardType;
-        console.log('Using legacy bracket scoreboard type:', scoreboardType);
     } else if (eventType && eventType.scoreboardType) {
         // Use event's scoreboard type
         scoreboardType = eventType.scoreboardType;
-        console.log('Using event scoreboard type:', scoreboardType);
     }
 
-    console.log('Final scoreboard type:', scoreboardType);
 
     // Check if this should use kata-style operator
     // Only route to kata operator if:
@@ -16191,14 +16635,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     const isIndividualScoring = scoreboardType === 'kata-points' || scoreboardType === 'kobudo';
     const isKataFlagsWithKataStructure = scoreboardType === 'kata-flags' && usesKataStructure;
 
-    console.log('Routing decision:', { usesKataStructure, isIndividualScoring, isKataFlagsWithKataStructure, bracketType: currentBracket?.type });
 
     // Mark division as in-progress in schedule
     markDivisionStarted(matId, divisionName);
 
     // Ranking-list brackets get their own scorer (no head-to-head, individual performances)
     if (currentBracket && currentBracket.type === 'ranking-list') {
-        console.log('Routing to RANKING LIST scoreboard');
         openRankingListScoreboard(matId, divisionName, eventId, currentBracket, scoreboardType);
         return;
     }
@@ -16209,7 +16651,6 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
             showToast('No bracket found for this division. Please generate a bracket first.', 'error');
             return;
         }
-        console.log('Routing to KATA scoreboard');
         openKataScoreboard(matId, divisionName, eventId, currentBracket, scoreboardType);
         return;
     }
@@ -16218,12 +16659,10 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     if (scoreboardType === 'kata-flags') {
         // Use bracket's embedded config as fallback if scoreboardConfig wasn't resolved
         const flagsConfig = scoreboardConfig || currentBracket?.scoreboardConfig || null;
-        console.log('Routing to KATA-FLAGS head-to-head operator, config:', flagsConfig);
         openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, currentBracket, flagsConfig);
         return;
     }
 
-    console.log('Routing to KUMITE scoreboard');
 
     // ── Initialize ruleset state ──
     const { org: kumiteOrg, rules: kumiteRules } = getActiveRuleset();
@@ -16273,7 +16712,6 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // Check if we should force-load a specific match (from bracket viewer "Score Match" button)
     if (window.forceLoadMatchId && currentBracket) {
-        console.log('Force loading match ID:', window.forceLoadMatchId);
         // Find the specific match by ID
         if (currentBracket.type === 'single-elimination' || currentBracket.type === 'round-robin' || currentBracket.type === 'repechage') {
             currentMatch = currentBracket.matches?.find(m => m.id === window.forceLoadMatchId);
@@ -16308,23 +16746,9 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // If no forced match, find first pending match for kumite brackets
     if (!currentMatch && currentBracket) {
-        console.log('Searching for pending matches...');
-        console.log('Bracket type:', currentBracket.type);
-        console.log('Total matches in bracket:', currentBracket.matches?.length);
 
         // Find first pending match
         if (currentBracket.type === 'single-elimination' || currentBracket.type === 'round-robin' || currentBracket.type === 'repechage') {
-            // Log all matches for debugging
-            currentBracket.matches?.forEach((m, idx) => {
-                console.log(`Match ${idx}:`, {
-                    id: m.id,
-                    status: m.status,
-                    hasRed: !!m.redCorner,
-                    hasBlue: !!m.blueCorner,
-                    redName: m.redCorner ? `${m.redCorner.firstName} ${m.redCorner.lastName}` : 'none',
-                    blueName: m.blueCorner ? `${m.blueCorner.firstName} ${m.blueCorner.lastName}` : 'none'
-                });
-            });
 
             // Find first match that's pending or in-progress with both competitors
             currentMatch = currentBracket.matches?.find(m =>
@@ -16341,7 +16765,6 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                     );
                 }
             }
-            console.log('Found match with both competitors:', currentMatch);
         } else if (currentBracket.type === 'double-elimination') {
             // Check winners bracket first, then losers, then finals, then reset
             currentMatch = currentBracket.winners?.find(m =>
@@ -16367,10 +16790,8 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
 
     // Auto-load competitors from bracket match (rehydrate photos stripped by slimCompetitor)
     if (currentMatch) {
-        console.log('Found current match:', currentMatch);
         operatorRedCompetitor = rehydrateCompetitor(currentMatch.redCorner);
         operatorBlueCompetitor = rehydrateCompetitor(currentMatch.blueCorner);
-        console.log('Loaded competitors:', { red: operatorRedCompetitor, blue: operatorBlueCompetitor });
 
         // Store current match ID for later use when declaring winner
         window.currentMatchId = currentMatch.id;
@@ -16410,20 +16831,17 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         corner2Name  = uk.corner2Name  || 'BLUE';
         corner1Color = uk.corner1Color || '#ff453a';
         corner2Color = uk.corner2Color || '#0a84ff';
-        console.log('Using unified scoreboard config kumite settings:', { corner1Name, corner1Color, corner2Name, corner2Color, org: kumiteOrg });
     } else if (scoreboardConfig && scoreboardConfig.settings) {
         corner1Name  = scoreboardConfig.settings.corner1Name  || 'RED';
         corner2Name  = scoreboardConfig.settings.corner2Name  || 'BLUE';
         corner1Color = scoreboardConfig.settings.corner1Color || '#ff453a';
         corner2Color = scoreboardConfig.settings.corner2Color || '#0a84ff';
-        console.log('Using legacy named scoreboard config:', { corner1Name, corner1Color, corner2Name, corner2Color });
     } else {
         const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
         corner1Name  = settings.corner1Name  || 'RED';
         corner2Name  = settings.corner2Name  || 'BLUE';
         corner1Color = settings.corner1Custom || '#ff453a';
         corner2Color = settings.corner2Custom || '#0a84ff';
-        console.log('Using legacy scoreboardSettings:', { corner1Name, corner1Color, corner2Name, corner2Color });
     }
 
     // Show modal
@@ -16638,18 +17056,14 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         </div>
     `;
 
-    console.log('Opening modal...');
-    console.log('Modal element:', modal);
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    console.log('Modal opened! Classes:', modal.className);
 
     // Show/hide Edit Results button based on whether there are completed matches
     updateEditResultsButtonVisibility(currentBracket);
 
     // Set this as the active scoreboard type
     activeScoreboardType = 'kumite';
-    console.log('Active scoreboard type set to: kumite');
 
     // Store params for on-the-fly type switching
     _opKumiteParams = { matId, divisionName, eventId };
@@ -16669,12 +17083,9 @@ let kataFlagsDivisionName = null;
 let kataFlagsEventId = null;
 
 function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, scoreboardConfig) {
-    console.log('=== OPEN KATA-FLAGS HEAD-TO-HEAD OPERATOR ===');
-    console.log('Scoreboard Config:', scoreboardConfig);
 
     // Set this as the active scoreboard type FIRST to prevent kumite from writing
     activeScoreboardType = 'kata-flags';
-    console.log('Active scoreboard type set to: kata-flags');
 
     // Store params for on-the-fly type switching
     _opKataFlagsParams = { matId, divisionName, eventId, bracket, scoreboardConfig };
@@ -16736,18 +17147,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             currentMatch = allMatches.find(m => m.status === 'pending' && m.redCorner && m.blueCorner);
         }
 
-        // Diagnostic: log all pending matches to help debug stuck brackets
-        const pendingMatches = allMatches.filter(m => m.status === 'pending');
-        console.log('Kata-flags match search:', {
-            totalMatches: allMatches.length,
-            pendingCount: pendingMatches.length,
-            pendingWithBothCorners: pendingMatches.filter(m => m.redCorner && m.blueCorner).length,
-            pendingMissing: pendingMatches.filter(m => !m.redCorner || !m.blueCorner).map(m => ({
-                round: m.round, position: m.position,
-                hasRed: !!m.redCorner, hasBlue: !!m.blueCorner
-            })),
-            foundMatch: currentMatch ? { id: currentMatch.id, round: currentMatch.round, position: currentMatch.position } : null
-        });
     }
     // Rehydrate photos stripped by slimCompetitor before using for display
     if (currentMatch) {
@@ -16859,7 +17258,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         return (b.division === bracketDiv || b.divisionName === bracketDiv) && b.eventId == bracket.eventId;
     });
 
-    console.log('Stored bracket ID:', window.currentBracketId);
 
     // Get corner settings
     const corner1Name = scoreboardConfig?.settings?.corner1Name || 'Red';
@@ -16988,10 +17386,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
 
     // Add event delegation using window to catch ALL clicks
     const clickHandler = function(e) {
-        console.log('Click detected, target classes:', e.target.className);
-        console.log('Target element:', e.target);
-        console.log('Has kata-flags-open-tv-btn?', e.target.classList?.contains('kata-flags-open-tv-btn'));
-        console.log('className includes?', e.target.className?.includes('kata-flags-open-tv-btn'));
 
         // Handle Open TV Display button - check multiple ways
         const isOpenTvBtn = e.target.classList?.contains('kata-flags-open-tv-btn') ||
@@ -17001,7 +17395,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         if (isOpenTvBtn) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('>>> Open TV button clicked! Calling function...');
             openKataFlagsTVDisplay();
             return;
         }
@@ -17010,7 +17403,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         if (e.target.classList?.contains('kata-flags-declare-winner-btn') || e.target.closest('.kata-flags-declare-winner-btn')) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('>>> Declare winner clicked');
             kataFlagsDeclareWinner();
             return;
         }
@@ -17019,7 +17411,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         if (e.target.classList?.contains('kata-flags-reset-votes-btn') || e.target.closest('.kata-flags-reset-votes-btn')) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('>>> Reset votes clicked');
             kataFlagsResetVotes();
             return;
         }
@@ -17030,7 +17421,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
             e.preventDefault();
             e.stopPropagation();
             const absentCorner = absentBtn.dataset.absentCorner;
-            console.log('>>> Mark absent clicked for', absentCorner);
             kataFlagsMarkAbsent(absentCorner);
             return;
         }
@@ -17040,7 +17430,6 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         if (voteBtn) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('>>> Judge vote clicked');
             const judgeIndex = parseInt(voteBtn.dataset.judge);
             const corner = voteBtn.dataset.corner;
             kataFlagsVote(judgeIndex, corner === 'clear' ? null : corner);
@@ -17055,14 +17444,12 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
 }
 
 function openKataFlagsTVDisplay() {
-    console.log('openKataFlagsTVDisplay called, kataFlagsMatId:', kataFlagsMatId);
     if (!kataFlagsMatId) {
         console.error('Cannot open TV display - kataFlagsMatId is not set');
         showToast('Error: Mat ID not set. Please close and reopen the operator.', 'error');
         return;
     }
     const windowName = `TVDisplay_Mat${kataFlagsMatId}`;
-    console.log('Opening TV display window:', windowName);
     const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
     const newWindow = window.open(`/kata-flags-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
     if (!newWindow) {
@@ -17091,12 +17478,16 @@ function kataFlagsVote(judgeIndex, corner) {
     const corner1Color = kataFlagsScoreboardConfig?.settings?.corner1Color || '#ff3b30';
     const corner2Color = kataFlagsScoreboardConfig?.settings?.corner2Color || '#0a84ff';
 
-    console.log('Vote registered:', { judgeIndex, corner, corner1Name, corner2Name });
+    // Validate color values against a hex color pattern before injecting into style attributes.
+    // Falls back to safe defaults if the value from config is not a valid hex color.
+    const _hexColorRe = /^#[0-9a-fA-F]{3,6}$/;
+    const safeColor1 = _hexColorRe.test(corner1Color) ? corner1Color : '#ff3b30';
+    const safeColor2 = _hexColorRe.test(corner2Color) ? corner2Color : '#0a84ff';
 
     if (corner === 'corner1') {
-        voteDisplay.innerHTML = `<span style="color: ${corner1Color}; font-weight: 700;">✓ ${corner1Name}</span>`;
+        voteDisplay.innerHTML = `<span style="color: ${safeColor1}; font-weight: 700;">✓ ${_escapeHtml(corner1Name)}</span>`;
     } else if (corner === 'corner2') {
-        voteDisplay.innerHTML = `<span style="color: ${corner2Color}; font-weight: 700;">✓ ${corner2Name}</span>`;
+        voteDisplay.innerHTML = `<span style="color: ${safeColor2}; font-weight: 700;">✓ ${_escapeHtml(corner2Name)}</span>`;
     } else {
         voteDisplay.innerHTML = 'No vote';
     }
@@ -17113,13 +17504,9 @@ function kataFlagsVote(judgeIndex, corner) {
 }
 
 function updateKataFlagsTVDisplay() {
-    console.log('=== UPDATE KATA FLAGS TV DISPLAY ===');
-    console.log('kataFlagsCurrentMatch:', kataFlagsCurrentMatch);
-    console.log('kataFlagsScoreboardConfig:', kataFlagsScoreboardConfig);
 
     // Only update if kata-flags is the active scoreboard
     if (activeScoreboardType !== 'kata-flags') {
-        console.log('updateKataFlagsTVDisplay: Kata-flags not active, skipping update');
         return;
     }
 
@@ -17134,16 +17521,12 @@ function updateKataFlagsTVDisplay() {
     const competitor1 = kataFlagsCurrentMatch.redCorner;
     const competitor2 = kataFlagsCurrentMatch.blueCorner;
 
-    console.log('Competitor 1:', competitor1);
-    console.log('Competitor 2:', competitor2);
 
     const corner1Name = kataFlagsScoreboardConfig?.settings?.corner1Name || 'Red';
     const corner2Name = kataFlagsScoreboardConfig?.settings?.corner2Name || 'Blue';
     const corner1Color = kataFlagsScoreboardConfig?.settings?.corner1Color || '#ff3b30';
     const corner2Color = kataFlagsScoreboardConfig?.settings?.corner2Color || '#0a84ff';
 
-    console.log('Corner 1 Name:', corner1Name, 'Color:', corner1Color);
-    console.log('Corner 2 Name:', corner2Name, 'Color:', corner2Color);
 
     const state = {
         scoreboardType: 'kata-flags',
@@ -17175,10 +17558,8 @@ function updateKataFlagsTVDisplay() {
         judgeVotes: [...kataFlagsJudgeVotes]
     };
 
-    console.log('State to save:', state);
     _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
     _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
-    console.log('State saved to localStorage');
 }
 
 function kataFlagsResetVotes() {
@@ -17279,7 +17660,6 @@ function kataFlagsDeclareWinner() {
         let advanceMatch = match;
         let advanceWinner = winner;
 
-        console.log(`[ADVANCE] Starting advancement from Round ${match.round} Pos ${match.position}, winner: ${winner.firstName} ${winner.lastName}`);
 
         while (true) {
             const nextRound = advanceMatch.round + 1;
@@ -17287,19 +17667,15 @@ function kataFlagsDeclareWinner() {
             const nextMatch = matchPool.find(m => m.round === nextRound && m.position === nextPosition);
 
             if (!nextMatch) {
-                console.log(`[ADVANCE] No next match found for Round ${nextRound} Pos ${nextPosition} — end of bracket`);
                 break;
             }
 
-            console.log(`[ADVANCE] Found next match: Round ${nextRound} Pos ${nextPosition} (id: ${nextMatch.id}, status: ${nextMatch.status})`);
-            console.log(`[ADVANCE] Before: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
 
             // Guard: if this winner is already in the next match, skip (prevents double-advancement)
             const winnerId = advanceWinner.id || `${advanceWinner.firstName}_${advanceWinner.lastName}`;
             const redId = nextMatch.redCorner ? (nextMatch.redCorner.id || `${nextMatch.redCorner.firstName}_${nextMatch.redCorner.lastName}`) : null;
             const blueId = nextMatch.blueCorner ? (nextMatch.blueCorner.id || `${nextMatch.blueCorner.firstName}_${nextMatch.blueCorner.lastName}`) : null;
             if (winnerId === redId || winnerId === blueId) {
-                console.log(`[ADVANCE] Winner ${advanceWinner.firstName} already in next match — skipping duplicate advancement`);
                 break;
             }
 
@@ -17313,14 +17689,11 @@ function kataFlagsDeclareWinner() {
                 else { console.warn('[ADVANCE] Both corners already filled — cannot place winner'); break; }
             }
 
-            console.log(`[ADVANCE] After: red=${nextMatch.redCorner?.firstName || 'null'}, blue=${nextMatch.blueCorner?.firstName || 'null'}`);
 
             // Check for BYE cascade — if the other feeder match is empty/bye, auto-advance
             if (nextMatch.redCorner && !nextMatch.blueCorner) {
                 const blueFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2 + 1);
-                console.log(`[ADVANCE] Blue feeder (R${nextMatch.round - 1} P${nextMatch.position * 2 + 1}): ${blueFeeder ? blueFeeder.status : 'NOT FOUND'}`);
                 if (blueFeeder && (blueFeeder.status === 'empty' || blueFeeder.status === 'bye')) {
-                    console.log(`[ADVANCE] BYE cascade — advancing ${nextMatch.redCorner.firstName} through Round ${nextRound}`);
                     nextMatch.status = 'bye';
                     nextMatch.winner = nextMatch.redCorner;
                     nextMatch.score1 = 'BYE';
@@ -17330,9 +17703,7 @@ function kataFlagsDeclareWinner() {
                 }
             } else if (!nextMatch.redCorner && nextMatch.blueCorner) {
                 const redFeeder = matchPool.find(m => m.round === nextMatch.round - 1 && m.position === nextMatch.position * 2);
-                console.log(`[ADVANCE] Red feeder (R${nextMatch.round - 1} P${nextMatch.position * 2}): ${redFeeder ? redFeeder.status : 'NOT FOUND'}`);
                 if (redFeeder && (redFeeder.status === 'empty' || redFeeder.status === 'bye')) {
-                    console.log(`[ADVANCE] BYE cascade — advancing ${nextMatch.blueCorner.firstName} through Round ${nextRound}`);
                     nextMatch.status = 'bye';
                     nextMatch.winner = nextMatch.blueCorner;
                     nextMatch.score2 = 'BYE';
@@ -17341,7 +17712,6 @@ function kataFlagsDeclareWinner() {
                     continue;
                 }
             }
-            console.log(`[ADVANCE] Done — next match Round ${nextRound} Pos ${nextPosition} now has both corners: ${!!nextMatch.redCorner && !!nextMatch.blueCorner}`);
             break;
         }
     } else if (bracket.type === 'double-elimination') {
@@ -17504,7 +17874,6 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
 function kataFlagsNextMatch() {
     // Check if the division is now complete
     const divisionComplete = checkBracketComplete(kataFlagsDivisionName, kataFlagsEventId);
-    console.log(`[NEXT MATCH] Division: ${kataFlagsDivisionName}, complete: ${divisionComplete}`);
 
     // Debug: dump the full bracket state
     const debugBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
@@ -17512,9 +17881,7 @@ function kataFlagsNextMatch() {
         const b = debugBrackets[id];
         if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
             const matches = b.matches || [];
-            console.log(`[NEXT MATCH] Bracket ${id} has ${matches.length} matches:`);
             matches.forEach(m => {
-                console.log(`  R${m.round} P${m.position}: ${m.status} | red=${m.redCorner?.firstName || 'null'} blue=${m.blueCorner?.firstName || 'null'} winner=${m.winner?.firstName || 'null'}`);
             });
             break;
         }
@@ -17561,7 +17928,6 @@ function selectOperatorCompetitor(corner) {
 
 function operatorAddScore(corner, points, techniqueType = 'generic') {
     const { org, rules } = getActiveRuleset();
-    console.log(`Score [${org}]: ${corner} ${points > 0 ? '+' : ''}${rules.scoring.isDecimal ? points.toFixed(1) : points} (${techniqueType})`);
 
     // Add to score history
     operatorScoreHistory.push({
@@ -17833,7 +18199,6 @@ function operatorAddPenalty(corner, trackName) {
     const newLevelName = trackDef.levels[newLevel - 1]; // 0-indexed in levels array
     const newLevelLabel = trackDef.labels[newLevel - 1];
 
-    console.log(`Penalty [${org}]: ${corner} ${trackName} → level ${newLevel} (${newLevelName})`);
 
     // Add to legacy penalty list for backward compat
     if (corner === 'red') {
@@ -19267,13 +19632,9 @@ function updateKataLeaderboard(bracket) {
 }
 
 function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreboardType) {
-    console.log('=== OPEN RANKING LIST SCOREBOARD ===');
-    console.log('Bracket:', bracket);
-    console.log('Entries:', bracket.entries);
 
     // Set active scoreboard type so openTVDisplayFromOperator() knows which TV file to open
     activeScoreboardType = scoreboardType; // e.g. 'kata-points', 'kobudo'
-    console.log('Active scoreboard type set to:', scoreboardType);
 
     currentOperatorMat = matId;
     currentOperatorDivision = divisionName;
@@ -19286,7 +19647,6 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     const entries = bracket.entries || [];
     const scoringRange = bracket.scoringRange || bracket.scoreboardConfig?.settings?.scoringRange || { min: 0, max: 10 };
     const numJudges = bracket.scoreboardConfig?.settings?.judges || bracket.numJudges || 5;
-    console.log('Entries count:', entries.length, 'Judges:', numJudges, 'Scoring range:', scoringRange);
 
     // Find next unscored entry
     const currentIndex = entries.findIndex(e => e.status === 'pending');
@@ -19674,7 +20034,6 @@ function closeOperatorScoreboard() {
 
     // Clear active scoreboard type
     activeScoreboardType = null;
-    console.log('Active scoreboard type cleared');
 
     // Reset operator scoreboard state variables
     currentOperatorMat = null;
@@ -19707,7 +20066,6 @@ function closeOperatorScoreboard() {
         }
     }
 
-    console.log('Operator scoreboard closed and cleaned up');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -20768,7 +21126,6 @@ function openTVDisplayFromOperator() {
 function updateOperatorTVDisplay(winner = null) {
     // Only update if kumite is the active scoreboard
     if (activeScoreboardType !== 'kumite') {
-        console.log('updateOperatorTVDisplay: Kumite not active, skipping update');
         return;
     }
 
@@ -23305,7 +23662,6 @@ function openTVDisplay(matId) {
 function updateTVDisplay() {
     // Only update if standalone scoreboard is active (or no operator is active)
     if (activeScoreboardType !== null && activeScoreboardType !== 'standalone') {
-        console.log('updateTVDisplay: Standalone not active, skipping update');
         return;
     }
 

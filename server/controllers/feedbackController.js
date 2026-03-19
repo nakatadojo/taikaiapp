@@ -19,18 +19,7 @@ async function verifyOwnership(req, res) {
   return t.rows[0];
 }
 
-// ── CSV Helpers ──────────────────────────────────────────────────────────────
-
-function csvEscape(value) {
-  const str = value == null ? '' : String(value);
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
-function buildCSV(headers, rows) {
-  const headerLine = headers.map(csvEscape).join(',');
-  const dataLines = rows.map(row => row.map(csvEscape).join(','));
-  return [headerLine, ...dataLines].join('\r\n');
-}
+const { csvEscape, buildCSV } = require('../utils/csv');
 
 /**
  * PUT /api/tournaments/:id/feedback-form

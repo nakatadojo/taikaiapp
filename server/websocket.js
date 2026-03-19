@@ -13,17 +13,48 @@
  */
 
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 
 let io;
 
+/**
+ * Extract the `token` cookie value from a raw Cookie header string.
+ * Avoids pulling in the `cookie` npm package for a single use-case.
+ */
+function _parseCookieToken(cookieHeader) {
+    const match = /(?:^|;\s*)token=([^;]+)/.exec(cookieHeader || '');
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
 function initWebSocket(httpServer) {
     io = new Server(httpServer, {
-        cors: { origin: '*', methods: ['GET', 'POST'] },
+        // Restrict CORS to same origin — all WebSocket clients are first-party
+        // staff/director sessions, never third-party or anonymous spectators.
+        cors: { origin: false },
         // polling fallback ensures Railway and CDN proxies work
         transports: ['websocket', 'polling'],
     });
 
+    // ── Authentication gate ────────────────────────────────────────────────────
+    // Every WebSocket connection must carry a valid JWT (issued at login and
+    // stored in the httpOnly `token` cookie). Unauthenticated connections are
+    // disconnected immediately — there is no public spectator use-case for
+    // bracket or scoreboard real-time data.
     io.on('connection', (socket) => {
+        const token = _parseCookieToken(socket.handshake.headers.cookie);
+        if (!token) {
+            socket.disconnect(true);
+            return;
+        }
+        try {
+            socket.data.user = jwt.verify(token, process.env.JWT_SECRET);
+        } catch {
+            socket.disconnect(true);
+            return;
+        }
+
+        // ── Subscriptions (only reached by authenticated clients) ────────────
+
         // Subscribe to a tournament's bracket channel
         socket.on('subscribe:bracket', ({ tournamentId, bracketId }) => {
             if (!tournamentId || !bracketId) return;

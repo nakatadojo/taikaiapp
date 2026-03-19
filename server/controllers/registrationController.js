@@ -569,20 +569,6 @@ async function checkout(req, res, next) {
         quantity: 1,
       }));
 
-      // Add discount as negative line item if applicable
-      if (discountAmount > 0) {
-        lineItems.push({
-          price_data: {
-            currency: stripeCurrency,
-            product_data: {
-              name: `Discount (${discountCode.toUpperCase()})`,
-            },
-            unit_amount: Math.round(discountAmount * 100),
-          },
-          quantity: 1,
-        });
-      }
-
       const appUrl = process.env.APP_URL || 'http://localhost:3000';
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',

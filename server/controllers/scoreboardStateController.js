@@ -55,23 +55,26 @@ async function setScoreboardState(req, res, next) {
     }
 
     if (state.ring != null) {
-      // Per-ring storage: read current full state, update only this ring's slot
-      const current = await pool.query(
-        'SELECT scoreboard_state FROM tournaments WHERE id = $1',
-        [tournamentId]
+      // Per-ring atomic update using jsonb_set — eliminates the read-modify-write
+      // race condition that occurred when multiple rings saved state simultaneously.
+      // jsonb_set(..., create_missing => true) creates nested keys if absent.
+      const ringKey = `ring${state.ring}`;
+      const result = await pool.query(
+        `UPDATE tournaments
+         SET scoreboard_state = jsonb_set(
+               COALESCE(scoreboard_state, '{}'::jsonb),
+               ARRAY['_rings', $1::text],
+               $2::jsonb,
+               true
+             ),
+             updated_at = NOW()
+         WHERE id = $3
+         RETURNING id`,
+        [ringKey, JSON.stringify(state), tournamentId]
       );
-      if (!current.rows[0]) {
+      if (!result.rows[0]) {
         return res.status(404).json({ error: 'Tournament not found' });
       }
-      const fullState = current.rows[0].scoreboard_state || {};
-      if (!fullState._rings) fullState._rings = {};
-      const ringKey = `ring${state.ring}`;
-      fullState._rings[ringKey] = state;
-
-      await pool.query(
-        'UPDATE tournaments SET scoreboard_state = $1, updated_at = NOW() WHERE id = $2',
-        [JSON.stringify(fullState), tournamentId]
-      );
       // Broadcast to all display clients subscribed to this ring's channel
       broadcastScoreboardUpdate(tournamentId, state.ring, state);
     } else {

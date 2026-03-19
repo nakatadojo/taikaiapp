@@ -368,7 +368,7 @@ async function createEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
-      isDefault, teamSize, description,
+      isDefault, teamSize, description, prerequisiteEventId,
     } = req.body;
 
     const event = await tournamentQueries.createEvent({
@@ -376,7 +376,7 @@ async function createEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
-      isDefault, teamSize, description,
+      isDefault, teamSize, description, prerequisiteEventId,
     });
     res.status(201).json({ event });
   } catch (err) {
@@ -394,7 +394,7 @@ async function updateEvent(req, res, next) {
       name, eventType, division, gender,
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
-      isDefault, teamSize, description,
+      isDefault, teamSize, description, prerequisiteEventId,
     } = req.body;
 
     const updates = {};
@@ -412,6 +412,7 @@ async function updateEvent(req, res, next) {
     if (isDefault !== undefined) updates.is_default = isDefault;
     if (teamSize !== undefined) updates.team_size = teamSize;
     if (description !== undefined) updates.description = description;
+    if (prerequisiteEventId !== undefined) updates.prerequisite_event_id = prerequisiteEventId || null;
 
     const event = await tournamentQueries.updateEvent(req.params.eventId, updates);
     if (!event) {
@@ -450,14 +451,45 @@ async function deleteTournament(req, res, next) {
 }
 
 async function deleteEvent(req, res, next) {
+  const client = await pool.connect();
   try {
-    const event = await tournamentQueries.deleteEvent(req.params.eventId);
-    if (!event) {
+    const { id: tournamentId, eventId } = req.params;
+
+    await client.query('BEGIN');
+
+    // Cascade 1: delete all brackets that belong to this event
+    await client.query(
+      'DELETE FROM tournament_brackets WHERE tournament_id = $1 AND event_id = $2',
+      [tournamentId, eventId]
+    );
+
+    // Cascade 2: remove this event's key from the generated_divisions JSONB
+    // so no orphaned division data lingers after the event is gone.
+    await client.query(
+      `UPDATE tournaments
+       SET generated_divisions = generated_divisions - $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [eventId, tournamentId]
+    );
+
+    // Cascade 3: delete the event row itself (also removes criteria_templates on the row)
+    const result = await client.query(
+      'DELETE FROM tournament_events WHERE id = $1 RETURNING id',
+      [eventId]
+    );
+    if (!result.rows[0]) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Event not found' });
     }
+
+    await client.query('COMMIT');
     res.json({ message: 'Event deleted' });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 }
 

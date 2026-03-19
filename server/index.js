@@ -37,7 +37,11 @@ app.use(helmet({
       // unpkg.com for lucide-icons, html5-qrcode; unsafe-eval for Babel on scoreboard pages
       // Google Translate widget is loaded from translate.google.com / translate.googleapis.com
       scriptSrc: [
-        "'self'", 'https://unpkg.com', "'unsafe-inline'", "'unsafe-eval'",
+        "'self'", 'https://unpkg.com', "'unsafe-inline'",
+        // NOTE: 'unsafe-eval' has been intentionally removed.
+        // Scoreboard pages previously used in-browser Babel (which requires eval).
+        // If a scoreboard page is reintroduced that needs Babel, serve pre-compiled
+        // JS instead of transpiling at runtime, so this directive stays removed.
         'https://translate.google.com', 'https://translate.googleapis.com',
         'https://translate-pa.googleapis.com',
         'https://www.gstatic.com',

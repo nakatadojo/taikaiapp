@@ -209,15 +209,17 @@ async function _sendTeamInvites({ members, tournamentName, teamName, addedByName
        VALUES ($1, $2, $3, 'account_claim')
        ON CONFLICT DO NOTHING`,
       [userId, token, expires]
-    ).catch(() => {
-      // verification_tokens table may have different schema — use users.verification_token if available
+    ).catch(err => {
+      console.error(`[teams] Failed to insert verification token for user ${userId}:`, err.message);
     });
 
     // Try updating users.verification_token directly (common pattern in this codebase)
     await pool.query(
       `UPDATE users SET verification_token = $1, verification_expires = $2 WHERE id = $3`,
       [token, expires, userId]
-    ).catch(() => { /* column may not exist yet */ });
+    ).catch(err => {
+      console.error(`[teams] Failed to set verification_token on users row for user ${userId}:`, err.message);
+    });
 
     const claimUrl = `${APP_URL()}/claim-account?token=${token}`;
     const toName = member.first_name

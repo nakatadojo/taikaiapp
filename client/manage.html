@@ -591,6 +591,18 @@
                     </div>
                 </div>
 
+                <!-- Tournament Readiness Checklist -->
+                <div class="glass-panel" id="readiness-panel" style="margin-bottom:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <h2 style="margin:0;">Tournament Readiness</h2>
+                        <span id="readiness-score" style="font-size:13px;color:var(--text-secondary);"></span>
+                    </div>
+                    <div style="background:var(--bg-secondary);border-radius:8px;height:8px;margin-bottom:16px;overflow:hidden;">
+                        <div id="readiness-bar" style="height:100%;width:0%;background:var(--green,#22c55e);border-radius:8px;transition:width 0.4s ease;"></div>
+                    </div>
+                    <div id="readiness-checklist" style="display:flex;flex-direction:column;gap:8px;"></div>
+                </div>
+
                 <div class="glass-panel">
                     <h2>Tournament Setup Workflow</h2>
                     <div class="workflow-steps">
@@ -659,10 +671,57 @@
 
                 <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
                     <button class="btn btn-primary" onclick="showCompetitorForm()">+ Add Competitor</button>
+                    <button class="btn btn-secondary" onclick="triggerCSVImport()">📥 Import CSV</button>
+                    <input type="file" id="csv-import-file" accept=".csv" style="display:none;">
 <button class="btn btn-secondary" onclick="openTestDataModal()">🧪 Generate Test Data</button>
                     <button class="btn btn-secondary btn-small" onclick="clearTestData()" title="Remove only test competitors">🗑 Clear Test Data</button>
                     <button class="btn btn-danger btn-small" onclick="clearAllCompetitors()">🗑️ Clear All</button>
                 </div>
+
+                <!-- CSV Import Modal -->
+                <div id="csv-import-modal" class="hidden" style="position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:20px;background:rgba(0,0,0,0.7);overflow-y:auto;">
+                    <div style="background:var(--bg-primary);border:1px solid var(--glass-border);border-radius:var(--radius);padding:24px;width:100%;max-width:960px;margin:auto;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                            <h3 style="margin:0;">CSV Competitor Import</h3>
+                            <button class="btn btn-small btn-secondary" onclick="closeCSVImportModal()">✕ Close</button>
+                        </div>
+                        <p style="color:var(--text-secondary);font-size:13px;margin:0 0 12px 0;">
+                            Review each row below. Rows with errors are excluded by default — uncheck any row you want to skip.
+                            <a href="#" onclick="downloadCSVTemplate(); return false;" style="color:var(--accent);margin-left:8px;">⬇ Download Template</a>
+                        </p>
+                        <div id="csv-import-summary" style="background:var(--bg-secondary);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+                        <div style="overflow-x:auto;max-height:55vh;overflow-y:auto;">
+                            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                <thead>
+                                    <tr style="position:sticky;top:0;background:var(--bg-secondary);">
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Import</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Row</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Name</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">DOB</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Gender</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Weight</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Rank</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Club/Dojo</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Events</th>
+                                        <th style="padding:8px;text-align:left;font-weight:600;">Issues</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="csv-import-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;">
+                            <button id="csv-import-confirm-btn" class="btn btn-primary" onclick="executeCSVImport()" disabled>Import Selected</button>
+                            <button class="btn btn-secondary" onclick="closeCSVImportModal()">Cancel</button>
+                            <span id="csv-import-progress" class="hidden" style="font-size:13px;color:var(--text-secondary);"></span>
+                        </div>
+                    </div>
+                </div>
+                <style>
+                    .csv-row-error td { background: rgba(239,68,68,0.07); }
+                    .csv-row-warn td { background: rgba(245,158,11,0.07); }
+                    .csv-row-ok td { background: transparent; }
+                    #csv-import-modal tbody td { padding: 6px 8px; border-bottom: 1px solid var(--glass-border); vertical-align: top; }
+                </style>
                 <div id="sync-status" class="hidden" style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--green); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px;"></div>
 
                 <div id="competitor-form-container" class="glass-panel hidden">
@@ -3163,6 +3222,8 @@
             document.getElementById('schedule-publish-label').textContent =
                 window._schedulePublished ? 'Unpublish Schedule' : 'Publish Schedule';
             showMessage(window._schedulePublished ? 'Schedule published to public page' : 'Schedule unpublished');
+            // Refresh readiness checklist so the "Schedule published" step updates immediately
+            if (typeof renderReadinessChecklist === 'function') renderReadinessChecklist();
         } catch (err) {
             window._schedulePublished = !window._schedulePublished;
             showMessage('Failed to update publish status', 'error');

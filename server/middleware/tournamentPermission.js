@@ -72,9 +72,12 @@ function requireTournamentPermission(...requiredPermissions) {
         });
       }
 
-      // Member has no role definition — basic staff member, grant access to all
-      // standard tournament operations (check-in, scoreboard, brackets, staging)
-      return next();
+      // Member has no role definition — deny access. A staff member with no
+      // assigned role should have no permissions; granting full access by default
+      // defeats the purpose of the role-permission system entirely.
+      return res.status(403).json({
+        error: 'No role assigned. Ask the tournament director to assign you a staff role before you can access this resource.',
+      });
     } catch (err) {
       next(err);
     }

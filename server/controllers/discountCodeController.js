@@ -1,14 +1,4 @@
 const DiscountCodeQueries = require('../db/queries/discountCodes');
-const pool = require('../db/pool');
-
-/** Helper — verify the caller owns the tournament */
-async function _verifyOwner(tournamentId, userId) {
-  const { rows } = await pool.query(
-    'SELECT created_by FROM tournaments WHERE id = $1',
-    [tournamentId]
-  );
-  return rows[0] && rows[0].created_by === userId;
-}
 
 /**
  * GET /api/tournaments/:id/discount-codes

@@ -435,12 +435,12 @@ test.describe('Suite 1: Director Flow', () => {
       await page.waitForLoadState('networkidle');
     }
 
-    // Create via API — field names confirmed from server route:
-    // body('type').isIn(['percentage','fixed']), body('value').isFloat({ min:0 })
+    // Create via API — field names match discountCodeController.js schema:
+    // { code, discount_type: 'percentage'|'flat', discount_value: number }
     const createResp = await api(page, 'POST', `/api/tournaments/${tId}/discount-codes`, {
       code: state.discountCode,
-      type: 'percentage',
-      value: 10,
+      discount_type: 'percentage',
+      discount_value: 10,
     });
 
     if (createResp.status === 201 || createResp.status === 200) {
