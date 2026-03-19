@@ -19903,6 +19903,7 @@ async function kataFlagsMarkAbsent(absentCorner) {
 function announceWinnerOnTV() {
     if (!window._pendingTVWinner) return;
     updateOperatorTVDisplay(window._pendingTVWinner);
+
     // Visually confirm the button was pressed
     const btn = document.getElementById('announce-winner-tv-btn');
     if (btn) {
@@ -19910,6 +19911,18 @@ function announceWinnerOnTV() {
         btn.disabled = true;
         btn.style.background = '#22c55e';
     }
+
+    // Auto-clear the winner overlay on TV after 10 seconds
+    if (window._tvWinnerClearTimeout) clearTimeout(window._tvWinnerClearTimeout);
+    window._tvWinnerClearTimeout = setTimeout(() => {
+        window._tvWinnerClearTimeout = null;
+        try {
+            const s = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
+            s.winner = null;
+            _msSet(_scopedKey('scoreboard-state'), JSON.stringify(s));
+            _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
+        } catch(e) {}
+    }, 10000);
 }
 
 function operatorNextAfterWin() {
@@ -19919,8 +19932,12 @@ function operatorNextAfterWin() {
         window._winnerCountdownInterval = null;
     }
 
-    // Discard any un-announced pending winner
+    // Discard any un-announced pending winner and cancel the TV clear timeout
     window._pendingTVWinner = null;
+    if (window._tvWinnerClearTimeout) {
+        clearTimeout(window._tvWinnerClearTimeout);
+        window._tvWinnerClearTimeout = null;
+    }
 
     // Clear winner from audience display (works for all scoreboard types)
     try {
