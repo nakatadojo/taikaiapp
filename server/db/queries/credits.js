@@ -78,15 +78,28 @@ async function deductForRegistration(directorUserId, competitorCount, tournament
       [newBalance, directorUserId]
     );
 
-    // Log one transaction per competitor/registration
+    // Log one transaction per competitor/registration.
+    // registration_id is only set when the ID actually exists in the registrations
+    // table (Stripe/public registrations). Director-added competitors have no row
+    // there, so we omit the column entirely for those to avoid FK violations.
     for (let i = 0; i < registrationIds.length; i++) {
       const balanceAfter = currentBalance - (i + 1);
-      await client.query(
-        `INSERT INTO credit_transactions
-          (user_id, amount, balance_after, type, description, tournament_id, registration_id)
-         VALUES ($1, $2, $3, 'usage', $4, $5, $6)`,
-        [directorUserId, -1, balanceAfter, description || 'Registration credit usage', tournamentId, registrationIds[i]]
-      );
+      const regId = registrationIds[i] || null;
+      if (regId) {
+        await client.query(
+          `INSERT INTO credit_transactions
+            (user_id, amount, balance_after, type, description, tournament_id, registration_id)
+           VALUES ($1, $2, $3, 'usage', $4, $5, $6)`,
+          [directorUserId, -1, balanceAfter, description || 'Registration credit usage', tournamentId, regId]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO credit_transactions
+            (user_id, amount, balance_after, type, description, tournament_id)
+           VALUES ($1, $2, $3, 'usage', $4, $5)`,
+          [directorUserId, -1, balanceAfter, description || 'Registration credit usage', tournamentId]
+        );
+      }
     }
 
     await client.query('COMMIT');

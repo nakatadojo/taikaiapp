@@ -123,7 +123,7 @@ async function approveCompetitor(req, res, next) {
         directorId,
         1,
         tournamentId,
-        [competitorId],
+        [null], // director competitors have no row in registrations table — pass null to avoid FK violation
         `Approval: ${competitor.firstName} ${competitor.lastName}`
       );
 
