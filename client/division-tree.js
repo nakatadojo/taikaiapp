@@ -17,6 +17,10 @@
 (function () {
   'use strict';
 
+  // Shared clipboard — persists across all tree builder instances so the
+  // user can copy subdivisions from one event and paste into another.
+  let _sharedClipboard = null;
+
   const RANK_ORDER = [
     '10th kyu', '9th kyu', '8th kyu', '7th kyu', '6th kyu', '5th kyu',
     '4th kyu', '3rd kyu', '2nd kyu', '1st kyu',
@@ -54,7 +58,6 @@
       this.eventName = options.eventName || 'Event';
       this.onTreeChange = options.onTreeChange || null;
       this.tree = null;
-      this.clipboard = null;
       this._activeMenu = null;
       this._currentSplitType = 'gender';
       this._boundClose = this._closeMenu.bind(this);
@@ -129,15 +132,39 @@
       this._closeMenu();
       document.removeEventListener('click', this._boundClose);
 
-      // Pin the CONTENT height before clearing — this prevents fsBody.scrollHeight
-      // from collapsing, which would cause the browser to clamp scrollTop to 0.
-      // (Setting minHeight on the scroller itself doesn't help — it must be on
-      // the content element inside it.)
-      const fsBody      = this.container.closest('.dtb-fs-body');
-      const savedTop    = fsBody ? fsBody.scrollTop  : 0;
-      const savedLeft   = fsBody ? fsBody.scrollLeft : 0;
-      const prevH       = this.container.offsetHeight;
-      this.container.style.minHeight = prevH + 'px';
+      // ── Scroll preservation ──────────────────────────────────────
+      // Root problem: when innerHTML is cleared any focused element
+      // inside the container loses focus. The browser then moves focus
+      // to document.body and scrolls the window to position 0 — this
+      // happens synchronously, before we can restore scrollTop.
+      //
+      // Fix in two layers:
+      //  1. Move focus to a safe element OUTSIDE the container using
+      //     { preventScroll: true } so the browser never triggers a
+      //     scroll-to-focus during the DOM wipe.
+      //  2. Keep the container's minHeight while it is empty so
+      //     fsBody.scrollHeight stays above the saved scrollTop (the
+      //     browser would otherwise clamp scrollTop to 0 automatically).
+      const fsBody = this.container.closest('.dtb-fs-body');
+      const savedTop  = fsBody ? fsBody.scrollTop  : 0;
+      const savedLeft = fsBody ? fsBody.scrollLeft : 0;
+
+      // Step 1 — steal focus before the wipe
+      if (document.activeElement && this.container.contains(document.activeElement)) {
+        const safeEl = this.container.closest('.dtb-fs-modal')?.querySelector('.dtb-fs-hdr button');
+        if (safeEl) safeEl.focus({ preventScroll: true });
+        else document.activeElement.blur();
+      }
+
+      // Step 2 — hold content height so scrollHeight doesn't collapse.
+      // IMPORTANT: this.container has height:100% (= fsBody.clientHeight),
+      // so offsetHeight is the viewport height, NOT the scroll content height.
+      // We must guarantee fsBody.scrollHeight >= savedTop + fsBody.clientHeight
+      // so the browser never clamps scrollTop below savedTop.
+      const neededH = fsBody
+        ? Math.max(savedTop + fsBody.clientHeight + 20, fsBody.scrollHeight)
+        : this.container.offsetHeight;
+      this.container.style.minHeight = neededH + 'px';
 
       this.container.innerHTML = '';
       this.container.className = 'dtb-wrapper';
@@ -148,7 +175,7 @@
       this.container.appendChild(scroll);
       document.addEventListener('click', this._boundClose);
 
-      // Restore scroll position then release the height pin
+      // Restore scroll, then release the height pin
       if (fsBody) {
         fsBody.scrollTop  = savedTop;
         fsBody.scrollLeft = savedLeft;
@@ -348,7 +375,7 @@
         { label: 'Edit...', disabled: isRoot, fn: () => this._editNode(nodeId) },
         { sep: true },
         { label: 'Copy Subdivisions', disabled: isLeaf, fn: () => this.copySubtree(nodeId) },
-        { label: 'Paste Subdivisions', disabled: !this.clipboard, fn: () => this.pasteSubtree(nodeId) },
+        { label: 'Paste Subdivisions', disabled: !_sharedClipboard, fn: () => this.pasteSubtree(nodeId) },
         { sep: true },
         { label: '\u2191 Move Up', disabled: isRoot || idx === 0, fn: () => this.moveUp(nodeId) },
         { label: '\u2193 Move Down', disabled: isRoot || idx >= siblings.length - 1, fn: () => this.moveDown(nodeId) },
@@ -659,18 +686,26 @@
     copySubtree(nodeId) {
       const node = this._findNode(nodeId);
       if (!node) return;
-      this.clipboard = { children: (node.children || []).map(c => this._cloneSubtree(c)), _from: node.label };
+      _sharedClipboard = {
+        children: (node.children || []).map(c => this._cloneSubtree(c)),
+        _from: node.label,
+        _fromEvent: this.eventName,
+      };
       this._toast(`Copied subdivisions of "${node.label}"`);
     }
 
     pasteSubtree(nodeId) {
-      if (!this.clipboard) return;
+      if (!_sharedClipboard) return;
       const node = this._findNode(nodeId);
       if (!node) return;
+      const fromLabel = _sharedClipboard._fromEvent && _sharedClipboard._fromEvent !== this.eventName
+        ? ` (from ${_sharedClipboard._fromEvent})`
+        : '';
+      const fromNode = _sharedClipboard._from ? ` of "${_sharedClipboard._from}${fromLabel}"` : '';
       if (node.children && node.children.length > 0) {
-        if (!confirm(`Replace subdivisions of "${node.label}" with clipboard?`)) return;
+        if (!confirm(`Replace subdivisions of "${node.label}" with copied subdivisions${fromNode}?`)) return;
       }
-      node.children = this.clipboard.children.map(c => this._cloneSubtree(c));
+      node.children = _sharedClipboard.children.map(c => this._cloneSubtree(c));
       this._changed(true);
     }
 
