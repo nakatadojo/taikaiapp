@@ -8045,14 +8045,33 @@ function openDivisionTreeModal(passedEventId) {
 }
 
 function closeDivisionTreeModal() {
-    const modal = document.getElementById('dtb-fullscreen-modal');
+    const modal    = document.getElementById('dtb-fullscreen-modal');
+    const selector = document.getElementById('division-event-selector');
+    const eventId  = selector?.value;
+
+    // Flush the tree into division templates in localStorage immediately,
+    // so generateDivisions() below has up-to-date data even if the debounced
+    // server-save hasn't fired yet.
+    if (eventId && _dtbInstances[eventId]) {
+        const builder   = _dtbInstances[eventId];
+        const templates = builder.toCriteriaTemplates();
+        if (templates.length > 0) {
+            const allDiv = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+            if (!allDiv[eventId]) allDiv[eventId] = { generated: {} };
+            allDiv[eventId].templates = templates;
+            _msSet(_scopedKey('divisions'), JSON.stringify(allDiv));
+        }
+    }
+
     if (modal) modal.classList.add('hidden');
     document.body.style.overflow = '';
-    // Refresh the card grid (division/competitor counts may have changed)
+
+    // Auto-generate divisions from the saved tree — creates/refreshes all
+    // leaf slots (empty or populated) so they appear immediately after closing.
+    if (eventId) generateDivisions();
+
+    // Refresh the card grid so division counts update
     loadEventTypeCards();
-    // Refresh generated divisions list if a card is still selected
-    const eventId = document.getElementById('division-event-selector')?.value;
-    if (eventId) loadDivisions();
 }
 
 // Template Management
@@ -9454,9 +9473,13 @@ function generateDivisions() {
         ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
         : allCompetitors;
 
+    // Detect tree-style templates early so we can skip the "no competitors"
+    // guard — tree templates create empty division slots even with 0 competitors.
+    const isTreeTemplate = eventData.templates.length > 0
+        && typeof eventData.templates[0].name === 'string'
+        && typeof eventData.templates[0].id   === 'string';
 
-    if (competitors.length === 0) {
-        console.error('No competitors for this tournament');
+    if (!isTreeTemplate && competitors.length === 0) {
         showMessage('No competitors registered for this tournament yet!', 'error');
         return;
     }
@@ -9484,10 +9507,7 @@ function generateDivisions() {
     // Tree-builder templates have { id, name, criteria } per leaf — use the pre-computed
     // name directly and pre-seed every leaf so empty divisions still appear in the list.
     // Legacy templates (old wizard) use the cross-product buildDivisions() path.
-    const isTreeTemplate = eventData.templates.length > 0
-        && typeof eventData.templates[0].name === 'string'
-        && typeof eventData.templates[0].id   === 'string';
-
+    // (isTreeTemplate already declared above)
     const generatedDivisions = {};
 
     if (isTreeTemplate) {

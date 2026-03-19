@@ -159,11 +159,8 @@
       prevBtn.onclick = () => this._showPreview();
       btns.appendChild(prevBtn);
 
-      const genBtn = document.createElement('button');
-      genBtn.className = 'btn btn-primary btn-small';
-      genBtn.textContent = '\u2713 Generate Divisions';
-      genBtn.onclick = () => this._generateDivisions();
-      btns.appendChild(genBtn);
+      // "Generate Divisions" removed from toolbar — divisions are compiled
+      // automatically when the modal is closed via "Save & Close".
 
       bar.appendChild(btns);
       return bar;
