@@ -419,6 +419,36 @@
     }
     .dsr-sep { font-size:12px;color:var(--text-secondary);flex-shrink:0; }
 
+    /* ── Division Tree Full-Screen Modal ─────────────────────── */
+    .dtb-fs-modal {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex; align-items: stretch; justify-content: center;
+    }
+    .dtb-fs-modal.hidden { display: none; }
+    .dtb-fs-inner {
+      display: flex; flex-direction: column;
+      width: 100%; height: 100%;
+      background: #0f0f12;
+      border: none;
+    }
+    .dtb-fs-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding: 16px 24px;
+      background: rgba(124,58,237,0.08);
+      border-bottom: 1px solid rgba(124,58,237,0.25);
+      flex-shrink: 0;
+    }
+    .dtb-fs-title { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-primary); }
+    .dtb-fs-subtitle { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+    .dtb-fs-body {
+      flex: 1; overflow: auto; padding: 20px 24px;
+    }
+    .dtb-fs-body .dtb-wrapper { height: 100%; }
+    .dtb-fs-body .dtb-scroll { flex: 1; min-height: 0; }
+
     /* Toast */
     .dtb-toast {
       position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
@@ -1475,21 +1505,19 @@
                 <h2>Divisions</h2>
                 <p class="hint">Select an event type to configure its divisions</p>
 
-                <div class="glass-panel">
-                    <label for="division-event-selector">Event Type:</label>
-                    <select id="division-event-selector" onchange="loadDivisionTemplate()">
+                <div class="glass-panel" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <label for="division-event-selector" style="flex-shrink:0;">Event Type:</label>
+                    <select id="division-event-selector" onchange="loadDivisionTemplate()" style="flex:1;min-width:160px;">
                         <option value="">Select Event Type</option>
                     </select>
+                    <button id="btn-edit-divisions" class="btn btn-secondary btn-small hidden" onclick="openDivisionTreeModal()" style="flex-shrink:0;">
+                        &#x270E; Edit Divisions
+                    </button>
                 </div>
 
                 <div id="division-template-container" class="hidden">
 
-                    <!-- Division Tree Builder -->
-                    <div id="division-tree-container" class="glass-panel" style="padding:16px;">
-                        <div id="division-tree-builder"></div>
-                    </div>
-
-                    <!-- Actions bar below tree -->
+                    <!-- Actions bar -->
                     <div class="glass-panel" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;">
                         <button class="btn btn-secondary" onclick="showBracketGenerator()">📊 Generate Brackets</button>
                         <button class="btn btn-danger" onclick="deleteDivisions()">🗑️ Delete Generated Divisions</button>
@@ -4262,5 +4290,21 @@
         };
     })();
     </script>
+
+    <!-- ===== Division Tree Builder — Full-Screen Modal ===== -->
+    <div id="dtb-fullscreen-modal" class="dtb-fs-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dtb-fs-title">
+        <div class="dtb-fs-inner">
+            <div class="dtb-fs-hdr">
+                <div>
+                    <h2 class="dtb-fs-title" id="dtb-fs-title">Division Tree</h2>
+                    <p class="dtb-fs-subtitle">Build the division structure for this event. Changes save automatically.</p>
+                </div>
+                <button class="btn btn-secondary btn-small" onclick="closeDivisionTreeModal()" style="flex-shrink:0;">&#x2715; Close</button>
+            </div>
+            <div class="dtb-fs-body">
+                <div id="division-tree-builder"></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

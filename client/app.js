@@ -7910,8 +7910,9 @@ function autoGenerateScoreboardConfig(sanctioningBody) {
 }
 
 function loadDivisionTemplate() {
-    const selector = document.getElementById('division-event-selector');
+    const selector  = document.getElementById('division-event-selector');
     const container = document.getElementById('division-template-container');
+    const editBtn   = document.getElementById('btn-edit-divisions');
 
     if (!selector || !container) return;
 
@@ -7919,39 +7920,59 @@ function loadDivisionTemplate() {
 
     if (!eventId) {
         container.classList.add('hidden');
+        if (editBtn) editBtn.classList.add('hidden');
         return;
     }
 
     container.classList.remove('hidden');
+    if (editBtn) editBtn.classList.remove('hidden');
 
-    // Get event info for display
+    // Render any already-generated divisions for this event
+    const divisions = db.load('divisions');
+    if (divisions[eventId]?.generated) loadDivisions();
+}
+
+function openDivisionTreeModal() {
+    const selector = document.getElementById('division-event-selector');
+    const modal    = document.getElementById('dtb-fullscreen-modal');
+    if (!modal || !selector) return;
+
+    const eventId = selector.value;
+    if (!eventId) return;
+
     const eventTypes = db.load('eventTypes');
-    const event = eventTypes.find(e => String(e.id) === String(eventId));
-    const eventName = event?.name || 'Event';
+    const event      = eventTypes.find(e => String(e.id) === String(eventId));
+    const eventName  = event?.name || 'Event';
 
-    // Initialize or reuse tree builder for this event
+    // Update modal title
+    const titleEl = document.getElementById('dtb-fs-title');
+    if (titleEl) titleEl.textContent = eventName + ' \u2014 Division Tree';
+
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    // Build or re-use the DivisionTreeBuilder instance
     const builderEl = document.getElementById('division-tree-builder');
     if (!builderEl) return;
 
-    // Create tree builder instance
     const builder = new DivisionTreeBuilder(builderEl, {
         eventId,
         eventName,
         onTreeChange: (tree) => _saveTreeToServer(eventId, tree),
     });
     _dtbInstances[eventId] = builder;
-    // Store in global registry using bracket notation (eventId has hyphens — not safe as identifier)
     if (!window._dtbRegistry) window._dtbRegistry = {};
     window._dtbRegistry[eventId] = builder;
 
-    // Load tree from server (or fall back to existing criteria_templates converted to tree)
     _loadTreeForEvent(eventId, eventName, builder);
+}
 
-    // Also load existing generated divisions below the builder
-    const divisions = db.load('divisions');
-    if (divisions[eventId]?.generated) {
-        loadDivisions();
-    }
+function closeDivisionTreeModal() {
+    const modal = document.getElementById('dtb-fullscreen-modal');
+    if (modal) modal.classList.add('hidden');
+    document.body.style.overflow = '';
+    // Refresh generated divisions panel underneath
+    loadDivisions();
 }
 
 // Template Management
