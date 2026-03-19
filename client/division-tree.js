@@ -310,6 +310,7 @@
 
       const items = [
         { label: '+ Split by...', fn: () => this.showSplitDialog(nodeId) },
+        { label: 'Edit...', disabled: isRoot, fn: () => this._editNode(nodeId) },
         { sep: true },
         { label: 'Copy Subdivisions', disabled: isLeaf, fn: () => this.copySubtree(nodeId) },
         { label: 'Paste Subdivisions', disabled: !this.clipboard, fn: () => this.pasteSubtree(nodeId) },
@@ -656,6 +657,141 @@
       const newNode = { id: _uuid(), label: label.trim(), codePrefix: code, criteriaType: node.criteriaType, criteriaValue: {}, children: [] };
       const i = parent.children.findIndex(c => c.id === nodeId);
       parent.children.splice(dir === 'above' ? i : i + 1, 0, newNode);
+      this._changed(true);
+    }
+
+    // -- Edit node -------------------------------------------------
+    _editNode(nodeId) {
+      const node = this._findNode(nodeId);
+      if (!node) return;
+      const eid = _esc(this.eventId || '');
+      const cv  = node.criteriaValue || {};
+
+      // Build criteria-specific fields pre-filled with the node's current values
+      let criteriaFields = '';
+      switch (node.criteriaType) {
+        case 'age':
+          criteriaFields = `
+            <div class="dtb-edit-field">
+              <label>Age range</label>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <input id="dtb-edit-min" type="number" value="${cv.min ?? 0}" min="0" max="120" style="width:70px">
+                <span>-</span>
+                <input id="dtb-edit-max" type="number" value="${cv.max ?? 99}"  min="0" max="120" style="width:70px">
+              </div>
+            </div>`;
+          break;
+        case 'weight':
+        case 'experience': {
+          const unit = node.criteriaType === 'weight' ? 'kg' : 'yrs';
+          criteriaFields = `
+            <div class="dtb-edit-field">
+              <label>${node.criteriaType === 'weight' ? 'Weight' : 'Experience'} range (${unit})</label>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <input id="dtb-edit-min" type="number" value="${cv.min ?? 0}"   min="0" style="width:70px">
+                <span>-</span>
+                <input id="dtb-edit-max" type="number" value="${cv.max ?? 999}" min="0" style="width:70px">
+              </div>
+            </div>`;
+          break;
+        }
+        case 'rank': {
+          const selMin = RANK_ORDER.map(r =>
+            `<option value="${r}"${r === cv.rankMin ? ' selected' : ''}>${r}</option>`).join('');
+          const selMax = RANK_ORDER.map(r =>
+            `<option value="${r}"${r === cv.rankMax ? ' selected' : ''}>${r}</option>`).join('');
+          criteriaFields = `
+            <div class="dtb-edit-field">
+              <label>Rank range</label>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <select id="dtb-edit-rankmin">${selMin}</select>
+                <span>&#x2192;</span>
+                <select id="dtb-edit-rankmax">${selMax}</select>
+              </div>
+            </div>`;
+          break;
+        }
+        default: break; // gender / custom: label is the value
+      }
+
+      const overlay = document.createElement('div');
+      overlay.id = 'dtb-edit-overlay';
+      overlay.className = 'dtb-overlay';
+      overlay.innerHTML = `
+        <div class="dtb-modal-box" style="max-width:420px">
+          <div class="dtb-modal-hdr">
+            <h3>Edit "${_esc(node.label)}"</h3>
+            <button class="btn btn-secondary btn-small"
+              onclick="document.getElementById('dtb-edit-overlay').remove()">&#x2715;</button>
+          </div>
+          <div class="dtb-split-body" style="display:flex;flex-direction:column;gap:14px;padding:16px 0">
+            <div class="dtb-edit-field">
+              <label>Label</label>
+              <input id="dtb-edit-label" type="text" value="${_esc(node.label)}"
+                placeholder="Label" style="width:100%">
+            </div>
+            <div class="dtb-edit-field">
+              <label>Code prefix <span style="color:var(--text-muted);font-size:11px">(max 5 chars)</span></label>
+              <input id="dtb-edit-code" type="text" value="${_esc(node.codePrefix || '')}"
+                maxlength="5" placeholder="..." style="width:90px;text-transform:uppercase">
+            </div>
+            ${criteriaFields}
+          </div>
+          <div class="dtb-modal-ftr">
+            <button class="btn btn-primary"
+              onclick="window._dtbRegistry&&window._dtbRegistry['${eid}']&&window._dtbRegistry['${eid}']._saveEdit('${_esc(nodeId)}')">Save</button>
+            <button class="btn btn-secondary"
+              onclick="document.getElementById('dtb-edit-overlay').remove()">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      // Focus the label field immediately
+      setTimeout(() => document.getElementById('dtb-edit-label')?.focus(), 50);
+    }
+
+    _saveEdit(nodeId) {
+      const node    = this._findNode(nodeId);
+      const labelEl = document.getElementById('dtb-edit-label');
+      const codeEl  = document.getElementById('dtb-edit-code');
+      if (!node || !labelEl) return;
+
+      const label = labelEl.value.trim();
+      if (!label) { alert('Label cannot be empty.'); return; }
+
+      node.label      = label;
+      node.codePrefix = (codeEl?.value || '').toUpperCase().slice(0, 5);
+
+      // Update the criteria value with any changed range / rank inputs
+      const cv = node.criteriaValue || {};
+      switch (node.criteriaType) {
+        case 'age':
+        case 'weight':
+        case 'experience': {
+          const minEl = document.getElementById('dtb-edit-min');
+          const maxEl = document.getElementById('dtb-edit-max');
+          if (minEl) cv.min = +minEl.value;
+          if (maxEl) cv.max = +maxEl.value;
+          cv.label = label;
+          node.criteriaValue = cv;
+          break;
+        }
+        case 'rank': {
+          const rMin = document.getElementById('dtb-edit-rankmin');
+          const rMax = document.getElementById('dtb-edit-rankmax');
+          if (rMin) cv.rankMin = rMin.value;
+          if (rMax) cv.rankMax = rMax.value;
+          cv.label = label;
+          node.criteriaValue = cv;
+          break;
+        }
+        case 'gender':
+        case 'custom':
+          node.criteriaValue = { ...cv, value: label, label };
+          break;
+        default: break;
+      }
+
+      document.getElementById('dtb-edit-overlay')?.remove();
       this._changed(true);
     }
 
