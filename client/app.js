@@ -623,13 +623,19 @@ async function _loadCompetitorsFromServer() {
             const { competitors } = await compRes.json();
             // Normalize server snake_case fields to camelCase expected by the client
             const normalized = (Array.isArray(competitors) ? competitors : []).map(c => ({
+                // Spread raw_data FIRST so top-level SQL columns can override it.
+                // raw_data is the full JSONB blob (events, dateOfBirth, paymentStatus, …).
+                // Without this, fields like events and dateOfBirth are lost after reload.
+                ...(c.raw_data || {}),
                 ...c,
-                firstName:   c.firstName   ?? c.first_name   ?? '',
-                lastName:    c.lastName    ?? c.last_name    ?? '',
-                dateOfBirth: c.dateOfBirth ?? c.date_of_birth ?? c.dob ?? null,
-                rank:        c.rank        ?? c.belt         ?? '',
-                weight:      c.weight      ?? c.weight_kg    ?? null,
-                checkedIn:   c.checkedIn   ?? c.checked_in   ?? false,
+                firstName:    c.firstName   ?? c.raw_data?.firstName   ?? c.first_name   ?? '',
+                lastName:     c.lastName    ?? c.raw_data?.lastName    ?? c.last_name    ?? '',
+                dateOfBirth:  c.dateOfBirth ?? c.date_of_birth ?? c.dob ?? c.raw_data?.dateOfBirth ?? null,
+                rank:         c.rank        ?? c.raw_data?.rank        ?? c.belt         ?? '',
+                weight:       c.weight      ?? c.raw_data?.weight      ?? c.weight_kg    ?? null,
+                events:       c.events      ?? c.raw_data?.events      ?? c.event_ids    ?? [],
+                paymentStatus: c.paymentStatus ?? c.raw_data?.paymentStatus ?? c.payment_status ?? 'unpaid',
+                checkedIn:    c.checkedIn   ?? c.checked_in ?? false,
                 tournamentId: currentTournamentId,
             }));
             db.save('competitors', normalized);
@@ -4907,7 +4913,10 @@ function _silentlyRegenerateDivisionsForEvents(eventIds) {
     if (!anyChanged) return;
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
     _debouncedSync('divisions', _syncDivisionsToServer, 2000);
-    // Refresh divisions panel if it's currently visible
+    // Refresh UI components that display division data
+    if (typeof loadEventTypeCards === 'function') {
+        try { loadEventTypeCards(); } catch (_) {}
+    }
     if (typeof loadDivisionsView === 'function') {
         try { loadDivisionsView(); } catch (_) {}
     }
@@ -9800,8 +9809,17 @@ function _matchesLeafCriterion(comp, criterion) {
     };
 
     switch (criterion.type) {
-        case 'gender':
-            return (comp.gender || '').toLowerCase() === (r.value || r.label || '').toLowerCase();
+        case 'gender': {
+            // Normalise common variations so "Boys"/"Girls"/"Men"/"Women" all
+            // match the canonical "Male"/"Female" stored on the competitor record.
+            const _gNorm = g => {
+                const t = (g || '').toLowerCase().trim();
+                if (['male','boys','boy','men','man','m'].includes(t)) return 'male';
+                if (['female','girls','girl','women','woman','f'].includes(t)) return 'female';
+                return t;
+            };
+            return _gNorm(comp.gender) === _gNorm(r.value || r.label);
+        }
         case 'age':
             return (comp.age || 0) >= r.min && (comp.age || 0) <= r.max;
         case 'rank':
