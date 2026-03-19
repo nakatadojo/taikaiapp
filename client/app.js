@@ -2769,12 +2769,23 @@ function _applyRegistrationFieldsToDirectorForm(fields) {
         }
     }
 
-    // Show/hide weight field
+    // Show/hide weight field; update unit label
     const weightEl = document.getElementById('weight');
     if (weightEl) {
         const weightGroup = weightEl.closest('.form-group');
         if (weightGroup) {
             fields.showWeight ? weightGroup.classList.remove('hidden') : weightGroup.classList.add('hidden');
+        }
+        const unitLabel = document.getElementById('weight-label-unit');
+        if (unitLabel && fields.weightUnit) unitLabel.textContent = `(${fields.weightUnit})`;
+    }
+
+    // Show/hide gender field
+    const genderEl = document.getElementById('gender');
+    if (genderEl) {
+        const genderGroup = genderEl.closest('.form-group');
+        if (genderGroup) {
+            fields.showGender !== false ? genderGroup.classList.remove('hidden') : genderGroup.classList.add('hidden');
         }
     }
 }
@@ -3593,13 +3604,10 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
     };
     const _val = (id) => (document.getElementById(id)?.value || '').trim();
     const missingFields = [];
-    if (!_val('firstName'))                       missingFields.push('First Name');
-    if (!_val('lastName'))                        missingFields.push('Last Name');
-    if (!_val('dateOfBirth'))                     missingFields.push('Date of Birth');
-    if (_isVisible('weight') && !_val('weight'))  missingFields.push('Weight');
-    if (_isVisible('rank')   && !_val('rank'))    missingFields.push('Rank');
-    if (!_val('gender'))                          missingFields.push('Gender');
-    if (!_val('club')) missingFields.push('Dojo');
+    if (!_val('firstName'))    missingFields.push('First Name');
+    if (!_val('lastName'))     missingFields.push('Last Name');
+    if (!_val('dateOfBirth'))  missingFields.push('Date of Birth');
+    if (!_val('comp-email'))   missingFields.push('Email');
     if (missingFields.length > 0) {
         showMessage(`Please fill in: ${missingFields.join(', ')}`, 'error');
         const firstMissing = ['firstName','lastName','dateOfBirth','weight','rank','gender'].find(id => _isVisible(id) && !_val(id));
@@ -3737,6 +3745,8 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         rank: document.getElementById('rank').value,
         experience: parseFloat(document.getElementById('experience').value),
         gender: document.getElementById('gender').value,
+        email: _val('comp-email') || null,
+        phone: _val('comp-phone') || null,
         club: clubName,
         clubLogo: clubLogo,
         academyId: _clubAcademyId || null,
@@ -5092,6 +5102,12 @@ window.editCompetitor = function(id) {
     // Trigger age display update
     const dobInput = document.getElementById('dateOfBirth');
     if (dobInput) dobInput.dispatchEvent(new Event('change'));
+
+    // Set email/phone
+    const emailInput = document.getElementById('comp-email');
+    if (emailInput) emailInput.value = comp.email || '';
+    const phoneInput = document.getElementById('comp-phone');
+    if (phoneInput) phoneInput.value = comp.phone || '';
 
     // Set club text input
     const clubInput = document.getElementById('club');

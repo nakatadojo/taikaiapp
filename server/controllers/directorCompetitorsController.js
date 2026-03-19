@@ -1,7 +1,10 @@
+const crypto = require('crypto');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const creditQueries = require('../db/queries/credits');
 const { broadcastCompetitorUpdate } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
+const { pool } = require('../db');
+const { sendCompetitorInviteEmail } = require('../email');
 
 async function getCompetitors(req, res, next) {
   try {
@@ -24,6 +27,13 @@ async function addCompetitor(req, res, next) {
     const created = await DirectorCompetitorQueries.create(tournamentId, competitor, is_test || false);
     broadcastCompetitorUpdate(tournamentId, 'add', created);
     res.status(201).json({ competitor: created });
+
+    // Fire-and-forget: create passwordless account + send invite if email provided
+    if (competitor.email && !is_test) {
+      _sendCompetitorInvite({ competitor, tournamentId, addedByUserId: req.user.id }).catch(e =>
+        console.warn('[director] competitor invite failed:', e.message)
+      );
+    }
   } catch (err) { next(err); }
 }
 
@@ -199,6 +209,57 @@ async function unapproveCompetitor(req, res, next) {
     broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: false });
     res.json({ competitor: result });
   } catch (err) { next(err); }
+}
+
+async function _sendCompetitorInvite({ competitor, tournamentId, addedByUserId }) {
+  const email = (competitor.email || '').toLowerCase().trim();
+  if (!email) return;
+
+  const tournament = await tournamentQueries.findById(tournamentId);
+  const tournamentName = tournament ? tournament.name : 'a tournament';
+
+  const addedByRes = await pool.query('SELECT first_name, last_name, email FROM users WHERE id = $1', [addedByUserId]);
+  const addedBy = addedByRes.rows[0];
+  const addedByName = addedBy ? `${addedBy.first_name || ''} ${addedBy.last_name || ''}`.trim() || addedBy.email : 'The organizer';
+
+  // Find or create passwordless user
+  const existing = await pool.query('SELECT id, account_claimed FROM users WHERE lower(email) = $1', [email]);
+  let userId, claimed;
+  if (existing.rows.length > 0) {
+    userId = existing.rows[0].id;
+    claimed = existing.rows[0].account_claimed;
+  } else {
+    const firstName = competitor.firstName || competitor.first_name || '';
+    const lastName = competitor.lastName || competitor.last_name || '';
+    const newUser = await pool.query(
+      `INSERT INTO users (email, first_name, last_name, account_claimed)
+       VALUES ($1, $2, $3, false)
+       ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id, account_claimed`,
+      [email, firstName, lastName]
+    );
+    userId = newUser.rows[0].id;
+    claimed = newUser.rows[0].account_claimed;
+  }
+
+  if (claimed) return; // already has an account — don't re-invite
+
+  // Generate 7-day claim token
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await pool.query(
+    `UPDATE users SET verification_token = $1, verification_expires = $2 WHERE id = $3`,
+    [token, expires, userId]
+  );
+
+  const fullName = `${competitor.firstName || competitor.first_name || ''} ${competitor.lastName || competitor.last_name || ''}`.trim() || email;
+  await sendCompetitorInviteEmail({
+    toEmail: email,
+    toName: fullName,
+    tournamentName,
+    addedByName,
+    claimUrl: `${process.env.APP_URL || 'http://localhost:3000'}/claim-account?token=${token}`,
+  });
 }
 
 module.exports = { getCompetitors, addCompetitor, updateCompetitor, deleteCompetitor, approveCompetitor, unapproveCompetitor };

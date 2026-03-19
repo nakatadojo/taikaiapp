@@ -93,7 +93,7 @@ async function removeMember(academyId, userId) {
  */
 async function getMembers(academyId) {
   const result = await pool.query(
-    `SELECT am.*, u.email, u.first_name, u.last_name, u.phone, u.profile_photo_url
+    `SELECT am.*, u.email, u.first_name, u.last_name, u.phone, u.profile_photo_url, u.account_claimed
      FROM academy_members am
      JOIN users u ON u.id = am.user_id
      WHERE am.academy_id = $1

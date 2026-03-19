@@ -1117,19 +1117,39 @@
 
     function renderMemberRow(m, academyId) {
         const roleLabel = { head_coach: 'Head Coach', assistant_coach: 'Asst. Coach', competitor: 'Student' };
+        const canEditEmail = m.role !== 'head_coach' && !m.account_claimed;
         return `
             <div class="member-row">
                 <div class="member-name">${esc(m.firstName || m.first_name || '')} ${esc(m.lastName || m.last_name || '')}</div>
-                <div class="member-email">${esc(m.email || '')}</div>
+                <div class="member-email" style="display:flex;align-items:center;gap:6px;">
+                    ${esc(m.email || '')}
+                    ${canEditEmail ? `<button class="btn-sm" onclick="editMemberEmail('${academyId}','${m.user_id || m.id}','${esc(m.email || '')}')" title="Edit email (account not yet claimed)" style="font-size:11px;padding:2px 7px;">✏ Edit</button>` : ''}
+                    ${!m.account_claimed && m.role !== 'head_coach' ? `<span style="font-size:11px;color:var(--text-muted);margin-left:2px;">· pending</span>` : ''}
+                </div>
                 <div class="member-role">
                     <span class="badge badge-${m.role}">${roleLabel[m.role] || m.role}</span>
                 </div>
                 ${m.role !== 'head_coach' ? `
-                    <button class="btn-sm btn-danger" onclick="removeMember('${academyId}', '${m.id}')" style="margin-left:8px;" title="Remove">&#10005;</button>
+                    <button class="btn-sm btn-danger" onclick="removeMember('${academyId}', '${m.user_id || m.id}')" style="margin-left:8px;" title="Remove">&#10005;</button>
                 ` : ''}
             </div>
         `;
     }
+
+    window.editMemberEmail = async function(academyId, userId, currentEmail) {
+        const newEmail = prompt(`Update email for this member:\n(Current: ${currentEmail})`, currentEmail);
+        if (!newEmail || newEmail === currentEmail) return;
+        if (!newEmail.includes('@')) { alert('Please enter a valid email address.'); return; }
+        try {
+            await apiFetch(`/api/academies/${academyId}/members/${userId}/email`, {
+                method: 'PATCH',
+                body: JSON.stringify({ email: newEmail.trim() }),
+            });
+            await loadDojoMembers(academyId);
+        } catch (err) {
+            alert(`Could not update email: ${err.error || err.message || 'Unknown error'}`);
+        }
+    };
 
     // ── CSV Member Import ─────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+const { pool } = require('../db');
 const academyQueries = require('../db/queries/academies');
 const userQueries = require('../db/queries/users');
 const registrationQueries = require('../db/queries/registrations');
@@ -194,6 +195,42 @@ async function addMember(req, res, next) {
  * DELETE /api/academies/:id/members/:userId
  * Remove a member from a dojo. Requires head_coach.
  */
+/**
+ * PATCH /api/academies/:id/members/:userId/email
+ * Head coach can correct a member's email (only if account not yet claimed).
+ */
+async function updateMemberEmail(req, res, next) {
+  try {
+    const { id, userId } = req.params;
+    const { email } = req.body;
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'A valid email is required' });
+    }
+
+    const academy = await academyQueries.findById(id);
+    if (!academy) return res.status(404).json({ error: 'Dojo not found' });
+
+    if (academy.head_coach_id !== req.user.id && !req.user.roles.includes('admin') && !req.user.roles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Only the head coach can update member emails' });
+    }
+
+    // Only allow updating unclaimed accounts
+    const userRes = await pool.query('SELECT account_claimed FROM users WHERE id = $1', [userId]);
+    if (!userRes.rows.length) return res.status(404).json({ error: 'Member not found' });
+    if (userRes.rows[0].account_claimed) {
+      return res.status(409).json({ error: 'Cannot change email — this member has already claimed their account' });
+    }
+
+    // Check email isn't taken by someone else
+    const conflict = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1) AND id != $2', [email, userId]);
+    if (conflict.rows.length) return res.status(409).json({ error: 'That email is already in use by another account' });
+
+    await pool.query('UPDATE users SET email = lower($1) WHERE id = $2', [email.trim(), userId]);
+    res.json({ message: 'Email updated' });
+  } catch (err) { next(err); }
+}
+
 async function removeMember(req, res, next) {
   try {
     const { id, userId } = req.params;
@@ -841,6 +878,7 @@ module.exports = {
   updateAcademy,
   getMembers,
   addMember,
+  updateMemberEmail,
   removeMember,
   uploadLogo,
   registerCompetitorMember,

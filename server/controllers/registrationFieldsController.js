@@ -44,6 +44,8 @@ async function getRegistrationFields(req, res, next) {
     // 3. Scan criteria to find what's used
     let showExperienceLevel = false;
     let showBeltRank = false;
+    let showGender = false;
+    let showWeightFromCriteria = false;
     const experienceLevelOptions = [];
     const beltRankOptions = [];
 
@@ -76,6 +78,10 @@ async function getRegistrationFields(req, res, next) {
               beltRankOptions.push(opt);
             }
           }
+        } else if (type === 'gender') {
+          showGender = true;
+        } else if (type === 'weight') {
+          showWeightFromCriteria = true;
         }
       }
     }
@@ -85,7 +91,8 @@ async function getRegistrationFields(req, res, next) {
       experienceLevelOptions,
       showBeltRank,
       beltRankOptions,
-      showWeight: !!tournament.require_weight_at_registration,
+      showGender,
+      showWeight: showWeightFromCriteria || !!tournament.require_weight_at_registration,
       weightUnit: 'kg',
     });
   } catch (err) {

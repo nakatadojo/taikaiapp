@@ -77,6 +77,11 @@ router.post('/:id/members',
   academyController.addMember
 );
 
+// PATCH /api/academies/:id/members/:userId/email — Update unclaimed member email (head coach only)
+router.patch('/:id/members/:userId/email',
+  academyController.updateMemberEmail
+);
+
 // DELETE /api/academies/:id/members/:userId — Remove member (ownership verified in controller)
 router.delete('/:id/members/:userId',
   academyController.removeMember
