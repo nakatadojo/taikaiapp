@@ -7940,7 +7940,9 @@ function loadDivisionTemplate() {
         onTreeChange: (tree) => _saveTreeToServer(eventId, tree),
     });
     _dtbInstances[eventId] = builder;
-    window[`__dtb_${eventId}`] = builder;
+    // Store in global registry using bracket notation (eventId has hyphens — not safe as identifier)
+    if (!window._dtbRegistry) window._dtbRegistry = {};
+    window._dtbRegistry[eventId] = builder;
 
     // Load tree from server (or fall back to existing criteria_templates converted to tree)
     _loadTreeForEvent(eventId, eventName, builder);

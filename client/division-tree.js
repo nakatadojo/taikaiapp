@@ -1,7 +1,7 @@
 /**
  * client/division-tree.js
  *
- * DivisionTreeBuilder — visual horizontal-grid tree builder for Taikai.
+ * DivisionTreeBuilder - visual horizontal-grid tree builder for Taikai.
  * Creates a self-contained class that renders a left-to-right grid where
  * each column = one split criteria level and each row = one leaf division.
  * Parents span vertically via HTML <table> rowspan.
@@ -46,7 +46,7 @@
     });
   }
 
-  // ─────────────────────────────────────────────────────────────────
+  // -----------------------------------------------------------------
   class DivisionTreeBuilder {
     constructor(container, options = {}) {
       this.container = container;
@@ -72,7 +72,7 @@
       return { id: _uuid(), label: this.eventName, codePrefix: '', criteriaType: null, criteriaValue: null, children: [] };
     }
 
-    // ── Tree traversal helpers ────────────────────────────────────
+    // -- Tree traversal helpers ------------------------------------
     _leafCount(node) {
       if (!node.children || node.children.length === 0) return 1;
       return node.children.reduce((s, c) => s + this._leafCount(c), 0);
@@ -124,7 +124,7 @@
       return { ...node, id: _uuid(), children: (node.children || []).map(c => this._cloneSubtree(c)) };
     }
 
-    // ── Render ────────────────────────────────────────────────────
+    // -- Render ----------------------------------------------------
     render() {
       this._closeMenu();
       document.removeEventListener('click', this._boundClose);
@@ -147,7 +147,7 @@
       info.className = 'dtb-leaf-count';
       info.textContent = leaves.length > 0
         ? `${leaves.length} division${leaves.length !== 1 ? 's' : ''} will be generated`
-        : 'No splits yet — click ⊕ Split to begin';
+        : 'No splits yet \u2014 click + Split to begin';
       bar.appendChild(info);
 
       const btns = document.createElement('div');
@@ -155,13 +155,13 @@
 
       const prevBtn = document.createElement('button');
       prevBtn.className = 'btn btn-secondary btn-small';
-      prevBtn.textContent = '👁 Preview';
+      prevBtn.textContent = 'Preview';
       prevBtn.onclick = () => this._showPreview();
       btns.appendChild(prevBtn);
 
       const genBtn = document.createElement('button');
       genBtn.className = 'btn btn-primary btn-small';
-      genBtn.textContent = '✓ Generate Divisions';
+      genBtn.textContent = '\u2713 Generate Divisions';
       genBtn.onclick = () => this._generateDivisions();
       btns.appendChild(genBtn);
 
@@ -177,10 +177,10 @@
         empty.className = 'dtb-empty';
         const eid = _esc(this.eventId || '');
         empty.innerHTML = `
-          <div class="dtb-empty-icon">🌿</div>
+          <div class="dtb-empty-icon">&#x1F333;</div>
           <p>No division splits yet for <strong>${_esc(this.eventName)}</strong>.</p>
           <p class="hint">Click the button below to define your first split criteria (Gender, Age, Rank, etc.).</p>
-          <button class="btn btn-primary" onclick="window.__dtb_${eid}&&window.__dtb_${eid}.showSplitDialog('${_esc(this.tree.id)}')">⊕ Add First Split</button>
+          <button class="btn btn-primary" onclick="(window._dtbRegistry&&window._dtbRegistry['${eid}']||{showSplitDialog:function(){}}).showSplitDialog('${_esc(this.tree.id)}')">+ Add First Split</button>
         `;
         return empty;
       }
@@ -243,20 +243,20 @@
             <div class="dtb-cell-inner">
               <input class="dtb-code-input" type="text"
                 value="${_esc(node.codePrefix || '')}"
-                maxlength="5" placeholder="—"
+                maxlength="5" placeholder="..."
                 title="Code prefix (max 5 chars, contributes to division code)"
                 data-node-id="${node.id}">
               <span class="dtb-label">${_esc(node.label)}</span>
-              <button class="dtb-menu-btn" data-node-id="${node.id}" title="Options">▼</button>
+              <button class="dtb-menu-btn" data-node-id="${node.id}" title="Options">&#x25BC;</button>
             </div>
           `;
           tr.appendChild(td);
         }
 
-        // Actions column — split button
+        // Actions column - split button
         const tdAct = document.createElement('td');
         tdAct.className = 'dtb-actions-cell';
-        tdAct.innerHTML = `<button class="btn btn-small dtb-split-leaf-btn" data-node-id="${_esc(leaf.id)}">⊕ Split…</button>`;
+        tdAct.innerHTML = `<button class="btn btn-small dtb-split-leaf-btn" data-node-id="${_esc(leaf.id)}">+ Split...</button>`;
         tr.appendChild(tdAct);
         tbody.appendChild(tr);
       }
@@ -284,7 +284,7 @@
       return table;
     }
 
-    // ── Context Menu ──────────────────────────────────────────────
+    // -- Context Menu ----------------------------------------------
     _showContextMenu(nodeId, anchor) {
       this._closeMenu();
       const node = this._findNode(nodeId);
@@ -300,19 +300,19 @@
       menu.className = 'dtb-ctx-menu';
 
       const items = [
-        { label: '⊕ Split by…', fn: () => this.showSplitDialog(nodeId) },
+        { label: '+ Split by...', fn: () => this.showSplitDialog(nodeId) },
         { sep: true },
-        { label: '📋 Copy Subdivisions', disabled: isLeaf, fn: () => this.copySubtree(nodeId) },
-        { label: '📌 Paste Subdivisions', disabled: !this.clipboard, fn: () => this.pasteSubtree(nodeId) },
+        { label: 'Copy Subdivisions', disabled: isLeaf, fn: () => this.copySubtree(nodeId) },
+        { label: 'Paste Subdivisions', disabled: !this.clipboard, fn: () => this.pasteSubtree(nodeId) },
         { sep: true },
-        { label: '↑ Move Up', disabled: isRoot || idx === 0, fn: () => this.moveUp(nodeId) },
-        { label: '↓ Move Down', disabled: isRoot || idx >= siblings.length - 1, fn: () => this.moveDown(nodeId) },
+        { label: '\u2191 Move Up', disabled: isRoot || idx === 0, fn: () => this.moveUp(nodeId) },
+        { label: '\u2193 Move Down', disabled: isRoot || idx >= siblings.length - 1, fn: () => this.moveDown(nodeId) },
         { sep: true },
-        { label: '+ Insert Above…', disabled: isRoot, fn: () => this._promptInsert(nodeId, 'above') },
-        { label: '+ Insert Below…', disabled: isRoot, fn: () => this._promptInsert(nodeId, 'below') },
+        { label: '+ Insert Above...', disabled: isRoot, fn: () => this._promptInsert(nodeId, 'above') },
+        { label: '+ Insert Below...', disabled: isRoot, fn: () => this._promptInsert(nodeId, 'below') },
         { sep: true },
-        { label: '✕ Clear Subdivisions', disabled: isLeaf, fn: () => this.clearSubdivisions(nodeId) },
-        { label: '🗑 Delete', disabled: isRoot, fn: () => this.deleteNode(nodeId) },
+        { label: 'x Clear Subdivisions', disabled: isLeaf, fn: () => this.clearSubdivisions(nodeId) },
+        { label: 'Delete', disabled: isRoot, fn: () => this.deleteNode(nodeId) },
       ];
 
       for (const item of items) {
@@ -341,7 +341,7 @@
       if (this._activeMenu) { this._activeMenu.remove(); this._activeMenu = null; }
     }
 
-    // ── Split Dialog ──────────────────────────────────────────────
+    // -- Split Dialog ----------------------------------------------
     showSplitDialog(nodeId) {
       this._closeMenu();
       const node = this._findNode(nodeId);
@@ -355,17 +355,17 @@
         <div class="dtb-modal-box">
           <div class="dtb-modal-hdr">
             <h3>Split "<em>${_esc(node.label)}</em>"</h3>
-            <button class="btn btn-secondary btn-small" onclick="document.getElementById('dtb-split-overlay').remove()">✕</button>
+            <button class="btn btn-secondary btn-small" onclick="document.getElementById('dtb-split-overlay').remove()">&#x2715;</button>
           </div>
           <div class="dtb-tab-row" id="dtb-tabs">
             ${Object.entries(CRITERIA_LABELS).map(([t, l]) =>
               `<button class="dtb-tab${t === 'gender' ? ' active' : ''}" data-type="${t}"
-                onclick="window.__dtb_${eid}._switchTab('${t}')">${l}</button>`
+                onclick="window._dtbRegistry&&window._dtbRegistry['${eid}']&&window._dtbRegistry['${eid}']._switchTab('${t}')">${l}</button>`
             ).join('')}
           </div>
           <div id="dtb-split-body" class="dtb-split-body"></div>
           <div class="dtb-modal-ftr">
-            <button class="btn btn-primary" onclick="window.__dtb_${eid}._confirmSplit('${_esc(nodeId)}')">Apply Split</button>
+            <button class="btn btn-primary" onclick="window._dtbRegistry&&window._dtbRegistry['${eid}']&&window._dtbRegistry['${eid}']._confirmSplit('${_esc(nodeId)}')">Apply Split</button>
             <button class="btn btn-secondary" onclick="document.getElementById('dtb-split-overlay').remove()">Cancel</button>
           </div>
         </div>
@@ -388,7 +388,7 @@
 
       const addBtn = (containerId, fn) =>
         `<button class="btn btn-secondary btn-small dtb-add-row" style="margin-top:8px"
-          onclick="window.__dtb_${eid}.${fn}()">+ Add</button>`;
+          onclick="window._dtbRegistry&&window._dtbRegistry['${eid}']&&window._dtbRegistry['${eid}'].${fn}()">+ Add</button>`;
 
       switch (type) {
         case 'gender':
@@ -405,11 +405,11 @@
           body.innerHTML = `
             <p class="hint">Ages are calculated relative to tournament date. Use 99 for "open upper limit".</p>
             <div id="dtb-rows">
-              ${this._ageRow('01', '0–5 yrs', 0, 5)}
-              ${this._ageRow('02', '6–7 yrs', 6, 7)}
-              ${this._ageRow('03', '8–9 yrs', 8, 9)}
-              ${this._ageRow('04', '10–11 yrs', 10, 11)}
-              ${this._ageRow('05', '12–13 yrs', 12, 13)}
+              ${this._ageRow('01', '0-5 yrs', 0, 5)}
+              ${this._ageRow('02', '6-7 yrs', 6, 7)}
+              ${this._ageRow('03', '8-9 yrs', 8, 9)}
+              ${this._ageRow('04', '10-11 yrs', 10, 11)}
+              ${this._ageRow('05', '12-13 yrs', 12, 13)}
             </div>
             ${addBtn('dtb-rows', '_addAgeRow')}`;
           break;
@@ -433,9 +433,9 @@
           body.innerHTML = `
             <p class="hint">Weight classes in ${unit}. Use 999 for "open upper limit".</p>
             <div id="dtb-rows">
-              ${this._rangeRow('W1', '−30', 0, 30)}
-              ${this._rangeRow('W2', '−40', 31, 40)}
-              ${this._rangeRow('W3', '−50', 41, 50)}
+              ${this._rangeRow('W1', '-30', 0, 30)}
+              ${this._rangeRow('W2', '-40', 31, 40)}
+              ${this._rangeRow('W3', '-50', 41, 50)}
               ${this._rangeRow('W4', '+50', 51, 999)}
             </div>
             ${addBtn('dtb-rows', '_addRangeRow')}`;
@@ -446,8 +446,8 @@
           body.innerHTML = `
             <p class="hint">Years of practice. Use 99 for "open upper limit".</p>
             <div id="dtb-rows">
-              ${this._rangeRow('E1', 'Beginner (0–2 yrs)', 0, 2)}
-              ${this._rangeRow('E2', 'Intermediate (3–5 yrs)', 3, 5)}
+              ${this._rangeRow('E1', 'Beginner (0-2 yrs)', 0, 2)}
+              ${this._rangeRow('E2', 'Intermediate (3-5 yrs)', 3, 5)}
               ${this._rangeRow('E3', 'Advanced (6+ yrs)', 6, 99)}
             </div>
             ${addBtn('dtb-rows', '_addRangeRow')}`;
@@ -455,7 +455,7 @@
 
         case 'custom':
           body.innerHTML = `
-            <p class="hint">Freeform categories. Auto-assignment is <strong>not</strong> possible — competitors must be placed manually.</p>
+            <p class="hint">Freeform categories. Auto-assignment is <strong>not</strong> possible - competitors must be placed manually.</p>
             <div id="dtb-rows">
               ${this._custRow('A1', 'Category A')}
               ${this._custRow('B1', 'Category B')}
@@ -473,7 +473,7 @@
       return `<div class="dtb-split-row" data-rtype="gender">
         <input class="dsr-code" type="text" value="${_esc(c)}" maxlength="5" placeholder="Code" title="Code prefix">
         <input class="dsr-label" type="text" value="${_esc(label)}" placeholder="e.g. Male" required>
-        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">✕</button>
+        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">&#x2715;</button>
       </div>`;
     }
 
@@ -483,9 +483,9 @@
         <input class="dsr-label" type="text" value="${_esc(label)}" placeholder="Label" required>
         <span class="dsr-sep">Age</span>
         <input class="dsr-min" type="number" value="${min}" min="0" max="120" style="width:58px" title="Min age">
-        <span class="dsr-sep">–</span>
+        <span class="dsr-sep">-</span>
         <input class="dsr-max" type="number" value="${max}" min="0" max="120" style="width:58px" title="Max age">
-        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">✕</button>
+        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">&#x2715;</button>
       </div>`;
     }
 
@@ -497,9 +497,9 @@
         <input class="dsr-code" type="text" value="${_esc(code)}" maxlength="5" placeholder="Code">
         <input class="dsr-label" type="text" value="${_esc(label)}" placeholder="Label" required>
         <select class="dsr-rankmin" title="Min rank">${selMin}</select>
-        <span class="dsr-sep">→</span>
+        <span class="dsr-sep">&#x2192;</span>
         <select class="dsr-rankmax" title="Max rank">${selMax}</select>
-        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">✕</button>
+        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">&#x2715;</button>
       </div>`;
     }
 
@@ -508,9 +508,9 @@
         <input class="dsr-code" type="text" value="${_esc(code)}" maxlength="5" placeholder="Code">
         <input class="dsr-label" type="text" value="${_esc(label)}" placeholder="Label" required>
         <input class="dsr-min" type="number" value="${min}" min="0" style="width:70px" title="Min">
-        <span class="dsr-sep">–</span>
+        <span class="dsr-sep">-</span>
         <input class="dsr-max" type="number" value="${max}" min="0" style="width:70px" title="Max">
-        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">✕</button>
+        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">&#x2715;</button>
       </div>`;
     }
 
@@ -518,7 +518,7 @@
       return `<div class="dtb-split-row" data-rtype="custom">
         <input class="dsr-code" type="text" value="${_esc(code)}" maxlength="5" placeholder="Code">
         <input class="dsr-label" type="text" value="${_esc(label)}" placeholder="Label" required>
-        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">✕</button>
+        <button class="btn btn-small btn-danger" onclick="this.closest('.dtb-split-row').remove()">&#x2715;</button>
       </div>`;
     }
 
@@ -566,7 +566,7 @@
       this._changed(true);
     }
 
-    // ── Tree mutations ────────────────────────────────────────────
+    // -- Tree mutations --------------------------------------------
     deleteNode(nodeId) {
       const node = this._findNode(nodeId);
       const parent = this._findParent(nodeId);
@@ -600,7 +600,7 @@
       const node = this._findNode(nodeId);
       if (!node) return;
       this.clipboard = { children: (node.children || []).map(c => this._cloneSubtree(c)), _from: node.label };
-      this._toast(`📋 Copied subdivisions of "${node.label}"`);
+      this._toast(`Copied subdivisions of "${node.label}"`);
     }
 
     pasteSubtree(nodeId) {
@@ -635,7 +635,7 @@
       this._changed(true);
     }
 
-    // ── Compilation ───────────────────────────────────────────────
+    // -- Compilation -----------------------------------------------
     toCriteriaTemplates() {
       if (!this.tree.children || this.tree.children.length === 0) return [];
       return this._allLeaves(this.tree).map(leaf => {
@@ -669,7 +669,7 @@
       }));
     }
 
-    // ── Preview ───────────────────────────────────────────────────
+    // -- Preview ---------------------------------------------------
     _showPreview() {
       const divs = this.getLeafDivisions();
       if (divs.length === 0) { alert('No divisions defined yet. Add splits first.'); return; }
@@ -680,12 +680,12 @@
         <div class="dtb-modal-box" style="max-width:560px">
           <div class="dtb-modal-hdr">
             <h3>${divs.length} Division Preview</h3>
-            <button class="btn btn-secondary btn-small" onclick="document.getElementById('dtb-preview-overlay').remove()">✕</button>
+            <button class="btn btn-secondary btn-small" onclick="document.getElementById('dtb-preview-overlay').remove()">&#x2715;</button>
           </div>
           <ol style="margin:0;padding:0 0 0 20px;max-height:55vh;overflow-y:auto">
             ${divs.map(d => `<li style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)">
               <strong>${_esc(d.name)}</strong>
-              ${!d.hasAutoAssign ? '<span style="color:#f59e0b;font-size:11px;margin-left:6px">⚠ manual placement</span>' : ''}
+              ${!d.hasAutoAssign ? '<span style="color:#f59e0b;font-size:11px;margin-left:6px">&#x26A0; manual placement</span>' : ''}
             </li>`).join('')}
           </ol>
           <div class="dtb-modal-ftr" style="justify-content:flex-end">
@@ -695,7 +695,7 @@
       document.body.appendChild(overlay);
     }
 
-    // ── Generate Divisions ────────────────────────────────────────
+    // -- Generate Divisions ----------------------------------------
     _generateDivisions() {
       const divs = this.getLeafDivisions();
       if (divs.length === 0) {
@@ -721,7 +721,7 @@
             </ol>
           </details>
           <div class="dtb-modal-ftr">
-            <button class="btn btn-primary" onclick="window.__dtb_${eid}._doGenerate()">✓ Generate</button>
+            <button class="btn btn-primary" onclick="window._dtbRegistry&&window._dtbRegistry['${eid}']&&window._dtbRegistry['${eid}']._doGenerate()">&#x2713; Generate</button>
             <button class="btn btn-secondary" onclick="document.getElementById('dtb-gen-overlay').remove()">Cancel</button>
           </div>
         </div>`;
@@ -760,7 +760,7 @@
       if (typeof generateDivisions === 'function') generateDivisions();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────
+    // -- Helpers ---------------------------------------------------
     _toast(msg) {
       const t = document.createElement('div');
       t.className = 'dtb-toast';
