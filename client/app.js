@@ -3257,6 +3257,24 @@ function getTournamentWeightUnit() {
     return t?.weight_unit || t?.weightUnit || 'kg';
 }
 
+/**
+ * Normalise a competitor weight value to a target unit.
+ * competitor.weight is always stored in the tournament's weight_unit.
+ * Division-tree weight ranges may be in a different unit (e.g. after a
+ * "relabel only" switch), so we must convert before comparing.
+ *
+ * @param {number} weight      - raw value from competitor record
+ * @param {string} fromUnit    - unit the value is stored in ('kg'|'lbs')
+ * @param {string} toUnit      - unit the ranges are expressed in
+ * @returns {number}           - converted value (or original if units match)
+ */
+function _normaliseWeightForComparison(weight, fromUnit, toUnit) {
+    if (!weight || fromUnit === toUnit) return weight;
+    return fromUnit === 'kg'
+        ? weight * 2.20462   // kg → lbs
+        : weight * 0.453592; // lbs → kg
+}
+
 function getTournamentCurrency() {
     if (!currentTournamentId) return 'USD';
     const tournaments = db.load('tournaments');
@@ -4214,10 +4232,18 @@ function competitorMatchesCriterion(competitor, competitorAge, criterion) {
                 competitor.gender === range.value
             );
 
-        case 'weight':
-            return criterion.ranges.some(range =>
-                competitor.weight >= range.min && competitor.weight <= range.max
+        case 'weight': {
+            // competitor.weight is in the tournament's unit; ranges may be in a
+            // different unit if the tree was relabelled without recalculating.
+            const compW = _normaliseWeightForComparison(
+                competitor.weight,
+                getTournamentWeightUnit(),
+                criterion.weightUnit || getTournamentWeightUnit()
             );
+            return criterion.ranges.some(range =>
+                compW >= range.min && compW <= range.max
+            );
+        }
 
         case 'rank':
             return criterion.ranges.some(range =>
@@ -4320,9 +4346,14 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
                 }
                 break;
 
-            case 'weight':
+            case 'weight': {
+                const compW2 = _normaliseWeightForComparison(
+                    competitor.weight,
+                    getTournamentWeightUnit(),
+                    criterion.weightUnit || getTournamentWeightUnit()
+                );
                 const weightRange = criterion.ranges.find(r =>
-                    competitor.weight >= r.min && competitor.weight <= r.max
+                    compW2 >= r.min && compW2 <= r.max
                 );
                 if (weightRange) {
                     parts.push(weightRange.label);
@@ -4332,6 +4363,7 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
                     console.warn(`Competitor ${competitor.firstName} ${competitor.lastName} weight ${competitor.weight}${getTournamentWeightUnit()} doesn't match any weight range`);
                 }
                 break;
+            }
 
             case 'rank':
                 const rankRange = criterion.ranges.find(r => r.value === competitor.rank);

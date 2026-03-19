@@ -954,11 +954,17 @@
     // -- Compilation -----------------------------------------------
     toCriteriaTemplates() {
       if (!this.tree.children || this.tree.children.length === 0) return [];
+      const treeWeightUnit = this._getWeightUnit();
       return this._allLeaves(this.tree).map(leaf => {
         const path = this._pathToLeaf(leaf.id).slice(1); // skip root
         const criteria = path
           .filter(n => n.criteriaType && n.criteriaType !== 'custom')
-          .map(n => ({ type: n.criteriaType, ranges: [{ label: n.label, ...n.criteriaValue }] }));
+          .map(n => {
+            const entry = { type: n.criteriaType, ranges: [{ label: n.label, ...n.criteriaValue }] };
+            // Attach the unit so auto-assign can normalise competitor weight at match time
+            if (n.criteriaType === 'weight') entry.weightUnit = treeWeightUnit;
+            return entry;
+          });
         return { id: leaf.id, name: this._leafName(leaf), criteria };
       });
     }
