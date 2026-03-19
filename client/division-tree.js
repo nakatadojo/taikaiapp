@@ -128,6 +128,12 @@
     render() {
       this._closeMenu();
       document.removeEventListener('click', this._boundClose);
+
+      // Save scroll position of the modal body before wiping DOM
+      const fsBody = this.container.closest('.dtb-fs-body');
+      const savedTop  = fsBody ? fsBody.scrollTop  : 0;
+      const savedLeft = fsBody ? fsBody.scrollLeft : 0;
+
       this.container.innerHTML = '';
       this.container.className = 'dtb-wrapper';
       this.container.appendChild(this._buildToolbar());
@@ -136,6 +142,12 @@
       scroll.appendChild(this._buildGrid());
       this.container.appendChild(scroll);
       document.addEventListener('click', this._boundClose);
+
+      // Restore scroll position so the user stays where they were
+      if (fsBody) {
+        fsBody.scrollTop  = savedTop;
+        fsBody.scrollLeft = savedLeft;
+      }
     }
 
     _buildToolbar() {
@@ -327,11 +339,26 @@
         menu.appendChild(btn);
       }
 
-      // Position
-      const rect = anchor.getBoundingClientRect();
-      menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;z-index:10200;`;
+      // Position — measure first (off-screen), then place so it stays in viewport
+      menu.style.cssText = 'position:fixed;top:-9999px;left:-9999px;z-index:10200;visibility:hidden;';
       document.body.appendChild(menu);
       this._activeMenu = menu;
+
+      const rect   = anchor.getBoundingClientRect();
+      const menuH  = menu.offsetHeight;
+      const menuW  = menu.offsetWidth;
+      const gap    = 4;
+
+      // Flip above the button if not enough room below
+      const spaceBelow = window.innerHeight - rect.bottom - gap;
+      const top = spaceBelow >= menuH
+        ? rect.bottom + gap
+        : Math.max(gap, rect.top - menuH - gap);
+
+      // Clamp left so menu never overflows the right edge
+      const left = Math.min(rect.left, window.innerWidth - menuW - gap);
+
+      menu.style.cssText = `position:fixed;top:${top}px;left:${Math.max(gap, left)}px;z-index:10200;`;
     }
 
     _closeMenu() {
