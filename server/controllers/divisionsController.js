@@ -70,4 +70,30 @@ async function autoAssignDivisions(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getDivisions, syncDivisions, syncTemplates, autoAssignDivisions };
+async function syncTree(req, res, next) {
+  try {
+    const tournamentId = req.params.id;
+    const { eventId } = req.params;
+    const { tree } = req.body;
+
+    const t = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
+    if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
+    const isSuperAdmin = (req.user.roles || []).includes('super_admin');
+    if (!isSuperAdmin && t.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const result = await DivisionQueries.upsertTree(eventId, tree || null);
+    res.json({ tree: result?.division_tree || null });
+  } catch (err) { next(err); }
+}
+
+async function getTree(req, res, next) {
+  try {
+    const { eventId } = req.params;
+    const tree = await DivisionQueries.getTree(eventId);
+    res.json({ tree });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getDivisions, syncDivisions, syncTemplates, autoAssignDivisions, getTree, syncTree };

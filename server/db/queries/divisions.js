@@ -30,4 +30,23 @@ async function upsertTemplates(eventId, criteriaTemplates) {
   return rows[0];
 }
 
-module.exports = { get, upsert, upsertTemplates };
+async function getTree(eventId) {
+  const { rows } = await pool.query(
+    `SELECT division_tree FROM tournament_events WHERE id = $1`,
+    [eventId]
+  );
+  return rows[0]?.division_tree || null;
+}
+
+async function upsertTree(eventId, tree) {
+  const { rows } = await pool.query(
+    `UPDATE tournament_events
+     SET division_tree = $2
+     WHERE id = $1
+     RETURNING id, division_tree`,
+    [eventId, tree ? JSON.stringify(tree) : null]
+  );
+  return rows[0];
+}
+
+module.exports = { get, upsert, upsertTemplates, getTree, upsertTree };

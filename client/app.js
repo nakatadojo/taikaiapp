@@ -132,6 +132,7 @@ function generateUniqueId() {
 
 // Active tournament — declared early so scoped-storage helpers can reference it.
 let currentTournamentId = null;
+const _dtbInstances = {}; // { eventId: DivisionTreeBuilder }
 
 // Cache for registration fields fetched from the server (avoids re-fetching on every modal open)
 let _registrationFields = null;
@@ -7179,6 +7180,42 @@ function _deleteTemplateFromEvent(templateId, eventId) {
     loadEventTypes();   // refresh badge count
 }
 
+/**
+ * Load the division_tree for an event from the server and initialise the builder.
+ */
+async function _loadTreeForEvent(eventId, eventName, builder) {
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}/tree`, {
+            credentials: 'include',
+        });
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        builder.loadTree(data.tree || null);
+    } catch (e) {
+        // Fall back to empty tree (existing criteria_templates still work for auto-assign)
+        builder.loadTree(null);
+    }
+}
+
+/**
+ * Save the division tree to the server (debounced).
+ */
+function _saveTreeToServer(eventId, tree) {
+    clearTimeout(_saveTreeToServer._t);
+    _saveTreeToServer._t = setTimeout(async () => {
+        try {
+            await fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}/tree`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tree }),
+            });
+        } catch (e) {
+            console.warn('[dtb] tree save failed:', e.message);
+        }
+    }, 1500);
+}
+
 function loadEventTypeSelector() {
     const eventTypes = db.load('eventTypes');
     const selector = document.getElementById('division-event-selector');
@@ -7885,15 +7922,32 @@ function loadDivisionTemplate() {
         return;
     }
 
-    // Show the division template container
     container.classList.remove('hidden');
 
-    // Load existing divisions if any
-    const divisions = db.load('divisions');
-    const eventData = divisions[eventId];
+    // Get event info for display
+    const eventTypes = db.load('eventTypes');
+    const event = eventTypes.find(e => String(e.id) === String(eventId));
+    const eventName = event?.name || 'Event';
 
-    if (eventData && eventData.generated) {
-        // Load existing divisions
+    // Initialize or reuse tree builder for this event
+    const builderEl = document.getElementById('division-tree-builder');
+    if (!builderEl) return;
+
+    // Create tree builder instance
+    const builder = new DivisionTreeBuilder(builderEl, {
+        eventId,
+        eventName,
+        onTreeChange: (tree) => _saveTreeToServer(eventId, tree),
+    });
+    _dtbInstances[eventId] = builder;
+    window[`__dtb_${eventId}`] = builder;
+
+    // Load tree from server (or fall back to existing criteria_templates converted to tree)
+    _loadTreeForEvent(eventId, eventName, builder);
+
+    // Also load existing generated divisions below the builder
+    const divisions = db.load('divisions');
+    if (divisions[eventId]?.generated) {
         loadDivisions();
     }
 }

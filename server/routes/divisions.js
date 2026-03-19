@@ -25,4 +25,14 @@ router.post('/:id/divisions/auto-assign',
   c.autoAssignDivisions
 );
 
+router.get('/:id/events/:eventId/tree',
+  requireAuth, requireTournamentOwner,
+  c.getTree
+);
+
+router.post('/:id/events/:eventId/tree',
+  requireAuth, requireTournamentOwner,
+  c.syncTree
+);
+
 module.exports = router;
