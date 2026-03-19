@@ -4597,26 +4597,34 @@ function generateMatchesForBracket(bracket) {
         bracket.rounds = 0;
 
     } else {
-        // Single-elimination (and double-elimination fallback)
+        // Single-elimination: use buildBracketSlots so all byes land in round 1.
+        // The naive i+=2 loop spread byes across multiple rounds (e.g. 5 competitors
+        // gave 1 bye in round 1 + 1 bye in round 2 instead of 3 byes all in round 1).
+        const slots = buildBracketSlots(competitors);
         const matches = [];
-        for (let i = 0; i < competitors.length; i += 2) {
-            if (i + 1 < competitors.length) {
+        for (let i = 0; i < slots.length; i += 2) {
+            const red  = slots[i];
+            const blue = slots[i + 1];
+            if (red === null && blue === null) continue; // phantom slot — skip
+            if (blue === null || red === null) {
+                // One real competitor, one empty slot → bye
+                const real = red ?? blue;
                 matches.push({
                     id: matches.length + 1,
                     round: 1,
-                    redCorner: competitors[i],
-                    blueCorner: competitors[i + 1],
-                    winner: null,
-                    status: 'pending'
+                    redCorner: real,
+                    blueCorner: null,
+                    winner: real,
+                    status: 'bye'
                 });
             } else {
                 matches.push({
                     id: matches.length + 1,
                     round: 1,
-                    redCorner: competitors[i],
-                    blueCorner: null,
-                    winner: competitors[i],
-                    status: 'bye'
+                    redCorner: red,
+                    blueCorner: blue,
+                    winner: null,
+                    status: 'pending'
                 });
             }
         }
