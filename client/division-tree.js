@@ -129,14 +129,15 @@
       this._closeMenu();
       document.removeEventListener('click', this._boundClose);
 
-      // Lock the container's height before clearing so the modal body's
-      // scrollTop is never out-of-bounds during the DOM swap — the browser
-      // clamps scrollTop to (scrollHeight - clientHeight) the moment content
-      // collapses, making save+restore useless without this guard.
-      const fsBody = this.container.closest('.dtb-fs-body');
-      const savedTop  = fsBody ? fsBody.scrollTop  : 0;
-      const savedLeft = fsBody ? fsBody.scrollLeft : 0;
-      if (fsBody) fsBody.style.minHeight = fsBody.scrollHeight + 'px';
+      // Pin the CONTENT height before clearing — this prevents fsBody.scrollHeight
+      // from collapsing, which would cause the browser to clamp scrollTop to 0.
+      // (Setting minHeight on the scroller itself doesn't help — it must be on
+      // the content element inside it.)
+      const fsBody      = this.container.closest('.dtb-fs-body');
+      const savedTop    = fsBody ? fsBody.scrollTop  : 0;
+      const savedLeft   = fsBody ? fsBody.scrollLeft : 0;
+      const prevH       = this.container.offsetHeight;
+      this.container.style.minHeight = prevH + 'px';
 
       this.container.innerHTML = '';
       this.container.className = 'dtb-wrapper';
@@ -147,12 +148,12 @@
       this.container.appendChild(scroll);
       document.addEventListener('click', this._boundClose);
 
-      // Restore scroll then release the height lock
+      // Restore scroll position then release the height pin
       if (fsBody) {
         fsBody.scrollTop  = savedTop;
         fsBody.scrollLeft = savedLeft;
-        fsBody.style.minHeight = '';
       }
+      this.container.style.minHeight = '';
     }
 
     _buildToolbar() {
