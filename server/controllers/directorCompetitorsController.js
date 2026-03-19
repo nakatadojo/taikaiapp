@@ -59,14 +59,16 @@ async function deleteCompetitor(req, res, next) {
     const deleted = await DirectorCompetitorQueries.remove(competitorId, tournamentId);
     if (!deleted) return res.status(404).json({ error: 'Competitor not found' });
 
-    // Refund credit if this was an approved real competitor
+    // Refund credit if this was an approved real competitor.
+    // Pass null for registrationId — director competitors have no row in the
+    // registrations table and passing competitorId would violate the FK.
     if (deleted.approved && !deleted.is_test) {
       const tournament = await tournamentQueries.findById(tournamentId);
       if (tournament?.created_by) {
         await creditQueries.refundCredit(
           tournament.created_by,
           tournamentId,
-          competitorId,
+          null,
           `Competitor deleted: refund for approval`
         );
       }
@@ -179,13 +181,14 @@ async function unapproveCompetitor(req, res, next) {
       });
     }
 
-    // Refund credit for real competitors
+    // Refund credit for real competitors.
+    // Pass null for registrationId — same FK reason as in approveCompetitor.
     if (!result.is_test) {
       const directorId = tournament.created_by;
       await creditQueries.refundCredit(
         directorId,
         tournamentId,
-        competitorId,
+        null,
         `Unapproval refund`
       );
       const newBalance = await creditQueries.getBalance(directorId);
