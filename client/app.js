@@ -21576,6 +21576,11 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
                                 style="font-size: 11px; padding: 4px 10px; border-radius: 6px; flex-shrink: 0;">
                                 ✏️ Edit
                             </button>
+                            <button class="btn btn-danger" onclick="resetMatch('${match.id}', '${bracketId}', ${matId}, '${divisionName.replace(/'/g, "\\'")}', '${eventId}')"
+                                style="font-size: 11px; padding: 4px 10px; border-radius: 6px; flex-shrink: 0;"
+                                title="Reset match to pending so it can be replayed">
+                                ↺ Replay
+                            </button>
                         </div>
                     `;
                 }).join('')}
@@ -21588,6 +21593,94 @@ function openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Reset a completed match back to pending so it can be replayed.
+ * Also removes the previous winner from whichever next-round match they
+ * were auto-advanced into (as long as that match hasn't been played yet).
+ */
+function resetMatch(matchId, bracketId, matId, divisionName, eventId) {
+    if (!confirm('Reset this match so it can be replayed? The previous result will be cleared.')) return;
+
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const bracket = brackets[bracketId];
+    if (!bracket) return;
+
+    // Collect all match pools in this bracket so we can search them all.
+    const allPools = [];
+    if (bracket.matches)   allPools.push(bracket.matches);
+    if (bracket.winners)   allPools.push(bracket.winners);
+    if (bracket.losers)    allPools.push(bracket.losers);
+    if (bracket.repechageA) allPools.push(bracket.repechageA);
+    if (bracket.repechageB) allPools.push(bracket.repechageB);
+    if (bracket.pools) bracket.pools.forEach(p => allPools.push(p.matches || []));
+    const allMatches = allPools.flat();
+
+    // Find the target match.
+    const match = allMatches.find(m => String(m.id) === String(matchId));
+    if (!match || match.status !== 'completed') {
+        showMessage('Match not found or already pending.', 'error');
+        return;
+    }
+
+    const previousWinner = match.winner;
+
+    // Reset the match itself.
+    match.status  = 'pending';
+    match.winner  = null;
+    match.score1  = null;
+    match.score2  = null;
+    match.winMethod = null;
+    match.winNote   = null;
+    delete match.edited;
+    delete match.lastEditedAt;
+
+    // Remove the previous winner from any later match they were placed into.
+    // Scan all matches whose round is higher than this match's round.
+    if (previousWinner) {
+        allMatches.forEach(m => {
+            if ((m.round || 0) <= (match.round || 0)) return;
+            // Only undo if that later match hasn't been played yet.
+            if (m.status === 'completed') return;
+
+            if (m.redCorner && String(m.redCorner.id) === String(previousWinner.id)) {
+                m.redCorner = null;
+                // If both corners now null, mark empty; if one remains, reset to pending.
+                m.status  = m.blueCorner ? 'pending' : 'empty';
+                m.winner  = null;
+            } else if (m.blueCorner && String(m.blueCorner.id) === String(previousWinner.id)) {
+                m.blueCorner = null;
+                m.status  = m.redCorner ? 'pending' : 'empty';
+                m.winner  = null;
+            }
+
+            // If the match was a bye because this was the only competitor, revert it too.
+            if (m.status === 'bye' && m.winner &&
+                String(m.winner.id) === String(previousWinner.id)) {
+                m.status = 'empty';
+                m.winner = null;
+            }
+        });
+    }
+
+    // Mark bracket as no longer complete.
+    bracket.complete = false;
+    bracket.completedAt = null;
+
+    saveBrackets(brackets);
+
+    // Sync to server.
+    fetch(`/api/tournaments/${currentTournamentId}/brackets/${bracketId}`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bracket }),
+    }).catch(e => console.warn('[resetMatch] server sync failed:', e));
+
+    showMessage('Match reset — it can now be replayed.', 'success');
+
+    // Re-open the edit panel so the list refreshes.
+    openEditKumitePanel(matId, divisionName, eventId, bracketId, bracket);
 }
 
 function editKumiteMatch(matchId, bracketId) {
