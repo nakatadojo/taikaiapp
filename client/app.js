@@ -11274,6 +11274,21 @@ function generateBrackets(event) {
             }
         }
 
+        // Remove any existing bracket for this division/event before adding the new one.
+        // Without this check, every click of "Generate Brackets" would create a second
+        // (duplicate) bracket alongside the original instead of replacing it.
+        const existingKey = Object.keys(brackets).find(k =>
+            (brackets[k].divisionName === divisionName || brackets[k].division === divisionName) &&
+            String(brackets[k].eventId) === String(eventId)
+        );
+        if (existingKey) {
+            if (bracketHasScoredMatches(brackets[existingKey])) {
+                skippedNames.push(`${divisionName} (matches in progress)`);
+                return; // Do not overwrite a bracket that has scored matches
+            }
+            delete brackets[existingKey];
+        }
+
         brackets[`${eventId}_${divisionName}_${generateUniqueId()}`] = bracket;
 
         // Mat schedule assignment
