@@ -3300,6 +3300,7 @@
                 tournaments.push({
                     id: tournamentId,  // use the URL's ID — must match currentTournamentId
                     name: t.name,
+                    slug: t.slug || null,
                     date: t.date,
                     location: t.location || t.venue_name || '',
                     sanctioningBody: t.sanctioning_body || 'custom',
@@ -3946,8 +3947,15 @@
 
         window.updatePublicSiteUrl = function() {
             const slugEl = document.getElementById('public-site-url');
-            if (slugEl && typeof currentTournamentId !== 'undefined') {
-                // Try to find slug from loaded tournament data
+            if (!slugEl || typeof currentTournamentId === 'undefined') return;
+            // Use the stored slug from the tournament cache (set during page load)
+            const tournaments = JSON.parse(_msGet('tournaments') || '[]');
+            const t = tournaments.find(x => String(x.id) === String(currentTournamentId));
+            const slug = t?.slug;
+            if (slug) {
+                slugEl.value = window.location.origin + '/tournaments/' + slug;
+            } else {
+                // Fallback: derive from name until a real slug is saved
                 const select = document.getElementById('active-tournament');
                 if (select && select.selectedOptions[0]) {
                     const name = select.selectedOptions[0].textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');

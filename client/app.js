@@ -24875,9 +24875,10 @@ if (publicSiteForm) {
 }
 
 async function loadPublicSiteConfig() {
-    // If config not yet in memory (e.g. page just loaded), fetch from server first
-    // so images and other settings aren't lost on refresh.
-    if (!_msGet(_scopedKey('publicSiteConfig')) && currentTournamentId && _isServerTournamentId(currentTournamentId)) {
+    // Always re-fetch from server so the cover image URL (and other fields) are
+    // never stale. Without this, a cover image stored in the DB could be invisible
+    // in the settings form if localStorage had an older entry without coverImage.
+    if (currentTournamentId && _isServerTournamentId(currentTournamentId)) {
         await _loadPublicSiteConfigFromServer().catch(() => {});
     }
     const config = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
@@ -24934,18 +24935,33 @@ async function loadPublicSiteConfig() {
 }
 
 function openPublicSite() {
-    window.open('/public.html', 'PublicSite', 'width=1200,height=800');
+    // public.html is deprecated — the public tournament page is now at /tournaments/:slug
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const slug = t?.slug;
+    if (slug) {
+        window.open(`/tournaments/${slug}`, 'PublicSite', 'width=1200,height=800');
+    } else {
+        showMessage('No public slug is set for this tournament. Save a slug in Tournament Settings first.', 'error');
+    }
 }
 
 function copyPublicSiteUrl() {
-    const url = window.location.href.replace('index.html', 'public.html');
-    document.getElementById('public-site-url').value = url;
+    // public.html is deprecated — the public tournament page is now at /tournaments/:slug
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const slug = t?.slug;
+    const url = slug
+        ? `${window.location.origin}/tournaments/${slug}`
+        : window.location.origin + '/tournaments/';
+
+    const urlInput = document.getElementById('public-site-url');
+    if (urlInput) urlInput.value = url;
 
     navigator.clipboard.writeText(url).then(() => {
         showMessage('Public site URL copied to clipboard!');
     }).catch(() => {
-        // Fallback for older browsers
-        document.getElementById('public-site-url').select();
+        if (urlInput) urlInput.select();
         document.execCommand('copy');
         showMessage('Public site URL copied to clipboard!');
     });
