@@ -528,8 +528,10 @@ async function _syncEventTypeToServer(eventType, method = 'POST') {
                 description: eventType.description || null,
                 teamSize: eventType.teamSize || null,
                 isDefault: eventType.isDefault || false,
-                priceOverride: eventType.basePrice || null,
-                addonPriceOverride: eventType.addOnPrice || null,
+                // Use != null (not ||) so that 0 is preserved as a valid price.
+                // `0 || null` would coerce 0 to null, causing the $75 default to kick in.
+                priceOverride: eventType.basePrice != null ? eventType.basePrice : null,
+                addonPriceOverride: eventType.addOnPrice != null ? eventType.addOnPrice : null,
                 prerequisiteEventId: eventType.prerequisiteEventId || null,
             }),
         });
@@ -1382,11 +1384,15 @@ function getCurrentTournament() {
  * Priority: event-level override > tournament-level default > hardcoded fallback.
  */
 function getEventPrice(event, isAddOn, tournament) {
-    const defaults = tournament?.pricing || { basePrice: 75.00, addOnPrice: 25.00 };
+    // Use explicit null/undefined checks everywhere — 0 is a valid price and
+    // must not be treated as falsy (0 || fallback would silently charge the default).
+    const tPricing = tournament?.pricing;
+    const defaultBase   = tPricing?.basePrice   != null ? tPricing.basePrice   : 75.00;
+    const defaultAddOn  = tPricing?.addOnPrice  != null ? tPricing.addOnPrice  : 25.00;
     if (isAddOn) {
-        return event.addOnPrice != null ? event.addOnPrice : defaults.addOnPrice;
+        return event.addOnPrice != null ? event.addOnPrice : defaultAddOn;
     }
-    return event.basePrice != null ? event.basePrice : defaults.basePrice;
+    return event.basePrice != null ? event.basePrice : defaultBase;
 }
 
 /**
