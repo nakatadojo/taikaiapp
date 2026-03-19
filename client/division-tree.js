@@ -83,11 +83,52 @@
     _toggleWeightUnit() {
       const from = this._getWeightUnit();
       const to   = from === 'kg' ? 'lbs' : 'kg';
-      if (!confirm(`Convert all weight values from ${from.toUpperCase()} to ${to.toUpperCase()}? This will recalculate all weight ranges.`)) return;
-      this._convertAllWeights(this.tree, from, to);
-      this.tree._weightUnit = to;
-      this._changed(true);
-      this._toast(`Weight unit changed to ${to.toUpperCase()}`);
+
+      // Show a small modal so the user can choose between the two modes:
+      //   1. Relabel only  — numbers are already correct, just fix the label
+      //   2. Recalculate   — multiply every value by the conversion factor
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:10300;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;';
+
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.35);font-family:inherit;';
+      box.innerHTML = `
+        <h3 style="margin:0 0 8px;font-size:17px;">Change weight unit to ${to.toUpperCase()}</h3>
+        <p style="margin:0 0 20px;font-size:14px;color:#555;line-height:1.5;">How should the existing numbers be handled?</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <button id="_wuRelabel" class="btn btn-secondary" style="text-align:left;padding:12px 16px;">
+            <strong>Relabel only</strong><br>
+            <span style="font-size:12px;color:#666;">Keep the same numbers — just change the unit label.<br>
+            Use this if the numbers were already entered in ${to.toUpperCase()}.</span>
+          </button>
+          <button id="_wuConvert" class="btn btn-primary" style="text-align:left;padding:12px 16px;">
+            <strong>Convert &amp; recalculate</strong><br>
+            <span style="font-size:12px;color:#cce;">Multiply every value by the ${from}\u2192${to} factor.<br>
+            Use this if the numbers are in ${from.toUpperCase()} and need real conversion.</span>
+          </button>
+          <button id="_wuCancel" class="btn btn-secondary" style="margin-top:4px;">Cancel</button>
+        </div>`;
+
+      ov.appendChild(box);
+      document.body.appendChild(ov);
+
+      const close = () => document.body.removeChild(ov);
+
+      box.querySelector('#_wuRelabel').onclick = () => {
+        this.tree._weightUnit = to;
+        this._changed(true);
+        this._toast(`Weight unit relabelled to ${to.toUpperCase()} (numbers unchanged)`);
+        close();
+      };
+      box.querySelector('#_wuConvert').onclick = () => {
+        this._convertAllWeights(this.tree, from, to);
+        this.tree._weightUnit = to;
+        this._changed(true);
+        this._toast(`Weight values converted from ${from.toUpperCase()} to ${to.toUpperCase()}`);
+        close();
+      };
+      box.querySelector('#_wuCancel').onclick = close;
+      ov.onclick = (e) => { if (e.target === ov) close(); };
     }
 
     _convertAllWeights(node, from, to) {
