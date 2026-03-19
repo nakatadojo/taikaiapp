@@ -66,13 +66,39 @@
     /** Load (or replace) the tree. Pass null to start empty. */
     loadTree(tree) {
       this.tree = tree ? JSON.parse(JSON.stringify(tree)) : this._emptyTree();
+      // Back-compat: trees saved before weight-unit support default to kg
+      if (!this.tree._weightUnit) this.tree._weightUnit = 'kg';
       this.render();
     }
 
     getTree() { return this.tree; }
 
     _emptyTree() {
-      return { id: _uuid(), label: this.eventName, codePrefix: '', criteriaType: null, criteriaValue: null, children: [] };
+      return { id: _uuid(), label: this.eventName, codePrefix: '', criteriaType: null, criteriaValue: null, children: [], _weightUnit: 'kg' };
+    }
+
+    // -- Weight unit helpers ---------------------------------------
+    _getWeightUnit() { return this.tree._weightUnit || 'kg'; }
+
+    _toggleWeightUnit() {
+      const from = this._getWeightUnit();
+      const to   = from === 'kg' ? 'lbs' : 'kg';
+      if (!confirm(`Convert all weight values from ${from.toUpperCase()} to ${to.toUpperCase()}? This will recalculate all weight ranges.`)) return;
+      this._convertAllWeights(this.tree, from, to);
+      this.tree._weightUnit = to;
+      this._changed(true);
+      this._toast(`Weight unit changed to ${to.toUpperCase()}`);
+    }
+
+    _convertAllWeights(node, from, to) {
+      if (node.criteriaType === 'weight' && node.criteriaValue) {
+        const cv = node.criteriaValue;
+        const factor = from === 'kg' ? 2.20462 : 0.453592;
+        // Min: always convert. Max: if it's the sentinel (>=990), keep as 999.
+        cv.min = Math.round((cv.min || 0) * factor);
+        cv.max = cv.max >= 990 ? 999 : Math.round(cv.max * factor);
+      }
+      (node.children || []).forEach(c => this._convertAllWeights(c, from, to));
     }
 
     // -- Tree traversal helpers ------------------------------------
@@ -89,6 +115,11 @@
     _allLeaves(node) {
       if (!node.children || node.children.length === 0) return [node];
       return node.children.flatMap(c => this._allLeaves(c));
+    }
+
+    _treeHasCriteria(node, type) {
+      if (node.criteriaType === type) return true;
+      return (node.children || []).some(c => this._treeHasCriteria(c, type));
     }
 
     _findNode(id, node) {
@@ -191,9 +222,11 @@
         case 'age':
           if (cv.min == null && cv.max == null) return '';
           return cv.max >= 99 ? `${cv.min}+ yrs` : `${cv.min}-${cv.max} yrs`;
-        case 'weight':
+        case 'weight': {
           if (cv.min == null && cv.max == null) return '';
-          return cv.max >= 999 ? `${cv.min}+ kg` : `${cv.min}-${cv.max} kg`;
+          const wu = this._getWeightUnit();
+          return cv.max >= 999 ? `${cv.min}+ ${wu}` : `${cv.min}-${cv.max} ${wu}`;
+        }
         case 'experience':
           if (cv.min == null && cv.max == null) return '';
           return cv.max >= 99 ? `${cv.min}+ yrs exp` : `${cv.min}-${cv.max} yrs exp`;
@@ -222,6 +255,18 @@
 
       const btns = document.createElement('div');
       btns.className = 'dtb-toolbar-btns';
+
+      // Weight unit toggle — only shown if tree has any weight splits
+      const hasWeight = this._treeHasCriteria(this.tree, 'weight');
+      if (hasWeight) {
+        const unit = this._getWeightUnit();
+        const unitBtn = document.createElement('button');
+        unitBtn.className = 'btn btn-secondary btn-small';
+        unitBtn.title = `Currently in ${unit.toUpperCase()}. Click to convert all weight values.`;
+        unitBtn.innerHTML = `&#x2696; ${unit.toUpperCase()} &rarr; ${unit === 'kg' ? 'LBS' : 'KG'}`;
+        unitBtn.onclick = () => this._toggleWeightUnit();
+        btns.appendChild(unitBtn);
+      }
 
       const prevBtn = document.createElement('button');
       prevBtn.className = 'btn btn-secondary btn-small';
@@ -516,9 +561,9 @@
         }
 
         case 'weight': {
-          const unit = (typeof getTournamentWeightUnit === 'function') ? getTournamentWeightUnit() : 'kg';
+          const unit = this._getWeightUnit();
           body.innerHTML = `
-            <p class="hint">Weight classes in ${unit}. Use 999 for "open upper limit".</p>
+            <p class="hint">Weight classes in ${unit.toUpperCase()}. Use 999 for "open upper limit".</p>
             <div id="dtb-rows">
               ${this._rangeRow('W1', '-30', 0, 30)}
               ${this._rangeRow('W2', '-40', 31, 40)}
@@ -753,7 +798,7 @@
           break;
         case 'weight':
         case 'experience': {
-          const unit = node.criteriaType === 'weight' ? 'kg' : 'yrs';
+          const unit = node.criteriaType === 'weight' ? this._getWeightUnit() : 'yrs';
           criteriaFields = `
             <div class="dtb-edit-field">
               <label>${node.criteriaType === 'weight' ? 'Weight' : 'Experience'} range (${unit})</label>

@@ -2093,6 +2093,33 @@ function renderReadinessChecklist() {
             link:    'events',
             linkLabel: 'Go to Events',
         },
+        (() => {
+            // Division tree check — every non-default event needs a tree with ≥1 split
+            const nonDefault = eventTypes.filter(et => !et.isDefault);
+            if (nonDefault.length === 0) {
+                return {
+                    label:   'Division trees',
+                    detail:  'No events created yet',
+                    ok:      false,
+                    link:    'events',
+                    linkLabel: 'Go to Events',
+                };
+            }
+            const missing = nonDefault.filter(et =>
+                _msGet(_scopedKey(`divTreeBuilt_${et.id}`)) !== '1'
+            );
+            return {
+                label:   'Division trees',
+                detail:  missing.length === 0
+                    ? `All ${nonDefault.length} event${nonDefault.length !== 1 ? 's' : ''} have division trees`
+                    : missing.length === nonDefault.length
+                        ? 'No division trees built yet'
+                        : `${missing.length} event${missing.length !== 1 ? 's' : ''} missing: ${missing.map(e => e.name).join(', ')}`,
+                ok:      missing.length === 0,
+                link:    'divisions',
+                linkLabel: 'Go to Divisions',
+            };
+        })(),
         {
             label:   'Competitors registered',
             detail:  realCompetitors.length >= 2
@@ -7208,7 +7235,12 @@ async function _loadTreeForEvent(eventId, eventName, builder) {
         });
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
-        builder.loadTree(data.tree || null);
+        const tree = data.tree || null;
+        builder.loadTree(tree);
+        // Seed the local readiness cache from the server record
+        const hasTree = !!(tree && tree.children && tree.children.length > 0);
+        _msSet(_scopedKey(`divTreeBuilt_${eventId}`), hasTree ? '1' : '0');
+        renderReadinessChecklist();
     } catch (e) {
         // Fall back to empty tree (existing criteria_templates still work for auto-assign)
         builder.loadTree(null);
@@ -7219,6 +7251,12 @@ async function _loadTreeForEvent(eventId, eventName, builder) {
  * Save the division tree to the server (debounced).
  */
 function _saveTreeToServer(eventId, tree) {
+    // Cache whether this event has a built tree so the readiness check can
+    // read it synchronously without hitting the server.
+    const hasTree = !!(tree && tree.children && tree.children.length > 0);
+    _msSet(_scopedKey(`divTreeBuilt_${eventId}`), hasTree ? '1' : '0');
+    renderReadinessChecklist();
+
     clearTimeout(_saveTreeToServer._t);
     _saveTreeToServer._t = setTimeout(async () => {
         try {
@@ -23094,6 +23132,25 @@ async function saveTournamentEdit() {
 async function toggleRegistrationOpen(currentlyOpen) {
     if (!currentTournamentId) return;
     const newVal = !currentlyOpen;
+
+    // Gate: require every non-default event to have a division tree before opening
+    if (newVal) {
+        const eventTypes = db.load('eventTypes') || [];
+        const nonDefault = eventTypes.filter(et => !et.isDefault);
+        const missing = nonDefault.filter(et =>
+            _msGet(_scopedKey(`divTreeBuilt_${et.id}`)) !== '1'
+        );
+        if (missing.length > 0) {
+            const names = missing.map(e => e.name).join(', ');
+            alert(
+                `Cannot open registration yet.\n\n` +
+                `The following event${missing.length !== 1 ? 's are' : ' is'} missing a division tree:\n${names}\n\n` +
+                `Go to Divisions \u2192 Edit Divisions to build them first.`
+            );
+            return;
+        }
+    }
+
     const label = newVal ? 'open' : 'close';
     if (!confirm(`Are you sure you want to ${label} registration for this tournament?`)) return;
 
