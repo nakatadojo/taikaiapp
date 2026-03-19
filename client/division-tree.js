@@ -329,7 +329,7 @@
 
       // Position
       const rect = anchor.getBoundingClientRect();
-      menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;z-index:9999;`;
+      menu.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;z-index:10200;`;
       document.body.appendChild(menu);
       this._activeMenu = menu;
     }
