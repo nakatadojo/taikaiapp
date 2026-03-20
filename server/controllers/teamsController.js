@@ -256,7 +256,10 @@ async function updateTeam(req, res, next) {
 
     // Authorization: team creator or director (tournament owner)
     const tournRes = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
-    const isDirector = tournRes.rows[0]?.created_by === req.user?.id;
+    if (!tournRes.rows.length) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    const isDirector = tournRes.rows[0].created_by === req.user?.id;
     const isCreator = team.registered_by === req.user?.id;
     if (!isDirector && !isCreator) {
       return res.status(403).json({ error: 'Not authorized to update this team' });

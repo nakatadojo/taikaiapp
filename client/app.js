@@ -283,6 +283,14 @@ function _autoSyncIfBracketComplete(bracket) {
         complete = !!(decisive && decisive.winner);
     } else if (bracket.type === 'round-robin') {
         complete = bracket.matches?.length > 0 && bracket.matches.every(m => m.status === 'completed');
+    } else if (bracket.type === 'pool-play') {
+        if (bracket.pools?.length > 0) {
+            const allPoolMatches = bracket.pools.flatMap(p => (p.matches || []).filter(m => m.redCorner && m.blueCorner));
+            complete = allPoolMatches.length > 0 && allPoolMatches.every(m => m.status === 'completed');
+        }
+    } else if (bracket.type === 'kata-flags' || bracket.type === 'kata-points') {
+        const rounds = bracket.rounds || [];
+        complete = rounds.length > 0 && rounds.every(r => (r.performances || []).every(p => p.completed));
     }
     if (complete) {
         // Brief delay so localStorage write fully settles before sync reads it
@@ -4944,6 +4952,9 @@ function _removeCompetitorFromBrackets(deletedId) {
             (bracket.repechageA || []).forEach(healMatch);
             (bracket.repechageB || []).forEach(healMatch);
             (bracket.pools || []).forEach(p => (p.matches || []).forEach(healMatch));
+            healMatch(bracket.finals);
+            healMatch(bracket.reset);
+            healMatch(bracket.thirdPlace);
         }
         changed = true;
     });
@@ -21750,12 +21761,16 @@ function resetMatch(matchId, bracketId, matId, divisionName, eventId) {
 
     // Collect all match pools in this bracket so we can search them all.
     const allPools = [];
-    if (bracket.matches)   allPools.push(bracket.matches);
-    if (bracket.winners)   allPools.push(bracket.winners);
-    if (bracket.losers)    allPools.push(bracket.losers);
+    if (bracket.matches)    allPools.push(bracket.matches);
+    if (bracket.winners)    allPools.push(bracket.winners);
+    if (bracket.losers)     allPools.push(bracket.losers);
     if (bracket.repechageA) allPools.push(bracket.repechageA);
     if (bracket.repechageB) allPools.push(bracket.repechageB);
-    if (bracket.pools) bracket.pools.forEach(p => allPools.push(p.matches || []));
+    if (bracket.pools)      bracket.pools.forEach(p => allPools.push(p.matches || []));
+    // Include single-match slots (finals, reset, thirdPlace) as 1-element arrays
+    if (bracket.finals)     allPools.push([bracket.finals]);
+    if (bracket.reset)      allPools.push([bracket.reset]);
+    if (bracket.thirdPlace) allPools.push([bracket.thirdPlace]);
     const allMatches = allPools.flat();
 
     // Find the target match.

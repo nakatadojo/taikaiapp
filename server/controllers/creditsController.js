@@ -172,13 +172,16 @@ async function confirm(req, res, next) {
       const balance = await creditQueries.getBalance(req.user.id);
       return res.json({
         message: 'Credits already applied',
-        credits: parseInt(session.metadata.credits),
+        credits: parseInt(session.metadata.credits, 10) || 0,
         balance,
       });
     }
 
     // Add credits
-    const credits = parseInt(session.metadata.credits);
+    const credits = parseInt(session.metadata.credits, 10);
+    if (!credits || isNaN(credits) || credits <= 0) {
+      return res.status(400).json({ error: 'Invalid credit amount in session metadata' });
+    }
     const pkg = await creditPackageQueries.getBySlug(session.metadata.packageId);
     const description = `${credits} credits purchased (${pkg?.label || session.metadata.packageId})`;
 
