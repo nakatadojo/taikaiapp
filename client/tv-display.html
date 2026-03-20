@@ -59,6 +59,11 @@
         html.kata-tv-mode .tv-header {
             display: none;
         }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
         html.kata-tv-mode #tv-content {
             flex: 1;
             overflow: hidden;
@@ -559,39 +564,69 @@
                 `;
             }
 
-            // Handle winner overlay if present
+            // Handle winner overlay — show when winner set, hide when cleared
             if (state.winner) {
-                showWinnerOverlay(state.winner);
+                showWinnerOverlay(state.winner, state);
+            } else {
+                hideWinnerOverlay();
             }
         }
 
-        function showWinnerOverlay(winnerName) {
-            // Create or show winner overlay
+        let _winnerDismissTimer = null;
+
+        function hideWinnerOverlay() {
+            if (_winnerDismissTimer) { clearTimeout(_winnerDismissTimer); _winnerDismissTimer = null; }
+            const overlay = document.getElementById('winner-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function showWinnerOverlay(winnerObj, state) {
+            // winnerObj may be a plain string (legacy) or an object {name, photo, club, corner}
+            const winnerName = (winnerObj && typeof winnerObj === 'object') ? (winnerObj.name || '') : String(winnerObj || '');
+            const corner     = (winnerObj && typeof winnerObj === 'object') ? winnerObj.corner : null;
+            const photo      = (winnerObj && typeof winnerObj === 'object') ? (winnerObj.photo || null) : null;
+            const club       = (winnerObj && typeof winnerObj === 'object') ? (winnerObj.club  || null) : null;
+            const clubLogo   = (winnerObj && typeof winnerObj === 'object') ? (winnerObj.clubLogo || null) : null;
+
+            // Pick corner accent color from state settings
+            const accentColor = corner === 'red'
+                ? (state?.corner1Color || '#ff453a')
+                : corner === 'blue'
+                    ? (state?.corner2Color || '#0a84ff')
+                    : '#32d74b';
+
+            // Build or rebuild overlay each time so name/color refresh correctly
             let overlay = document.getElementById('winner-overlay');
             if (!overlay) {
                 overlay = document.createElement('div');
                 overlay.id = 'winner-overlay';
                 overlay.style.cssText = `
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100vw;
-                    height: 100vh;
-                    background: rgba(0, 0, 0, 0.95);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
+                    position: fixed; top: 0; left: 0;
+                    width: 100vw; height: 100vh;
+                    display: flex; align-items: center; justify-content: center;
                     z-index: 10000;
-                `;
-                overlay.innerHTML = `
-                    <div style="text-align: center; color: white;">
-                        <h1 style="font-size: 6em; margin: 0 0 20px 0; color: #32d74b;">🏆 WINNER 🏆</h1>
-                        <div style="font-size: 4em; font-weight: bold;">${esc(winnerName)}</div>
-                    </div>
+                    background: rgba(0,0,0,0.92);
                 `;
                 document.body.appendChild(overlay);
             }
+
+            overlay.innerHTML = `
+                <div style="text-align:center; color:white; animation: fadeInUp 0.5s ease;">
+                    ${photo ? `<img src="${esc(photo)}" style="width:180px;height:180px;border-radius:50%;object-fit:cover;border:6px solid ${esc(accentColor)};margin-bottom:24px;display:block;margin-left:auto;margin-right:auto;">` : ''}
+                    <div style="font-size:3em; font-weight:900; color:${esc(accentColor)}; margin-bottom:10px; letter-spacing:2px;">🏆 WINNER 🏆</div>
+                    <div style="font-size:4.5em; font-weight:bold; line-height:1.1;">${esc(winnerName)}</div>
+                    ${club ? `<div style="font-size:1.8em; opacity:0.7; margin-top:12px;">${esc(club)}</div>` : ''}
+                    ${clubLogo ? `<img src="${esc(clubLogo)}" style="height:60px;margin-top:16px;opacity:0.9;">` : ''}
+                </div>
+            `;
             overlay.style.display = 'flex';
+
+            // Auto-dismiss after 10 seconds (in case operator-side clear doesn't propagate in time)
+            if (_winnerDismissTimer) clearTimeout(_winnerDismissTimer);
+            _winnerDismissTimer = setTimeout(() => {
+                _winnerDismissTimer = null;
+                hideWinnerOverlay();
+            }, 10000);
         }
 
         // Auto-enter fullscreen on load

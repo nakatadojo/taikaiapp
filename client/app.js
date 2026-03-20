@@ -4493,18 +4493,16 @@ function autoGenerateBracket(eventId, divisionName, competitors, template) {
     // Save bracket
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
-    // Check if bracket already exists for this division
-    const existingBracketKey = Object.keys(brackets).find(key =>
-        brackets[key].divisionName === divisionName && brackets[key].eventId === eventId
+    // Remove ALL existing brackets for this division (use filter, not find, to clear duplicates)
+    const existingBracketKeys = Object.keys(brackets).filter(key =>
+        (brackets[key].divisionName === divisionName || brackets[key].division === divisionName) &&
+        String(brackets[key].eventId) === String(eventId)
     );
-
-    if (existingBracketKey) {
-        // Check if bracket is locked
+    for (const existingBracketKey of existingBracketKeys) {
         if (brackets[existingBracketKey].locked) {
             throw new Error(`Division "${divisionName}" bracket is locked (match in progress). Cannot add new competitors.`);
         }
-
-        delete brackets[existingBracketKey]; // Delete old bracket
+        delete brackets[existingBracketKey];
     }
 
     brackets[bracketId] = bracket;
@@ -4873,11 +4871,87 @@ async function deleteCompetitor(id) {
     });
     if (res.status === 401) { showMessage('Session expired. Please reload.', 'error'); return; }
     if (!res.ok) { showMessage('Could not delete competitor.', 'error'); return; }
+    // Capture events before removing from cache
+    const deletedEvents = comp?.events || [];
     // Update local cache
     db.save('competitors', db.load('competitors').filter(c => String(c.id) !== String(id)));
     loadCompetitors(true);
     loadDashboard();
+    // Remove from divisions and heal any brackets that referenced this competitor
+    if (deletedEvents.length) _silentlyRegenerateDivisionsForEvents(deletedEvents);
+    _removeCompetitorFromBrackets(id);
     showMessage('Competitor deleted successfully!');
+}
+
+/**
+ * After a competitor is deleted, find every bracket they appear in and either:
+ *  - Fully regenerate the bracket (if no scored matches exist), or
+ *  - Surgically remove them from bracket.competitors and replace their corner
+ *    slot in any still-pending matches with null (bye).
+ * Must be called AFTER _silentlyRegenerateDivisionsForEvents so the fresh
+ * division lists no longer include the deleted competitor.
+ */
+function _removeCompetitorFromBrackets(deletedId) {
+    const sid = String(deletedId);
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    let changed = false;
+
+    Object.entries(brackets).forEach(([key, bracket]) => {
+        // Check if this competitor appears anywhere in the bracket
+        const inCompetitors = (bracket.competitors || []).some(c => String(c.id) === sid);
+        const allMatchSlots = [
+            ...(bracket.matches || []),
+            ...(bracket.winners || []),
+            ...(bracket.losers || []),
+            ...(bracket.repechageA || []),
+            ...(bracket.repechageB || []),
+            ...((bracket.pools || []).flatMap(p => p.matches || [])),
+            bracket.finals,
+            bracket.thirdPlace,
+        ].filter(Boolean);
+        const inMatches = allMatchSlots.some(m =>
+            String(m.redCorner?.id) === sid || String(m.blueCorner?.id) === sid ||
+            String(m.winner?.id) === sid
+        );
+        if (!inCompetitors && !inMatches) return;
+
+        if (!bracketHasScoredMatches(bracket)) {
+            // Safe to fully regenerate — use the freshly-updated division list
+            const eventId = String(bracket.eventId);
+            const divName  = bracket.divisionName || bracket.division;
+            const freshComps = allDivisions[eventId]?.generated?.[divName] || [];
+            if (freshComps.length < 2) {
+                // Division now has < 2 competitors — remove the entire bracket
+                delete brackets[key];
+            } else {
+                const newBracket = regenerateBracketFromSettings(bracket, freshComps);
+                if (newBracket) brackets[key] = newBracket;
+            }
+        } else {
+            // Bracket has scored matches — surgical removal only
+            // 1. Remove from competitors roster
+            bracket.competitors = (bracket.competitors || []).filter(c => String(c.id) !== sid);
+            // 2. In pending matches, replace their corner with null (bye)
+            const healMatch = m => {
+                if (!m || m.status !== 'pending') return;
+                if (String(m.redCorner?.id) === sid)  m.redCorner  = null;
+                if (String(m.blueCorner?.id) === sid) m.blueCorner = null;
+            };
+            (bracket.matches || []).forEach(healMatch);
+            (bracket.winners || []).forEach(healMatch);
+            (bracket.losers  || []).forEach(healMatch);
+            (bracket.repechageA || []).forEach(healMatch);
+            (bracket.repechageB || []).forEach(healMatch);
+            (bracket.pools || []).forEach(p => (p.matches || []).forEach(healMatch));
+        }
+        changed = true;
+    });
+
+    if (!changed) return;
+    _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+    saveBrackets(brackets);
+    if (typeof renderBrackets === 'function') renderBrackets();
 }
 
 /**
@@ -11283,14 +11357,13 @@ function generateBrackets(event) {
             }
         }
 
-        // Remove any existing bracket for this division/event before adding the new one.
-        // Without this check, every click of "Generate Brackets" would create a second
-        // (duplicate) bracket alongside the original instead of replacing it.
-        const existingKey = Object.keys(brackets).find(k =>
+        // Remove ALL existing brackets for this division/event before adding the new one.
+        // Use filter (not find) so that if a previous bug left duplicates they are all cleared.
+        const existingKeys = Object.keys(brackets).filter(k =>
             (brackets[k].divisionName === divisionName || brackets[k].division === divisionName) &&
             String(brackets[k].eventId) === String(eventId)
         );
-        if (existingKey) {
+        for (const existingKey of existingKeys) {
             if (bracketHasScoredMatches(brackets[existingKey])) {
                 skippedNames.push(`${divisionName} (matches in progress)`);
                 return; // Do not overwrite a bracket that has scored matches
