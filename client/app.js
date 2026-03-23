@@ -16906,7 +16906,7 @@ function generateDynamicTimeline(matId, eventFilter) {
 
         html += `
             <div class="time-slot ${statusClass}" data-mat="${matId}" data-position="${idx}">
-                <div class="scheduled-division" data-division="${slot.division}" data-mat-id="${matId}" data-event-id="${slot.eventId}" style="cursor: pointer;">
+                <div class="scheduled-division" draggable="true" data-division="${slot.division}" data-mat-id="${matId}" data-event-id="${slot.eventId}" data-slot-index="${idx}" style="cursor: grab;">
                     <div style="flex: 1; min-width: 0;">
                         <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
                             <span style="font-size: 11px;">${statusIcon}</span>
@@ -17006,16 +17006,20 @@ function removeFromSchedule(matId, slotIndex) {
 }
 
 function initializeDragAndDrop() {
-    // Make division items draggable
-    const divisionItems = document.querySelectorAll('.division-item');
-    divisionItems.forEach(item => {
+    // Make unassigned pool items draggable
+    document.querySelectorAll('.division-item').forEach(item => {
         item.addEventListener('dragstart', handleScheduleDragStart);
         item.addEventListener('dragend', handleScheduleDragEnd);
     });
 
+    // Make already-scheduled slots draggable (for reordering / moving between mats)
+    document.querySelectorAll('.scheduled-division[draggable="true"]').forEach(item => {
+        item.addEventListener('dragstart', handleScheduledSlotDragStart);
+        item.addEventListener('dragend', handleScheduledSlotDragEnd);
+    });
+
     // Make time slots / drop zones droppable
-    const timeSlots = document.querySelectorAll('.time-slot');
-    timeSlots.forEach(slot => {
+    document.querySelectorAll('.time-slot').forEach(slot => {
         slot.addEventListener('dragover', handleScheduleDragOver);
         slot.addEventListener('drop', handleScheduleDrop);
         slot.addEventListener('dragleave', handleScheduleDragLeave);
@@ -17024,12 +17028,34 @@ function initializeDragAndDrop() {
 
 let draggedDivision = null;
 
+// Drag from the unassigned pool
 function handleScheduleDragStart(e) {
     draggedDivision = {
         name: this.dataset.division,
-        eventId: this.dataset.event
+        eventId: this.dataset.event,
+        isScheduled: false
     };
     this.style.opacity = '0.5';
+}
+
+// Drag from an already-scheduled slot (reorder / move between mats)
+function handleScheduledSlotDragStart(e) {
+    draggedDivision = {
+        name: this.dataset.division,
+        eventId: this.dataset.eventId,
+        sourceMatId: parseInt(this.dataset.matId),
+        sourceSlotIndex: parseInt(this.dataset.slotIndex),
+        isScheduled: true
+    };
+    e.dataTransfer.effectAllowed = 'move';
+    const slot = this.closest('.time-slot');
+    if (slot) slot.style.opacity = '0.4';
+}
+
+function handleScheduledSlotDragEnd(e) {
+    const slot = this.closest('.time-slot');
+    if (slot) slot.style.opacity = '1';
+    draggedDivision = null;
 }
 
 function handleScheduleDragEnd(e) {
@@ -17053,49 +17079,75 @@ function handleScheduleDrop(e) {
 
     const matId = parseInt(e.currentTarget.dataset.mat);
     const position = parseInt(e.currentTarget.dataset.position);
-
-    // Save to schedule using new data structure
     const schedule = loadMatScheduleData();
-    if (!schedule[matId]) {
-        schedule[matId] = [];
-    }
-
-    // Check if this division+event is already scheduled on this mat
-    const existingIdx = schedule[matId].findIndex(
-        s => s.division === draggedDivision.name && String(s.eventId) === String(draggedDivision.eventId)
-    );
-    if (existingIdx >= 0) {
-        showMessage('Division already scheduled on this mat', 'warning');
-        return;
-    }
-
-    // Create new slot entry
-    const newSlot = {
-        order: position,
-        division: draggedDivision.name,
-        eventId: draggedDivision.eventId,
-        estimatedDuration: null,
-        durationOverride: null,
-        estimatedStartTime: null,
-        estimatedEndTime: null,
-        actualStartTime: null,
-        actualEndTime: null,
-        status: 'upcoming'
-    };
-
-    // Insert at position
-    schedule[matId].splice(position, 0, newSlot);
-
-    // Re-index orders
-    schedule[matId].forEach((slot, idx) => { slot.order = idx; });
-
-    saveMatScheduleData(schedule);
-    recalculateScheduleTimes();
-    loadScheduleGrid();
+    if (!schedule[matId]) schedule[matId] = [];
 
     const mats = db.load('mats');
     const matName = mats.find(m => m.id == matId)?.name || `Mat ${matId}`;
-    showMessage(`${draggedDivision.name} scheduled on ${matName}`);
+
+    if (draggedDivision.isScheduled) {
+        // ── Reorder / move between mats ──────────────────────────────────────
+        const srcMat = draggedDivision.sourceMatId;
+        const srcIdx = draggedDivision.sourceSlotIndex;
+
+        if (srcMat === matId && srcIdx === position) return; // dropped on itself
+
+        // Pull the slot out of its current position
+        const srcSlots = schedule[srcMat] || [];
+        const [movedSlot] = srcSlots.splice(srcIdx, 1);
+        if (!movedSlot) return;
+
+        // Adjust target position when moving down within the same mat
+        let targetPos = position;
+        if (srcMat === matId && position > srcIdx) targetPos = position - 1;
+
+        if (!schedule[matId]) schedule[matId] = [];
+        schedule[matId].splice(targetPos, 0, movedSlot);
+
+        // Re-index both mats
+        (schedule[srcMat] || []).forEach((s, i) => s.order = i);
+        if (matId !== srcMat) (schedule[matId] || []).forEach((s, i) => s.order = i);
+
+        saveMatScheduleData(schedule);
+        recalculateScheduleTimes();
+        loadScheduleGrid();
+
+        if (srcMat !== matId) {
+            showMessage(`${draggedDivision.name} moved to ${matName}`);
+        }
+    } else {
+        // ── From unassigned pool ──────────────────────────────────────────────
+        // Check if this division+event is already scheduled on this mat
+        const existingIdx = schedule[matId].findIndex(
+            s => s.division === draggedDivision.name && String(s.eventId) === String(draggedDivision.eventId)
+        );
+        if (existingIdx >= 0) {
+            showMessage('Division already scheduled on this mat', 'warning');
+            return;
+        }
+
+        const newSlot = {
+            order: position,
+            division: draggedDivision.name,
+            eventId: draggedDivision.eventId,
+            estimatedDuration: null,
+            durationOverride: null,
+            estimatedStartTime: null,
+            estimatedEndTime: null,
+            actualStartTime: null,
+            actualEndTime: null,
+            status: 'upcoming'
+        };
+
+        schedule[matId].splice(position, 0, newSlot);
+        schedule[matId].forEach((slot, idx) => { slot.order = idx; });
+
+        saveMatScheduleData(schedule);
+        recalculateScheduleTimes();
+        loadScheduleGrid();
+
+        showMessage(`${draggedDivision.name} scheduled on ${matName}`);
+    }
 }
 
 // Legacy compatibility: removeFromSlot still works (used by queue management)
