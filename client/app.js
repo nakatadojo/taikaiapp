@@ -4889,14 +4889,15 @@ function loadCompetitors(skipSync = false) {
             ? `<span style="background:rgba(245,158,11,0.2);color:#f59e0b;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-right:5px;vertical-align:middle;">TEST</span>`
             : '';
 
-        // Approval status — only director-added competitors have this concept.
-        // Stripe registrations always arrive approved.
-        const isDirector = comp.source === 'director';
+        // Approval status — show toggle for any director-managed competitor
+        // (director-added, smoothcomp-import, csv-import, etc.).
+        // Stripe/public registrations are always treated as approved.
+        const isDirectorManaged = comp.source !== 'registration';
         const isApproved = comp.approved === true || comp.source === 'registration';
         const isBracketLocked = comp.bracket_placed === true && !comp.is_test;
 
-        let approvalCell = '-'; // Stripe registrations: no toggle needed
-        if (isDirector) {
+        let approvalCell = '-'; // public registrations: no toggle needed
+        if (isDirectorManaged) {
             if (isApproved) {
                 const lockIcon = isBracketLocked ? ' 🔒' : '';
                 const unapproveBtn = isBracketLocked
