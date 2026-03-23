@@ -82,7 +82,19 @@ function matchCriteria(competitor, criteria) {
         break;
 
       case 'weight': {
-        const weight = competitor.weight || 0;
+        let weight = competitor.weight || 0;
+        // Convert competitor weight to the unit used by this criteria's ranges.
+        // competitor.weight is stored in tournamentWeightUnit; criteria.weightUnit
+        // is the unit the tree ranges were authored in.
+        const fromUnit = competitor.tournamentWeightUnit || 'kg';
+        // Old templates (saved before weightUnit support) have no weightUnit and
+        // implicitly use kg — so default to 'kg', not fromUnit.
+        const toUnit   = criteria.weightUnit || 'kg';
+        if (fromUnit !== toUnit && weight) {
+          weight = fromUnit === 'kg'
+            ? weight * 2.20462   // kg → lbs
+            : weight * 0.453592; // lbs → kg
+        }
         if (weight >= range.min && weight <= range.max) {
           return range.label;
         }
@@ -150,7 +162,7 @@ function matchCriteria(competitor, criteria) {
  * @param {Date|string} tournamentDate — tournament date for age calculation
  * @returns {string|null} — Division name (e.g., "Kids Male Beginner") or null if no match
  */
-function assignDivision(profile, templates, tournamentDate) {
+function assignDivision(profile, templates, tournamentDate, tournamentWeightUnit = 'kg') {
   if (!templates || !Array.isArray(templates) || templates.length === 0) {
     return null;
   }
@@ -166,6 +178,7 @@ function assignDivision(profile, templates, tournamentDate) {
     belt_rank: profile.belt_rank,
     weight: profile.weight ? parseFloat(profile.weight) : 0,
     experience_level: profile.experience_level,
+    tournamentWeightUnit,
   };
 
   // Try each template (AAU has multiple templates for different age tiers)
@@ -186,7 +199,7 @@ function assignDivision(profile, templates, tournamentDate) {
     }
 
     if (allMatched && labels.length > 0) {
-      return labels.join(' ');
+      return template.name;
     }
   }
 

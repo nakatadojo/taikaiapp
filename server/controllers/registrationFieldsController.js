@@ -22,7 +22,7 @@ async function getRegistrationFields(req, res, next) {
 
     // 1. Read tournament to get require_weight_at_registration
     const tournamentResult = await pool.query(
-      'SELECT require_weight_at_registration FROM tournaments WHERE id = $1',
+      'SELECT require_weight_at_registration, weight_unit FROM tournaments WHERE id = $1',
       [id]
     );
 
@@ -102,7 +102,7 @@ async function getRegistrationFields(req, res, next) {
       beltRankOptions,
       showGender,
       showWeight: showWeightFromCriteria || !!tournament.require_weight_at_registration,
-      weightUnit: 'kg',
+      weightUnit: tournament.weight_unit || 'kg',
     });
   } catch (err) {
     next(err);

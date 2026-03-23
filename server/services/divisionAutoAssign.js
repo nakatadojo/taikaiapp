@@ -22,9 +22,10 @@ const { broadcastDivisionUpdate } = require('../websocket');
  * @returns {Promise<Object>} updatedDivisions
  */
 async function runAutoAssign(tournamentId) {
-  const t = await pool.query('SELECT date FROM tournaments WHERE id = $1', [tournamentId]);
+  const t = await pool.query('SELECT date, weight_unit FROM tournaments WHERE id = $1', [tournamentId]);
   if (!t.rows[0]) throw new Error('Tournament not found');
   const tournamentDate = t.rows[0].date;
+  const tournamentWeightUnit = t.rows[0].weight_unit || 'kg';
 
   // Load ALL competitors — approved and unapproved both appear in divisions.
   // Approval status controls bracket inclusion, not division visibility.
@@ -49,18 +50,38 @@ async function runAutoAssign(tournamentId) {
     const unassignedGroup = []; // competitors registered but not matching any template
 
     for (const competitor of competitors) {
+      // Check if competitor is registered for this event.
+      // Supports two formats:
+      //   1. UUID string — legacy / registration-form competitors
+      //   2. Object with `discipline` — Smoothcomp-imported competitors
+      const compEvents = competitor.events || [];
+      const eventTypeNorm = event.event_type.toLowerCase().replace(/-/g, '');
+
+      function matchesEvent(e) {
+        if (!e) return false;
+        if (typeof e === 'string') return String(e) === String(event.id);
+        const disc = (e.discipline || '').toLowerCase().replace(/\s+/g, '');
+        if (disc === eventTypeNorm) return true;
+        if (disc === 'kobudo' && eventTypeNorm === 'weapons') return true;
+        if (disc === 'teamkata' && eventTypeNorm === 'teamkata') return true;
+        return false;
+      }
+
+      if (!compEvents.some(matchesEvent)) continue;
+
+      // For object-format events, use the experience from the specific event entry
+      const matchedEvent = compEvents.find(e => typeof e === 'object' && matchesEvent(e));
+
       const profile = {
         date_of_birth: competitor.dateOfBirth || competitor.date_of_birth || competitor.dob,
         gender: competitor.gender,
         belt_rank: competitor.rank || competitor.belt_rank,
         weight: competitor.weight,
-        experience_level: competitor.experience || competitor.experience_level,
+        // Prefer per-event experience (object format) over top-level field
+        experience_level: (matchedEvent && matchedEvent.experience)
+          || competitor.experience
+          || competitor.experience_level,
       };
-
-      // Check if competitor is registered for this event
-      const compEvents = competitor.events || [];
-      const isRegisteredForEvent = compEvents.some(eid => String(eid) === String(event.id));
-      if (!isRegisteredForEvent) continue;
 
       const record = {
         id: competitor.id,
@@ -75,7 +96,7 @@ async function runAutoAssign(tournamentId) {
         approved: competitor.approved !== false, // true for approved/null, false for explicitly unapproved
       };
 
-      const divisionName = assignDivision(profile, templates, tournamentDate);
+      const divisionName = assignDivision(profile, templates, tournamentDate, tournamentWeightUnit);
       if (divisionName) {
         if (!divisionGroups[divisionName]) divisionGroups[divisionName] = [];
         divisionGroups[divisionName].push(record);

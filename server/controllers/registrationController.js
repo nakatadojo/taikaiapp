@@ -1245,12 +1245,13 @@ async function createRegistrationsFromCart(
         [comp.profileId]
       );
 
-      // Load tournament date for age calculation
+      // Load tournament date and weight unit for age calculation and weight matching
       const tournamentRow = await client.query(
-        'SELECT date FROM tournaments WHERE id = $1',
+        'SELECT date, weight_unit FROM tournaments WHERE id = $1',
         [tournamentId]
       );
       const tournamentDate = tournamentRow.rows[0]?.date;
+      const tournamentWeightUnit = tournamentRow.rows[0]?.weight_unit || 'kg';
 
       // Create registration events with auto-division assignment
       for (let i = 0; i < comp.events.length; i++) {
@@ -1268,7 +1269,7 @@ async function createRegistrationsFromCart(
             const templates = typeof eventData.criteria_templates === 'string'
               ? JSON.parse(eventData.criteria_templates)
               : eventData.criteria_templates;
-            divisionName = assignDivision(profile.rows[0], templates, tournamentDate);
+            divisionName = assignDivision(profile.rows[0], templates, tournamentDate, tournamentWeightUnit);
           }
         }
 
@@ -1330,12 +1331,13 @@ async function createRegistrationsFromCartUnpaid(
         [comp.profileId]
       );
 
-      // Load tournament date for age calculation
+      // Load tournament date and weight unit for age calculation and weight matching
       const tournamentRow = await client.query(
-        'SELECT date FROM tournaments WHERE id = $1',
+        'SELECT date, weight_unit FROM tournaments WHERE id = $1',
         [tournamentId]
       );
       const tournamentDate = tournamentRow.rows[0]?.date;
+      const tournamentWeightUnit = tournamentRow.rows[0]?.weight_unit || 'kg';
 
       for (let i = 0; i < comp.events.length; i++) {
         const evt = comp.events[i];
@@ -1351,7 +1353,7 @@ async function createRegistrationsFromCartUnpaid(
             const templates = typeof eventData.criteria_templates === 'string'
               ? JSON.parse(eventData.criteria_templates)
               : eventData.criteria_templates;
-            divisionName = assignDivision(profile.rows[0], templates, tournamentDate);
+            divisionName = assignDivision(profile.rows[0], templates, tournamentDate, tournamentWeightUnit);
           }
         }
 

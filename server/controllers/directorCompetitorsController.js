@@ -241,6 +241,9 @@ async function _findStartedDivisionForCompetitor(competitor, tournamentId, tourn
   const compEvents = competitor.events || [];
   if (compEvents.length === 0) return null;
 
+  const tRow = await pool.query('SELECT weight_unit FROM tournaments WHERE id = $1', [tournamentId]);
+  const tournamentWeightUnit = tRow.rows[0]?.weight_unit || 'kg';
+
   const profile = {
     date_of_birth: competitor.dob || competitor.dateOfBirth || competitor.date_of_birth,
     gender: competitor.gender,
@@ -258,7 +261,7 @@ async function _findStartedDivisionForCompetitor(competitor, tournamentId, tourn
     const templates = event.criteria_templates;
     if (!templates || !Array.isArray(templates) || templates.length === 0) continue;
 
-    const divisionName = assignDivision(profile, templates, tournamentDate);
+    const divisionName = assignDivision(profile, templates, tournamentDate, tournamentWeightUnit);
     if (!divisionName) continue;
 
     const bracketResult = await pool.query(
