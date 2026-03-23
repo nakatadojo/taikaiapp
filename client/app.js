@@ -11792,9 +11792,10 @@ async function generateBracketsForAllDivisions() {
             return true;
         });
 
-        if (competitors.length < 2) {
+        const minForType = BRACKET_MINIMUMS[bracketType] ?? 2;
+        if (competitors.length < minForType) {
             skippedCount++;
-            return; // Skip divisions with less than 2 competitors
+            return; // Skip divisions below the minimum for this bracket type
         }
 
         // Apply seeding
@@ -11842,7 +11843,8 @@ async function generateBracketsForAllDivisions() {
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 
     hideBracketGenerator();
-    showMessage(`Generated ${successCount} brackets successfully! ${skippedCount > 0 ? `(Skipped ${skippedCount} divisions with less than 2 competitors)` : ''}`);
+    const minForType = BRACKET_MINIMUMS[bracketType] ?? 2;
+    showMessage(`Generated ${successCount} brackets successfully! ${skippedCount > 0 ? `(Skipped ${skippedCount} divisions with fewer than ${minForType} approved competitors for ${bracketType})` : ''}`);
 
     // Navigate to schedule view so the user can immediately see unassigned divisions
     document.querySelector('[data-view="schedule"]')?.click();
