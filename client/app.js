@@ -11411,23 +11411,29 @@ function _updateBracketDivisionFlags() {
     let flaggedCount = 0;
     checklist.querySelectorAll('label[data-div-name]').forEach(label => {
         const count = parseInt(label.dataset.compCount) || 0;
-        const isFlagged = bracketType && count < min;
-        if (isFlagged) {
+        const isSolo = count === 1;
+        const isFlagged = bracketType && count < min && !isSolo;
+        label.querySelector('.bracket-flag-badge')?.remove();
+        if (isSolo) {
+            label.style.opacity = '';
+            label.title = 'Solo competitor — will be announced as automatic winner';
+            const badge = document.createElement('span');
+            badge.className = 'bracket-flag-badge';
+            badge.style.cssText = 'font-size:0.75em; color: #a78bfa; margin-left: auto; white-space: nowrap;';
+            badge.textContent = '👤 solo winner';
+            label.appendChild(badge);
+        } else if (isFlagged) {
             label.style.opacity = '0.55';
             label.title = `Needs ${min}+ approved competitors for ${bracketType} (has ${count})`;
-            // Add warning badge if not already present
-            if (!label.querySelector('.bracket-flag-badge')) {
-                const badge = document.createElement('span');
-                badge.className = 'bracket-flag-badge';
-                badge.style.cssText = 'font-size:0.75em; color: #f5a623; margin-left: auto; white-space: nowrap;';
-                badge.textContent = `⚠ needs ${min}+`;
-                label.appendChild(badge);
-            }
+            const badge = document.createElement('span');
+            badge.className = 'bracket-flag-badge';
+            badge.style.cssText = 'font-size:0.75em; color: #f5a623; margin-left: auto; white-space: nowrap;';
+            badge.textContent = `⚠ needs ${min}+`;
+            label.appendChild(badge);
             flaggedCount++;
         } else {
             label.style.opacity = '';
             label.title = '';
-            label.querySelector('.bracket-flag-badge')?.remove();
         }
     });
 
@@ -11792,6 +11798,19 @@ async function generateBracketsForAllDivisions() {
             return true;
         });
 
+        // Solo competitor — always generate a bracket so they appear on scoreboard as winner
+        if (competitors.length === 1) {
+            const bracket = generateSoloBracket(competitors[0], divisionName, eventId);
+            bracket.scoreboardConfigId = scoreboardType;
+            bracket.scoreboardConfig = scoreboardConfig;
+            const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+            const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
+            brackets[bracketId] = bracket;
+            saveBrackets(brackets);
+            successCount++;
+            return;
+        }
+
         const minForType = BRACKET_MINIMUMS[bracketType] ?? 2;
         if (competitors.length < minForType) {
             skippedCount++;
@@ -11961,6 +11980,17 @@ async function generateBrackets(event) {
                 seenIds.add(c.id);
                 return true;
             });
+        }
+
+        // Solo competitor — generate a bracket so they appear on scoreboard as automatic winner
+        if (competitors.length === 1) {
+            const soloBracket = generateSoloBracket(competitors[0], divisionName, eventId);
+            soloBracket.scoreboardConfigId = scoreboardType;
+            soloBracket.scoreboardConfig   = scoreboardConfig;
+            const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
+            brackets[bracketId] = soloBracket;
+            successCount++;
+            return;
         }
 
         if (competitors.length < 2) {
@@ -13193,6 +13223,35 @@ function generateRankingListBracket(competitors, divisionName, eventId) {
     };
 
     return bracket;
+}
+
+/**
+ * Solo competitor bracket — exactly 1 approved competitor.
+ * They perform, are announced as the automatic winner, and appear on the scoreboard.
+ * Uses ranking-list format so they show up in results as 1st place.
+ */
+function generateSoloBracket(competitor, divisionName, eventId) {
+    return {
+        id: generateUniqueId(),
+        type: 'ranking-list',
+        solo: true,
+        division: divisionName,
+        divisionName: divisionName,
+        eventId: eventId,
+        competitors: [competitor],
+        createdAt: new Date().toISOString(),
+        status: 'completed',
+        entries: [{
+            competitor: competitor,
+            performanceOrder: 1,
+            score: null,
+            rank: 1,
+            place: 1,
+            status: 'scored',
+            autoWinner: true,
+        }],
+        matches: [],
+    };
 }
 
 function generateKataFlagsBracket(competitors, divisionName, eventId) {
