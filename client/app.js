@@ -4608,6 +4608,43 @@ function generateMatchesForBracket(bracket) {
         bracket.matches = matches;
         bracket.rounds = competitors.length - 1;
 
+    } else if (bracket.type === 'round-robin-pools') {
+        // Round Robin + Elimination: pool phase then single-elimination final
+        // Phase 1 is identical to pool-play; advancersPerPool and eliminationRounds
+        // are resolved after pool play completes (placeholder finals slots here).
+        bracket.type = 'round-robin-pools'; // keep marker
+        // Fall through to pool-play logic by duplicating it
+        const rrpCompetitors = competitors;
+        const rrpTotal = rrpCompetitors.length;
+        let rrpNumPools = 1;
+        if (rrpTotal > 12) rrpNumPools = 4;
+        else if (rrpTotal > 8) rrpNumPools = 3;
+        else if (rrpTotal > 5) rrpNumPools = 2;
+        const rrpPools = Array.from({ length: rrpNumPools }, () => []);
+        let rrpIdx = 0, rrpDir = 1;
+        rrpCompetitors.forEach(c => {
+            rrpPools[rrpIdx].push(c);
+            rrpIdx += rrpDir;
+            if (rrpIdx >= rrpNumPools || rrpIdx < 0) { rrpDir *= -1; rrpIdx += rrpDir; }
+        });
+        bracket.pools = [];
+        bracket.matches = [];
+        let rrpMatchId = 1;
+        rrpPools.forEach((poolComps, pi) => {
+            const poolMatches = [];
+            for (let i = 0; i < poolComps.length; i++) {
+                for (let j = i + 1; j < poolComps.length; j++) {
+                    const m = { id: `pool${pi+1}_match${rrpMatchId++}`, redCorner: poolComps[i], blueCorner: poolComps[j], winner: null, score1: null, score2: null, status: 'pending' };
+                    poolMatches.push(m); bracket.matches.push(m);
+                }
+            }
+            bracket.pools.push({ poolNumber: pi+1, poolName: String.fromCharCode(65+pi), competitors: poolComps, matches: poolMatches, standings: poolComps.map(c => ({ competitor: c, wins: 0, losses: 0, points: 0, rank: null })) });
+        });
+        // Elimination phase placeholder — populated once pool standings are finalized
+        bracket.eliminationBracket = null;
+        bracket.advancersPerPool = 2;
+        bracket.rounds = 1;
+
     } else if (bracket.type === 'pool-play') {
         // Pool play: divide into pools, round-robin within each pool
         const totalCompetitors = competitors.length;
@@ -11192,6 +11229,9 @@ function _populateBracketChecklist(names, generated) {
     const withComps = names.filter(n => n !== '__unassigned__' && (generated[n] || []).filter(c => c.approved !== false).length >= 2).length;
     const progress = document.getElementById('bracket-division-progress');
     if (progress) progress.textContent = `— ${total} total, ${withComps} ready`;
+
+    // Apply flagging for current bracket type
+    _updateBracketDivisionFlags();
 }
 
 /**
@@ -11240,6 +11280,75 @@ function setBracketDivisionChecks(checked) {
         if (label.style.display !== 'none') {
             const cb = label.querySelector('input[type="checkbox"]');
             if (cb) cb.checked = checked;
+        }
+    });
+}
+
+// Minimum competitor counts per bracket type
+const BRACKET_MINIMUMS = {
+    'single-elimination':  2,
+    'double-elimination':  3,
+    'repechage':           4,
+    'round-robin':         2,
+    'pool-play':           4,
+    'round-robin-pools':   4,
+    'ranking-list':        1,
+};
+
+/**
+ * Re-scan the division checklist and flag rows below the minimum for the
+ * selected bracket type. Updates each row's visual state and shows/hides
+ * the "flagged divisions" summary bar.
+ */
+function _updateBracketDivisionFlags() {
+    const bracketType = document.getElementById('bracket-type')?.value;
+    const min = BRACKET_MINIMUMS[bracketType] ?? 2;
+    const checklist = document.getElementById('bracket-division-checklist');
+    if (!checklist) return;
+
+    let flaggedCount = 0;
+    checklist.querySelectorAll('label[data-div-name]').forEach(label => {
+        const count = parseInt(label.dataset.compCount) || 0;
+        const isFlagged = bracketType && count < min;
+        if (isFlagged) {
+            label.style.opacity = '0.55';
+            label.title = `Needs ${min}+ approved competitors for ${bracketType} (has ${count})`;
+            // Add warning badge if not already present
+            if (!label.querySelector('.bracket-flag-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'bracket-flag-badge';
+                badge.style.cssText = 'font-size:0.75em; color: #f5a623; margin-left: auto; white-space: nowrap;';
+                badge.textContent = `⚠ needs ${min}+`;
+                label.appendChild(badge);
+            }
+            flaggedCount++;
+        } else {
+            label.style.opacity = '';
+            label.title = '';
+            label.querySelector('.bracket-flag-badge')?.remove();
+        }
+    });
+
+    const bar = document.getElementById('bracket-flags-summary');
+    if (bar) {
+        if (flaggedCount > 0 && bracketType) {
+            bar.style.display = 'flex';
+            const msg = bar.querySelector('#bracket-flags-msg');
+            if (msg) msg.textContent = `${flaggedCount} division${flaggedCount > 1 ? 's' : ''} below ${min}-competitor minimum for ${bracketType}`;
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+}
+
+function _uncheckFlaggedDivisions() {
+    const bracketType = document.getElementById('bracket-type')?.value;
+    const min = BRACKET_MINIMUMS[bracketType] ?? 2;
+    document.querySelectorAll('#bracket-division-checklist label[data-div-name]').forEach(label => {
+        const count = parseInt(label.dataset.compCount) || 0;
+        if (count < min) {
+            const cb = label.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = false;
         }
     });
 }
@@ -11310,6 +11419,7 @@ function updateBracketTypeOptions() {
             <option value="double-elimination">Double Elimination</option>
             <option value="repechage">Repechage</option>
             <option value="round-robin">Round Robin</option>
+            <option value="round-robin-pools">Round Robin + Elimination</option>
         `;
     } else if (baseType === 'kata-points' || baseType === 'kobudo') {
         options = `
@@ -11537,8 +11647,9 @@ function generateBracketsForAllDivisions() {
             bracket = generateRepechageBracket(competitors, divisionName, eventId, matchDuration);
         } else if (bracketType === 'round-robin') {
             bracket = generateRoundRobinBracket(competitors, divisionName, eventId, matchDuration);
-        } else if (bracketType === 'pool-play') {
+        } else if (bracketType === 'pool-play' || bracketType === 'round-robin-pools') {
             bracket = generatePoolPlayBracket(competitors, divisionName, eventId, matchDuration);
+            if (bracket) bracket.type = bracketType; // preserve the subtype
         } else if (bracketType === 'ranking-list') {
             bracket = generateRankingListBracket(competitors, divisionName, eventId);
         }
