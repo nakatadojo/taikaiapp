@@ -556,7 +556,7 @@ document.getElementById('public-competitor-form')?.addEventListener('submit', as
         dateOfBirth: new Date(dobValue).toISOString(),
         weight: parseFloat(document.getElementById('pub-weight').value),
         rank: document.getElementById('pub-rank').value,
-        experience: parseFloat(document.getElementById('pub-experience').value),
+        experience: (() => { const el = document.getElementById('pub-experience'); if (!el) return null; if (el.tagName === 'SELECT') return el.value || null; const v = parseFloat(el.value); return isNaN(v) ? null : v; })(),
         gender: document.getElementById('pub-gender').value,
         club: document.getElementById('pub-club').value,
         email: document.getElementById('pub-email').value,

@@ -50,7 +50,7 @@ async function runAutoAssign(tournamentId) {
 
     for (const competitor of competitors) {
       const profile = {
-        date_of_birth: competitor.dateOfBirth || competitor.date_of_birth,
+        date_of_birth: competitor.dateOfBirth || competitor.date_of_birth || competitor.dob,
         gender: competitor.gender,
         belt_rank: competitor.rank || competitor.belt_rank,
         weight: competitor.weight,

@@ -1360,8 +1360,15 @@ async function _loadDivisionsFromServer() {
             if (!currentDivisions[eventId]) {
                 currentDivisions[eventId] = { templates: [], generated: {} };
             }
-            // Server generated is authoritative for the division groupings
-            currentDivisions[eventId].generated = serverGenerated[eventId]?.generated || serverGenerated[eventId] || {};
+            // Server generated is authoritative for the division groupings.
+            // Normalize: server stores divisions as {name, competitors, createdAt} objects
+            // but the client expects plain arrays of competitors.
+            const rawGenerated = serverGenerated[eventId]?.generated || serverGenerated[eventId] || {};
+            const normalizedGenerated = {};
+            for (const [divName, divData] of Object.entries(rawGenerated)) {
+                normalizedGenerated[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
+            }
+            currentDivisions[eventId].generated = normalizedGenerated;
             if (serverGenerated[eventId]?.updatedAt) {
                 currentDivisions[eventId].updatedAt = serverGenerated[eventId].updatedAt;
             }
@@ -3751,7 +3758,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         dateOfBirth: dateOfBirth,
         weight: parseFloat(document.getElementById('weight').value),
         rank: document.getElementById('rank').value,
-        experience: parseFloat(document.getElementById('experience').value),
+        experience: (() => { const el = document.getElementById('experience'); if (!el) return null; if (el.tagName === 'SELECT') return el.value || null; const v = parseFloat(el.value); return isNaN(v) ? null : v; })(),
         gender: document.getElementById('gender').value,
         email: _val('comp-email') || null,
         phone: _val('comp-phone') || null,
@@ -4301,7 +4308,9 @@ function competitorMatchesCriterion(competitor, competitorAge, criterion) {
 
         case 'experience':
             return criterion.ranges.some(range =>
-                competitor.experience >= range.min && competitor.experience <= range.max
+                typeof competitor.experience === 'string'
+                    ? (competitor.experience || '').toLowerCase() === (range.label || '').toLowerCase()
+                    : competitor.experience >= range.min && competitor.experience <= range.max
             );
 
         default:
@@ -4428,14 +4437,15 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
 
             case 'experience':
                 const expRange = criterion.ranges.find(r =>
-                    competitor.experience >= r.min && competitor.experience <= r.max
+                    typeof competitor.experience === 'string'
+                        ? (competitor.experience || '').toLowerCase() === (r.label || '').toLowerCase()
+                        : competitor.experience >= r.min && competitor.experience <= r.max
                 );
                 if (expRange) {
                     parts.push(expRange.label);
                 } else {
-                    // Competitor experience doesn't match any range
-                    parts.push(`${competitor.experience || 0} yrs exp`);
-                    console.warn(`Competitor ${competitor.firstName} ${competitor.lastName} experience ${competitor.experience} years doesn't match any experience range`);
+                    parts.push(typeof competitor.experience === 'string' ? competitor.experience : `${competitor.experience || 0} yrs exp`);
+                    console.warn(`Competitor ${competitor.firstName} ${competitor.lastName} experience "${competitor.experience}" doesn't match any experience range`);
                 }
                 break;
         }
@@ -5413,7 +5423,7 @@ function parseAndPreviewCSV(text) {
 
         // ── Numeric field validation ──
         if (row.weight     && isNaN(parseFloat(row.weight)))     errors.push('Weight must be a number');
-        if (row.experience && isNaN(parseFloat(row.experience))) errors.push('Experience must be a number');
+        // Experience can be a numeric value (years) or a label string (e.g. "Beginner")
 
         // ── Payment status ──
         const psRaw = (row.paymentstatus || '').toLowerCase();
@@ -5465,7 +5475,7 @@ function parseAndPreviewCSV(text) {
             gender:        genderNorm,
             weight:        row.weight     ? parseFloat(row.weight)     : null,
             rank:          row.rank       || null,
-            experience:    row.experience ? parseFloat(row.experience) : null,
+            experience:    row.experience ? (isNaN(parseFloat(row.experience)) ? row.experience : parseFloat(row.experience)) : null,
             club:          row.club,
             events:        matchedEventIds,
             paymentStatus: validPaymentStatuses.includes(psRaw) ? psRaw : 'unpaid',
@@ -9784,7 +9794,18 @@ async function triggerServerAutoAssign() {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { generatedDivisions } = await res.json();
-        _msSet(_scopedKey('divisions'), JSON.stringify(generatedDivisions));
+        // Normalize: server stores each division as {name, competitors, createdAt};
+        // client expects plain arrays of competitors.
+        const normalized = {};
+        for (const [evId, evData] of Object.entries(generatedDivisions || {})) {
+            const rawGen = evData?.generated || evData || {};
+            const normGen = {};
+            for (const [divName, divData] of Object.entries(rawGen)) {
+                normGen[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
+            }
+            normalized[evId] = { ...evData, generated: normGen };
+        }
+        _msSet(_scopedKey('divisions'), JSON.stringify(normalized));
         setSyncIndicator('ok');
         showMessage('Divisions updated.', 'success');
         if (typeof loadDivisionsView === 'function') loadDivisionsView();
@@ -9962,7 +9983,9 @@ function _matchesLeafCriterion(comp, criterion) {
             return compW >= r.min && compW <= r.max;
         }
         case 'experience':
-            return (comp.experience || 0) >= r.min && (comp.experience || 0) <= r.max;
+            return typeof comp.experience === 'string'
+                ? (comp.experience || '').toLowerCase() === (r.label || '').toLowerCase()
+                : (comp.experience || 0) >= r.min && (comp.experience || 0) <= r.max;
         case 'custom':
             return false; // custom = manual placement only, never auto-matched
         default:

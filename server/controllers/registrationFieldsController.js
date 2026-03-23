@@ -56,32 +56,41 @@ async function getRegistrationFields(req, res, next) {
       const templates = row.criteria_templates;
       if (!Array.isArray(templates)) continue;
 
-      for (const criteria of templates) {
-        if (!criteria || typeof criteria !== 'object') continue;
-        const type = criteria.type;
+      for (const template of templates) {
+        if (!template || typeof template !== 'object') continue;
+        // Each template has a nested `criteria` array; fall back to treating
+        // the item itself as a flat criterion for legacy/flat formats.
+        const criteriaList = Array.isArray(template.criteria)
+          ? template.criteria
+          : [template];
 
-        if (type === 'experience') {
-          showExperienceLevel = true;
-          const options = _extractOptions(criteria);
-          for (const opt of options) {
-            if (!seenExperience.has(opt)) {
-              seenExperience.add(opt);
-              experienceLevelOptions.push(opt);
+        for (const criteria of criteriaList) {
+          if (!criteria || typeof criteria !== 'object') continue;
+          const type = criteria.type;
+
+          if (type === 'experience') {
+            showExperienceLevel = true;
+            const options = _extractOptions(criteria);
+            for (const opt of options) {
+              if (!seenExperience.has(opt)) {
+                seenExperience.add(opt);
+                experienceLevelOptions.push(opt);
+              }
             }
-          }
-        } else if (type === 'rank') {
-          showBeltRank = true;
-          const options = _extractOptions(criteria);
-          for (const opt of options) {
-            if (!seenRank.has(opt)) {
-              seenRank.add(opt);
-              beltRankOptions.push(opt);
+          } else if (type === 'rank') {
+            showBeltRank = true;
+            const options = _extractOptions(criteria);
+            for (const opt of options) {
+              if (!seenRank.has(opt)) {
+                seenRank.add(opt);
+                beltRankOptions.push(opt);
+              }
             }
+          } else if (type === 'gender') {
+            showGender = true;
+          } else if (type === 'weight') {
+            showWeightFromCriteria = true;
           }
-        } else if (type === 'gender') {
-          showGender = true;
-        } else if (type === 'weight') {
-          showWeightFromCriteria = true;
         }
       }
     }

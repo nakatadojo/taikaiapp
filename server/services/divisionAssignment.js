@@ -123,12 +123,16 @@ function matchCriteria(competitor, criteria) {
       }
 
       case 'experience': {
-        // Guard: if either side is empty, treat as no match to prevent
-        // null experience_level matching a range with no value set.
-        if (!competitor.experience_level || !range.value) break;
-        const compExp = competitor.experience_level.toLowerCase();
-        const rangeValue = range.value.toLowerCase();
-        if (compExp === rangeValue) {
+        if (!competitor.experience_level) break;
+        const compExp = String(competitor.experience_level).toLowerCase();
+        // Label-based match (director configured "Beginner", "Novice", etc.)
+        if (range.label && compExp === range.label.toLowerCase()) {
+          return range.label;
+        }
+        // Numeric fallback (legacy: experience stored as years)
+        const expNum = parseFloat(competitor.experience_level);
+        if (!isNaN(expNum) && range.min != null && range.max != null &&
+            expNum >= range.min && expNum <= range.max) {
           return range.label;
         }
         break;
