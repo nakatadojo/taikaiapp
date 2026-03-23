@@ -4231,6 +4231,64 @@ function autoUpdateBracketsAfterRegistration(competitor) {
     }
 }
 
+/**
+ * After a competitor is approved, find any unstarted brackets in their divisions
+ * and regenerate them — using only approved competitors so pending ones stay out.
+ */
+function _autoReshuffleBracketsForCompetitor(competitor) {
+    const competitorId = competitor.id;
+    if (!competitorId) return;
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const brackets     = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    if (Object.keys(brackets).length === 0) return;
+
+    // Find which divisions this competitor belongs to
+    const competitorDivisions = new Set();
+    Object.entries(allDivisions).forEach(([eventId, eventData]) => {
+        Object.entries(eventData.generated || {}).forEach(([divName, comps]) => {
+            if (divName === '__unassigned__') return;
+            if ((comps || []).some(c => String(c.id) === String(competitorId)))
+                competitorDivisions.add(`${eventId}::${divName}`);
+        });
+    });
+    if (competitorDivisions.size === 0) return;
+
+    const updatedNames = [];
+    const lockedNames  = [];
+
+    Object.entries(brackets).forEach(([key, bracket]) => {
+        const divName = bracket.divisionName || bracket.division;
+        const eventId = String(bracket.eventId);
+        if (!competitorDivisions.has(`${eventId}::${divName}`)) return;
+
+        if (bracketHasScoredMatches(bracket)) {
+            lockedNames.push(divName);
+            return;
+        }
+
+        // Only approved competitors go into brackets
+        const allDivComps = allDivisions[eventId]?.generated?.[divName] || [];
+        const approvedComps = allDivComps.filter(c => c.approved !== false);
+        if (approvedComps.length < 2) return;
+
+        const newBracket = regenerateBracketFromSettings(bracket, approvedComps);
+        if (!newBracket) return;
+
+        brackets[key] = newBracket;
+        updatedNames.push(divName);
+    });
+
+    if (updatedNames.length > 0) {
+        saveBrackets(brackets);
+        _debouncedSync('brackets', _syncBracketsToServer, 2000);
+        showToast(`Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
+    }
+    if (lockedNames.length > 0) {
+        showToast(`Division already started — bracket not updated: ${lockedNames.join(', ')}`, 'warning');
+    }
+}
+
 function findMatchingTemplate(eventId, competitor, competitorAge) {
     const divisions = db.load('divisions');
     const eventData = divisions[eventId];
@@ -5079,6 +5137,19 @@ async function approveCompetitor(id) {
         );
         return;
     }
+    if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        if (data.code === 'DIVISION_STARTED') {
+            showMessage(
+                `Cannot approve: the division "<strong>${_escapeHtml(data.divisionName || '')}</strong>" has already started. ` +
+                `Reset the bracket first to approve new competitors.`,
+                'error'
+            );
+        } else {
+            showMessage(data.error || 'Could not approve competitor.', 'error');
+        }
+        return;
+    }
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         showMessage(data.error || 'Could not approve competitor.', 'error');
@@ -5091,11 +5162,18 @@ async function approveCompetitor(id) {
     if (idx !== -1) { all[idx].approved = true; db.save('competitors', all); }
     loadCompetitors(true);
     loadDashboard();
-    // Re-generate divisions so the newly approved competitor immediately appears
-    // in their division slots (credit was spent — they should show up right away).
+    // Server auto-assign broadcast will update divisions; also reload locally
     const approvedComp = all[idx];
     if (approvedComp?.events?.length) {
-        _silentlyRegenerateDivisionsForEvents(approvedComp.events);
+        // After a short delay to let the server broadcast arrive, update brackets
+        setTimeout(() => {
+            _loadDivisionsFromServer().then(() => {
+                // Now reshuffle any unstarted brackets in this competitor's divisions
+                // using only approved competitors so pending ones stay out of brackets
+                _autoReshuffleBracketsForCompetitor(approvedComp);
+                if (typeof loadDivisionsView === 'function') loadDivisionsView();
+            });
+        }, 500);
     }
     if (data.newCreditBalance !== undefined) {
         showMessage(`Competitor approved. Credit balance: ${data.newCreditBalance}`, 'success');
@@ -9779,6 +9857,48 @@ let _divisionOpInProgress = false;
  * Call the server's auto-assign endpoint and broadcast results to all devices.
  * This replaces the client-side autoAssignToDivisions() trigger on the "Generate Divisions" button.
  */
+/**
+ * Re-sync Divisions button handler.
+ * Blocked if any brackets exist for the selected event (director must delete them first).
+ * Requires two confirmations. Warns that manually moved competitors will be re-assigned.
+ */
+async function resyncDivisions() {
+    if (!currentTournamentId) return;
+
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+
+    // Check whether any brackets exist for this event
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const eventBrackets = Object.values(brackets).filter(b => String(b.eventId) === String(eventId));
+    if (eventBrackets.length > 0) {
+        showMessage(
+            `This event has ${eventBrackets.length} bracket(s). Delete all brackets for this event before re-syncing divisions.`,
+            'error'
+        );
+        return;
+    }
+
+    // Warning 1
+    const confirmed1 = await showConfirm(
+        `<strong>Re-sync Divisions</strong><br><br>` +
+        `This will rebuild all divisions from the current tree criteria. ` +
+        `<strong>Competitors that were manually moved to different divisions will be returned to their tree-assigned positions.</strong> ` +
+        `All manual changes will be lost.<br><br>Continue?`,
+        { confirmText: 'Continue', danger: true }
+    );
+    if (!confirmed1) return;
+
+    // Warning 2
+    const confirmed2 = await showConfirm(
+        `<strong>Are you sure?</strong><br><br>This cannot be undone.`,
+        { confirmText: 'Yes, Re-sync', danger: true }
+    );
+    if (!confirmed2) return;
+
+    await triggerServerAutoAssign();
+}
+
 async function triggerServerAutoAssign() {
     if (!currentTournamentId) return;
     if (_divisionOpInProgress) {
@@ -10152,9 +10272,12 @@ function loadDivisions() {
                     const sheet = document.createElement('div');
                     sheet.className = 'division-sheet';
                     const cId = (c) => c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
-                const tableRows = divCompetitors.map(comp => `
-                        <tr>
-                            <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
+                const tableRows = divCompetitors.map(comp => {
+                    const isPending = comp.approved === false;
+                    const pendingBadge = isPending ? ' <span style="background:#f59e0b;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;vertical-align:middle;">Pending</span>' : '';
+                    return `
+                        <tr style="${isPending ? 'opacity:0.7;' : ''}">
+                            <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}</td>
                             <td>${getDisplayAge(comp)}</td>
                             <td>${comp.gender || '-'}</td>
                             <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
@@ -10164,8 +10287,10 @@ function loadDivisions() {
                             <td style="white-space:nowrap;">
                                 <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Move to another division">Move</button>
                                 <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                                <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Remove from this division" style="margin-left:4px;">Remove</button>
                             </td>
-                        </tr>`).join('');
+                        </tr>`;
+                }).join('');
                     sheet.innerHTML = `
                         <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
                         <div class="division-content">
@@ -10202,10 +10327,14 @@ function loadDivisions() {
         });
     }
 
-    const divisionKeys = Object.keys(divisions).sort();
+    // Unassigned always at top, then sorted alphabetically
+    const divisionKeys = [
+        ...( '__unassigned__' in divisions ? ['__unassigned__'] : [] ),
+        ...Object.keys(divisions).filter(k => k !== '__unassigned__').sort(),
+    ];
 
     if (divisionKeys.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Click Edit on an event card and use Generate Divisions to set up your division structure.</p>';
+        container.innerHTML = '<p style="color: var(--text-secondary);">No divisions yet. Build a division tree for this event to set up your division structure.</p>';
         return;
     }
 
@@ -10236,9 +10365,12 @@ function loadDivisions() {
         sheet.className = 'division-sheet';
 
         const compId = (comp) => comp.id || comp._id || `${comp.firstName}_${comp.lastName}_${comp.dateOfBirth}`;
-        let tableRows = competitors.map(comp => `
-            <tr>
-                <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
+        let tableRows = competitors.map(comp => {
+            const isPending = comp.approved === false;
+            const pendingBadge = isPending ? ' <span style="background:#f59e0b;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;vertical-align:middle;">Pending</span>' : '';
+            return `
+            <tr style="${isPending ? 'opacity:0.7;' : ''}">
+                <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}</td>
                 <td>${getDisplayAge(comp)}</td>
                 <td>${comp.gender || '-'}</td>
                 <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
@@ -10248,13 +10380,20 @@ function loadDivisions() {
                 <td style="white-space:nowrap;">
                     <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Move to another division">Move</button>
                     <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                    <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Remove from this division" style="margin-left:4px;">Remove</button>
                 </td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
 
+        const isUnassigned = divisionName === '__unassigned__';
+        const displayName = isUnassigned ? 'Unassigned' : divisionName;
+        const headerStyle = isUnassigned
+            ? 'background:var(--warning,#f59e0b);color:#fff;'
+            : '';
         sheet.innerHTML = `
-            <div class="division-header">
-                ${divisionName} (${competitors.length} competitor${competitors.length !== 1 ? 's' : ''})
+            <div class="division-header" style="${headerStyle}">
+                ${isUnassigned ? '⚠ ' : ''}${displayName} (${competitors.length} competitor${competitors.length !== 1 ? 's' : ''})
+                ${isUnassigned ? '<span style="font-size:12px;font-weight:400;margin-left:8px;">These competitors did not match any division criteria — move them manually.</span>' : ''}
             </div>
             <div class="division-content">
                 <table class="division-table">
@@ -10480,6 +10619,77 @@ function executeCompetitorCopy(fromDivision, competitorId) {
 
     showToast(`Copied ${comp.firstName} ${comp.lastName} → ${target}`, 'success');
     loadDivisions();
+}
+
+/**
+ * Remove a competitor from a specific division.
+ * Director is asked whether to move them to Unassigned or delete the competitor entirely.
+ */
+async function removeCompetitorFromDivision(divisionName, competitorId) {
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId || !currentTournamentId) return;
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    if (!eventData?.generated) return;
+
+    const divComps = eventData.generated[divisionName] || [];
+    const comp = divComps.find(c => String(c.id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`) === String(competitorId));
+    const compName = comp ? `${comp.firstName} ${comp.lastName}` : 'this competitor';
+
+    const choice = await _showRemoveFromDivisionDialog(compName, divisionName);
+    if (!choice) return; // cancelled
+
+    // Remove from the current division
+    eventData.generated[divisionName] = divComps.filter(
+        c => String(c.id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`) !== String(competitorId)
+    );
+
+    if (choice === 'unassign') {
+        // Move to Unassigned bucket
+        if (!Array.isArray(eventData.generated['__unassigned__'])) eventData.generated['__unassigned__'] = [];
+        if (comp) eventData.generated['__unassigned__'].push(comp);
+        showToast(`${compName} moved to Unassigned`, 'success');
+    } else if (choice === 'delete') {
+        // Delete from the tournament entirely
+        await deleteCompetitor(String(comp?.id || competitorId));
+        return; // deleteCompetitor handles reload
+    }
+
+    allDivisions[eventId] = eventData;
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    loadDivisions();
+}
+
+function _showRemoveFromDivisionDialog(compName, divisionName) {
+    return new Promise(resolve => {
+        const existing = document.getElementById('remove-from-div-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'remove-from-div-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = `
+            <div style="background:var(--bg-card,#1e1e2e);border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+                <h3 style="margin:0 0 12px;">Remove from Division</h3>
+                <p style="color:var(--text-secondary);margin:0 0 20px;">
+                    Remove <strong>${_escapeHtml(compName)}</strong> from <strong>${_escapeHtml(divisionName === '__unassigned__' ? 'Unassigned' : divisionName)}</strong>?
+                </p>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <button class="btn btn-secondary" id="rfd-unassign">Move to Unassigned</button>
+                    <button class="btn btn-danger" id="rfd-delete">Delete Competitor Entirely</button>
+                    <button class="btn" id="rfd-cancel" style="margin-top:4px;">Cancel</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#rfd-unassign').onclick = () => { overlay.remove(); resolve('unassign'); };
+        overlay.querySelector('#rfd-delete').onclick  = () => { overlay.remove(); resolve('delete'); };
+        overlay.querySelector('#rfd-cancel').onclick  = () => { overlay.remove(); resolve(null); };
+        overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(null); } });
+    });
 }
 
 function exportDivisions() {
@@ -10950,17 +11160,19 @@ function _populateBracketChecklist(names, generated) {
         checklistGroup.style.display = 'block';
         return;
     }
-    names.forEach(name => {
-        const count = (generated[name] || []).length;
+    names.filter(n => n !== '__unassigned__').forEach(name => {
+        // Only count approved competitors toward the bracket checklist display
+        const divComps = generated[name] || [];
+        const count = divComps.filter(c => c.approved !== false).length;
         const label = document.createElement('label');
         label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;';
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.name = 'bracket-division';
         cb.value = name;
-        cb.checked = true;
+        cb.checked = count >= 2;
         label.appendChild(cb);
-        label.appendChild(document.createTextNode(`${name} (${count})`));
+        label.appendChild(document.createTextNode(`${name} (${count} approved)`));
         checklist.appendChild(label);
     });
     checklistGroup.style.display = 'block';
@@ -11178,13 +11390,15 @@ function generateBracketsForAllDivisions() {
     let skippedCount = 0;
 
     divisionNames.forEach(divisionName => {
+        if (divisionName === '__unassigned__') return; // never generate bracket for unassigned bucket
         let competitors = [...(eventData.generated[divisionName] || [])];
 
-        // Deduplicate competitors by ID
+        // Deduplicate by ID and only include approved competitors in brackets
         const seenIds = new Set();
         competitors = competitors.filter(c => {
             if (!c || !c.id) return false;
             if (seenIds.has(c.id)) return false;
+            if (c.approved === false) return false;
             seenIds.add(c.id);
             return true;
         });
@@ -11342,10 +11556,11 @@ function generateBrackets(event) {
             // Team kumite: use teams as bracket seeds
             competitors = teamsForEvent.length >= 2 ? teamsForEvent : [];
         } else {
-            // Individual: deduplicate competitors by ID
+            // Individual: deduplicate by ID and only include approved competitors in brackets
             const seenIds = new Set();
             competitors = (eventData.generated[divisionName] || []).filter(c => {
                 if (!c?.id || seenIds.has(c.id)) return false;
+                if (c.approved === false) return false; // pending competitors excluded from brackets
                 seenIds.add(c.id);
                 return true;
             });
@@ -12727,8 +12942,9 @@ function loadBrackets() {
                         ${bracket.seedingMethod ? ` • Seeded by: ${bracket.seedingMethod}` : ''}
                     </p>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button class="btn btn-primary btn-small" onclick="viewBracket('${bracketId}')">View Bracket</button>
+                    <button class="btn btn-secondary btn-small" onclick="resetBracketWithConfirm('${bracketId}')">Reset Results</button>
                     <button class="btn btn-danger btn-small" onclick="deleteBracket('${bracketId}')">Delete</button>
                 </div>
             </div>
@@ -14097,6 +14313,40 @@ function transferCompetitor(targetDivisionName, eventId) {
         console.error('Transfer error:', error);
         showMessage(`Error: ${error.message}`, 'error');
     }
+}
+
+/**
+ * Reset a bracket — clear all scores/results while keeping the bracket structure.
+ * Director must confirm first. Unblocks approval for competitors in that division.
+ */
+async function resetBracketWithConfirm(bracketId) {
+    if (!currentTournamentId) return;
+
+    const confirmed = await showConfirm(
+        `<strong>Reset Bracket Results</strong><br><br>` +
+        `This will clear <strong>all scores and match results</strong> from this bracket. ` +
+        `The bracket structure and competitors are preserved, but all recorded outcomes will be erased.<br><br>` +
+        `This cannot be undone. Are you sure?`,
+        { confirmText: 'Reset Bracket', danger: true }
+    );
+    if (!confirmed) return;
+
+    const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/${encodeURIComponent(bracketId)}/reset`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showMessage(data.error || 'Could not reset bracket.', 'error');
+        return;
+    }
+    const data = await res.json();
+    // Update local cache
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    brackets[bracketId] = data.bracket;
+    saveBrackets(brackets);
+    loadBrackets();
+    showMessage('Bracket reset — all results cleared.', 'success');
 }
 
 function deleteBracket(bracketId) {

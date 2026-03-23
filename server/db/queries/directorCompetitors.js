@@ -210,6 +210,17 @@ async function setBracketPlaced(competitorIds, tournamentId) {
   );
 }
 
+async function clearBracketPlaced(competitorIds, tournamentId) {
+  if (!competitorIds || competitorIds.length === 0) return;
+  await pool.query(
+    `UPDATE tournament_director_competitors
+     SET bracket_placed = false, updated_at = NOW()
+     WHERE tournament_id = $1
+       AND id = ANY($2::uuid[])`,
+    [tournamentId, competitorIds]
+  );
+}
+
 async function clearTestData(tournamentId) {
   const { rows } = await pool.query(
     `DELETE FROM tournament_director_competitors
@@ -230,4 +241,4 @@ async function bulkCreate(tournamentId, competitors, isTest = false) {
   return results;
 }
 
-module.exports = { getAll, create, update, remove, approve, unapprove, setBracketPlaced, clearTestData, bulkCreate };
+module.exports = { getAll, create, update, remove, approve, unapprove, setBracketPlaced, clearBracketPlaced, clearTestData, bulkCreate };

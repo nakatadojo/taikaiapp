@@ -26,11 +26,10 @@ async function runAutoAssign(tournamentId) {
   if (!t.rows[0]) throw new Error('Tournament not found');
   const tournamentDate = t.rows[0].date;
 
-  // Load all competitors and all event templates.
-  // Only approved competitors flow into divisions — unapproved ones are
-  // registered but not yet competing. Stripe registrations are always approved.
+  // Load ALL competitors — approved and unapproved both appear in divisions.
+  // Approval status controls bracket inclusion, not division visibility.
   const allCompetitors = await DirectorCompetitorQueries.getAll(tournamentId);
-  const competitors = allCompetitors.filter(c => c.approved !== false);
+  const competitors = allCompetitors;
   const eventsResult = await pool.query(
     `SELECT id, name, event_type, criteria_templates FROM tournament_events WHERE tournament_id = $1`,
     [tournamentId]
@@ -47,6 +46,7 @@ async function runAutoAssign(tournamentId) {
 
     // Build division groups for this event
     const divisionGroups = {}; // divisionName -> array of competitors
+    const unassignedGroup = []; // competitors registered but not matching any template
 
     for (const competitor of competitors) {
       const profile = {
@@ -62,25 +62,38 @@ async function runAutoAssign(tournamentId) {
       const isRegisteredForEvent = compEvents.some(eid => String(eid) === String(event.id));
       if (!isRegisteredForEvent) continue;
 
+      const record = {
+        id: competitor.id,
+        firstName: competitor.firstName,
+        lastName: competitor.lastName,
+        rank: competitor.rank,
+        weight: competitor.weight,
+        gender: competitor.gender,
+        dateOfBirth: competitor.dateOfBirth || competitor.date_of_birth || competitor.dob || null,
+        club: competitor.club || competitor.academy_name || null,
+        experience: competitor.experience || competitor.experience_level || null,
+        approved: competitor.approved !== false, // true for approved/null, false for explicitly unapproved
+      };
+
       const divisionName = assignDivision(profile, templates, tournamentDate);
       if (divisionName) {
         if (!divisionGroups[divisionName]) divisionGroups[divisionName] = [];
-        divisionGroups[divisionName].push({
-          id: competitor.id,
-          firstName: competitor.firstName,
-          lastName: competitor.lastName,
-          rank: competitor.rank,
-          weight: competitor.weight,
-          gender: competitor.gender,
-          dateOfBirth: competitor.dateOfBirth || competitor.date_of_birth || competitor.dob || null,
-          club: competitor.club || competitor.academy_name || null,
-          experience: competitor.experience || competitor.experience_level || null,
-        });
+        divisionGroups[divisionName].push(record);
+      } else {
+        unassignedGroup.push(record);
       }
     }
 
     // Build generated divisions in the format the client expects
     const generated = {};
+    // Unassigned bucket always stored first (client pins it to top)
+    if (unassignedGroup.length > 0) {
+      generated['__unassigned__'] = {
+        name: '__unassigned__',
+        competitors: unassignedGroup,
+        createdAt: new Date().toISOString(),
+      };
+    }
     for (const [name, comps] of Object.entries(divisionGroups)) {
       generated[name] = {
         name,

@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const BracketQueries = require('../db/queries/brackets');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const { broadcastBracketUpdate } = require('../websocket');
+const { runAutoAssign } = require('../services/divisionAutoAssign');
 
 async function getBrackets(req, res, next) {
   try {
@@ -9,6 +10,26 @@ async function getBrackets(req, res, next) {
     const byId = {};
     for (const b of rows) { byId[b.id] = b.data; }
     res.json({ brackets: byId });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/tournaments/:id/brackets/started
+ *
+ * Public-friendly endpoint that returns whether any brackets for this tournament
+ * have recorded results (i.e., competition has started for at least one division).
+ * Used by the registration form to warn late registrants.
+ */
+async function getBracketsStartedStatus(req, res, next) {
+  try {
+    const rows = await BracketQueries.getAll(req.params.id);
+    const startedEventIds = new Set();
+    for (const row of rows) {
+      if (_bracketHasResults(row.data)) {
+        startedEventIds.add(row.event_id);
+      }
+    }
+    res.json({ hasStarted: startedEventIds.size > 0, startedEventIds: [...startedEventIds] });
   } catch (err) { next(err); }
 }
 
@@ -169,4 +190,93 @@ async function setAllBracketsPublished(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getBrackets, getSingleBracket, upsertSingleBracket, syncBrackets, deleteBracket, setBracketPublished, setAllBracketsPublished };
+/**
+ * Deep-clone a bracket and wipe all recorded results/scores, returning the
+ * structure to a pre-competition "pending" state. Competitors and bracket type
+ * are preserved — only match outcomes are cleared.
+ */
+function _clearBracketResults(bracket) {
+  const b = JSON.parse(JSON.stringify(bracket));
+
+  function clearMatch(m) {
+    if (!m || typeof m !== 'object') return m;
+    m.winner = null;
+    m.status = 'pending';
+    delete m.completed;
+    ['score1','score2','score','points','redScore','blueScore',
+     'penaltiesA','penaltiesB','winner_id'].forEach(k => delete m[k]);
+    if (Array.isArray(m.bouts)) m.bouts = m.bouts.map(clearMatch);
+    return m;
+  }
+
+  ['matches','winners','losers','repechageA','repechageB'].forEach(k => {
+    if (Array.isArray(b[k])) b[k] = b[k].map(clearMatch);
+  });
+  if (b.finals) b.finals = clearMatch(b.finals);
+  if (b.reset)  b.reset  = clearMatch(b.reset);
+  if (Array.isArray(b.pools)) {
+    b.pools = b.pools.map(pool => {
+      if (Array.isArray(pool.matches)) pool.matches = pool.matches.map(clearMatch);
+      delete pool.standings;
+      return pool;
+    });
+  }
+  if (Array.isArray(b.entries)) {
+    b.entries = b.entries.map(e => { delete e.status; delete e.scores; return e; });
+  }
+  if (Array.isArray(b.rounds)) {
+    b.rounds = b.rounds.map(round => {
+      if (Array.isArray(round.performances)) {
+        round.performances = round.performances.map(p => { delete p.completed; delete p.scores; return p; });
+      }
+      return round;
+    });
+  }
+  return b;
+}
+
+/**
+ * POST /api/tournaments/:id/brackets/:bracketId/reset
+ *
+ * Clear all match results from a bracket (scores, winners, statuses) while
+ * preserving the bracket structure and competitors. Also resets bracket_placed
+ * on all competitors so they can be unapproved if needed.
+ */
+async function resetBracket(req, res, next) {
+  try {
+    const { id: tournamentId, bracketId } = req.params;
+
+    const t = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
+    if (!t.rows[0]) return res.status(404).json({ error: 'Tournament not found' });
+    if (t.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const existing = await BracketQueries.getOne(tournamentId, bracketId);
+    if (!existing) return res.status(404).json({ error: 'Bracket not found' });
+
+    const cleared = _clearBracketResults(existing.data);
+
+    // Reset bracket_placed for all director competitors that were in this bracket
+    const uuids = _extractUUIDs(existing.data);
+    if (uuids.length > 0) {
+      DirectorCompetitorQueries.clearBracketPlaced(uuids, tournamentId).catch(err =>
+        console.warn('[bracket] clearBracketPlaced failed:', err.message)
+      );
+    }
+
+    const updated = await BracketQueries.upsert({
+      id: bracketId,
+      tournamentId,
+      eventId: String(existing.event_id || ''),
+      divisionName: existing.division_name || '',
+      bracketType: cleared.type || existing.bracket_type,
+      data: cleared,
+    });
+
+    broadcastBracketUpdate(tournamentId, bracketId, updated.data);
+    res.json({ bracket: updated.data, message: 'Bracket reset — all results cleared.' });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getBrackets, getSingleBracket, getBracketsStartedStatus, upsertSingleBracket, syncBrackets, deleteBracket, setBracketPublished, setAllBracketsPublished, resetBracket };

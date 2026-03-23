@@ -13,6 +13,7 @@ const { sendRegistrationConfirmationEmail, sendDojoMemberNotification } = requir
 const { assignDivision } = require('../services/divisionAssignment');
 const academyQueries = require('../db/queries/academies');
 const platformSettings = require('../config/platformSettings');
+const { runAutoAssign } = require('../services/divisionAutoAssign');
 
 /**
  * POST /api/registrations/competitor
@@ -154,6 +155,9 @@ async function registerCompetitor(req, res, next) {
     };
 
     res.status(201).json(response);
+
+    // Fire-and-forget: place competitor into their division immediately on registration
+    runAutoAssign(tournamentId).catch(e => console.warn('[registration] auto-assign failed:', e.message));
   } catch (err) {
     next(err);
   }

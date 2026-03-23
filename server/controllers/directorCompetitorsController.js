@@ -5,6 +5,8 @@ const { broadcastCompetitorUpdate } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
 const pool = require('../db/pool');
 const { sendCompetitorInviteEmail } = require('../email');
+const { runAutoAssign } = require('../services/divisionAutoAssign');
+const { assignDivision } = require('../services/divisionAssignment');
 
 async function getCompetitors(req, res, next) {
   try {
@@ -27,6 +29,9 @@ async function addCompetitor(req, res, next) {
     const created = await DirectorCompetitorQueries.create(tournamentId, competitor, is_test || false);
     broadcastCompetitorUpdate(tournamentId, 'add', created);
     res.status(201).json({ competitor: created });
+
+    // Fire-and-forget: immediately place competitor into their division
+    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after add failed:', e.message));
 
     // Fire-and-forget: create passwordless account + send invite if email provided
     if (competitor.email && !is_test) {
@@ -57,6 +62,9 @@ async function updateCompetitor(req, res, next) {
 
     broadcastCompetitorUpdate(tournamentId, 'update', result);
     res.json({ competitor: result });
+
+    // Re-assign in case criteria-relevant fields (rank, age, weight) changed
+    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after update failed:', e.message));
   } catch (err) { next(err); }
 }
 
@@ -115,6 +123,16 @@ async function approveCompetitor(req, res, next) {
       return res.status(409).json({ error: 'Competitor is already approved' });
     }
 
+    // Block approval if any of this competitor's divisions already has scored matches
+    const startedDivision = await _findStartedDivisionForCompetitor(competitor, tournamentId, tournament.date);
+    if (startedDivision) {
+      return res.status(409).json({
+        error: 'This division has already started. Reset the bracket to approve new competitors.',
+        code: 'DIVISION_STARTED',
+        divisionName: startedDivision,
+      });
+    }
+
     // Credit check for real competitors only
     if (!competitor.is_test) {
       const directorId = tournament.created_by;
@@ -151,6 +169,8 @@ async function approveCompetitor(req, res, next) {
       }
 
       broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: true });
+      // Refresh divisions so approved status propagates immediately
+      runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
       return res.json({ competitor: updated, newCreditBalance: deductResult.newBalance });
     }
 
@@ -159,6 +179,8 @@ async function approveCompetitor(req, res, next) {
     if (!updated) return res.status(404).json({ error: 'Competitor not found' });
 
     broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: true });
+    // Refresh divisions so approved status propagates immediately
+    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
     res.json({ competitor: updated });
   } catch (err) { next(err); }
 }
@@ -209,6 +231,59 @@ async function unapproveCompetitor(req, res, next) {
     broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: false });
     res.json({ competitor: result });
   } catch (err) { next(err); }
+}
+
+/**
+ * Check whether this competitor would be placed in a division that already
+ * has a started (scored) bracket. Returns the division name if found, null otherwise.
+ */
+async function _findStartedDivisionForCompetitor(competitor, tournamentId, tournamentDate) {
+  const compEvents = competitor.events || [];
+  if (compEvents.length === 0) return null;
+
+  const profile = {
+    date_of_birth: competitor.dob || competitor.dateOfBirth || competitor.date_of_birth,
+    gender: competitor.gender,
+    belt_rank: competitor.rank || competitor.belt_rank,
+    weight: competitor.weight,
+    experience_level: competitor.experience || competitor.experience_level,
+  };
+
+  const eventsResult = await pool.query(
+    `SELECT id, criteria_templates FROM tournament_events WHERE id = ANY($1::text[])`,
+    [compEvents.map(String)]
+  );
+
+  for (const event of eventsResult.rows) {
+    const templates = event.criteria_templates;
+    if (!templates || !Array.isArray(templates) || templates.length === 0) continue;
+
+    const divisionName = assignDivision(profile, templates, tournamentDate);
+    if (!divisionName) continue;
+
+    const bracketResult = await pool.query(
+      `SELECT data FROM tournament_brackets WHERE tournament_id = $1 AND division_name = $2`,
+      [tournamentId, divisionName]
+    );
+
+    for (const row of bracketResult.rows) {
+      if (_bracketHasScores(row.data)) return divisionName;
+    }
+  }
+  return null;
+}
+
+/**
+ * Return true if any match in the bracket data has recorded scores or results.
+ */
+function _bracketHasScores(data) {
+  if (!data) return false;
+  const str = JSON.stringify(data);
+  if (/"winner"\s*:\s*(?!null\b)[^,}\]\s]/.test(str)) return true;
+  if (/"completed"\s*:\s*true/.test(str)) return true;
+  if (/"(?:score1?|score2|points|redScore|blueScore)"\s*:\s*[0-9]/.test(str)) return true;
+  if (/"status"\s*:\s*"(?:completed|in-progress)"/.test(str)) return true;
+  return false;
 }
 
 async function _sendCompetitorInvite({ competitor, tournamentId, addedByUserId }) {

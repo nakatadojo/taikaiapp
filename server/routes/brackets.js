@@ -12,6 +12,12 @@ router.get('/:id/brackets',
   c.getBrackets
 );
 
+// Public-readable: returns whether any brackets have started (for registration warning)
+// Must come before :bracketId param routes
+router.get('/:id/brackets/started',
+  c.getBracketsStartedStatus
+);
+
 router.post('/:id/brackets/sync',
   requireAuth, requireTournamentOwner,
   c.syncBrackets
@@ -43,6 +49,12 @@ router.put('/:id/brackets/:bracketId',
 router.delete('/:id/brackets/:bracketId',
   requireAuth, requireTournamentOwner,
   c.deleteBracket
+);
+
+// Reset bracket — wipe scores/results, keep structure
+router.post('/:id/brackets/:bracketId/reset',
+  requireAuth, requireTournamentOwner,
+  c.resetBracket
 );
 
 module.exports = router;

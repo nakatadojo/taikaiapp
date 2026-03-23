@@ -60,9 +60,37 @@ function calculatePricingBreakdown(selectedEventIds, eventTypes, tournament) {
 
 let pubSelectedEventOrder = [];
 
+/**
+ * Check if any brackets for this tournament have started (have recorded scores).
+ * If so, inject a warning banner above the event checkboxes so late registrants
+ * know their division may already be in progress.
+ */
+async function _checkStartedDivisionsWarning() {
+    const tournament = getActiveTournament();
+    if (!tournament?.id) return;
+    try {
+        const res = await fetch(`/api/tournaments/${tournament.id}/brackets/started`);
+        if (!res.ok) return;
+        const { hasStarted } = await res.json();
+        const existing = document.getElementById('pub-started-warning');
+        if (hasStarted && !existing) {
+            const container = document.getElementById('pub-event-checkboxes');
+            if (!container) return;
+            const banner = document.createElement('div');
+            banner.id = 'pub-started-warning';
+            banner.style.cssText = 'background:rgba(245,158,11,0.15);border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:#f59e0b;';
+            banner.innerHTML = '<strong>Note:</strong> Some divisions for this tournament have already started. Your registration will be reviewed by the director. You may not be placed in an in-progress division.';
+            container.insertAdjacentElement('beforebegin', banner);
+        } else if (!hasStarted && existing) {
+            existing.remove();
+        }
+    } catch (_) { /* non-fatal */ }
+}
+
 function loadPublicEventCheckboxes() {
     const container = document.getElementById('pub-event-checkboxes');
     if (!container) return;
+    _checkStartedDivisionsWarning();
 
     const eventTypes = db.load('eventTypes');
     const tournament = getActiveTournament();
