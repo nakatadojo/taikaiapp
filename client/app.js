@@ -11717,10 +11717,11 @@ async function generateBracketsForAllDivisions() {
         return;
     }
 
-    const bracketType = document.getElementById('bracket-type').value;
-    const seedingMethod = document.getElementById('seeding-method').value;
-    const matchDuration = _getMatchDurationSeconds();
+    const bracketType    = document.getElementById('bracket-type').value;
+    const seedingMethod  = document.getElementById('seeding-method').value;
+    const matchDuration  = _getMatchDurationSeconds();
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
+    const matAssignment  = document.getElementById('mat-assignment')?.value || null;
 
     // Pre-fetch placement history if seeding by previous results
     if (seedingMethod === 'previous-results' && !_placementHistoryCache) {
@@ -11783,6 +11784,29 @@ async function generateBracketsForAllDivisions() {
 
     let successCount = 0;
     let skippedCount = 0;
+    // Load once before the loop — save once after
+    const allBrackets   = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const matSchedule   = matAssignment ? loadMatScheduleData() : null;
+
+    const _addToSchedule = (divName) => {
+        if (!matAssignment || !matSchedule) return;
+        if (!matSchedule[matAssignment]) matSchedule[matAssignment] = [];
+        Object.keys(matSchedule).forEach(mid => {
+            matSchedule[mid] = (matSchedule[mid] || []).filter(s => s.division !== divName);
+        });
+        matSchedule[matAssignment].push({
+            order: matSchedule[matAssignment].length,
+            division: divName,
+            eventId: eventId,
+            estimatedDuration: estimateDivisionDuration(divName, eventId),
+            durationOverride: null,
+            estimatedStartTime: null,
+            estimatedEndTime: null,
+            actualStartTime: null,
+            actualEndTime: null,
+            status: 'upcoming'
+        });
+    };
 
     divisionNames.forEach(divisionName => {
         if (divisionName === '__unassigned__') return; // never generate bracket for unassigned bucket
@@ -11798,15 +11822,17 @@ async function generateBracketsForAllDivisions() {
             return true;
         });
 
-        // Solo competitor — always generate a bracket so they appear on scoreboard as winner
+        // Solo competitor — generate a bracket so they appear on scoreboard as automatic winner
+        // and in the mat schedule so they can be called and announced
         if (competitors.length === 1) {
             const bracket = generateSoloBracket(competitors[0], divisionName, eventId);
             bracket.scoreboardConfigId = scoreboardType;
-            bracket.scoreboardConfig = scoreboardConfig;
-            const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+            bracket.scoreboardConfig   = scoreboardConfig;
+            bracket.matchDuration      = matchDuration || null;
+            bracket.matAssignment      = matAssignment;
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
-            brackets[bracketId] = bracket;
-            saveBrackets(brackets);
+            allBrackets[bracketId] = bracket;
+            _addToSchedule(divisionName);
             successCount++;
             return;
         }
@@ -11840,23 +11866,25 @@ async function generateBracketsForAllDivisions() {
         if (bracket) {
             // Add scoreboard configuration
             bracket.scoreboardConfigId = scoreboardType;
-            bracket.scoreboardConfig = scoreboardConfig;
+            bracket.scoreboardConfig   = scoreboardConfig;
+            bracket.matAssignment      = matAssignment;
 
             // Store match duration on bracket (seconds)
             // Priority: form override > per-division template duration > event-level duration
-            const formDurationSeconds = _getMatchDurationSeconds();
             const divisionDuration = getDivisionMatchDuration(divisionName, eventId);
-            const eventDuration = getTemplateDurationForEvent(eventId);
-            bracket.matchDuration = formDurationSeconds || divisionDuration || eventDuration || null;
+            const eventDuration    = getTemplateDurationForEvent(eventId);
+            bracket.matchDuration  = matchDuration || divisionDuration || eventDuration || null;
 
-            // Save bracket
-            const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
-            brackets[bracketId] = bracket;
-            saveBrackets(brackets);
+            allBrackets[bracketId] = bracket;
+            _addToSchedule(divisionName);
             successCount++;
         }
     });
+
+    // Save all brackets + schedule in one pass
+    saveBrackets(allBrackets);
+    if (matAssignment && matSchedule) saveMatScheduleData(matSchedule);
 
     // Sync all brackets to server (debounced)
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
@@ -11987,8 +12015,29 @@ async function generateBrackets(event) {
             const soloBracket = generateSoloBracket(competitors[0], divisionName, eventId);
             soloBracket.scoreboardConfigId = scoreboardType;
             soloBracket.scoreboardConfig   = scoreboardConfig;
+            soloBracket.matchDuration      = _getMatchDurationSeconds() || getTemplateDurationForEvent(eventId) || null;
+            soloBracket.matAssignment      = matAssignment;
             const bracketId = `${eventId}_${divisionName}_${generateUniqueId()}`;
             brackets[bracketId] = soloBracket;
+            // Add to mat schedule so it appears on the schedule and can be announced
+            if (matAssignment && matSchedule) {
+                if (!matSchedule[matAssignment]) matSchedule[matAssignment] = [];
+                Object.keys(matSchedule).forEach(mid => {
+                    matSchedule[mid] = (matSchedule[mid] || []).filter(s => s.division !== divisionName);
+                });
+                matSchedule[matAssignment].push({
+                    order: matSchedule[matAssignment].length,
+                    division: divisionName,
+                    eventId: eventId,
+                    estimatedDuration: estimateDivisionDuration(divisionName, eventId),
+                    durationOverride: null,
+                    estimatedStartTime: null,
+                    estimatedEndTime: null,
+                    actualStartTime: null,
+                    actualEndTime: null,
+                    status: 'upcoming'
+                });
+            }
             successCount++;
             return;
         }
