@@ -11825,7 +11825,7 @@ async function generateBracketsForAllDivisions() {
         // Solo competitor — generate a bracket so they appear on scoreboard as automatic winner
         // and in the mat schedule so they can be called and announced
         if (competitors.length === 1) {
-            const bracket = generateSoloBracket(competitors[0], divisionName, eventId);
+            const bracket = generateSoloBracket(competitors[0], divisionName, eventId, bracketType);
             bracket.scoreboardConfigId = scoreboardType;
             bracket.scoreboardConfig   = scoreboardConfig;
             bracket.matchDuration      = matchDuration || null;
@@ -12012,7 +12012,7 @@ async function generateBrackets(event) {
 
         // Solo competitor — generate a bracket so they appear on scoreboard as automatic winner
         if (competitors.length === 1) {
-            const soloBracket = generateSoloBracket(competitors[0], divisionName, eventId);
+            const soloBracket = generateSoloBracket(competitors[0], divisionName, eventId, bracketType);
             soloBracket.scoreboardConfigId = scoreboardType;
             soloBracket.scoreboardConfig   = scoreboardConfig;
             soloBracket.matchDuration      = _getMatchDurationSeconds() || getTemplateDurationForEvent(eventId) || null;
@@ -13279,25 +13279,42 @@ function generateRankingListBracket(competitors, divisionName, eventId) {
  * They perform, are announced as the automatic winner, and appear on the scoreboard.
  * Uses ranking-list format so they show up in results as 1st place.
  */
-function generateSoloBracket(competitor, divisionName, eventId) {
+function generateSoloBracket(competitor, divisionName, eventId, bracketType) {
+    // For kata-flags / kata-points use the real generators so the scoreboard
+    // renders the full judging UI (flags panel, points panel). The solo competitor
+    // still needs to perform and be scored — they are NOT auto-completed.
+    if (bracketType === 'kata-flags') {
+        const b = generateKataFlagsBracket([competitor], divisionName, eventId);
+        b.solo = true;
+        return b;
+    }
+    if (bracketType === 'kata-points') {
+        const b = generateKataPointsBracket([competitor], divisionName, eventId);
+        b.solo = true;
+        return b;
+    }
+
+    // For kumite / elimination types there is no opponent, so we use a
+    // ranking-list-style bracket (one entry). Score can still be recorded
+    // (e.g. time-on-mat, demonstration mark) and they are declared 1st.
     return {
         id: generateUniqueId(),
-        type: 'ranking-list',
+        type: bracketType === 'ranking-list' ? 'ranking-list' : 'ranking-list',
         solo: true,
         division: divisionName,
         divisionName: divisionName,
         eventId: eventId,
         competitors: [competitor],
         createdAt: new Date().toISOString(),
-        status: 'completed',
+        status: 'upcoming',          // unplayed — score must be entered
         entries: [{
             competitor: competitor,
             performanceOrder: 1,
             score: null,
-            rank: 1,
-            place: 1,
-            status: 'scored',
-            autoWinner: true,
+            rank: null,              // assigned after scoring
+            place: null,
+            status: 'upcoming',      // not yet scored
+            autoWinner: true,        // will be 1st once completed
         }],
         matches: [],
     };
