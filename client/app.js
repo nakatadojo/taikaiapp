@@ -13306,14 +13306,14 @@ function generateSoloBracket(competitor, divisionName, eventId, bracketType) {
         eventId: eventId,
         competitors: [competitor],
         createdAt: new Date().toISOString(),
-        status: 'upcoming',          // unplayed — score must be entered
+        status: 'pending',           // unplayed — score must be entered
         entries: [{
             competitor: competitor,
             performanceOrder: 1,
             score: null,
             rank: null,              // assigned after scoring
             place: null,
-            status: 'upcoming',      // not yet scored
+            status: 'pending',       // not yet scored (matches ranking-list convention)
             autoWinner: true,        // will be 1st once completed
         }],
         matches: [],
