@@ -342,4 +342,27 @@ async function markTeamPayment(req, res, next) {
   }
 }
 
-module.exports = { getTeams, createTeam, updateTeam, markTeamPayment };
+// ── DELETE /api/tournaments/:id/teams/:teamId ─────────────────────────────────
+
+async function deleteTeam(req, res, next) {
+  try {
+    const { id: tournamentId, teamId } = req.params;
+
+    // Director only
+    const tournRes = await pool.query('SELECT created_by FROM tournaments WHERE id = $1', [tournamentId]);
+    if (!tournRes.rows.length) return res.status(404).json({ error: 'Tournament not found' });
+    if (tournRes.rows[0].created_by !== req.user?.id) {
+      return res.status(403).json({ error: 'Director access required' });
+    }
+
+    const delRes = await pool.query(
+      'DELETE FROM tournament_teams WHERE id = $1 AND tournament_id = $2 RETURNING id',
+      [teamId, tournamentId]
+    );
+    if (delRes.rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+
+    res.json({ message: 'Team deleted' });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getTeams, createTeam, updateTeam, markTeamPayment, deleteTeam };

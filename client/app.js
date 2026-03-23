@@ -27162,9 +27162,10 @@ async function loadTeamsDashboard() {
                         <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">${payBadge}${unclaimedBadge}</div>
                     </div>
                     <div style="display:grid; gap:4px; margin-bottom:12px;">${memberRows}</div>
-                    <div style="display:flex; gap:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         ${markPaidBtn}
                         <button class="btn btn-secondary btn-small" onclick="editTeamMembers('${teamIdEsc}')">Edit Members</button>
+                        <button class="btn btn-small" style="color:#ef4444; background:transparent; border:1px solid #ef444440;" onclick="deleteTeam('${teamIdEsc}')">Delete</button>
                     </div>
                 </div>
             `;
@@ -27195,7 +27196,155 @@ async function markTeamPaid(teamId) {
     }
 }
 
+// ── Create Team ──────────────────────────────────────────────────────────────
+
+function showCreateTeamModal() {
+    if (!currentTournamentId) return;
+    // Populate event dropdown from eventTypes (team events only)
+    const evtSel = document.getElementById('new-team-event');
+    if (evtSel) {
+        evtSel.innerHTML = '<option value="">Select a team event</option>';
+        const eventTypes = db.load('eventTypes');
+        eventTypes
+            .filter(e => e.event_type === 'team-kumite' || e.event_type === 'team-kata' ||
+                         e.eventType === 'team-kumite' || e.eventType === 'team-kata')
+            .forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.textContent = e.name;
+                evtSel.appendChild(opt);
+            });
+    }
+    document.getElementById('new-team-name').value = '';
+    document.getElementById('create-team-modal').classList.remove('hidden');
+}
+
+function hideCreateTeamModal() {
+    document.getElementById('create-team-modal').classList.add('hidden');
+}
+
+async function submitCreateTeam() {
+    const name = (document.getElementById('new-team-name')?.value || '').trim();
+    const eventId = document.getElementById('new-team-event')?.value;
+    if (!name) { showMessage('Team name is required', 'error'); return; }
+    if (!eventId) { showMessage('Please select an event', 'error'); return; }
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ event_id: eventId, team_name: name, members: [] }),
+        });
+        const data = await res.json();
+        if (!res.ok) { showMessage('Error: ' + (data.error || 'Failed'), 'error'); return; }
+        hideCreateTeamModal();
+        showMessage(`Team "${name}" created`);
+        loadTeamsDashboard();
+    } catch (err) { showMessage('Error: ' + err.message, 'error'); }
+}
+
+// ── Edit Team Members ─────────────────────────────────────────────────────────
+
+let _editingTeamId = null;
+
 function editTeamMembers(teamId) {
-    // Placeholder — opens a simple prompt for now; can be expanded to a full modal
-    showMessage('Edit team members coming soon. Use the API directly to update.', 'info');
+    _editingTeamId = teamId;
+    // Find the team in the rendered data by re-fetching or reading from DOM
+    fetch(`/api/tournaments/${currentTournamentId}/teams`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            const team = (data.teams || []).find(t => String(t.id) === String(teamId));
+            if (!team) { showMessage('Team not found', 'error'); return; }
+            document.getElementById('edit-team-name-label').textContent = team.team_name;
+            _renderEditMemberRows(team.members || []);
+            document.getElementById('new-member-name').value = '';
+            document.getElementById('new-member-email').value = '';
+            document.getElementById('edit-team-modal').classList.remove('hidden');
+        })
+        .catch(err => showMessage('Error: ' + err.message, 'error'));
+}
+
+function _renderEditMemberRows(members) {
+    const list = document.getElementById('edit-team-members-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!members.length) {
+        list.innerHTML = '<p style="color:var(--text-secondary); font-size:0.9em;">No members yet.</p>';
+        return;
+    }
+    members.forEach((m, i) => {
+        const name = m.name || ((m.first_name || '') + ' ' + (m.last_name || '')).trim() || '—';
+        const email = m.email || '';
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:0.9em;';
+        row.dataset.idx = i;
+        row.innerHTML = `
+            <span style="flex:1;">${_escapeHtml(name)}${email ? ` <span style="color:var(--text-secondary); font-size:0.85em;">(${_escapeHtml(email)})</span>` : ''}</span>
+            <button type="button" class="btn btn-small" style="color:#ef4444; background:transparent; border:1px solid #ef444440; padding:3px 8px;"
+                    onclick="removeTeamMemberRow(${i})">Remove</button>`;
+        list.appendChild(row);
+    });
+    list._members = members.slice();
+}
+
+function addTeamMemberRow() {
+    const name = (document.getElementById('new-member-name')?.value || '').trim();
+    const email = (document.getElementById('new-member-email')?.value || '').trim();
+    if (!name) { showMessage('Member name is required', 'error'); return; }
+    const list = document.getElementById('edit-team-members-list');
+    const existing = list._members || [];
+    existing.push({ name, email: email || undefined });
+    _renderEditMemberRows(existing);
+    document.getElementById('new-member-name').value = '';
+    document.getElementById('new-member-email').value = '';
+}
+
+function removeTeamMemberRow(idx) {
+    const list = document.getElementById('edit-team-members-list');
+    const existing = (list._members || []).filter((_, i) => i !== idx);
+    _renderEditMemberRows(existing);
+}
+
+function hideEditTeamModal() {
+    _editingTeamId = null;
+    document.getElementById('edit-team-modal').classList.add('hidden');
+}
+
+async function saveTeamMembers() {
+    if (!_editingTeamId || !currentTournamentId) return;
+    const list = document.getElementById('edit-team-members-list');
+    const members = list._members || [];
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/${_editingTeamId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ members }),
+        });
+        const data = await res.json();
+        if (!res.ok) { showMessage('Error: ' + (data.error || 'Failed'), 'error'); return; }
+        hideEditTeamModal();
+        showMessage('Team members saved');
+        loadTeamsDashboard();
+    } catch (err) { showMessage('Error: ' + err.message, 'error'); }
+}
+
+// ── Delete Team ───────────────────────────────────────────────────────────────
+
+async function deleteTeam(teamId) {
+    if (!currentTournamentId) return;
+    if (!confirm('Delete this team? This cannot be undone.')) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/teams/${teamId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            showMessage('Error: ' + (d.error || 'Failed'), 'error');
+            return;
+        }
+        showMessage('Team deleted');
+        loadTeamsDashboard();
+    } catch (err) { showMessage('Error: ' + err.message, 'error'); }
 }
