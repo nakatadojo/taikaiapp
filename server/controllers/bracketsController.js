@@ -2,7 +2,6 @@ const pool = require('../db/pool');
 const BracketQueries = require('../db/queries/brackets');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const { broadcastBracketUpdate } = require('../websocket');
-const { runAutoAssign } = require('../services/divisionAutoAssign');
 
 async function getBrackets(req, res, next) {
   try {
