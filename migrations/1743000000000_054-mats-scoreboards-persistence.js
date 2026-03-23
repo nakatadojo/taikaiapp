@@ -6,19 +6,29 @@
  * in the database and shared across all director devices.
  */
 exports.up = (pgm) => {
-  pgm.addColumn('tournaments', {
-    mats_config: {
-      type: 'jsonb',
-      default: "'[]'::jsonb",
-    },
-    mat_scoreboards: {
-      type: 'jsonb',
-      default: "'{}'::jsonb",
-    },
-  });
+  pgm.sql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tournaments' AND column_name = 'mats_config'
+      ) THEN
+        ALTER TABLE tournaments ADD COLUMN mats_config JSONB NOT NULL DEFAULT '[]';
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tournaments' AND column_name = 'mat_scoreboards'
+      ) THEN
+        ALTER TABLE tournaments ADD COLUMN mat_scoreboards JSONB NOT NULL DEFAULT '{}';
+      END IF;
+    END $$;
+  `);
 };
 
 exports.down = (pgm) => {
-  pgm.dropColumn('tournaments', 'mats_config');
-  pgm.dropColumn('tournaments', 'mat_scoreboards');
+  pgm.sql(`
+    ALTER TABLE tournaments DROP COLUMN IF EXISTS mats_config;
+    ALTER TABLE tournaments DROP COLUMN IF EXISTS mat_scoreboards;
+  `);
 };
