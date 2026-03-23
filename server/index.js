@@ -134,6 +134,7 @@ app.use('/api/tournaments', require('./routes/certificates'));
 app.use('/api/tournaments', require('./routes/scoreboardConfig'));
 app.use('/api/tournaments', require('./routes/scoreboardState'));
 app.use('/api/tournaments', require('./routes/teams'));
+app.use('/api/tournaments', require('./routes/mats'));
 app.use('/api/tournaments', require('./routes/discountCodes'));
 app.use('/api/tournaments', require('./routes/medicalIncidents'));
 app.use('/api/tournaments', require('./routes/sponsors'));

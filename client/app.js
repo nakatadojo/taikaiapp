@@ -433,6 +433,9 @@ class Database {
         }
         const key = _scopedKey(table);
         _msSet(key, JSON.stringify(data));
+        if (table === 'mats') {
+            _debouncedSync('mats', _syncMatsToServer, 1500);
+        }
     }
 
     load(table) {
@@ -843,6 +846,98 @@ async function _syncScheduleToServer() {
     } catch (err) {
         setSyncIndicator('error');
         throw err;
+    }
+}
+
+async function _loadScheduleFromServer() {
+    if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/schedule`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.matSchedule && Object.keys(data.matSchedule).length > 0) {
+            const key = `matSchedule_${currentTournamentId}`;
+            _msSet(key, JSON.stringify(data.matSchedule));
+            _msSet(_scopedKey('matSchedule'), JSON.stringify(data.matSchedule));
+        }
+        if (data.scheduleSettings && Object.keys(data.scheduleSettings).length > 0) {
+            const key = `scheduleSettings_${currentTournamentId}`;
+            _msSet(key, JSON.stringify(data.scheduleSettings));
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load schedule from server:', err.message);
+    }
+}
+
+async function _syncMatsToServer() {
+    if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return;
+    const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
+    setSyncIndicator('syncing');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/mats/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mats }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+    } catch (err) {
+        setSyncIndicator('error');
+        console.warn('[sync] Failed to sync mats to server:', err.message);
+    }
+}
+
+async function _loadMatsFromServer() {
+    if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/mats`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.mats && data.mats.length > 0) {
+            _msSet(_scopedKey('mats'), JSON.stringify(data.mats));
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load mats from server:', err.message);
+    }
+}
+
+async function _syncMatScoreboardsToServer() {
+    if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return;
+    const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/mat-scoreboards/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matScoreboards }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+        console.warn('[sync] Failed to sync mat scoreboards to server:', err.message);
+    }
+}
+
+async function _loadMatScoreboardsFromServer() {
+    if (!currentTournamentId) return;
+    if (!_isServerTournamentId(currentTournamentId)) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/mat-scoreboards`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.matScoreboards && Object.keys(data.matScoreboards).length > 0) {
+            _msSet(_scopedKey('matScoreboards'), JSON.stringify(data.matScoreboards));
+        }
+    } catch (err) {
+        console.warn('[sync] Failed to load mat scoreboards from server:', err.message);
     }
 }
 
@@ -1854,6 +1949,12 @@ loadTournamentSelector();
             _loadPublicSiteConfigFromServer().catch(e => console.warn('[sync] Public site config load:', e.message));
             // Auto-load staging settings from server
             _loadStagingSettingsFromServer().catch(e => console.warn('[sync] Staging settings load:', e.message));
+            // Auto-load mats config from server
+            _loadMatsFromServer().catch(e => console.warn('[sync] Mats load:', e.message));
+            // Auto-load mat scoreboards from server
+            _loadMatScoreboardsFromServer().catch(e => console.warn('[sync] Mat scoreboards load:', e.message));
+            // Auto-load schedule (matSchedule + scheduleSettings) from server
+            _loadScheduleFromServer().catch(e => console.warn('[sync] Schedule load:', e.message));
         });
     }
 
@@ -17188,6 +17289,7 @@ function pauseMat(matId) {
     if (matScoreboards[matId]) {
         matScoreboards[matId].paused = !matScoreboards[matId].paused;
         _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
         showMessage(`Mat ${matId} ${matScoreboards[matId].paused ? 'paused' : 'resumed'}`);
         loadLiveControlGrid();
     }
@@ -17217,6 +17319,7 @@ function skipDivision(matId) {
             const matScoreboards = JSON.parse(_msGet(_scopedKey('matScoreboards')) || '{}');
             delete matScoreboards[matId];
             _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+            _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
 
             showMessage('Division skipped and moved to end of queue');
             loadLiveControlGrid();
@@ -22950,6 +23053,7 @@ function loadMatchToScoreboard(matchId) {
                 timeRemaining: 120
             };
             _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+            _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
         }
 
         renderActiveScoreboard();
@@ -23159,6 +23263,7 @@ function selectMatCompetitor(corner) {
     }
 
     _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -23176,6 +23281,7 @@ function addMatScore(corner, points) {
     }
 
     _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
     document.getElementById(`mat-${corner}-score`).textContent = matScoreboards[currentMatScoreboard][`${corner}Score`];
     updateAllMatDisplays();
 }
@@ -23209,6 +23315,7 @@ function addMatPenalty(corner) {
     }
 
     _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
@@ -23222,6 +23329,7 @@ function startMatTimer() {
 
         matScoreboards[currentMatScoreboard].timeRemaining--;
         _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
 
         const minutes = Math.floor(matScoreboards[currentMatScoreboard].timeRemaining / 60);
         const seconds = matScoreboards[currentMatScoreboard].timeRemaining % 60;
@@ -23249,6 +23357,7 @@ function resetMatTimer() {
     if (matScoreboards[currentMatScoreboard]) {
         matScoreboards[currentMatScoreboard].timeRemaining = 120;
         _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+        _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
         document.getElementById('mat-timer').textContent = '2:00';
         updateAllMatDisplays();
     }
@@ -23267,6 +23376,7 @@ function declareMatWinner() {
     // Update display with winner
     matData.winner = winner;
     _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
     updateAllMatDisplays();
 }
 
@@ -23282,6 +23392,7 @@ function resetMatScoreboard() {
         timeRemaining: 120
     };
     _msSet(_scopedKey('matScoreboards'), JSON.stringify(matScoreboards));
+    _debouncedSync('matScoreboards', _syncMatScoreboardsToServer, 2000);
     renderActiveScoreboard();
     updateAllMatDisplays();
 }
