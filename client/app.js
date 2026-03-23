@@ -11129,34 +11129,23 @@ function showBracketGenerator() {
         }
     }
 
-    // Populate template dropdown
+    // Always hide the template dropdown — all divisions are shown at once (Feature 2)
     const templateSelect = document.getElementById('bracket-template-select');
-    const templates = eventData.templates || [];
-    templateSelect.innerHTML = '<option value="">Select a template</option>';
-    templates.forEach((tmpl, idx) => {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.textContent = tmpl.name || `Template ${idx + 1}`;
-        templateSelect.appendChild(opt);
-    });
-    // Reset checklist
+    if (templateSelect?.closest('.form-group')) templateSelect.closest('.form-group').style.display = 'none';
+
+    // Show all generated divisions in the checklist
+    const generated = eventData.generated || {};
+    const generatedNames = Object.keys(generated).filter(n => n !== '__unassigned__');
     document.getElementById('bracket-division-checklist').innerHTML = '';
     document.getElementById('bracket-division-checklist-group').style.display = 'none';
 
-    const generated = eventData.generated || {};
-    const generatedNames = Object.keys(generated).filter(n => (generated[n] || []).length > 0);
+    // Reset filters
+    const filterSearch = document.getElementById('division-filter-search');
+    const filterHasComps = document.getElementById('division-filter-has-comps');
+    if (filterSearch) filterSearch.value = '';
+    if (filterHasComps) filterHasComps.checked = false;
 
-    if (templates.length === 0 && generatedNames.length > 0) {
-        // No templates saved — populate checklist directly from generated divisions
-        // so the user doesn't get stuck with an empty, non-functional template dropdown.
-        templateSelect.closest?.('.form-group')
-            ? (templateSelect.closest('.form-group').style.display = 'none') : null;
-        _populateBracketChecklist(generatedNames, generated);
-    } else if (templates.length === 1) {
-        // Auto-select if there is exactly one template (common case)
-        templateSelect.value = '0';
-        onBracketTemplateChange();
-    }
+    _populateBracketChecklist(generatedNames, generated);
 
     // Auto-populate match duration based on event age groups
     _autoPopulateMatchDuration(eventId);
@@ -11175,26 +11164,34 @@ function _populateBracketChecklist(names, generated) {
     const checklistGroup = document.getElementById('bracket-division-checklist-group');
     checklist.innerHTML = '';
     if (names.length === 0) {
-        checklist.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">No divisions with competitors found.</p>';
+        checklist.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">No divisions found.</p>';
         checklistGroup.style.display = 'block';
         return;
     }
     names.filter(n => n !== '__unassigned__').forEach(name => {
-        // Only count approved competitors toward the bracket checklist display
         const divComps = generated[name] || [];
         const count = divComps.filter(c => c.approved !== false).length;
         const label = document.createElement('label');
         label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;';
+        label.dataset.divName = name.toLowerCase();
+        label.dataset.compCount = count;
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.name = 'bracket-division';
         cb.value = name;
         cb.checked = count >= 2;
+        const countStyle = count < 2 ? 'color: var(--text-secondary);' : '';
         label.appendChild(cb);
-        label.appendChild(document.createTextNode(`${name} (${count} approved)`));
+        label.insertAdjacentHTML('beforeend', `<span>${name}</span> <span style="font-size:0.85em; ${countStyle}">(${count} approved)</span>`);
         checklist.appendChild(label);
     });
     checklistGroup.style.display = 'block';
+
+    // Update progress counter
+    const total = names.filter(n => n !== '__unassigned__').length;
+    const withComps = names.filter(n => n !== '__unassigned__' && (generated[n] || []).filter(c => c.approved !== false).length >= 2).length;
+    const progress = document.getElementById('bracket-division-progress');
+    if (progress) progress.textContent = `— ${total} total, ${withComps} ready`;
 }
 
 /**
@@ -11238,8 +11235,45 @@ function onBracketTemplateChange() {
 }
 
 function setBracketDivisionChecks(checked) {
-    document.querySelectorAll('#bracket-division-checklist input[type="checkbox"]')
-        .forEach(cb => cb.checked = checked);
+    // Only apply to visible rows (respects active filter)
+    document.querySelectorAll('#bracket-division-checklist label').forEach(label => {
+        if (label.style.display !== 'none') {
+            const cb = label.querySelector('input[type="checkbox"]');
+            if (cb) cb.checked = checked;
+        }
+    });
+}
+
+function _filterBracketChecklist() {
+    const search = (document.getElementById('division-filter-search')?.value || '').toLowerCase().trim();
+    const hasCompsOnly = document.getElementById('division-filter-has-comps')?.checked;
+    const checklist = document.getElementById('bracket-division-checklist');
+    if (!checklist) return;
+
+    let visibleCount = 0;
+    let totalCount = 0;
+    checklist.querySelectorAll('label[data-div-name]').forEach(label => {
+        totalCount++;
+        const name = label.dataset.divName || '';
+        const count = parseInt(label.dataset.compCount) || 0;
+        const matchesSearch = !search || name.includes(search);
+        const matchesComps = !hasCompsOnly || count >= 1;
+        const visible = matchesSearch && matchesComps;
+        label.style.display = visible ? '' : 'none';
+        if (visible) visibleCount++;
+    });
+
+    const progress = document.getElementById('bracket-division-progress');
+    if (progress) {
+        if (search || hasCompsOnly) {
+            progress.textContent = `— ${visibleCount} of ${totalCount} shown`;
+        } else {
+            // Re-compute ready count
+            const withComps = [...checklist.querySelectorAll('label[data-div-name]')]
+                .filter(l => (parseInt(l.dataset.compCount) || 0) >= 2).length;
+            progress.textContent = `— ${totalCount} total, ${withComps} ready`;
+        }
+    }
 }
 
 function hideBracketGenerator() {
