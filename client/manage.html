@@ -1678,14 +1678,16 @@
 
                                 <div class="form-group">
                                     <label for="seeding-method">Seeding Method</label>
-                                    <select id="seeding-method" required style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                    <select id="seeding-method" required onchange="_onSeedingMethodChange()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
                                         <option value="random">Random Seeding</option>
                                         <option value="ordered">Ordered by Registration</option>
                                         <option value="rank">Seeded by Rank (Higher ranks first)</option>
                                         <option value="age">Seeded by Age (Younger first)</option>
                                         <option value="country">Seeded by Country (Separate countries)</option>
                                         <option value="club">Seeded by Dojo (Separate dojos)</option>
+                                        <option value="previous-results">Previous Results (by placement)</option>
                                     </select>
+                                    <p class="hint" id="seeding-method-hint" style="margin-top:4px;"></p>
                                 </div>
 
                                 <div class="form-group">

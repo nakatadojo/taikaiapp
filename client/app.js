@@ -11354,6 +11354,61 @@ function _uncheckFlaggedDivisions() {
     });
 }
 
+// Cached placement history: { divisionName: { competitorId: place, ... }, ... }
+let _placementHistoryCache = null;
+
+async function _fetchAndCachePlacementHistory() {
+    if (!currentTournamentId) { _placementHistoryCache = {}; return; }
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/results`, { credentials: 'include' });
+        if (!res.ok) { _placementHistoryCache = {}; return; }
+        const data = await res.json();
+        const cache = {};
+        (data.results || []).forEach(row => {
+            const places = {};
+            const rd = Array.isArray(row.results_data) ? row.results_data : [];
+            rd.forEach(p => { if (p.id && p.place) places[String(p.id)] = p.place; });
+            if (Object.keys(places).length > 0) cache[row.division_name] = places;
+        });
+        _placementHistoryCache = cache;
+    } catch { _placementHistoryCache = {}; }
+}
+
+function _getHistoryMapForDivision(divisionName) {
+    return (_placementHistoryCache || {})[divisionName] || {};
+}
+
+async function _onSeedingMethodChange() {
+    const method = document.getElementById('seeding-method')?.value;
+    const hint = document.getElementById('seeding-method-hint');
+    if (method !== 'previous-results') {
+        if (hint) hint.textContent = '';
+        // Re-clear history flags
+        document.querySelectorAll('#bracket-division-checklist .seeding-flag-badge').forEach(b => b.remove());
+        return;
+    }
+    if (hint) hint.textContent = 'Fetching placement history…';
+    _placementHistoryCache = null;
+    await _fetchAndCachePlacementHistory();
+    const cache = _placementHistoryCache || {};
+    const total = Object.keys(cache).length;
+    if (hint) hint.textContent = total > 0 ? `Found history for ${total} division${total > 1 ? 's' : ''}` : 'No previous results found — competitors will not be re-seeded';
+    // Flag divisions in checklist that have no history
+    document.querySelectorAll('#bracket-division-checklist label[data-div-name]').forEach(label => {
+        label.querySelector('.seeding-flag-badge')?.remove();
+        const divName = label.dataset.divName || '';
+        // data-div-name is lowercase; check against cache keys case-insensitively
+        const hasHistory = Object.keys(cache).some(k => k.toLowerCase() === divName);
+        if (!hasHistory) {
+            const badge = document.createElement('span');
+            badge.className = 'seeding-flag-badge';
+            badge.style.cssText = 'font-size:0.72em; color: rgba(255,255,255,0.35); margin-left: auto; white-space: nowrap;';
+            badge.textContent = 'no history';
+            label.appendChild(badge);
+        }
+    });
+}
+
 function _filterBracketChecklist() {
     const search = (document.getElementById('division-filter-search')?.value || '').toLowerCase().trim();
     const hasCompsOnly = document.getElementById('division-filter-has-comps')?.checked;
@@ -11388,6 +11443,7 @@ function _filterBracketChecklist() {
 
 function hideBracketGenerator() {
     document.getElementById('bracket-generator-modal').classList.add('hidden');
+    _placementHistoryCache = null; // Reset cache on close
 }
 
 function updateBracketTypeOptions() {
@@ -11544,7 +11600,7 @@ function getDivisionMatchDuration(divisionName, eventId) {
     return getTemplateDurationForEvent(eventId);
 }
 
-function generateBracketsForAllDivisions() {
+async function generateBracketsForAllDivisions() {
     const eventSelector = document.getElementById('division-event-selector');
     const eventId = eventSelector?.value;
 
@@ -11558,6 +11614,11 @@ function generateBracketsForAllDivisions() {
     const seedingMethod = document.getElementById('seeding-method').value;
     const matchDuration = _getMatchDurationSeconds();
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
+
+    // Pre-fetch placement history if seeding by previous results
+    if (seedingMethod === 'previous-results' && !_placementHistoryCache) {
+        await _fetchAndCachePlacementHistory();
+    }
 
 
     if (!scoreboardType) {
@@ -11636,7 +11697,7 @@ function generateBracketsForAllDivisions() {
         }
 
         // Apply seeding
-        competitors = seedCompetitors(competitors, seedingMethod);
+        competitors = seedCompetitors(competitors, seedingMethod, _getHistoryMapForDivision(divisionName));
 
         // Generate bracket structure
         let bracket = null;
@@ -11686,7 +11747,7 @@ function generateBracketsForAllDivisions() {
     document.querySelector('[data-view="schedule"]')?.click();
 }
 
-function generateBrackets(event) {
+async function generateBrackets(event) {
     event.preventDefault();
 
     // Collect checked division names from the checklist
@@ -11695,6 +11756,11 @@ function generateBrackets(event) {
     const bracketType    = document.getElementById('bracket-type').value;
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
     const seedingMethod  = document.getElementById('seeding-method').value;
+
+    // Pre-fetch placement history if seeding by previous results
+    if (seedingMethod === 'previous-results' && !_placementHistoryCache) {
+        await _fetchAndCachePlacementHistory();
+    }
     const matAssignment  = document.getElementById('mat-assignment')?.value || null;
     const eventId        = document.getElementById('division-event-selector')?.value;
 
@@ -11799,7 +11865,7 @@ function generateBrackets(event) {
             return;
         }
 
-        competitors = seedCompetitors(competitors, seedingMethod);
+        competitors = seedCompetitors(competitors, seedingMethod, _getHistoryMapForDivision(divisionName));
 
         let bracket = null;
         if (bracketType === 'single-elimination')      bracket = generateSingleEliminationBracket(competitors, divisionName, eventId);
@@ -11892,7 +11958,7 @@ function generateBrackets(event) {
     document.querySelector('[data-view="schedule"]')?.click();
 }
 
-function seedCompetitors(competitors, method) {
+function seedCompetitors(competitors, method, historyMap) {
     let seeded = [...competitors];
 
     // First, apply the sorting/randomization method
@@ -11934,6 +12000,17 @@ function seedCompetitors(competitors, method) {
                 if (countryCompare !== 0) return countryCompare;
                 return Math.random() - 0.5; // Randomize within same country
             });
+            break;
+
+        case 'previous-results':
+            // Seed by prior tournament placement (1st → 2nd → ... → unranked last)
+            if (historyMap && Object.keys(historyMap).length > 0) {
+                seeded.sort((a, b) => {
+                    const aPlace = historyMap[String(a.id)] ?? 9999;
+                    const bPlace = historyMap[String(b.id)] ?? 9999;
+                    return aPlace - bPlace;
+                });
+            }
             break;
 
         case 'club':
