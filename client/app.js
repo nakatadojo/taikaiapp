@@ -4863,7 +4863,7 @@ function loadCompetitors(skipSync = false) {
             <td style="cursor: pointer;" onclick="togglePaymentStatus(${comp.id})">${paymentBadge}</td>
             <td>${approvalCell}</td>
             <td>
-                ${(isDirector && !comp.is_test) ? `<button class="btn btn-small" onclick="editCompetitor(${comp.id})">Edit</button>` : ''}
+                ${(comp.source !== 'registration' && !comp.is_test) ? `<button class="btn btn-small" onclick="editCompetitor('${comp.id}')">Edit</button>` : ''}
                 <button class="btn btn-small btn-danger" onclick="deleteCompetitor('${comp.id}')">Delete</button>
             </td>
         `;
@@ -5174,7 +5174,7 @@ function _refreshCreditBadge(newBalance) {
 // Edit competitor — follows exact same pattern as editClub()
 window.editCompetitor = function(id) {
     const competitors = db.load('competitors');
-    const comp = competitors.find(c => c.id === id);
+    const comp = competitors.find(c => String(c.id) === String(id));
 
     if (!comp) {
         showMessage('Competitor not found', 'error');
@@ -10157,7 +10157,7 @@ function loadDivisions() {
                             <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
                             <td>${getDisplayAge(comp)}</td>
                             <td>${comp.gender || '-'}</td>
-                            <td>${comp.weight !== undefined ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
+                            <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                             <td>${comp.rank || '-'}</td>
                             <td>${comp.club || '-'}</td>
                             <td>${getCountryFallback(comp)}</td>
@@ -10170,7 +10170,8 @@ function loadDivisions() {
                         <div class="division-header">${divisionName} (${divCompetitors.length} competitor${divCompetitors.length !== 1 ? 's' : ''})</div>
                         <div class="division-content">
                             <table class="division-table">
-                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th><th style="width:120px;"></th></tr></thead>
+                                <colgroup><col style="width:22%"><col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:10%"><col style="width:20%"><col style="width:10%"><col style="width:15%"></colgroup>
+                                <thead><tr><th>Name</th><th>Age</th><th>Gender</th><th>Weight</th><th>Rank</th><th>Dojo</th><th>Country</th><th></th></tr></thead>
                                 <tbody>${tableRows}</tbody>
                             </table>
                         </div>`;
@@ -10240,7 +10241,7 @@ function loadDivisions() {
                 <td>${comp.firstName || '?'} ${comp.lastName || '?'}</td>
                 <td>${getDisplayAge(comp)}</td>
                 <td>${comp.gender || '-'}</td>
-                <td>${comp.weight !== undefined ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
+                <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                 <td>${comp.rank || '-'}</td>
                 <td>${comp.club || '-'}</td>
                 <td>${getCompetitorCountry(comp)}</td>
@@ -10257,6 +10258,7 @@ function loadDivisions() {
             </div>
             <div class="division-content">
                 <table class="division-table">
+                    <colgroup><col style="width:22%"><col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:10%"><col style="width:20%"><col style="width:10%"><col style="width:15%"></colgroup>
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -10266,7 +10268,7 @@ function loadDivisions() {
                             <th>Rank</th>
                             <th>Dojo</th>
                             <th>Country</th>
-                            <th style="width:120px;"></th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
