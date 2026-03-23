@@ -11050,6 +11050,17 @@ function showBracketGenerator() {
             warnOpt.disabled = true;
             scoreboardTypeSelect.appendChild(warnOpt);
         } else {
+            // Prefer named configs from scoreboardConfigs array; fall back to base types
+            const namedConfigs = db.load('scoreboardConfigs');
+            if (namedConfigs && namedConfigs.length > 0) {
+                namedConfigs.forEach(cfg => {
+                    const opt = document.createElement('option');
+                    opt.value = String(cfg.id);
+                    opt.textContent = cfg.name || cfg.baseType;
+                    opt.setAttribute('data-base-type', cfg.baseType || '');
+                    scoreboardTypeSelect.appendChild(opt);
+                });
+            } else {
             const types = [
                 { value: 'kumite',      label: 'Kumite (Sparring)',     key: 'kumite'     },
                 { value: 'kata-flags',  label: 'Kata – Flags',          key: 'kataFlags'  },
@@ -11065,6 +11076,7 @@ function showBracketGenerator() {
                     scoreboardTypeSelect.appendChild(opt);
                 }
             });
+            }
 
             // Auto-select scoreboard type based on event name keywords
             if (eventType) {
@@ -11090,9 +11102,12 @@ function showBracketGenerator() {
                            name.includes('fighting') || name.includes('combat')) {
                     suggestedType = 'kumite';
                 }
-                // Only apply if that option actually exists in the dropdown
-                if (suggestedType && scoreboardTypeSelect.querySelector(`option[value="${suggestedType}"]`)) {
-                    scoreboardTypeSelect.value = suggestedType;
+                // Apply auto-selection — match by value (base types) or data-base-type (named configs)
+                if (suggestedType) {
+                    const directMatch = scoreboardTypeSelect.querySelector(`option[value="${suggestedType}"]`);
+                    const typeMatch = scoreboardTypeSelect.querySelector(`option[data-base-type="${suggestedType}"]`);
+                    const match = directMatch || typeMatch;
+                    if (match) scoreboardTypeSelect.value = match.value;
                 }
             }
         }
@@ -11237,9 +11252,9 @@ function updateBracketTypeOptions() {
 
     if (!scoreboardSelect || !bracketTypeSelect) return;
 
-    // The selected value is now the base type string directly (e.g. 'kumite', 'kata-flags')
-    const baseType = scoreboardSelect.value ||
-        scoreboardSelect.selectedOptions[0]?.getAttribute('data-base-type') || '';
+    // Prefer data-base-type attribute (works for both named configs with numeric ids and base-type values)
+    const selectedOpt = scoreboardSelect.selectedOptions[0];
+    const baseType = selectedOpt?.getAttribute('data-base-type') || scoreboardSelect.value || '';
 
     if (!baseType) {
         bracketTypeSelect.innerHTML = `
