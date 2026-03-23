@@ -72,6 +72,9 @@ async function runAutoAssign(tournamentId) {
           rank: competitor.rank,
           weight: competitor.weight,
           gender: competitor.gender,
+          dateOfBirth: competitor.dateOfBirth || competitor.date_of_birth || competitor.dob || null,
+          club: competitor.club || competitor.academy_name || null,
+          experience: competitor.experience || competitor.experience_level || null,
         });
       }
     }
