@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Kumite Scoreboard</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="/taikai-logo.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #root { width: 100vw; height: 100vh; }
+    .sb-watermark { position: fixed; bottom: 12px; right: 16px; z-index: 9999; display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: 0.35; pointer-events: none; }
+    .sb-watermark img { height: 22px; width: auto; }
+    .sb-watermark span { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #fff; letter-spacing: 0.5px; }
+    @keyframes timerFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes winnerPulse { 0% { opacity: 0; transform: scale(0.85); } 100% { opacity: 1; transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div class="sb-watermark"><img data-taikai-logo alt="Taikai"><span>taikaiapp.com</span></div>
+
+  <script type="text/babel">
+
+    const OSW = (w = 700) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: w });
+    const ROB = (w = 400) => ({ fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif", fontWeight: w });
+
+    function getCornerTextColor(bg) {
+      if (!bg) return '#fff';
+      const hex = bg.replace('#', '');
+      const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+      return (0.299*r + 0.587*g + 0.114*b)/255 > 0.6 ? '#000' : '#fff';
+    }
+
+    // ── Demo defaults ──────────────────────────────────────────────────────────
+    const DEMO = {
+      scoreboardType: 'team-kumite',
+      matName: 'TATAMI 1',
+      divisionName: 'TEAM KUMITE | SENIOR | OPEN',
+      matchInfo: 'SEMIFINALS — BOUT 3 of 5',
+      timer: '3:00',
+      corner1Color: '#c0392b', corner1Name: 'RED',
+      corner2Color: '#1a6fb5', corner2Name: 'BLUE',
+      redTeamName: 'EAGLE DOJO',
+      blueTeamName: 'RISING SUN',
+      redTeamBouts: 1,
+      blueTeamBouts: 1,
+      bouts: [
+        { boutNum: 1, redFighter: 'SMITH, J.', blueFighter: 'CHEN, M.', winner: 'red', redScore: 5, blueScore: 2 },
+        { boutNum: 2, redFighter: 'JONES, A.', blueFighter: 'PARK, S.', winner: 'blue', redScore: 1, blueScore: 3 },
+        { boutNum: 3, redFighter: 'MARTIN, K.', blueFighter: 'KIM, L.', winner: null, redScore: 2, blueScore: 1 },
+        { boutNum: 4, redFighter: 'DAVIS, T.', blueFighter: 'TANAKA, R.', winner: null },
+        { boutNum: 5, redFighter: 'WILSON, B.', blueFighter: 'LEE, H.', winner: null },
+      ],
+      currentBoutIndex: 2,
+      redName: 'MARTIN, K.', blueName: 'KIM, L.',
+      redScore: 2, blueScore: 1,
+      redPenalties: 0, bluePenalties: 0,
+      winner: null, teamWinner: null,
+    };
+
+    // ── Top header bar ─────────────────────────────────────────────────────────
+    function TopBar({ tatami, division, matchInfo }) {
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 32px', height: '7vh', minHeight: 36,
+          background: 'rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.1)',
+          flexShrink: 0,
+        }}>
+          <span style={{ ...ROB(600), fontSize: 'clamp(0.65rem,1.1vw,1rem)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.15em', textTransform: 'uppercase' }}>{tatami}</span>
+          <span style={{ ...OSW(700), fontSize: 'clamp(0.75rem,1.3vw,1.1rem)', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'center' }}>{division}</span>
+          <span style={{ ...ROB(500), fontSize: 'clamp(0.65rem,1.1vw,1rem)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{matchInfo}</span>
+        </div>
+      );
+    }
+
+    // ── Team score strip ───────────────────────────────────────────────────────
+    function TeamScoreStrip({ redTeamName, redBouts, blueTeamName, blueBouts, c1Color, c2Color, totalBouts }) {
+      const c1Text = getCornerTextColor(c1Color);
+      const c2Text = getCornerTextColor(c2Color);
+      return (
+        <div style={{ display: 'flex', height: '16vh', minHeight: 60, flexShrink: 0 }}>
+          {/* Red team */}
+          <div style={{
+            flex: 1, background: c1Color, display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', padding: '0 clamp(12px,3vw,40px)',
+            borderRight: '3px solid rgba(0,0,0,0.3)',
+          }}>
+            <span style={{ ...OSW(800), fontSize: 'clamp(1rem,2.5vw,2.2rem)', color: c1Text, textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '70%' }}>
+              {redTeamName}
+            </span>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ ...OSW(900), fontSize: 'clamp(2.5rem,7vw,6rem)', color: c1Text, lineHeight: 1 }}>{redBouts}</div>
+              <div style={{ ...ROB(500), fontSize: 'clamp(0.6rem,1vw,0.9rem)', color: c1Text, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.1em' }}>BOUTS WON</div>
+            </div>
+          </div>
+          {/* Centre divider */}
+          <div style={{ width: 'clamp(40px,6vw,80px)', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+            <span style={{ ...ROB(700), fontSize: 'clamp(0.5rem,0.9vw,0.75rem)', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>VS</span>
+          </div>
+          {/* Blue team */}
+          <div style={{
+            flex: 1, background: c2Color, display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', padding: '0 clamp(12px,3vw,40px)',
+            borderLeft: '3px solid rgba(0,0,0,0.3)',
+            flexDirection: 'row-reverse',
+          }}>
+            <span style={{ ...OSW(800), fontSize: 'clamp(1rem,2.5vw,2.2rem)', color: c2Text, textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: '70%' }}>
+              {blueTeamName}
+            </span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ ...OSW(900), fontSize: 'clamp(2.5rem,7vw,6rem)', color: c2Text, lineHeight: 1 }}>{blueBouts}</div>
+              <div style={{ ...ROB(500), fontSize: 'clamp(0.6rem,1vw,0.9rem)', color: c2Text, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.1em' }}>BOUTS WON</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Bout lineup strip ──────────────────────────────────────────────────────
+    function BoutLineup({ bouts, currentBoutIndex, c1Color, c2Color }) {
+      if (!bouts || bouts.length === 0) return null;
+      return (
+        <div style={{
+          display: 'flex', gap: 'clamp(4px,0.8vw,12px)', alignItems: 'center', justifyContent: 'center',
+          padding: '0 clamp(12px,2vw,32px)', height: '9vh', minHeight: 40, flexShrink: 0,
+          background: 'rgba(255,255,255,0.03)', borderTop: '1px solid rgba(255,255,255,0.07)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)', overflowX: 'auto',
+        }}>
+          {bouts.map((b, i) => {
+            const isCurrent = i === currentBoutIndex;
+            const winner = b.winner; // 'red' | 'blue' | null
+            const winColor = winner === 'red' ? c1Color : winner === 'blue' ? c2Color : null;
+            return (
+              <div key={i} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                minWidth: 'clamp(44px,6vw,80px)', flexShrink: 0,
+                padding: '4px 6px', borderRadius: 8,
+                background: isCurrent ? 'rgba(255,255,255,0.12)' : 'transparent',
+                border: isCurrent ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent',
+                position: 'relative',
+              }}>
+                {/* Bout number */}
+                <span style={{ ...ROB(600), fontSize: 'clamp(0.55rem,0.8vw,0.7rem)', color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}>BOUT {b.boutNum}</span>
+                {/* Winner dot */}
+                <div style={{
+                  width: 'clamp(10px,1.5vw,18px)', height: 'clamp(10px,1.5vw,18px)', borderRadius: '50%',
+                  background: winColor || (isCurrent ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)'),
+                  border: isCurrent && !winColor ? '2px solid rgba(255,255,255,0.5)' : '2px solid transparent',
+                  boxShadow: isCurrent ? `0 0 10px ${winColor || 'rgba(255,255,255,0.3)'}` : 'none',
+                }} />
+                {/* Fighter names */}
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <span style={{ ...ROB(500), fontSize: 'clamp(0.45rem,0.65vw,0.6rem)', color: winner === 'red' ? c1Color : 'rgba(255,255,255,0.3)', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                    {(b.redFighter || '').split(',')[0]}
+                  </span>
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.5rem' }}>·</span>
+                  <span style={{ ...ROB(500), fontSize: 'clamp(0.45rem,0.65vw,0.6rem)', color: winner === 'blue' ? c2Color : 'rgba(255,255,255,0.3)', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                    {(b.blueFighter || '').split(',')[0]}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ── Individual bout panel ──────────────────────────────────────────────────
+    function BoutPanel({ fighter, side, score, penalties, color, label, winner }) {
+      const isBlue = side === 'blue';
+      const textColor = getCornerTextColor(color);
+      const dimmed = winner && winner !== side;
+      return (
+        <div style={{
+          flex: 1, background: color,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: 'clamp(10px,2vw,28px)', overflow: 'hidden', position: 'relative',
+          opacity: dimmed ? 0.45 : 1,
+          transition: 'opacity 0.5s',
+        }}>
+          {/* Corner label */}
+          <div style={{
+            ...ROB(700), fontSize: 'clamp(0.6rem,0.9vw,0.85rem)', color: textColor, opacity: 0.7,
+            textTransform: 'uppercase', letterSpacing: '0.15em',
+            alignSelf: 'stretch', textAlign: isBlue ? 'right' : 'left',
+          }}>{label}</div>
+
+          {/* Fighter name */}
+          <div style={{
+            ...OSW(800), fontSize: 'clamp(1.2rem,4vw,3.8rem)', color: textColor,
+            textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.05,
+            margin: '8px 0', maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+          }}>{fighter || '—'}</div>
+
+          {/* Score */}
+          <div style={{
+            ...OSW(900), fontSize: 'clamp(4rem,14vw,12rem)', color: textColor, lineHeight: 1,
+            textShadow: `0 4px 40px rgba(0,0,0,0.3)`,
+          }}>{score ?? 0}</div>
+
+          {/* Penalties */}
+          {penalties > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {Array.from({ length: penalties }).map((_, pi) => (
+                <div key={pi} style={{ width: 'clamp(10px,1.5vw,16px)', height: 'clamp(10px,1.5vw,16px)', borderRadius: '50%', background: '#ffd700', boxShadow: '0 0 8px #ffd700aa' }} />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Centre timer / info strip ──────────────────────────────────────────────
+    function CentrePanel({ timer, boutLabel }) {
+      const timerParts = (timer || '0:00').split(':');
+      const mins = parseInt(timerParts[0]) || 0;
+      const secs = parseInt(timerParts[1]) || 0;
+      const low = mins === 0 && secs <= 10;
+      return (
+        <div style={{
+          width: 'clamp(80px,12vw,160px)', background: '#0a0a0a', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0,
+          borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {boutLabel && (
+            <div style={{ ...ROB(600), fontSize: 'clamp(0.5rem,0.8vw,0.7rem)', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', padding: '0 4px' }}>{boutLabel}</div>
+          )}
+          <div style={{
+            ...OSW(900), fontSize: 'clamp(2rem,6vw,5.5rem)', color: low ? '#ff3b30' : '#fff',
+            lineHeight: 1, animation: low ? 'timerFlash 0.9s ease-in-out infinite' : 'none',
+            letterSpacing: '-0.02em',
+          }}>{timer || '0:00'}</div>
+        </div>
+      );
+    }
+
+    // ── Team winner overlay ────────────────────────────────────────────────────
+    function TeamWinnerOverlay({ teamWinner, redTeamName, blueTeamName, c1Color, c2Color }) {
+      if (!teamWinner) return null;
+      const isRed = teamWinner === 'red';
+      const color = isRed ? c1Color : c2Color;
+      const textColor = getCornerTextColor(color);
+      const name = isRed ? redTeamName : blueTeamName;
+      return (
+        <div style={{
+          position: 'absolute', inset: 0, background: `${color}ee`, zIndex: 100,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          animation: 'winnerPulse 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+        }}>
+          <div style={{ ...ROB(600), fontSize: 'clamp(1rem,2.5vw,2rem)', color: textColor, opacity: 0.75, textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: 8 }}>MATCH WINNER</div>
+          <div style={{ ...OSW(900), fontSize: 'clamp(2.5rem,8vw,7rem)', color: textColor, textTransform: 'uppercase', textAlign: 'center', lineHeight: 1, padding: '0 40px' }}>{name}</div>
+        </div>
+      );
+    }
+
+    // ── Main component ─────────────────────────────────────────────────────────
+    function TeamKumiteScoreboard({ s }) {
+      const d = s || DEMO;
+      const c1 = d.corner1Color || '#c0392b';
+      const c2 = d.corner2Color || '#1a6fb5';
+      const c1Name = d.corner1Name || 'RED';
+      const c2Name = d.corner2Name || 'BLUE';
+      const currentBout = Array.isArray(d.bouts) ? d.bouts[d.currentBoutIndex ?? 0] : null;
+      const boutLabel = currentBout ? `BOUT ${currentBout.boutNum}` : null;
+
+      return (
+        <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#000', position: 'relative', overflow: 'hidden' }}>
+          <TopBar tatami={d.matName || 'TATAMI 1'} division={d.divisionName || ''} matchInfo={d.matchInfo || ''} />
+          <TeamScoreStrip
+            redTeamName={d.redTeamName || c1Name}
+            redBouts={d.redTeamBouts ?? 0}
+            blueTeamName={d.blueTeamName || c2Name}
+            blueBouts={d.blueTeamBouts ?? 0}
+            c1Color={c1} c2Color={c2}
+            totalBouts={Array.isArray(d.bouts) ? d.bouts.length : 0}
+          />
+          {Array.isArray(d.bouts) && d.bouts.length > 0 && (
+            <BoutLineup bouts={d.bouts} currentBoutIndex={d.currentBoutIndex ?? 0} c1Color={c1} c2Color={c2} />
+          )}
+          {/* Individual bout area */}
+          <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            <BoutPanel side="red" fighter={d.redName} score={d.redScore} penalties={d.redPenalties} color={c1} label={c1Name} winner={d.winner} />
+            <CentrePanel timer={d.timer} boutLabel={boutLabel} />
+            <BoutPanel side="blue" fighter={d.blueName} score={d.blueScore} penalties={d.bluePenalties} color={c2} label={c2Name} winner={d.winner} />
+          </div>
+          {/* Individual bout winner banner */}
+          {d.winner && !d.teamWinner && (() => {
+            const isRed = d.winner === 'red';
+            const color = isRed ? c1 : c2;
+            const textColor = getCornerTextColor(color);
+            const name = isRed ? d.redName : d.blueName;
+            return (
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                background: `${color}cc`, padding: 'clamp(8px,2vh,20px)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                animation: 'winnerPulse 0.5s ease-out',
+              }}>
+                <div style={{ ...ROB(600), fontSize: 'clamp(0.7rem,1.5vw,1.1rem)', color: textColor, opacity: 0.75, textTransform: 'uppercase', letterSpacing: '0.15em' }}>BOUT WINNER</div>
+                <div style={{ ...OSW(900), fontSize: 'clamp(1.5rem,5vw,4rem)', color: textColor, textTransform: 'uppercase', lineHeight: 1 }}>{name}</div>
+              </div>
+            );
+          })()}
+          <TeamWinnerOverlay teamWinner={d.teamWinner} redTeamName={d.redTeamName} blueTeamName={d.blueTeamName} c1Color={c1} c2Color={c2} />
+        </div>
+      );
+    }
+
+    // ── BroadcastChannel + server polling wiring ───────────────────────────────
+    const _tid = new URLSearchParams(window.location.search).get('tid');
+
+    function App() {
+      const [state, setState] = React.useState(null);
+
+      React.useEffect(() => {
+        const bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch { return null; } })();
+
+        function applyState(s) {
+          if (!s) return;
+          if (s.scoreboardType && !['team-kumite', 'kumite'].includes(s.scoreboardType)) {
+            const map = { 'kata': 'kata-scoreboard.html', 'kata-flags': 'kata-flags-scoreboard.html', 'kata-points': 'kata-scoreboard.html' };
+            if (map[s.scoreboardType]) { window.location.href = map[s.scoreboardType] + (_tid ? '?tid=' + _tid : ''); }
+            return;
+          }
+          setState(s);
+        }
+
+        if (bc) {
+          bc.onmessage = (evt) => {
+            const d = evt.data;
+            if (!d) return;
+            if (d.type === 'table-update' && d.table === 'scoreboard-state' && d.value) {
+              try { applyState(JSON.parse(d.value)); } catch {}
+            } else if (d.type === 'state-snapshot' && d['scoreboard-state']) {
+              try { applyState(JSON.parse(d['scoreboard-state'])); } catch {}
+            }
+          };
+          try { bc.postMessage({ type: 'request-state' }); } catch {}
+        }
+
+        let _lastHash = null;
+        const poll = _tid ? setInterval(async () => {
+          try {
+            const res = await fetch(`/api/tournaments/${_tid}/scoreboard-state`, { credentials: 'include' });
+            if (!res.ok) return;
+            const { state: sv } = await res.json();
+            const h = JSON.stringify(sv);
+            if (h === _lastHash || !sv || !Object.keys(sv).length) return;
+            _lastHash = h;
+            applyState(sv);
+          } catch {}
+        }, 1000) : null;
+
+        return () => { if (bc) bc.close(); if (poll) clearInterval(poll); };
+      }, []);
+
+      return <TeamKumiteScoreboard s={state} />;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

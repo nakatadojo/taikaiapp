@@ -11100,6 +11100,7 @@ function showBracketGenerator() {
             } else {
             const types = [
                 { value: 'kumite',      label: 'Kumite (Sparring)',     key: 'kumite'     },
+                { value: 'team-kumite', label: 'Team Kumite',           key: 'kumite'     },
                 { value: 'kata-flags',  label: 'Kata – Flags',          key: 'kataFlags'  },
                 { value: 'kata-points', label: 'Kata – Points',         key: 'kataPoints' },
                 { value: 'kobudo',      label: 'Kobudo (Weapons Kata)', key: 'kobudo'     },
@@ -11109,7 +11110,7 @@ function showBracketGenerator() {
                     const opt = document.createElement('option');
                     opt.value = value;
                     opt.textContent = label;
-                    opt.setAttribute('data-base-type', value);
+                    opt.setAttribute('data-base-type', value === 'team-kumite' ? 'kumite' : value);
                     scoreboardTypeSelect.appendChild(opt);
                 }
             });
@@ -23215,6 +23216,7 @@ function openMatDisplay(matId) {
     if (matId && matId == activeMatId) {
         if (activeScoreboardType === 'kata-points') url = 'kata-scoreboard.html';
         else if (activeScoreboardType === 'kata-flags') url = 'kata-flags-scoreboard.html';
+        else if (activeScoreboardType === 'team-kumite') url = 'team-kumite-scoreboard.html';
     }
     // Pass tournament ID so the scoreboard reads the correct scoped localStorage key
     const tidParam = currentTournamentId ? `?tid=${currentTournamentId}` : '';
