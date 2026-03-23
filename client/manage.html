@@ -1676,8 +1676,16 @@
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="match-duration">Match Duration (minutes)</label>
-                                    <input type="number" id="match-duration" min="1" max="10" value="2" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                    <label>Match Duration</label>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <input type="number" id="match-duration-mins" min="0" max="10" value="2"
+                                               style="width:70px; padding:12px; border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); text-align:center;">
+                                        <span style="color:var(--text-secondary);">min</span>
+                                        <input type="number" id="match-duration-secs" min="0" max="59" value="0"
+                                               style="width:70px; padding:12px; border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); text-align:center;">
+                                        <span style="color:var(--text-secondary);">sec</span>
+                                    </div>
+                                    <p class="hint" id="match-duration-hint" style="margin-top:4px;"></p>
                                 </div>
 
                                 <div class="form-group">

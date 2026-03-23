@@ -11143,6 +11143,9 @@ function showBracketGenerator() {
         onBracketTemplateChange();
     }
 
+    // Auto-populate match duration based on event age groups
+    _autoPopulateMatchDuration(eventId);
+
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     modal.style.zIndex = '10000';
@@ -11277,6 +11280,69 @@ function updateBracketTypeOptions() {
     bracketTypeSelect.innerHTML = options;
 }
 
+/** Read the MM:SS picker and return total seconds. */
+function _getMatchDurationSeconds() {
+    const mins = parseInt(document.getElementById('match-duration-mins')?.value) || 0;
+    const secs = parseInt(document.getElementById('match-duration-secs')?.value) || 0;
+    return (mins * 60) + secs;
+}
+
+/** Set the MM:SS picker from a total-seconds value. */
+function _setMatchDurationFromSeconds(totalSecs) {
+    const minsEl = document.getElementById('match-duration-mins');
+    const secsEl = document.getElementById('match-duration-secs');
+    if (!minsEl || !secsEl) return;
+    const s = totalSecs || 0;
+    minsEl.value = Math.floor(s / 60);
+    secsEl.value = s % 60;
+}
+
+/**
+ * Auto-populate the MM:SS picker with a sensible default based on the event's
+ * youngest age group (< 14 → 1:30, else → 3:00, team-kumite → 6:00).
+ */
+function _autoPopulateMatchDuration(eventId) {
+    const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
+    const evt = eventTypes.find(e => String(e.id) === String(eventId));
+    const hintEl = document.getElementById('match-duration-hint');
+
+    // Team Kumite: 6:00 (AAU Rotation)
+    if (evt?.event_type === 'team-kumite' || evt?.eventType === 'team-kumite') {
+        _setMatchDurationFromSeconds(360);
+        if (hintEl) hintEl.textContent = 'Default 6:00 for team kumite rotation (AAU).';
+        return;
+    }
+
+    // Look at all age criteria across templates
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const eventData = allDivisions[eventId];
+    const templates = eventData?.templates || [];
+    let minAge = 99;
+    for (const tmpl of templates) {
+        for (const crit of (tmpl.criteria || [])) {
+            if (crit.type === 'age') {
+                for (const r of (crit.ranges || [])) {
+                    if ((r.min ?? 99) < minAge) minAge = r.min;
+                }
+            }
+        }
+    }
+
+    // Also check template-level matchDuration from the tree
+    const templateDuration = getTemplateDurationForEvent(eventId);
+    if (templateDuration) {
+        _setMatchDurationFromSeconds(templateDuration);
+        if (hintEl) hintEl.textContent = 'Pre-filled from event template settings.';
+        return;
+    }
+
+    const defaultSecs = minAge < 14 ? 90 : 180;
+    _setMatchDurationFromSeconds(defaultSecs);
+    if (hintEl) hintEl.textContent = minAge < 14
+        ? 'Default 1:30 for youth divisions (WKF standard).'
+        : 'Default 3:00 for senior divisions (WKF standard).';
+}
+
 function getTemplateDurationForEvent(eventId) {
     // Check event-level match_duration_seconds first (from DB)
     const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
@@ -11330,7 +11396,7 @@ function generateBracketsForAllDivisions() {
 
     const bracketType = document.getElementById('bracket-type').value;
     const seedingMethod = document.getElementById('seeding-method').value;
-    const matchDuration = parseInt(document.getElementById('match-duration').value);
+    const matchDuration = _getMatchDurationSeconds();
     const scoreboardType = document.getElementById('bracket-scoreboard-type').value;
 
 
@@ -11435,10 +11501,10 @@ function generateBracketsForAllDivisions() {
 
             // Store match duration on bracket (seconds)
             // Priority: form override > per-division template duration > event-level duration
-            const formDuration = parseInt(document.getElementById('match-duration').value);
+            const formDurationSeconds = _getMatchDurationSeconds();
             const divisionDuration = getDivisionMatchDuration(divisionName, eventId);
             const eventDuration = getTemplateDurationForEvent(eventId);
-            bracket.matchDuration = (formDuration ? formDuration * 60 : null) || divisionDuration || eventDuration || null;
+            bracket.matchDuration = formDurationSeconds || divisionDuration || eventDuration || null;
 
             // Save bracket
             const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
@@ -11585,7 +11651,7 @@ function generateBrackets(event) {
 
         bracket.scoreboardConfigId = scoreboardType;
         bracket.scoreboardConfig   = scoreboardConfig;
-        bracket.matchDuration      = getTemplateDurationForEvent(eventId) || null;
+        bracket.matchDuration      = _getMatchDurationSeconds() || getTemplateDurationForEvent(eventId) || null;
         bracket.timing             = calculateBracketTiming(bracket, scoreboardConfig);
         bracket.seedingMethod      = seedingMethod;
         bracket.matAssignment      = matAssignment;
