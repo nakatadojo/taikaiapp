@@ -2417,8 +2417,9 @@ function calculateMedalCounts() {
             mode = 'estimated';
 
             // Get competitors registered for this event
+            // Use string comparison — event IDs may be stored as numbers (director/CSV) or strings (registrations)
             const eventCompetitors = competitors.filter(c =>
-                c.events && c.events.includes(eventId)
+                c.events && c.events.some(id => String(id) === String(eventId))
             );
 
             if (eventCompetitors.length > 0) {
@@ -4190,9 +4191,15 @@ function autoAssignToDivisions(competitor, competitorId) {
         const event = eventTypes.find(e => String(e.id) === String(eventId));
         const eventData = freshDivisions[eventId];
 
+        // Only pass competitors registered for this specific event
+        // Use string comparison — IDs may be numbers (CSV) or strings (registrations)
+        const eventCompetitors = competitorsWithAge.filter(c =>
+            c.events && c.events.some(id => String(id) === String(eventId))
+        );
+
         const generatedDivisions = {};
         eventData.templates.forEach(template => {
-            const result = buildDivisions(competitorsWithAge, template.criteria);
+            const result = buildDivisions(eventCompetitors, template.criteria);
             Object.assign(generatedDivisions, result);
         });
 
@@ -5011,13 +5018,15 @@ function loadCompetitors(skipSync = false) {
         }
 
         // Get event names for this competitor
+        // Use loose string comparison — event IDs may be stored as numbers (director/CSV)
+        // or strings (registration path) depending on how they were created.
         let eventsHtml = '-';
         if (comp.events && comp.events.length > 0) {
             const eventNames = comp.events.map(eventId => {
-                const event = eventTypes.find(e => e.id === eventId);
-                return event ? event.name : `Event #${eventId}`;
-            });
-            eventsHtml = eventNames.join('<br>');
+                const event = eventTypes.find(e => String(e.id) === String(eventId));
+                return event ? event.name : null;
+            }).filter(Boolean);
+            if (eventNames.length > 0) eventsHtml = eventNames.join('<br>');
         }
 
         const totalDue = comp.pricing?.total != null ? formatPrice(comp.pricing.total, getTournamentCurrency()) : '-';
@@ -6783,7 +6792,7 @@ function generateTestCompetitors() {
         // Register team if this is a team competitor
         if (comp.teamCode) {
             if (!teamRegistry[comp.teamCode]) {
-                const teamEvent = nonDefaultEvents.find(e => comp.events.includes(e.id) && e.teamSize > 1);
+                const teamEvent = nonDefaultEvents.find(e => comp.events.some(id => String(id) === String(e.id)) && e.teamSize > 1);
                 teamRegistry[comp.teamCode] = {
                     code: comp.teamCode,
                     name: comp.teamName,
@@ -10105,11 +10114,13 @@ function generateDivisions() {
     }
 
 
-    // Get tournament-scoped competitors
+    // Get tournament-scoped competitors registered for this specific event
+    // Use string comparison — IDs may be numbers (CSV/director) or strings (registrations)
     const allCompetitors = db.load('competitors');
-    const competitors = currentTournamentId
+    const competitors = (currentTournamentId
         ? allCompetitors.filter(c => c.tournamentId === currentTournamentId)
-        : allCompetitors;
+        : allCompetitors
+    ).filter(c => c.events && c.events.some(id => String(id) === String(eventId)));
 
     // Detect tree-style templates early so we can skip the "no competitors"
     // guard — tree templates create empty division slots even with 0 competitors.
@@ -10373,8 +10384,8 @@ function loadDivisions() {
         // Auto-generate from existing competitors before giving up
         const allCompetitors = db.load('competitors');
         const competitors = currentTournamentId
-            ? allCompetitors.filter(c => c.tournamentId === currentTournamentId && c.events && c.events.includes(eventId))
-            : allCompetitors.filter(c => c.events && c.events.includes(eventId));
+            ? allCompetitors.filter(c => c.tournamentId === currentTournamentId && c.events && c.events.some(id => String(id) === String(eventId)))
+            : allCompetitors.filter(c => c.events && c.events.some(id => String(id) === String(eventId)));
 
         if (competitors.length > 0) {
             const tournaments = db.load('tournaments');
