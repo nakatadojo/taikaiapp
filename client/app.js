@@ -21320,12 +21320,31 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
 
+    // Migrate stale 'upcoming' entries (legacy solo bracket status) → 'pending' and persist
+    let _migratedEntries = false;
+    (bracket.entries || []).forEach(e => {
+        if (e.status === 'upcoming' || e.status == null) { e.status = 'pending'; _migratedEntries = true; }
+    });
+    if (bracket.status === 'upcoming') { bracket.status = 'pending'; _migratedEntries = true; }
+    if (_migratedEntries) {
+        const _allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        for (const _bid in _allBrackets) {
+            if ((_allBrackets[_bid].division || _allBrackets[_bid].divisionName) === (bracket.division || bracket.divisionName)
+                && String(_allBrackets[_bid].eventId) === String(bracket.eventId)) {
+                _allBrackets[_bid] = bracket;
+                break;
+            }
+        }
+        saveBrackets(_allBrackets);
+        _debouncedSync('brackets', _syncBracketsToServer, 2000);
+    }
+
     const entries = bracket.entries || [];
     const scoringRange = bracket.scoringRange || bracket.scoreboardConfig?.settings?.scoringRange || { min: 0, max: 10 };
     const numJudges = bracket.scoreboardConfig?.settings?.judges || bracket.numJudges || 5;
 
     // Find next unscored entry
-    const currentIndex = entries.findIndex(e => e.status === 'pending');
+    const currentIndex = entries.findIndex(e => e.status !== 'scored');
     const scoredCount = entries.filter(e => e.status === 'scored').length;
 
     // Build ranked list of scored entries
@@ -21472,8 +21491,13 @@ function updateRankingListTVDisplay(bracket, status) {
     const eventType = eventTypes.find(e => e.id == currentOperatorEventId);
     const eventName = eventType?.name || 'Kata';
 
+    // Normalise any stale 'upcoming' entries → 'pending'
+    (bracket.entries || []).forEach(e => {
+        if (e.status === 'upcoming' || e.status == null) e.status = 'pending';
+    });
+
     const entries = bracket.entries || [];
-    const currentIndex = entries.findIndex(e => e.status === 'pending');
+    const currentIndex = entries.findIndex(e => e.status !== 'scored');
     const scoredCount = entries.filter(e => e.status === 'scored').length;
     const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null;
     const competitor = rehydrateCompetitor(currentEntry?.competitor || null);
@@ -21626,7 +21650,12 @@ function submitRankingListScore(numJudges) {
     }
 
     const bracket = brackets[targetBracketId];
-    const pendingIndex = bracket.entries.findIndex(e => e.status === 'pending');
+    // Normalise stale 'upcoming' entries → 'pending'
+    (bracket.entries || []).forEach(e => {
+        if (e.status === 'upcoming' || e.status == null) e.status = 'pending';
+    });
+
+    const pendingIndex = bracket.entries.findIndex(e => e.status !== 'scored');
 
     if (pendingIndex === -1) {
         showMessage('All competitors already scored', 'error');
@@ -22342,7 +22371,8 @@ function openEditRankingListPanel(matId, divisionName, eventId, bracketId, brack
         .sort((a, b) => b.score - a.score);
 
     if (scoredEntries.length === 0) {
-        showMessage('No scored entries to edit', 'error');
+        // Nothing scored yet — open scoring panel instead of showing error
+        openRankingListScoreboard(matId, divisionName, eventId, bracket, bracket.scoreboardConfigId || activeScoreboardType || 'kata-points');
         return;
     }
 
