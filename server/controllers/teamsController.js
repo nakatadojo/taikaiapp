@@ -27,7 +27,7 @@ async function getTeams(req, res, next) {
               te.event_type  AS event_type,
               te.team_price  AS team_price
        FROM tournament_teams tt
-       JOIN tournament_events te ON te.id = tt.event_id
+       LEFT JOIN tournament_events te ON te.id = tt.event_id
        WHERE tt.tournament_id = $1
        ORDER BY tt.team_name`,
       [tournamentId]
@@ -84,7 +84,7 @@ async function createTeam(req, res, next) {
 
     // Validate event exists and is a team event
     const eventRes = await pool.query(
-      `SELECT id, event_type, team_price FROM tournament_events
+      `SELECT id, event_type, team_size, team_price FROM tournament_events
        WHERE id = $1 AND tournament_id = $2`,
       [event_id, tournamentId]
     );
@@ -92,7 +92,9 @@ async function createTeam(req, res, next) {
       return res.status(404).json({ error: 'Event not found in this tournament' });
     }
     const event = eventRes.rows[0];
-    if (!['team-kata', 'team-kumite'].includes(event.event_type)) {
+    const isTeamEvent = ['team-kata', 'team-kumite'].includes(event.event_type) ||
+                        (event.team_size != null && event.team_size > 1);
+    if (!isTeamEvent) {
       return res.status(400).json({ error: 'Event is not a team event' });
     }
 
