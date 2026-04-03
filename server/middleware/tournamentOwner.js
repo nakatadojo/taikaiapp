@@ -59,4 +59,19 @@ function requireTournamentOwner(req, res, next) {
   })().catch(next);
 }
 
-module.exports = { requireTournamentOwner };
+/**
+ * Middleware that passes ONLY the tournament creator (or super_admin).
+ * Must be chained after requireTournamentOwner, which sets req.isTournamentOwner.
+ *
+ * Use this for routes where approved staff should NOT have access —
+ * e.g. creating/modifying role definitions, approving members.
+ *
+ * Usage: router.get('/route', requireAuth, requireTournamentOwner, requireTournamentCreator, handler)
+ */
+function requireTournamentCreator(req, res, next) {
+  const isSuperAdmin = (req.user?.roles || []).includes('super_admin');
+  if (req.isTournamentOwner || isSuperAdmin) return next();
+  return res.status(403).json({ error: 'Only the tournament director can perform this action' });
+}
+
+module.exports = { requireTournamentOwner, requireTournamentCreator };

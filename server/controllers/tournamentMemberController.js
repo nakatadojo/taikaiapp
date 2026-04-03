@@ -2,6 +2,7 @@ const tournamentMemberQueries = require('../db/queries/tournamentMembers');
 const notificationQueries = require('../db/queries/notifications');
 const tournamentQueries = require('../db/queries/tournaments');
 const userQueries = require('../db/queries/users');
+const pool = require('../db/pool');
 const QRCode = require('qrcode');
 
 /**
@@ -19,6 +20,17 @@ async function apply(req, res, next) {
     const tournament = await tournamentQueries.findById(tournamentId);
     if (!tournament) {
       return res.status(404).json({ error: 'Tournament not found' });
+    }
+
+    // Block re-application if the member already has an approved record for this role.
+    // The underlying query uses ON CONFLICT DO UPDATE which would silently reset an
+    // approved member back to 'pending', stripping their access mid-tournament.
+    const existingRow = await pool.query(
+      `SELECT status FROM tournament_members WHERE user_id = $1 AND tournament_id = $2 AND role = $3`,
+      [req.user.id, tournamentId, role]
+    );
+    if (existingRow.rows[0]?.status === 'approved') {
+      return res.status(409).json({ error: 'You already have an approved application for this role at this tournament.' });
     }
 
     // Build metadata object with any extra application fields

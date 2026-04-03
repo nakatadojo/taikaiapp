@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
-const { requireTournamentOwner } = require('../middleware/tournamentOwner');
+const { requireTournamentOwner, requireTournamentCreator } = require('../middleware/tournamentOwner');
 const controller = require('../controllers/tournamentMemberController');
 const upload = require('../middleware/upload');
 
@@ -33,10 +33,11 @@ router.get('/:tournamentId/public',
   controller.listPublic
 );
 
-// GET /api/tournament-members/:tournamentId — List members for a tournament (admin)
+// GET /api/tournament-members/:tournamentId — List members for a tournament (director only)
 router.get('/:tournamentId',
   requireAuth,
   requireTournamentOwner,
+  requireTournamentCreator,
   controller.list
 );
 

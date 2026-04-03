@@ -14,11 +14,13 @@ if (!process.env.JWT_SECRET) {
   if (process.env.NODE_ENV === 'production') process.exit(1);
 }
 if (!process.env.STRIPE_WEBHOOK_SECRET && process.env.NODE_ENV === 'production') {
-  console.warn('WARNING: STRIPE_WEBHOOK_SECRET is not set. Stripe webhooks will be rejected.');
+  console.error('FATAL: STRIPE_WEBHOOK_SECRET is not set. Stripe payment webhooks will be rejected and registrations will never be confirmed.');
+  process.exit(1);
 }
 
 const { createServer } = require('http');
 const { initWebSocket } = require('./websocket');
+const { sendRegistrationClosingEmails } = require('./email');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -91,9 +93,28 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CORS for development
-if (process.env.NODE_ENV !== 'production') {
-  app.use(cors({ origin: true, credentials: true }));
+// CORS — always enabled. In production, restrict to CORS_ORIGIN env var.
+// Set CORS_ORIGIN to a comma-separated list of allowed origins, e.g.:
+//   CORS_ORIGIN=https://www.taikaiapp.com,https://taikaiapp.com
+{
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : null;
+
+  app.use(cors({
+    origin: isProd
+      ? (allowedOrigins && allowedOrigins.length > 0
+          ? allowedOrigins
+          : false)           // deny all cross-origin if CORS_ORIGIN unset in prod
+      : true,               // dev: allow all origins
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  }));
+
+  if (isProd && (!allowedOrigins || allowedOrigins.length === 0)) {
+    console.warn('WARNING: CORS_ORIGIN is not set. All cross-origin browser requests will be blocked.');
+  }
 }
 
 // Trust proxy in production (Railway uses reverse proxy)
@@ -122,6 +143,8 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/my', require('./routes/myTournaments'));
 app.use('/api/waivers', require('./routes/waivers'));
 app.use('/api/tournaments', require('./routes/results'));
+app.use('/api/tournaments', require('./routes/leaderboard'));
+app.use('/api/tournaments', require('./routes/dayOf'));
 app.use('/api/tournaments', require('./routes/publicData'));
 app.use('/api/tournaments', require('./routes/pricingPeriods'));
 app.use('/api/tournaments', require('./routes/staffRoles'));
@@ -142,6 +165,12 @@ app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/tournaments', require('./routes/feedback').tournamentRouter);
 app.use('/api/tournaments', require('./routes/judgeAnalytics'));
 app.use('/api/admin', require('./routes/judgeAnalyticsAdmin'));
+
+// ── Feature: Athlete Profiles ───────────────────────────────────────────────
+app.use('/api/athletes', require('./routes/athleteProfiles'));
+
+// ── Feature: Push Notifications ─────────────────────────────────────────────
+app.use('/api/push', require('./routes/push'));
 
 // ── Static Files ────────────────────────────────────────────────────────────
 
@@ -250,6 +279,29 @@ async function startServer() {
     console.log(`Register:  http://localhost:${PORT}/register`);
     console.log(`Admin:     http://localhost:${PORT}/admin`);
   });
+
+  // ── Registration-closing notification interval ───────────────────────────
+  // Every hour, check for tournaments whose registration closes within 24h
+  // and send a reminder email to unregistered users (deduped per tournament).
+  const pool_ic = require('./db/pool');
+  const _fireRegistrationClosingEmails = async () => {
+    try {
+      const { rows } = await pool_ic.query(
+        `SELECT id FROM tournaments
+         WHERE published = true
+           AND registration_deadline IS NOT NULL
+           AND registration_deadline > NOW()
+           AND registration_deadline <= NOW() + INTERVAL '25 hours'`
+      );
+      for (const { id } of rows) {
+        sendRegistrationClosingEmails(id)
+          .catch(e => console.warn('[email] registrationClosing interval failed:', e.message));
+      }
+    } catch (e) { console.warn('[email] closing check failed:', e.message); }
+  };
+  // Run once shortly after startup, then every hour
+  setTimeout(_fireRegistrationClosingEmails, 30000);
+  setInterval(_fireRegistrationClosingEmails, 3600000);
 }
 
 startServer();
