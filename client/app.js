@@ -29380,9 +29380,9 @@ async function markTeamPaid(teamId) {
 
 // ── Create Team ──────────────────────────────────────────────────────────────
 
-function showCreateTeamModal() {
+async function showCreateTeamModal() {
     if (!currentTournamentId) return;
-    // Populate event dropdown from eventTypes (team events only)
+    // Populate event dropdown
     const evtSel = document.getElementById('new-team-event');
     if (evtSel) {
         evtSel.innerHTML = '<option value="">Select a team event</option>';
@@ -29398,6 +29398,23 @@ function showCreateTeamModal() {
                 evtSel.appendChild(opt);
             });
     }
+    // Populate dojo dropdown
+    const dojoSel = document.getElementById('new-team-dojo');
+    if (dojoSel) {
+        dojoSel.innerHTML = '<option value="">— None / Independent —</option>';
+        try {
+            const res = await fetch('/api/academies/search?q=&limit=50', { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                (data.academies || data || []).forEach(a => {
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = a.name;
+                    dojoSel.appendChild(opt);
+                });
+            }
+        } catch (e) { /* non-fatal */ }
+    }
     document.getElementById('new-team-name').value = '';
     document.getElementById('create-team-modal').classList.remove('hidden');
 }
@@ -29409,6 +29426,7 @@ function hideCreateTeamModal() {
 async function submitCreateTeam() {
     const name = (document.getElementById('new-team-name')?.value || '').trim();
     const eventId = document.getElementById('new-team-event')?.value;
+    const academyId = document.getElementById('new-team-dojo')?.value || null;
     if (!name) { showMessage('Team name is required', 'error'); return; }
     if (!eventId) { showMessage('Please select an event', 'error'); return; }
     try {
@@ -29416,7 +29434,7 @@ async function submitCreateTeam() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ event_id: eventId, team_name: name, members: [] }),
+            body: JSON.stringify({ event_id: eventId, team_name: name, members: [], academy_id: academyId || undefined }),
         });
         const data = await res.json();
         if (!res.ok) { showMessage('Error: ' + (data.error || 'Failed'), 'error'); return; }
@@ -29428,23 +29446,165 @@ async function submitCreateTeam() {
 
 // ── Edit Team Members ─────────────────────────────────────────────────────────
 
-let _editingTeamId = null;
+let _editingTeamId     = null;
+let _editingTeamData   = null; // full team object from server
+let _etmSearchTimer    = null;
+let _etmCurrentTab     = 'dojo';
 
 function editTeamMembers(teamId) {
     _editingTeamId = teamId;
-    // Find the team in the rendered data by re-fetching or reading from DOM
     fetch(`/api/tournaments/${currentTournamentId}/teams`, { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
             const team = (data.teams || []).find(t => String(t.id) === String(teamId));
             if (!team) { showMessage('Team not found', 'error'); return; }
-            document.getElementById('edit-team-name-label').textContent = team.team_name;
+            _editingTeamData = team;
+            document.getElementById('edit-team-name-label').textContent = team.team_name + (team.academy_name ? ` · ${team.academy_name}` : '');
             _renderEditMemberRows(team.members || []);
-            document.getElementById('new-member-name').value = '';
-            document.getElementById('new-member-email').value = '';
+            _etmTab('dojo');
             document.getElementById('edit-team-modal').classList.remove('hidden');
+            // Load dojo members for the default tab
+            if (team.academy_id) {
+                _loadDojoMembersTab(team.academy_id);
+            } else {
+                document.getElementById('etm-dojo-members').innerHTML =
+                    '<p style="color:var(--text-muted);font-size:0.85em;">No dojo linked to this team. Use Search or Manual to add members.</p>';
+            }
         })
         .catch(err => showMessage('Error: ' + err.message, 'error'));
+}
+
+function _etmTab(tab) {
+    _etmCurrentTab = tab;
+    ['dojo','search','manual'].forEach(t => {
+        const btn  = document.getElementById(`etm-tab-${t}`);
+        const pane = document.getElementById(`etm-pane-${t}`);
+        const active = t === tab;
+        if (btn)  { btn.style.background  = active ? 'var(--accent)' : 'var(--bg-secondary)';
+                    btn.style.color       = active ? '#fff' : 'var(--text-secondary)'; }
+        if (pane) pane.style.display = active ? 'block' : 'none';
+    });
+}
+
+async function _loadDojoMembersTab(academyId) {
+    const container = document.getElementById('etm-dojo-members');
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85em;">Loading…</p>';
+    try {
+        const res = await fetch(`/api/academies/${academyId}/members`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load dojo members');
+        const data = await res.json();
+        const members = data.members || data || [];
+        if (!members.length) {
+            container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85em;">No members found in this dojo.</p>';
+            return;
+        }
+        container.innerHTML = '';
+        members.forEach(m => {
+            const name = `${m.first_name || ''} ${m.last_name || ''}`.trim() || m.email || '—';
+            const alreadyAdded = (document.getElementById('edit-team-members-list')._members || [])
+                .some(em => (em.user_id && em.user_id === (m.user_id || m.id)) || (em.email && em.email === m.email));
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--glass-border);font-size:13px;';
+            row.innerHTML = `
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_escapeHtml(name)}</div>
+                    ${m.email ? `<div style="font-size:11px;color:var(--text-muted);">${_escapeHtml(m.email)}</div>` : ''}
+                </div>
+                ${m.belt_rank || m.rank ? `<span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">${_escapeHtml(m.belt_rank || m.rank)}</span>` : ''}
+                <button type="button" class="btn btn-small" style="flex-shrink:0;${alreadyAdded ? 'opacity:0.4;pointer-events:none;' : ''}"
+                        onclick="_etmAddFromDojo(this, ${JSON.stringify({ name, email: m.email || null, user_id: m.user_id || m.id || null, first_name: m.first_name || null, last_name: m.last_name || null, rank: m.belt_rank || m.rank || null }).replace(/"/g, '&quot;')})">
+                    ${alreadyAdded ? 'Added' : '+ Add'}
+                </button>`;
+            container.appendChild(row);
+        });
+    } catch (err) {
+        container.innerHTML = `<p style="color:#ef4444;font-size:0.85em;">${_escapeHtml(err.message)}</p>`;
+    }
+}
+
+function _etmAddFromDojo(btn, memberObj) {
+    const list = document.getElementById('edit-team-members-list');
+    const existing = list._members || [];
+    existing.push(memberObj);
+    _renderEditMemberRows(existing);
+    btn.textContent = 'Added';
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+}
+
+function _etmSearchDebounced(q) {
+    clearTimeout(_etmSearchTimer);
+    _etmSearchTimer = setTimeout(() => _etmSearch(q), 280);
+}
+
+function _etmSearch(q) {
+    const container = document.getElementById('etm-search-results');
+    const query = (q || '').trim().toLowerCase();
+    if (!query) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85em;">Type to search competitors…</p>';
+        return;
+    }
+    // Search in-memory tournament competitors
+    const competitors = (_inMemoryCompetitors || db.load('competitors') || []);
+    const matches = competitors.filter(c => {
+        const fullName = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase();
+        const email = (c.email || '').toLowerCase();
+        return fullName.includes(query) || email.includes(query);
+    }).slice(0, 20);
+
+    if (!matches.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85em;">No competitors found.</p>';
+        return;
+    }
+    container.innerHTML = '';
+    matches.forEach(c => {
+        const name = `${c.firstName || ''} ${c.lastName || ''}`.trim() || '—';
+        const alreadyAdded = (document.getElementById('edit-team-members-list')._members || [])
+            .some(em => (em.competitor_id && em.competitor_id === c.id) || (em.email && em.email === c.email));
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--glass-border);font-size:13px;';
+        const memberObj = { name, email: c.email || null, competitor_id: c.id, first_name: c.firstName || null, last_name: c.lastName || null, rank: c.rank || null, club: c.club || null };
+        row.innerHTML = `
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_escapeHtml(name)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${[c.club, c.rank].filter(Boolean).map(_escapeHtml).join(' · ')}</div>
+            </div>
+            <button type="button" class="btn btn-small" style="flex-shrink:0;${alreadyAdded ? 'opacity:0.4;pointer-events:none;' : ''}"
+                    onclick="_etmAddFromSearch(this, ${JSON.stringify(memberObj).replace(/"/g, '&quot;')})">
+                ${alreadyAdded ? 'Added' : '+ Add'}
+            </button>`;
+        container.appendChild(row);
+    });
+}
+
+function _etmAddFromSearch(btn, memberObj) {
+    const list = document.getElementById('edit-team-members-list');
+    const existing = list._members || [];
+    existing.push(memberObj);
+    _renderEditMemberRows(existing);
+    btn.textContent = 'Added';
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+}
+
+function _etmAddManual() {
+    const name  = (document.getElementById('etm-manual-name')?.value  || '').trim();
+    const age   = parseInt(document.getElementById('etm-manual-age')?.value)  || null;
+    const gender= document.getElementById('etm-manual-gender')?.value || null;
+    const rank  = (document.getElementById('etm-manual-rank')?.value  || '').trim() || null;
+    const email = (document.getElementById('etm-manual-email')?.value || '').trim() || null;
+    if (!name) { showMessage('Full name is required', 'error'); return; }
+    const list = document.getElementById('edit-team-members-list');
+    const existing = list._members || [];
+    existing.push({ name, age, gender, rank, email: email || undefined });
+    _renderEditMemberRows(existing);
+    // Clear fields
+    ['etm-manual-name','etm-manual-age','etm-manual-rank','etm-manual-email'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const genderEl = document.getElementById('etm-manual-gender');
+    if (genderEl) genderEl.value = '';
+    showMessage('Member added', 'success');
 }
 
 function _renderEditMemberRows(members) {
@@ -29452,34 +29612,28 @@ function _renderEditMemberRows(members) {
     if (!list) return;
     list.innerHTML = '';
     if (!members.length) {
-        list.innerHTML = '<p style="color:var(--text-secondary); font-size:0.9em;">No members yet.</p>';
+        list.innerHTML = '<p style="color:var(--text-secondary); font-size:0.9em; padding:4px 0;">No members yet.</p>';
+        list._members = [];
         return;
     }
     members.forEach((m, i) => {
-        const name = m.name || ((m.first_name || '') + ' ' + (m.last_name || '')).trim() || '—';
+        const name  = m.name || `${m.first_name || ''} ${m.last_name || ''}`.trim() || '—';
+        const meta  = [m.age ? `Age ${m.age}` : null, m.gender, m.rank, m.club].filter(Boolean).join(' · ');
         const email = m.email || '';
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:0.9em;';
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg-secondary);border-radius:6px;font-size:13px;';
         row.dataset.idx = i;
         row.innerHTML = `
-            <span style="flex:1;">${_escapeHtml(name)}${email ? ` <span style="color:var(--text-secondary); font-size:0.85em;">(${_escapeHtml(email)})</span>` : ''}</span>
-            <button type="button" class="btn btn-small" style="color:#ef4444; background:transparent; border:1px solid #ef444440; padding:3px 8px;"
+            <div style="flex:1;min-width:0;">
+                <span style="font-weight:600;">${_escapeHtml(name)}</span>
+                ${meta  ? `<span style="color:var(--text-muted);font-size:11px;margin-left:6px;">${_escapeHtml(meta)}</span>` : ''}
+                ${email ? `<span style="color:var(--text-muted);font-size:11px;margin-left:6px;">(${_escapeHtml(email)})</span>` : ''}
+            </div>
+            <button type="button" style="background:none;border:1px solid #ef444440;color:#ef4444;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;flex-shrink:0;"
                     onclick="removeTeamMemberRow(${i})">Remove</button>`;
         list.appendChild(row);
     });
     list._members = members.slice();
-}
-
-function addTeamMemberRow() {
-    const name = (document.getElementById('new-member-name')?.value || '').trim();
-    const email = (document.getElementById('new-member-email')?.value || '').trim();
-    if (!name) { showMessage('Member name is required', 'error'); return; }
-    const list = document.getElementById('edit-team-members-list');
-    const existing = list._members || [];
-    existing.push({ name, email: email || undefined });
-    _renderEditMemberRows(existing);
-    document.getElementById('new-member-name').value = '';
-    document.getElementById('new-member-email').value = '';
 }
 
 function removeTeamMemberRow(idx) {
@@ -29489,7 +29643,8 @@ function removeTeamMemberRow(idx) {
 }
 
 function hideEditTeamModal() {
-    _editingTeamId = null;
+    _editingTeamId   = null;
+    _editingTeamData = null;
     document.getElementById('edit-team-modal').classList.add('hidden');
 }
 

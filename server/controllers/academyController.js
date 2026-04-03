@@ -716,12 +716,9 @@ async function bulkRegisterForEvents(req, res, next) {
  */
 async function searchAcademies(req, res, next) {
   try {
-    const { q } = req.query;
-    if (!q || q.length < 2) {
-      return res.json({ academies: [] });
-    }
-
-    const academies = await academyQueries.searchByName(q, 10);
+    const { q = '', limit } = req.query;
+    const maxLimit = Math.min(parseInt(limit) || 10, 100);
+    const academies = await academyQueries.searchByName(q, maxLimit);
     res.json({ academies });
   } catch (err) {
     next(err);

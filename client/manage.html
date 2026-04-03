@@ -3325,6 +3325,12 @@
                                 <option value="">Select a team event</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label for="new-team-dojo">Dojo / Academy</label>
+                            <select id="new-team-dojo" style="width:100%; padding:10px; border-radius:8px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border);">
+                                <option value="">— None / Independent —</option>
+                            </select>
+                        </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-primary" onclick="submitCreateTeam()">Create Team</button>
                             <button type="button" class="btn btn-secondary" onclick="hideCreateTeamModal()">Cancel</button>
@@ -3334,20 +3340,84 @@
 
                 <!-- Edit Team Members Modal -->
                 <div id="edit-team-modal" class="modal hidden">
-                    <div class="modal-content" style="max-width:520px;">
-                        <h2>Edit Team Members</h2>
-                        <p id="edit-team-name-label" style="color:var(--text-secondary); margin-bottom:16px;"></p>
-                        <div id="edit-team-members-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px; max-height:260px; overflow-y:auto;"></div>
-                        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-                            <input type="text" id="new-member-name" placeholder="Full Name *"
-                                   style="flex:1; min-width:130px; padding:8px 10px; border-radius:8px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); font-size:0.9em;">
-                            <input type="email" id="new-member-email" placeholder="Email (optional)"
-                                   style="flex:1; min-width:130px; padding:8px 10px; border-radius:8px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); font-size:0.9em;">
-                            <button type="button" class="btn btn-secondary btn-small" onclick="addTeamMemberRow()">Add</button>
+                    <div class="modal-content" style="max-width:560px; max-height:90vh; overflow-y:auto;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                            <h2 style="margin:0;">Team Members</h2>
+                            <button type="button" onclick="hideEditTeamModal()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;line-height:1;">✕</button>
                         </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-primary" onclick="saveTeamMembers()">Save</button>
+                        <p id="edit-team-name-label" style="color:var(--text-secondary); margin-bottom:16px; font-size:0.95em;"></p>
+
+                        <!-- Current members -->
+                        <div style="margin-bottom:20px;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px;">Current Members</div>
+                            <div id="edit-team-members-list" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;"></div>
+                        </div>
+
+                        <!-- Add member tabs -->
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px;">Add Member</div>
+                        <div style="display:flex; gap:0; margin-bottom:16px; border:1px solid var(--glass-border); border-radius:8px; overflow:hidden;">
+                            <button id="etm-tab-dojo"   onclick="_etmTab('dojo')"   style="flex:1;padding:8px 4px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:var(--accent);color:#fff;transition:background .15s;">From Dojo</button>
+                            <button id="etm-tab-search" onclick="_etmTab('search')" style="flex:1;padding:8px 4px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:var(--bg-secondary);color:var(--text-secondary);border-left:1px solid var(--glass-border);transition:background .15s;">Search</button>
+                            <button id="etm-tab-manual" onclick="_etmTab('manual')" style="flex:1;padding:8px 4px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:var(--bg-secondary);color:var(--text-secondary);border-left:1px solid var(--glass-border);transition:background .15s;">Manual</button>
+                        </div>
+
+                        <!-- Tab: From Dojo -->
+                        <div id="etm-pane-dojo" style="min-height:120px;">
+                            <div id="etm-dojo-members" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;">
+                                <p style="color:var(--text-muted);font-size:0.85em;">Loading dojo members…</p>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Search -->
+                        <div id="etm-pane-search" style="display:none;min-height:120px;">
+                            <input id="etm-search-input" type="text" placeholder="Search by name or email…"
+                                   oninput="_etmSearchDebounced(this.value)"
+                                   style="width:100%;padding:9px 12px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:14px;box-sizing:border-box;margin-bottom:10px;">
+                            <div id="etm-search-results" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;">
+                                <p style="color:var(--text-muted);font-size:0.85em;">Type to search competitors…</p>
+                            </div>
+                        </div>
+
+                        <!-- Tab: Manual -->
+                        <div id="etm-pane-manual" style="display:none;min-height:120px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                                <div style="grid-column:1/-1;">
+                                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Full Name *</label>
+                                    <input id="etm-manual-name" type="text" placeholder="First Last"
+                                           style="width:100%;padding:8px 10px;border-radius:7px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Age</label>
+                                    <input id="etm-manual-age" type="number" min="4" max="99" placeholder="e.g. 14"
+                                           style="width:100%;padding:8px 10px;border-radius:7px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Gender</label>
+                                    <select id="etm-manual-gender"
+                                            style="width:100%;padding:8px 10px;border-radius:7px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;">
+                                        <option value="">— select —</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Rank</label>
+                                    <input id="etm-manual-rank" type="text" placeholder="e.g. 1st Dan"
+                                           style="width:100%;padding:8px 10px;border-radius:7px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;box-sizing:border-box;">
+                                </div>
+                                <div style="grid-column:1/-1;">
+                                    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">Email (optional)</label>
+                                    <input id="etm-manual-email" type="email" placeholder="athlete@example.com"
+                                           style="width:100%;padding:8px 10px;border-radius:7px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;box-sizing:border-box;">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-small" onclick="_etmAddManual()">Add Member</button>
+                        </div>
+
+                        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--glass-border);">
                             <button type="button" class="btn btn-secondary" onclick="hideEditTeamModal()">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="saveTeamMembers()">Save Members</button>
                         </div>
                     </div>
                 </div>

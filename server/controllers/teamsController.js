@@ -25,9 +25,12 @@ async function getTeams(req, res, next) {
       `SELECT tt.*,
               te.name        AS event_name,
               te.event_type  AS event_type,
-              te.team_price  AS team_price
+              te.team_price  AS team_price,
+              a.name         AS academy_name,
+              a.logo_url     AS academy_logo
        FROM tournament_teams tt
        LEFT JOIN tournament_events te ON te.id = tt.event_id
+       LEFT JOIN academies a ON a.id = tt.academy_id
        WHERE tt.tournament_id = $1
        ORDER BY tt.team_name`,
       [tournamentId]
@@ -58,7 +61,12 @@ async function getTeams(req, res, next) {
         };
       });
 
-      return { ...team, members: annotated };
+      return {
+        ...team,
+        academy_id: team.academy_id,
+        academy_name: team.academy_name,
+        members: annotated,
+      };
     }));
 
     res.json({ teams });
@@ -72,7 +80,7 @@ async function getTeams(req, res, next) {
 async function createTeam(req, res, next) {
   try {
     const { id: tournamentId } = req.params;
-    const { event_id, team_name, members } = req.body;
+    const { event_id, team_name, members, academy_id } = req.body;
 
     if (!event_id || !team_name || !Array.isArray(members)) {
       return res.status(400).json({ error: 'event_id, team_name, and members array are required' });
@@ -113,8 +121,8 @@ async function createTeam(req, res, next) {
 
     const insertRes = await pool.query(
       `INSERT INTO tournament_teams
-         (tournament_id, event_id, team_code, team_name, members, registered_by, payment_status)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'unpaid')
+         (tournament_id, event_id, team_code, team_name, members, registered_by, payment_status, academy_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'unpaid', $7)
        RETURNING *`,
       [
         tournamentId,
@@ -123,6 +131,7 @@ async function createTeam(req, res, next) {
         team_name.trim(),
         JSON.stringify(members),
         req.user?.id || null,
+        academy_id || null,
       ]
     );
 

@@ -25,7 +25,7 @@ const searchLimiter = rateLimit({
 router.get('/search',
   searchLimiter,
   [
-    query('q').trim().isLength({ min: 2 }).withMessage('Search query must be at least 2 characters'),
+    query('q').trim().isLength({ min: 0 }).withMessage('Search query must be a string'),
   ],
   validate,
   academyController.searchAcademies
