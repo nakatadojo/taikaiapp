@@ -6,6 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="tournament-title">Karate Tournament</title>
     <link rel="stylesheet" href="public-styles.css">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
     <!-- Hero Section -->
@@ -393,5 +401,13 @@
 
     <script src="auth.js"></script>
     <script src="public.js"></script>
+    <!-- ── Browser Translate Widget ── -->
+    <div id="gt-wrap" style="position:fixed;bottom:16px;left:16px;z-index:9980;">
+      <button id="gt-btn" onclick="document.getElementById('gt-box').classList.toggle('gt-open')" style="background:#1e1e2e;border:1px solid rgba(255,255,255,0.12);border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.35);padding:0;" title="Translate page" aria-label="Translate page">🌐</button>
+      <div id="gt-box" style="display:none;position:absolute;bottom:46px;left:0;background:#1e1e2e;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:10px 12px;box-shadow:0 4px 20px rgba(0,0,0,0.4);min-width:180px;white-space:nowrap;"><div id="google_translate_element"></div></div>
+    </div>
+    <style>#gt-box.gt-open{display:block!important;}.goog-te-gadget{font-size:0!important;}.goog-te-gadget select{font-size:13px!important;border-radius:6px!important;background:#111!important;color:#fff!important;border:1px solid rgba(255,255,255,0.2)!important;padding:4px 6px!important;cursor:pointer;}.goog-logo-link,.goog-te-gadget span{display:none!important;}</style>
+    <script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:"en",autoDisplay:false},"google_translate_element");}</script>
+    <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body>
 </html>

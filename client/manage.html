@@ -534,6 +534,14 @@
     }
     @keyframes dtb-fadein { from{opacity:0;transform:translateX(-50%) translateY(8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
     </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
     <!-- ===== AUTH GATE (login/signup overlay) ===== -->
@@ -797,9 +805,10 @@
                          background: var(--bg-secondary); border-radius: 8px;
                          border: 1px solid var(--glass-border); flex-shrink: 0;">
                         <span style="font-size: 12px; color: var(--text-secondary); white-space: nowrap;">Type:</span>
-                        <button id="type-btn-kumite"      class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kumite')"      style="font-size: 12px; padding: 4px 10px;" disabled>🥋 Kumite</button>
-                        <button id="type-btn-kata-points" class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-points')" style="font-size: 12px; padding: 4px 10px;" disabled>🎌 Kata</button>
-                        <button id="type-btn-kata-flags"  class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-flags')"  style="font-size: 12px; padding: 4px 10px;" disabled>🚩 Kata Flags</button>
+                        <button id="type-btn-kumite"        class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kumite')"        style="font-size: 12px; padding: 4px 10px;" disabled>🥋 Kumite</button>
+                        <button id="type-btn-kata-points"  class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-points')"  style="font-size: 12px; padding: 4px 10px;" disabled>🎌 Kata</button>
+                        <button id="type-btn-kata-flags"   class="btn btn-secondary" onclick="operatorSwitchScoreboardType('kata-flags')"   style="font-size: 12px; padding: 4px 10px;" disabled>🚩 Kata Flags</button>
+                        <button id="type-btn-ranking-list" class="btn btn-secondary" onclick="operatorSwitchScoreboardType('ranking-list')" style="font-size: 12px; padding: 4px 10px;" disabled>📋 Ranking List</button>
                     </div>
 
                     <div id="operator-scoreboard-content" style="flex: 1; min-height: 0; overflow-y: auto;"></div>
@@ -1301,6 +1310,9 @@
                                 <option value="1">Individual (1 competitor)</option>
                                 <option value="2">Team of 2</option>
                                 <option value="3">Team of 3</option>
+                                <option value="4">Team of 4</option>
+                                <option value="5">Team of 5</option>
+                                <option value="6">Team of 6</option>
                             </select>
                             <p class="hint">Individual events register single competitors. Team events require all members to register.</p>
                         </div>
@@ -3349,7 +3361,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=2"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)
@@ -4473,5 +4485,36 @@
             </div>
         </div>
     </div>
+    <!-- ── Browser Translate Widget ─────────────────────────────────────────── -->
+    <div id="gt-wrap" style="position:fixed;bottom:16px;left:16px;z-index:9980;">
+      <button id="gt-btn" onclick="document.getElementById('gt-box').classList.toggle('gt-open')"
+        style="background:var(--bg-secondary,#1e1e2e);border:1px solid var(--glass-border,rgba(255,255,255,0.12));
+               border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+               cursor:pointer;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.35);padding:0;"
+        title="Translate page" aria-label="Translate page">🌐</button>
+      <div id="gt-box" style="display:none;position:absolute;bottom:46px;left:0;
+               background:var(--bg-secondary,#1e1e2e);border:1px solid var(--glass-border,rgba(255,255,255,0.12));
+               border-radius:10px;padding:10px 12px;box-shadow:0 4px 20px rgba(0,0,0,0.4);min-width:180px;white-space:nowrap;">
+        <div id="google_translate_element"></div>
+      </div>
+    </div>
+    <style>
+      #gt-box.gt-open { display:block !important; }
+      /* Tighten up Google Translate's default chrome */
+      .goog-te-gadget { font-size:0 !important; }
+      .goog-te-gadget select { font-size:13px !important; border-radius:6px !important;
+        background:var(--bg-primary,#111) !important; color:var(--text-primary,#fff) !important;
+        border:1px solid var(--glass-border,rgba(255,255,255,0.2)) !important; padding:4px 6px !important; cursor:pointer; }
+      .goog-logo-link, .goog-te-gadget span { display:none !important; }
+    </style>
+    <script>
+      function googleTranslateElementInit() {
+        new google.translate.TranslateElement(
+          { pageLanguage: 'en', autoDisplay: false },
+          'google_translate_element'
+        );
+      }
+    </script>
+    <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body>
 </html>

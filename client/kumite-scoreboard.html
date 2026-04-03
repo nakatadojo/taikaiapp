@@ -21,6 +21,14 @@
     .sb-watermark img { height: 22px; width: auto; }
     .sb-watermark span { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #fff; letter-spacing: 0.5px; }
   </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
   <div id="root"></div>
@@ -636,9 +644,22 @@
       );
     }
 
-    // ── Resolve tournament ID from URL ────────────────────────────────────────
-    const _tid = new URLSearchParams(window.location.search).get('tid');
+    // ── Resolve tournament ID and ring from URL ───────────────────────────────
+    const _tid  = new URLSearchParams(window.location.search).get('tid');
+    const _ring = new URLSearchParams(window.location.search).get('ring');
     const _tidParam = _tid ? `?tid=${_tid}` : '';
+
+    // Extract the relevant ring state from a possibly _rings-wrapped server response.
+    // When no ?ring= is specified, pick the first ring whose scoreboardType === 'kumite'.
+    function _unwrapState(s) {
+      if (!s || typeof s !== 'object') return s;
+      if (!s._rings) return s; // flat / direct ring state
+      const rings = s._rings;
+      if (_ring && rings[`ring${_ring}`]) return rings[`ring${_ring}`];
+      // No ring specified — find the first kumite ring
+      const kumiteRing = Object.values(rings).find(r => r && r.scoreboardType === 'kumite');
+      return kumiteRing || Object.values(rings)[0] || s;
+    }
 
     // ── Wire to BroadcastChannel ──────────────────────────────────────────────
 
@@ -684,7 +705,7 @@
               setCornerSettings(readCornerSettings());
             } else if (d.type === 'state-snapshot') {
               if (d['scoreboard-state']) {
-                try { applyState(JSON.parse(d['scoreboard-state'])); } catch {}
+                try { applyState(_unwrapState(JSON.parse(d['scoreboard-state']))); } catch {}
               }
               if (d.scoreboardSettings) {
                 _cachedSettingsJSON = d.scoreboardSettings;
@@ -708,7 +729,7 @@
             if (hash === _lastServerStateHash) return; // no change
             _lastServerStateHash = hash;
             if (!serverState || Object.keys(serverState).length === 0) return;
-            applyState(serverState);
+            applyState(_unwrapState(serverState));
           } catch {}
         }, 1000) : null;
 

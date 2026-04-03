@@ -1,6 +1,7 @@
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const { broadcastCompetitorUpdate, getIO } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
+const { runAutoAssign } = require('../services/divisionAutoAssign');
 const pool = require('../db/pool');
 
 const DOJOS = [
@@ -23,6 +24,10 @@ async function generateTestData(req, res, next) {
     const owned = await tournamentQueries.isOwnedBy(tournamentId, req.user.id);
     if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 
+    // Client can specify which events to populate and how many competitors
+    const requestedEventIds = Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null;
+    const requestedCount = parseInt(req.body?.count) || null;
+
     const t = await pool.query('SELECT date FROM tournaments WHERE id = $1', [tournamentId]);
     const tournamentDate = t.rows[0]?.date ? new Date(t.rows[0].date) : new Date();
 
@@ -30,14 +35,27 @@ async function generateTestData(req, res, next) {
       `SELECT id, event_type, criteria_templates FROM tournament_events WHERE tournament_id = $1`,
       [tournamentId]
     );
-    const events = eventsResult.rows;
+    const allEvents = eventsResult.rows;
+
+    if (allEvents.length === 0) {
+      return res.status(400).json({ error: 'No events found for this tournament.' });
+    }
+
+    // Use only the events the client requested, falling back to all events
+    const targetEvents = requestedEventIds && requestedEventIds.length > 0
+      ? allEvents.filter(e => requestedEventIds.includes(String(e.id)))
+      : allEvents;
+
+    if (targetEvents.length === 0) {
+      return res.status(400).json({ error: 'None of the selected events were found.' });
+    }
 
     // Pick 3-4 random dojos
     const shuffled = [...DOJOS].sort(() => Math.random() - 0.5);
     const selectedDojos = shuffled.slice(0, randomInt(3, 4));
 
-    // Generate 20-30 competitors
-    const count = randomInt(20, 30);
+    // Use the requested count, clamped to 5-50, defaulting to 20-30
+    const count = requestedCount ? Math.min(50, Math.max(5, requestedCount)) : randomInt(20, 30);
     const created = [];
 
     for (let i = 0; i < count; i++) {
@@ -59,10 +77,10 @@ async function generateTestData(req, res, next) {
       const weight = randomInt(Math.round(25 + age * 1.2), Math.round(40 + age * 1.8));
       const experience = Math.min(age - 5, randomInt(0, 15));
 
-      // Find events this competitor is eligible for (pick first event with templates)
-      const eligibleEvents = events
-        .filter(e => e.criteria_templates && Array.isArray(e.criteria_templates) && e.criteria_templates.length > 0)
-        .map(e => String(e.id));
+      // Distribute competitors evenly across target events using round-robin,
+      // with a small random shuffle to avoid perfectly predictable patterns
+      const eventIndex = i % targetEvents.length;
+      const assignedEventId = String(targetEvents[eventIndex].id);
 
       const competitor = {
         firstName: randomItem(names),
@@ -73,16 +91,22 @@ async function generateTestData(req, res, next) {
         weight,
         experience,
         club: randomItem(selectedDojos),
-        events: eligibleEvents.length > 0 ? [eligibleEvents[0]] : [],
+        events: [assignedEventId],
         registrationDate: new Date().toISOString(),
         tournamentId,
         paymentStatus: 'waived',
       };
 
       const c = await DirectorCompetitorQueries.create(tournamentId, competitor, true /* is_test */);
-      broadcastCompetitorUpdate(tournamentId, 'add', c);
-      created.push(c);
+      // Auto-approve test competitors immediately — no credits needed
+      const approved = await DirectorCompetitorQueries.approve(c.id, tournamentId);
+      const withApproval = { ...c, approved: true };
+      broadcastCompetitorUpdate(tournamentId, 'add', withApproval);
+      created.push(withApproval);
     }
+
+    // Run auto-assign once for all created competitors
+    runAutoAssign(tournamentId).catch(e => console.warn('[test-data] auto-assign failed:', e.message));
 
     res.json({ competitors: created, count: created.length, message: `Generated ${created.length} test competitors` });
   } catch (err) { next(err); }

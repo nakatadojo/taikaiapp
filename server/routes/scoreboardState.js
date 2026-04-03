@@ -5,10 +5,8 @@ const scoreboardStateController = require('../controllers/scoreboardStateControl
 
 const router = express.Router();
 
-// Live scoreboard state — read/write by director + approved staff
+// Live scoreboard state — GET is public (TV displays are unauthenticated)
 router.get('/:id/scoreboard-state',
-  requireAuth,
-  requireTournamentPermission('read_data'),
   scoreboardStateController.getScoreboardState
 );
 
@@ -18,10 +16,8 @@ router.put('/:id/scoreboard-state',
   scoreboardStateController.setScoreboardState
 );
 
-// Staging display settings — read/write by director + approved staff
+// Staging display settings — GET is public (TV/staging displays are unauthenticated)
 router.get('/:id/staging-settings',
-  requireAuth,
-  requireTournamentPermission('read_data'),
   scoreboardStateController.getStagingSettings
 );
 

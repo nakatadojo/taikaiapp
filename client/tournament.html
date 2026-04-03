@@ -858,6 +858,14 @@
     .goog-te-banner-frame { display:none !important; }
     body { top:0 !important; }
     </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -1552,6 +1560,10 @@
         `;
     }
 
+    // Expose a re-fetch helper so the auth script (separate IIFE) can
+    // repopulate currentTournamentData after login/signup modal completes.
+    window._refetchTournamentData = () => fetchTournament(slug);
+
 })();
 </script>
 
@@ -1834,6 +1846,9 @@
             await checkAuth();
             closeAuthModal();
             document.querySelector('.auth-tabs').style.display = 'flex';
+            // Re-fetch tournament data so currentTournamentData is populated
+            // before any pending role/registration intent executes.
+            if (!currentTournamentData && window._refetchTournamentData) await window._refetchTournamentData();
             executePendingIntent();
         } catch (err) {
             errEl.textContent = err.message; errEl.style.display = 'block';
@@ -1869,6 +1884,9 @@
             }
             await checkAuth();
             closeAuthModal();
+            // Re-fetch tournament data so currentTournamentData is populated
+            // before any pending role/registration intent executes.
+            if (!currentTournamentData && window._refetchTournamentData) await window._refetchTournamentData();
             executePendingIntent();
         } catch (err) {
             errEl.textContent = err.message; errEl.style.display = 'block';
@@ -1888,9 +1906,12 @@
             if (currentUser && currentUser.emailVerified) {
                 successEl.textContent = 'Email verified!';
                 successEl.style.display = 'block';
-                setTimeout(() => {
+                setTimeout(async () => {
                     closeAuthModal();
                     document.querySelector('.auth-tabs').style.display = 'flex';
+                    // Re-fetch tournament data so currentTournamentData is populated
+                    // before any pending role/registration intent executes.
+                    if (!currentTournamentData && window._refetchTournamentData) await window._refetchTournamentData();
                     executePendingIntent();
                 }, 800);
             } else {

@@ -1361,6 +1361,14 @@
     .goog-te-banner-frame { display:none !important; }
     body { top:0 !important; }
     </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -2377,8 +2385,8 @@
         const params = new URLSearchParams(location.search);
         const hashQuery = location.hash.includes('?') ? new URLSearchParams(location.hash.split('?')[1]) : null;
         let tid = state.tournamentId
-            || params.get('tournament') || params.get('t') || params.get('tournamentId')
-            || (hashQuery && (hashQuery.get('tournamentId') || hashQuery.get('tournament') || hashQuery.get('t')));
+            || params.get('id') || params.get('tournament') || params.get('t') || params.get('tournamentId')
+            || (hashQuery && (hashQuery.get('id') || hashQuery.get('tournamentId') || hashQuery.get('tournament') || hashQuery.get('t')));
 
         try {
             if (tid) {
@@ -3278,6 +3286,7 @@
         const allowPayLater = !!(t.registration_settings || registrationSettings || {}).allowPayLater;
         // When allowPayLater is on, checkout is the secondary button; otherwise primary
         const btn = document.getElementById(allowPayLater ? 'cart-secondary-btn' : 'cart-primary-btn');
+        const btnLabel = allowPayLater ? 'Pay Now Instead' : 'Pay Now';
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
 
         // Build payload — server expects { competitors: [{ profileId, events: [{ eventId }] }] }
@@ -3301,8 +3310,9 @@
                 if (state.isCoachMode) {
                     sessionStorage.setItem('taikai_coach_mode', 'true');
                 }
-                // Redirect to Stripe
+                // Redirect to Stripe — keep button in loading state during redirect
                 window.location.href = data.url || data.sessionUrl || data.checkoutUrl;
+                return; // Don't restore button — page is navigating away
             } else if (data.success || data.confirmed || data.status === 'completed') {
                 // Free registration or already confirmed
                 onPaymentSuccess(data);
@@ -3310,21 +3320,14 @@
                 // Cash / offline payment — registration submitted, payment collected on-site
                 onPaymentSuccess({ ...data, cashPayment: true });
             } else {
-                // Try to confirm directly
-                try {
-                    const confirmData = await api('/api/registrations/confirm', {
-                        method: 'POST',
-                        body: JSON.stringify({ sessionId: data.sessionId }),
-                    });
-                    onPaymentSuccess(confirmData);
-                } catch (err2) {
-                    showError('cart-primary-btn', 'Payment confirmation failed: ' + err2.message);
-                }
+                // Unknown status — show a clear error rather than trying to confirm with null sessionId
+                const errMsg = data.error || data.message || 'Payment could not be processed. Please contact the tournament organizer.';
+                alert(errMsg);
             }
         } catch (err) {
             alert('Checkout failed: ' + err.message);
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = 'Pay Now Instead'; }
+            if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
         }
     };
 
