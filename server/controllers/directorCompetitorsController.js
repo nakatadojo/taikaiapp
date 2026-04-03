@@ -253,7 +253,7 @@ async function _findStartedDivisionForCompetitor(competitor, tournamentId, tourn
   };
 
   const eventsResult = await pool.query(
-    `SELECT id, criteria_templates FROM tournament_events WHERE id = ANY($1::text[])`,
+    `SELECT id, criteria_templates FROM tournament_events WHERE id = ANY($1::uuid[])`,
     [compEvents.map(String)]
   );
 

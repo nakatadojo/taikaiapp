@@ -4403,14 +4403,16 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
 
         const competitorId = savedComp.id;
 
-        // Add competitor to team members list
+        // Add competitor to team members list and immediately sync to server
+        // (not debounced — a page reload within the debounce window would cause
+        // _loadTeamsFromServer to overwrite localStorage and lose the new team)
         if (teamCode) {
             const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
             const team = teams[teamCode];
             if (team) {
                 team.members.push(competitorId);
                 _msSet(_scopedKey('teams'), JSON.stringify(teams));
-                _debouncedSync('teams', _syncTeamsToServer, 2000);
+                _syncTeamsToServer().catch(e => console.warn('[teams] immediate sync failed:', e.message));
             }
         }
 
