@@ -1635,10 +1635,25 @@ async function _loadTeamsFromServer() {
         if (!res.ok) return; // silently skip if server not available
         const data = await res.json();
         if (data.teams) {
-            // Server always wins — always overwrite local so data is consistent across browsers
-            _msSet(_scopedKey('teams'), JSON.stringify(data.teams));
-            if (Object.keys(data.teams).length > 0) {
+            // The GET /teams endpoint returns an array of full DB rows (for the
+            // director dashboard). Convert to the { [teamCode]: {...} } keyed map
+            // that the registration form and syncTeams rely on.
+            let teamsMap = data.teams;
+            if (Array.isArray(data.teams)) {
+                teamsMap = {};
+                data.teams.forEach(t => {
+                    const code = t.team_code || t.code;
+                    if (code) teamsMap[code] = {
+                        code,
+                        name:    t.team_name || t.name,
+                        eventId: t.event_id  || t.eventId,
+                        maxSize: t.max_size  || t.maxSize  || null,
+                        members: Array.isArray(t.members) ? t.members : [],
+                    };
+                });
             }
+            // Server always wins — always overwrite local so data is consistent across browsers
+            _msSet(_scopedKey('teams'), JSON.stringify(teamsMap));
         }
     } catch (err) {
         console.warn('[sync] Failed to load teams from server:', err.message);
