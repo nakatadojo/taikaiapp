@@ -151,10 +151,20 @@ const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 // Flush any pending competitors sync before the page unloads (navigation / reload)
 // so data isn't lost when the user moves away before the debounce fires.
 window.addEventListener('beforeunload', () => {
-    // Only send clubs beacon — competitors now use per-record API so no batch sync needed
     if (!currentTournamentId) return;
     const blob = (data) => new Blob([JSON.stringify(data)], { type: 'application/json' });
+    // Clubs
     navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/clubs/sync`, blob({ clubs: db.load('clubs') }));
+    // Brackets — flush whatever is in the in-memory store so no match result is lost on tab close
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    if (Object.keys(brackets).length > 0) {
+        navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/brackets/sync`, blob({ brackets }));
+    }
+    // Divisions — flush any auto-assigned or manually edited divisions
+    const divisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    if (Object.keys(divisions).length > 0) {
+        navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/divisions/sync`, blob({ divisions }));
+    }
 });
 function _isServerEventId(id) { return _UUID_RE.test(String(id || '')); }
 
@@ -249,7 +259,28 @@ function rehydrateCompetitor(c) {
  * Central save function for the brackets map.
  * Slims every bracket before writing so base64 photos are never stored in match slots.
  */
-function saveBrackets(brackets) {
+// ── Bracket version tracking ──────────────────────────────────────────────────
+// Populated from server response headers/data on every successful GET or PUT.
+// Used to send If-Match headers so the server can reject stale writes.
+const _bracketVersions = {}; // bracketId → server version integer
+
+// Brackets that have been modified locally but not yet confirmed by the server.
+// Only these are sent on debounced bulk sync, reducing unnecessary traffic.
+const _dirtyBracketIds = new Set();
+
+/** Store the server-confirmed version for a bracket. */
+function _setBracketVersion(bracketId, version) {
+    if (typeof version === 'number') _bracketVersions[bracketId] = version;
+}
+
+/** Extract and cache __v fields from a brackets map returned by the server. */
+function _cacheBracketVersions(bracketsMap) {
+    for (const [id, b] of Object.entries(bracketsMap || {})) {
+        if (b && typeof b.__v === 'number') _bracketVersions[id] = b.__v;
+    }
+}
+
+function saveBrackets(brackets, changedIds) {
     const slimmed = {};
     Object.keys(brackets).forEach(id => {
         slimmed[id] = slimBracketForStorage(JSON.parse(JSON.stringify(brackets[id])));
@@ -260,6 +291,10 @@ function saveBrackets(brackets) {
         console.error('[saveBrackets] Failed to save brackets to in-memory store. Server sync will still be attempted.', e);
         showMessage('Warning: local storage is full. Brackets will be saved to the server but may not persist offline.', 'warning');
     }
+    // Mark which brackets are dirty so the debounced sync only sends what changed.
+    // If changedIds is not provided, mark all brackets dirty (safe fallback).
+    const toMark = changedIds && changedIds.length > 0 ? changedIds : Object.keys(brackets);
+    for (const id of toMark) _dirtyBracketIds.add(id);
     // Auto-persist every match update to server so other devices see live state
     _debouncedSync('brackets', _syncBracketsToServer, 2000);
 }
@@ -507,15 +542,238 @@ let currentTemplate = null;
 let criteriaCounter = 0;
 
 // ── Server Sync Helpers ──────────────────────────────────────────────────────
-// Non-blocking debounced sync to persist localStorage data to the server.
+// Offline-aware, auto-retry sync infrastructure.
+// All debounced syncs queue automatically when offline and flush on reconnect.
 
 const _syncDebounceTimers = {};
 
+// True when the browser reports network connectivity
+let _isOnline = navigator.onLine;
+// Registered async function for each sync key (used to replay queued syncs)
+const _syncFnRegistry = {};
+// Keys with a pending (not-yet-succeeded) sync; shown in the connection bar
+const _pendingSyncKeys = new Set();
+// Exponential-backoff retry timers and counters per sync key
+const _syncRetryTimers = {};
+const _syncRetryCount = {};
+// Backoff delays: 5s → 15s → 30s → 60s
+const _RETRY_DELAYS = [5000, 15000, 30000, 60000];
+
 function _debouncedSync(key, fn, delayMs = 1500) {
+    _syncFnRegistry[key] = fn; // always keep fn registered for offline flush
     if (_syncDebounceTimers[key]) clearTimeout(_syncDebounceTimers[key]);
-    _syncDebounceTimers[key] = setTimeout(() => {
-        fn().catch(err => console.warn(`[sync] ${key} failed:`, err.message));
-    }, delayMs);
+    if (!_isOnline) {
+        _pendingSyncKeys.add(key);
+        _refreshConnectionBar();
+        return;
+    }
+    _syncDebounceTimers[key] = setTimeout(() => _executeSyncFn(key, fn), delayMs);
+}
+
+async function _executeSyncFn(key, fn) {
+    try {
+        await fn();
+        delete _syncRetryTimers[key];
+        delete _syncRetryCount[key];
+        _pendingSyncKeys.delete(key);
+        _refreshConnectionBar();
+    } catch (err) {
+        console.warn(`[sync] ${key} failed:`, err.message);
+        _pendingSyncKeys.add(key);
+        _scheduleRetry(key);
+        _refreshConnectionBar();
+    }
+}
+
+function _scheduleRetry(key) {
+    if (_syncRetryTimers[key]) return; // already scheduled
+    const attempt = _syncRetryCount[key] || 0;
+    const delay = _RETRY_DELAYS[Math.min(attempt, _RETRY_DELAYS.length - 1)];
+    _syncRetryCount[key] = attempt + 1;
+    _syncRetryTimers[key] = setTimeout(() => {
+        delete _syncRetryTimers[key];
+        if (!_isOnline) return; // still offline; will flush when back online
+        const fn = _syncFnRegistry[key];
+        if (fn) _executeSyncFn(key, fn);
+    }, delay);
+}
+
+function _flushPendingSyncs() {
+    const keys = [..._pendingSyncKeys];
+    for (const key of keys) {
+        const fn = _syncFnRegistry[key];
+        if (fn) _executeSyncFn(key, fn);
+    }
+}
+
+function _handleOffline() {
+    _isOnline = false;
+    console.warn('[sync] Gone offline — syncs will queue');
+    _refreshConnectionBar();
+}
+
+function _handleOnline() {
+    _isOnline = true;
+    console.log('[sync] Back online — flushing pending syncs');
+    _flushPendingSyncs();
+    _refreshConnectionBar();
+}
+
+window.addEventListener('offline', _handleOffline);
+window.addEventListener('online', _handleOnline);
+
+function _refreshConnectionBar() {
+    let bar = document.getElementById('_connection-bar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = '_connection-bar';
+        bar.style.cssText = [
+            'position:fixed;top:0;left:0;right:0;z-index:10000',
+            'padding:6px 16px;font-size:13px;font-weight:600;text-align:center',
+            'pointer-events:none;transition:opacity 0.2s ease',
+        ].join(';');
+        document.body.appendChild(bar);
+    }
+    const pending = _pendingSyncKeys.size;
+    if (!_isOnline) {
+        bar.style.background = '#d97706';
+        bar.style.color = '#fff';
+        bar.style.display = 'block';
+        bar.style.opacity = '1';
+        bar.textContent = pending > 0
+            ? `OFFLINE — ${pending} change${pending !== 1 ? 's' : ''} queued — will sync when reconnected`
+            : 'OFFLINE — will sync when reconnected';
+    } else if (pending > 0) {
+        bar.style.background = '#dc2626';
+        bar.style.color = '#fff';
+        bar.style.display = 'block';
+        bar.style.opacity = '1';
+        bar.textContent = `Sync failed — retrying (${pending} pending)`;
+    } else {
+        bar.style.opacity = '0';
+        setTimeout(() => { if (bar && bar.style.opacity === '0') bar.style.display = 'none'; }, 300);
+    }
+}
+
+/**
+ * Immediately sync a bracket to the server and update a status element.
+ * Used after declaring a match winner (the Smoothcomp "publish on complete" pattern).
+ *
+ * @param {string} tournamentId
+ * @param {string} bracketId
+ * @param {object} bracket  - the updated bracket object
+ * @param {HTMLElement|null} statusEl - optional element to show Saving/Saved/Offline/Failed
+ * @returns {Promise<boolean>} true on success
+ */
+async function _publishBracket(tournamentId, bracketId, bracket, statusEl) {
+    if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = '#94a3b8'; }
+    // Cancel any pending debounced bulk sync (we're doing an immediate targeted write)
+    if (_syncDebounceTimers['brackets']) {
+        clearTimeout(_syncDebounceTimers['brackets']);
+        _syncDebounceTimers['brackets'] = null;
+    }
+    if (!_isOnline) {
+        _dirtyBracketIds.add(bracketId);
+        _pendingSyncKeys.add('brackets');
+        _syncFnRegistry['brackets'] = _syncBracketsToServer;
+        _refreshConnectionBar();
+        if (statusEl) { statusEl.textContent = '⚠ Offline — saved locally'; statusEl.style.color = '#f59e0b'; }
+        return false;
+    }
+    try {
+        // Include If-Match header with our known version for optimistic locking.
+        // If the server has a newer version (another device saved first), we get 409.
+        const knownVersion = _bracketVersions[bracketId] != null ? _bracketVersions[bracketId] : 0;
+        const res = await fetch(`/api/tournaments/${tournamentId}/brackets/${bracketId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'If-Match': String(knownVersion),
+            },
+            body: JSON.stringify({ bracket }),
+        });
+
+        if (res.status === 409) {
+            // Another device wrote a newer version — reload from server and warn
+            const body = await res.json().catch(() => ({}));
+            const serverBracket = body.bracket;
+            if (serverBracket) {
+                // Update local copy with server version
+                const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+                brackets[bracketId] = serverBracket;
+                _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+                if (typeof serverBracket.__v === 'number') _setBracketVersion(bracketId, serverBracket.__v);
+                _dirtyBracketIds.delete(bracketId);
+                if (typeof renderBrackets === 'function') renderBrackets();
+            }
+            if (statusEl) {
+                statusEl.textContent = '⚠ Conflict — reloaded from server';
+                statusEl.style.color = '#f59e0b';
+            }
+            _showConflictBanner();
+            return false;
+        }
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const body = await res.json().catch(() => ({}));
+        if (body.bracket && typeof body.bracket.__v === 'number') {
+            _setBracketVersion(bracketId, body.bracket.__v);
+        }
+        _dirtyBracketIds.delete(bracketId);
+        if (statusEl) { statusEl.textContent = '✓ Published'; statusEl.style.color = '#22c55e'; }
+        return true;
+    } catch (err) {
+        console.error('[bracket] Failed to publish match result:', err);
+        _dirtyBracketIds.add(bracketId);
+        _pendingSyncKeys.add('brackets');
+        _syncFnRegistry['brackets'] = _syncBracketsToServer;
+        _scheduleRetry('brackets');
+        _refreshConnectionBar();
+        if (statusEl) {
+            statusEl.innerHTML = '⚠ Failed — <button onclick="_flushPendingSyncs()" style="background:none;border:none;color:#f87171;text-decoration:underline;cursor:pointer;font-size:inherit;padding:0">Retry</button>';
+            statusEl.style.color = '#f87171';
+        }
+        return false;
+    }
+}
+
+/** Show a dismissible conflict warning banner (only once per page session). */
+function _showConflictBanner() {
+    if (document.getElementById('_conflict-banner')) return;
+    const el = document.createElement('div');
+    el.id = '_conflict-banner';
+    el.style.cssText = [
+        'position:fixed;top:0;left:0;right:0;z-index:10001',
+        'background:#f59e0b;color:#000;padding:8px 16px',
+        'font-size:13px;font-weight:600;text-align:center',
+        'display:flex;align-items:center;justify-content:center;gap:12px',
+    ].join(';');
+    el.innerHTML = `
+        ⚠ Another device saved a newer version of this bracket. Your local copy has been refreshed.
+        <button onclick="this.parentElement.remove()"
+            style="background:rgba(0,0,0,0.2);border:none;color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:12px">
+            Dismiss
+        </button>
+    `;
+    document.body.insertBefore(el, document.body.firstChild);
+    // Auto-dismiss after 10s
+    setTimeout(() => el.remove(), 10000);
+}
+
+/**
+ * Log a match result to the server audit log.
+ * Fire-and-forget — never blocks the caller.
+ */
+function _logMatchResult(payload) {
+    if (!currentTournamentId || !payload.bracketId) return;
+    fetch(`/api/tournaments/${currentTournamentId}/match-results`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).catch(err => console.warn('[match-log] Failed:', err.message));
 }
 
 // ── Event Type Server Sync ────────────────────────────────────────────────────
@@ -544,6 +802,7 @@ async function _syncEventTypeToServer(eventType, method = 'POST') {
                 priceOverride: eventType.basePrice != null ? eventType.basePrice : null,
                 addonPriceOverride: eventType.addOnPrice != null ? eventType.addOnPrice : null,
                 prerequisiteEventId: eventType.prerequisiteEventId || null,
+                isEventType: true,
             }),
         });
         if (res.ok && method === 'POST') {
@@ -654,6 +913,8 @@ async function _loadCompetitorsFromServer() {
             db.save('competitors', normalized);
             // Remove any stale localStorage copy left from a previous session
             _msRemove(_scopedKey('competitors'));
+            // Sync approved status into division snapshots so bracket generator shows correct counts
+            _syncApprovedStatusInDivisions(normalized);
         }
         if (clubsRes.ok) {
             const { clubs } = await clubsRes.json();
@@ -663,6 +924,38 @@ async function _loadCompetitorsFromServer() {
         }
     } catch (e) {
         console.warn('[sync] load competitors/clubs failed:', e.message);
+    }
+}
+
+/**
+ * After loading fresh competitor data from the server, sync the `approved` flag
+ * into any division competitor snapshots so the bracket generator reflects the
+ * current approval state without requiring a manual re-generation of divisions.
+ */
+function _syncApprovedStatusInDivisions(freshCompetitors) {
+    const comps = freshCompetitors || db.load('competitors') || [];
+    if (!comps.length) return;
+    const approvedMap = {};
+    comps.forEach(c => { if (c.id) approvedMap[c.id] = c.approved !== false; });
+
+    const divisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    let changed = false;
+    Object.values(divisions).forEach(eventData => {
+        Object.values(eventData.generated || {}).forEach(divComps => {
+            if (!Array.isArray(divComps)) return;
+            divComps.forEach(comp => {
+                const serverApproved = approvedMap[comp.id];
+                if (serverApproved !== undefined && comp.approved !== serverApproved) {
+                    comp.approved = serverApproved;
+                    changed = true;
+                }
+            });
+        });
+    });
+    if (changed) {
+        db.save('divisions', divisions);
+        // Persist updated approved flags back to server
+        _debouncedSync('divisions', _syncDivisionsToServer, 2000);
     }
 }
 
@@ -708,10 +1001,19 @@ async function _hydrateEventTypesFromServer() {
                 currentDivisions[e.id].templates = templates;
                 divisionsUpdated = true;
             }
+            // Seed the divTreeBuilt flag from the server's division_tree field so
+            // the readiness checklist is accurate immediately after page reload.
+            let tree = e.division_tree;
+            if (typeof tree === 'string') {
+                try { tree = JSON.parse(tree); } catch(_) { tree = null; }
+            }
+            const hasTree = !!(tree && Array.isArray(tree.children) && tree.children.length > 0);
+            _msSet(_scopedKey(`divTreeBuilt_${e.id}`), hasTree ? '1' : '0');
         });
         if (divisionsUpdated) {
             _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
         }
+        renderReadinessChecklist();
 
         if (typeof loadEventTypes === 'function') loadEventTypes();
         if (typeof loadEventTypeSelector === 'function') loadEventTypeSelector();
@@ -943,7 +1245,17 @@ async function _loadMatScoreboardsFromServer() {
 
 async function _syncBracketsToServer() {
     if (!currentTournamentId) return;
-    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+
+    // Only sync brackets that have been modified since the last confirmed write.
+    // Falls back to syncing all brackets if the dirty set is empty (e.g. on first load).
+    let dirtyIds = [..._dirtyBracketIds];
+    const brackets = dirtyIds.length > 0
+        ? Object.fromEntries(dirtyIds.filter(id => allBrackets[id]).map(id => [id, allBrackets[id]]))
+        : allBrackets;
+
+    if (Object.keys(brackets).length === 0) return;
+
     setSyncIndicator('syncing');
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}/brackets/sync`, {
@@ -952,6 +1264,8 @@ async function _syncBracketsToServer() {
             body: JSON.stringify({ brackets }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Clear dirty set for the brackets we just synced
+        for (const id of dirtyIds) _dirtyBracketIds.delete(id);
         setSyncIndicator('ok');
     } catch (err) {
         setSyncIndicator('error');
@@ -977,6 +1291,8 @@ function startBracketPolling(bracketId) {
             if (!res.ok) return;
             const { bracket } = await res.json();
             if (!bracket) return;
+            // Cache the server version for conflict detection
+            if (typeof bracket.__v === 'number') _setBracketVersion(_bracketPollId, bracket.__v);
             // Update in-memory store with fresh bracket data
             const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
             const serialized = JSON.stringify(bracket);
@@ -1015,6 +1331,8 @@ function _initWebSocket() {
 
     _socket.on('connect', () => {
         _hideWsIndicator();
+        // Flush any data that was queued while disconnected
+        if (_pendingSyncKeys.size > 0) _flushPendingSyncs();
         // Re-subscribe to the bracket the operator has open (if any)
         if (currentTournamentId && _currentBracketId) {
             _socket.emit('subscribe:bracket', {
@@ -1042,12 +1360,22 @@ function _initWebSocket() {
     // update the local copy and re-render without requiring a manual refresh.
     _socket.on('bracket:updated', ({ bracketId, bracket }) => {
         if (!bracket || bracketId !== _currentBracketId) return;
+        // Cache the server version
+        if (typeof bracket.__v === 'number') _setBracketVersion(bracketId, bracket.__v);
         const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
         // Only update if the incoming data actually differs (avoid re-render loops)
         if (JSON.stringify(brackets[bracketId]) === JSON.stringify(bracket)) return;
         brackets[bracketId] = bracket;
         _msSet(_scopedKey('brackets'), JSON.stringify(brackets));
+        // Clear dirty flag — server just told us the current state
+        _dirtyBracketIds.delete(bracketId);
         if (typeof renderBrackets === 'function') renderBrackets();
+    });
+
+    // Operator presence — warn if two people are operating the same bracket
+    _socket.on('operator:presence', ({ bracketId, count }) => {
+        if (bracketId !== _currentBracketId) return;
+        _updatePresenceBanner(bracketId, count);
     });
 
     // Real-time competitor updates from other devices via the per-record API
@@ -1124,10 +1452,40 @@ function _hideWsIndicator() {
  * Subscribes the socket to that bracket's update channel.
  */
 function _wsSubscribeToBracket(bracketId) {
+    // Leave presence on previous bracket before joining new one
+    if (_currentBracketId && _currentBracketId !== bracketId && _socket && _socket.connected && currentTournamentId) {
+        _socket.emit('operator:leave-bracket', { tournamentId: currentTournamentId, bracketId: _currentBracketId });
+    }
     _currentBracketId = bracketId;
     if (_socket && _socket.connected && currentTournamentId) {
         _socket.emit('subscribe:bracket', { tournamentId: currentTournamentId, bracketId });
+        _socket.emit('operator:join-bracket', { tournamentId: currentTournamentId, bracketId });
     }
+}
+
+/**
+ * Show or hide the "another operator is on this bracket" presence warning.
+ * count includes this operator, so count > 1 means someone else is also here.
+ */
+function _updatePresenceBanner(bracketId, count) {
+    const bannerId = '_presence-banner';
+    let el = document.getElementById(bannerId);
+    if (count <= 1) {
+        if (el) el.remove();
+        return;
+    }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = bannerId;
+        el.style.cssText = [
+            'position:fixed;bottom:60px;right:12px;z-index:9999',
+            'background:#7c3aed;color:#fff;padding:8px 14px;border-radius:8px',
+            'font-size:12px;font-weight:600;max-width:260px;text-align:center',
+            'box-shadow:0 4px 12px rgba(0,0,0,0.4)',
+        ].join(';');
+        document.body.appendChild(el);
+    }
+    el.textContent = `⚠ ${count} operators on this bracket — coordinate before scoring`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1140,6 +1498,16 @@ function _wsSubscribeToBracket(bracketId) {
 async function _syncScoreboardStateToServer() {
     if (!currentTournamentId) return;
     const state = JSON.parse(_msGet(_scopedKey('scoreboard-state')) || '{}');
+    // Guarantee `ring` is set so the server always uses per-ring jsonb_set storage.
+    // Without this, a flat-state PUT replaces the entire scoreboard_state column and
+    // wipes every other ring's live data. Individual state-builders set ring too, but
+    // undefined values are silently dropped by JSON.stringify — this is the safety net.
+    if (state.ring == null) {
+        const matId = (typeof currentOperatorMat !== 'undefined' && currentOperatorMat != null)
+            ? currentOperatorMat
+            : (typeof kataFlagsMatId !== 'undefined' ? kataFlagsMatId : null);
+        if (matId != null) state.ring = matId;
+    }
     try {
         await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-state`, {
             method: 'PUT', credentials: 'include',
@@ -1292,10 +1660,14 @@ async function _loadBracketsFromServer() {
         if (!res.ok) return;
         const data = await res.json();
         const serverBrackets = data.brackets || {};
+        // Cache server versions for optimistic locking
+        _cacheBracketVersions(serverBrackets);
         // Always write server response (even empty {}) so contaminated local data is cleared.
         _msSet(_scopedKey('brackets'), JSON.stringify(serverBrackets));
-        if (Object.keys(serverBrackets).length > 0) {
-        }
+        // Clear dirty set — server is now the source of truth
+        _dirtyBracketIds.clear();
+        // Refresh dashboard readiness checklist with accurate bracket count
+        if (typeof renderReadinessChecklist === 'function') renderReadinessChecklist();
     } catch (err) {
         console.warn('[sync] Failed to load brackets from server:', err.message);
     }
@@ -1468,7 +1840,9 @@ async function _loadDivisionsFromServer() {
                 currentDivisions[eventId].updatedAt = serverGenerated[eventId].updatedAt;
             }
         });
-        _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+        db.save('divisions', currentDivisions);
+        // Sync approved flags from the current competitors store into division snapshots
+        _syncApprovedStatusInDivisions();
     } catch (err) {
         console.warn('[sync] Failed to load divisions from server:', err.message);
     }
@@ -2196,9 +2570,8 @@ function renderReadinessChecklist() {
     const divisionsOk        = competingEvents.length > 0 && eventsWithDivisions.length === competingEvents.length;
 
     // ── Bracket coverage ───────────────────────────────────────────────────
-    const bracketCount = Object.values(brackets).filter(b =>
-        !currentTournamentId || String(b.tournamentId) === String(currentTournamentId)
-    ).length;
+    // Brackets are already scoped to this tournament via _scopedKey, so count all of them.
+    const bracketCount = Object.keys(brackets).length;
 
     // ── Check-in progress ──────────────────────────────────────────────────
     const checkedInCount = realCompetitors.filter(c => c.checkedIn || c.checked_in).length;
@@ -3398,6 +3771,50 @@ function getTournamentWeightUnit() {
 }
 
 /**
+ * Tab-key handler for judge score inputs.
+ * Pressing Tab in a judge field moves focus to the next field rather than
+ * concatenating a tab character into the current input value.
+ *
+ * @param {KeyboardEvent} e      - the keydown event
+ * @param {string}        prefix - field id prefix ('rl-judge' or 'judge')
+ * @param {number}        idx    - current judge index (0-based)
+ */
+function _judgeTabHandler(e, prefix, idx) {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    const next = document.getElementById(`${prefix}-${idx + 1}-score`);
+    if (next) {
+        next.focus();
+        next.select();
+    } else {
+        // Last field — move to the Submit & Next button
+        const submitBtn = document.querySelector(
+            '#operator-scoreboard-content .btn-primary[onclick*="submit"],' +
+            '#operator-scoreboard-content .btn-primary[onclick*="Submit"]'
+        );
+        if (submitBtn) submitBtn.focus();
+    }
+}
+
+/**
+ * Format a weight value for display: appends the tournament weight unit, or
+ * returns 'N/A' when the value is null / undefined / empty string.
+ */
+function fmtWeight(w) {
+    if (w == null || w === '') return 'N/A';
+    return `${w}${getTournamentWeightUnit()}`;
+}
+
+/**
+ * Format a competitor's age for display.
+ * Returns "Xage yrs" when age is known, or "N/A" when date of birth is missing.
+ */
+function fmtAge(comp) {
+    const age = getDisplayAge(comp);
+    return age === '-' ? 'N/A' : `${age} yrs`;
+}
+
+/**
  * Normalise a competitor weight value to a target unit.
  * competitor.weight is always stored in the tournament's weight_unit.
  * Division-tree weight ranges may be in a different unit (e.g. after a
@@ -4263,6 +4680,7 @@ function regenerateBracketFromSettings(existing, freshCompetitors) {
     else if (type === 'pool-play')           newBracket = generatePoolPlayBracket(seeded, name, eventId);
     else if (type === 'ranking-list')        newBracket = generateRankingListBracket(seeded, name, eventId);
     else if (type === 'kata-flags')          newBracket = generateKataFlagsBracket(seeded, name, eventId);
+    else if (type === 'aau-kata-flags')      newBracket = generateAAUKataFlagsBracket(seeded, name, eventId);
     else if (type === 'kata-points')         newBracket = generateKataPointsBracket(seeded, name, eventId);
     if (!newBracket) return null;
 
@@ -4440,12 +4858,40 @@ function competitorMatchesTemplate(competitor, competitorAge, template) {
     return true; // Matches all criteria
 }
 
+/**
+ * Resolve the effective max age for a range.
+ * "Under N" labels (e.g. "Under 13") mean age < N; imported templates
+ * sometimes store max = N rather than N-1, causing off-by-one placements.
+ */
+function _ageRangeMax(range) {
+    const m = /^under\s+(\d+)$/i.exec(range.label || '');
+    return m ? Math.min(range.max, Number(m[1]) - 1) : range.max;
+}
+
+/**
+ * Strip external-system event code prefixes from a division name.
+ * Smoothcomp and similar platforms prefix division names with codes like
+ * "KB-U10E1 - " or "KM-12E3 - ".  These are meaningless to tournament staff
+ * and should not be displayed in the operator UI.
+ *
+ * Pattern matched: one or more uppercase-letter/digit segments separated by
+ * hyphens, followed by " - " (space-dash-space).
+ * Examples:
+ *   "KB-U10E1 - Male 8-9 yrs Beginner"  →  "Male 8-9 yrs Beginner"
+ *   "KM-12E3 - Female Under 11 Advanced" →  "Female Under 11 Advanced"
+ *   "Regular Division Name"              →  "Regular Division Name" (unchanged)
+ */
+function stripDivisionCodePrefix(name) {
+    if (!name) return name;
+    return name.replace(/^[A-Z0-9]+(?:-[A-Z0-9]+)+\s+-\s+/i, '');
+}
+
 function competitorMatchesCriterion(competitor, competitorAge, criterion) {
     switch (criterion.type) {
         case 'age':
             // Check if competitor's age falls within ANY of the age ranges
             return criterion.ranges.some(range =>
-                competitorAge >= range.min && competitorAge <= range.max
+                competitorAge >= range.min && competitorAge <= _ageRangeMax(range)
             );
 
         case 'gender':
@@ -4547,7 +4993,7 @@ function buildDivisionNameFromTemplate(competitor, competitorAge, template) {
         switch (criterion.type) {
             case 'age':
                 const ageRange = criterion.ranges.find(r =>
-                    competitorAge >= r.min && competitorAge <= r.max
+                    competitorAge >= r.min && competitorAge <= _ageRangeMax(r)
                 );
                 if (ageRange) {
                     parts.push(ageRange.label);
@@ -5882,28 +6328,106 @@ const _defaultDojoPool = [
 
 async function openTestDataModal() {
     if (!currentTournamentId) { showMessage('Please select a tournament first.', 'error'); return; }
-    if (!await showConfirm('Generate 20-30 test competitors on the server? All connected devices will see them immediately.')) return;
-    setSyncIndicator('syncing');
-    try {
-        const res = await fetch(`/api/tournaments/${currentTournamentId}/generate-test-data`, {
-            method: 'POST', credentials: 'include',
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { count } = await res.json();
-        setSyncIndicator('ok');
-        showMessage(`Generated ${count} test competitors.`, 'success');
-        // Reload local competitors from server
-        await _loadCompetitorsFromServer();
-        if (typeof loadCompetitors === 'function') loadCompetitors(true);
-        if (typeof loadDashboard === 'function') loadDashboard();
-        // Trigger server auto-assign
-        fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
-            method: 'POST', credentials: 'include',
-        }).catch(() => {});
-    } catch (e) {
-        setSyncIndicator('error');
-        showMessage('Failed to generate test data: ' + e.message, 'error');
+
+    // Load events so the user can choose which ones to populate
+    const eventTypes = db.load('eventTypes') || [];
+    if (eventTypes.length === 0) {
+        showMessage('No event types configured. Add events first.', 'error');
+        return;
     }
+
+    // Build modal HTML
+    const eventCheckboxes = eventTypes.map((et, i) => {
+        const sizeLabel = et.teamSize > 1 ? ` — Team of ${et.teamSize}` : ' — Individual';
+        return `
+        <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;background:var(--bg-secondary);border:1px solid var(--glass-border);margin-bottom:6px;">
+            <input type="checkbox" class="tdm-event-cb" value="${et.id}" checked
+                style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">
+            <span style="font-size:13px;"><strong>${_escapeHtml(et.name)}</strong><span style="color:var(--text-secondary);font-size:11px;">${sizeLabel}</span></span>
+        </label>`;
+    }).join('');
+
+    const modalId = 'test-data-gen-modal';
+    let existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = modalId;
+    modal.style.cssText = 'position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);padding:20px;';
+    modal.innerHTML = `
+        <div style="background:var(--bg-primary);border:1px solid var(--glass-border);border-radius:12px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <h3 style="margin:0 0 6px;font-size:17px;">🧪 Generate Test Competitors</h3>
+            <p style="margin:0 0 18px;font-size:13px;color:var(--text-secondary);">
+                Test competitors are <strong>free</strong> (no credits deducted), <strong>read-only</strong>, and can be cleared at any time. All connected devices see them immediately.
+            </p>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Events to populate</label>
+                ${eventCheckboxes}
+                <div style="display:flex;gap:10px;margin-top:6px;">
+                    <button onclick="document.querySelectorAll('.tdm-event-cb').forEach(c=>c.checked=true)" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);cursor:pointer;">All</button>
+                    <button onclick="document.querySelectorAll('.tdm-event-cb').forEach(c=>c.checked=false)" style="font-size:11px;padding:3px 8px;border-radius:4px;border:1px solid var(--glass-border);background:transparent;color:var(--text-secondary);cursor:pointer;">None</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label for="tdm-count" style="display:block;font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Number of competitors</label>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <input type="range" id="tdm-count" min="5" max="50" value="20"
+                        style="flex:1;cursor:pointer;"
+                        oninput="document.getElementById('tdm-count-label').textContent=this.value">
+                    <span id="tdm-count-label" style="font-size:20px;font-weight:700;min-width:32px;text-align:right;">20</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-top:2px;"><span>5</span><span>50</span></div>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button id="tdm-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="tdm-generate" class="btn btn-primary">Generate</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(modal);
+
+    // Close on backdrop click
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.getElementById('tdm-cancel').addEventListener('click', () => modal.remove());
+
+    document.getElementById('tdm-generate').addEventListener('click', async () => {
+        const selectedEventIds = [...document.querySelectorAll('.tdm-event-cb:checked')].map(cb => cb.value);
+        if (selectedEventIds.length === 0) {
+            showMessage('Please select at least one event.', 'error');
+            return;
+        }
+        const count = parseInt(document.getElementById('tdm-count').value) || 20;
+        modal.remove();
+
+        setSyncIndicator('syncing');
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/generate-test-data`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ eventIds: selectedEventIds, count }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const { count: generated } = await res.json();
+            setSyncIndicator('ok');
+            showMessage(`Generated ${generated} test competitors.`, 'success');
+            await _loadCompetitorsFromServer();
+            if (typeof loadCompetitors === 'function') loadCompetitors(true);
+            if (typeof loadDashboard === 'function') loadDashboard();
+            fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
+                method: 'POST', credentials: 'include',
+            }).catch(() => {});
+        } catch (e) {
+            setSyncIndicator('error');
+            showMessage('Failed to generate test data: ' + e.message, 'error');
+        }
+    });
 }
 
 function _tdmGroupHTML(g, idx) {
@@ -8620,6 +9144,7 @@ function openDivisionTreeModal(passedEventId) {
     if (titleEl) titleEl.textContent = eventName + ' \u2014 Division Tree';
 
     modal.classList.remove('hidden');
+    modal.dataset.open = 'true';
     document.body.style.overflow = 'hidden';
 
     // Build or re-use the DivisionTreeBuilder instance
@@ -8657,7 +9182,7 @@ function closeDivisionTreeModal() {
         }
     }
 
-    if (modal) modal.classList.add('hidden');
+    if (modal) { modal.classList.add('hidden'); modal.dataset.open = 'false'; }
     document.body.style.overflow = '';
 
     // Auto-generate divisions from the saved tree — creates/refreshes all
@@ -10235,7 +10760,7 @@ function _matchesLeafCriterion(comp, criterion) {
             return _gNorm(comp.gender) === _gNorm(r.value || r.label);
         }
         case 'age':
-            return (comp.age || 0) >= r.min && (comp.age || 0) <= r.max;
+            return (comp.age || 0) >= r.min && (comp.age || 0) <= _ageRangeMax(r);
         case 'rank':
             if (r.rankMin !== undefined && r.rankMax !== undefined) {
                 const lo = RANK_ORD.indexOf(normRank(r.rankMin));
@@ -10287,7 +10812,7 @@ function buildDivisions(competitors, criteria, prefix = '', index = 0) {
 
         switch(currentCriteria.type) {
             case 'age':
-                filtered = competitors.filter(c => c.age >= range.min && c.age <= range.max);
+                filtered = competitors.filter(c => c.age >= range.min && c.age <= _ageRangeMax(range));
                 break;
             case 'gender':
                 filtered = competitors.filter(c => (c.gender || '').toLowerCase() === (range.value || '').toLowerCase());
@@ -11587,7 +12112,7 @@ function updateBracketTypeOptions() {
     }
 
     let options = '';
-    if (baseType === 'kumite' || baseType === 'kata-flags') {
+    if (baseType === 'kumite') {
         options = `
             <option value="">Select Bracket Type</option>
             <option value="single-elimination">Single Elimination (Recommended)</option>
@@ -11595,6 +12120,15 @@ function updateBracketTypeOptions() {
             <option value="repechage">Repechage</option>
             <option value="round-robin">Round Robin</option>
             <option value="round-robin-pools">Round Robin + Elimination</option>
+        `;
+    } else if (baseType === 'kata-flags') {
+        options = `
+            <option value="">Select Bracket Type</option>
+            <option value="aau-kata-flags">AAU Sequential Queue (Official AAU Format)</option>
+            <option value="single-elimination">Single Elimination</option>
+            <option value="double-elimination">Double Elimination</option>
+            <option value="repechage">Repechage</option>
+            <option value="round-robin">Round Robin</option>
         `;
     } else if (baseType === 'kata-points' || baseType === 'kobudo') {
         options = `
@@ -13310,13 +13844,14 @@ function generateSoloBracket(competitor, divisionName, eventId, bracketType) {
     // (e.g. time-on-mat, demonstration mark) and they are declared 1st.
     return {
         id: generateUniqueId(),
-        type: bracketType === 'ranking-list' ? 'ranking-list' : 'ranking-list',
+        type: bracketType,
         solo: true,
         division: divisionName,
         divisionName: divisionName,
         eventId: eventId,
         competitors: [competitor],
         createdAt: new Date().toISOString(),
+        rounds: 0,                   // no elimination rounds — single performer
         status: 'pending',           // unplayed — score must be entered
         entries: [{
             competitor: competitor,
@@ -13354,6 +13889,89 @@ function generateKataFlagsBracket(competitors, divisionName, eventId) {
             advanced: false
         }))
     });
+
+    return bracket;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AAU KATA FLAGS — SEQUENTIAL QUEUE COMPETITION SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Implements the official AAU kata flag competition format:
+//  • All competitors start in the AKA queue (ordered line)
+//  • Each match: first two from AKA queue compete; winner rejoins end of AKA,
+//    loser moves to SHIRO (eliminated) side
+//  • Round 1 ends when AKA queue has 1 person remaining → GOLD
+//  • Loser of Round 1 final is held as "Round 1 Finalist" (Silver candidate)
+//  • Round 2: all SHIRO losers compete in same sequential format
+//  • Round 2 last survivor faces Round 1 Finalist → SILVER vs BRONZE
+//
+// Signature Feature: HANTEI Simultaneous Reveal
+//  • Judges enter votes; TV shows "?" placeholders until HANTEI is called
+//  • Operator presses HANTEI → all flag cards flip at once (CSS animation)
+//  • No ties possible (3 or 5 judges = majority always decides)
+//
+// Last Updated: 2026-04-02
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generateAAUKataFlagsBracket(competitors, divisionName, eventId) {
+    const bracket = {
+        id: generateUniqueId(),
+        type: 'aau-kata-flags',
+        division: divisionName,
+        divisionName: divisionName,
+        eventId: eventId,
+        createdAt: new Date().toISOString(),
+        numJudges: 5,          // 3 or 5 per AAU rules
+
+        // ── Competition State ─────────────────────────────────────────
+        round: 1,              // 1 = golden round, 2 = bronze round
+        status: 'active',      // 'active' | 'round2' | 'r2final' | 'complete'
+        matchCounter: 0,       // total matches played (both rounds)
+
+        // ── Live Queues ───────────────────────────────────────────────
+        akaQueue: [],          // competitors still competing; front = next up
+        shiroQueue: [],        // losers from current round
+
+        // ── Current Live Match ────────────────────────────────────────
+        currentMatch: null,
+
+        // ── Special Slots ─────────────────────────────────────────────
+        round1Finalist: null,  // held aside after Round 1 final (for Silver/Bronze)
+        goldMedalist:   null,
+
+        // ── Medal Results ─────────────────────────────────────────────
+        medals: { gold: null, silver: null, bronze: null },
+
+        // ── Match History ─────────────────────────────────────────────
+        matches: []
+    };
+
+    if (competitors.length === 0) {
+        bracket.status = 'complete';
+        return bracket;
+    }
+
+    if (competitors.length === 1) {
+        bracket.status = 'complete';
+        bracket.goldMedalist = competitors[0];
+        bracket.medals.gold  = competitors[0];
+        return bracket;
+    }
+
+    // Load all competitors into AKA queue, pull first two into live match
+    bracket.akaQueue = [...competitors];
+    const aka   = bracket.akaQueue.shift();
+    const shiro = bracket.akaQueue.shift();
+    bracket.matchCounter = 1;
+    bracket.currentMatch = {
+        id:          generateUniqueId(),
+        matchNumber: 1,
+        round:       1,
+        aka,
+        shiro,
+        hanteiCalled: false
+    };
 
     return bracket;
 }
@@ -13463,6 +14081,7 @@ function loadBrackets() {
             const baseTypeLabels = {
                 'kumite': 'Kumite',
                 'kata-flags': 'Kata Flags',
+                'aau-kata-flags': 'AAU Kata Flags',
                 'kata-points': 'Kata Points',
                 'kobudo': 'Kobudo'
             };
@@ -13522,7 +14141,59 @@ function renderBracketPreview(bracket) {
         progressPercent: 0
     };
 
-    if (bracket.type === 'pool-play') {
+    if (bracket.type === 'aau-kata-flags') {
+        const totalCompetitors = (bracket.akaQueue?.length || 0) + (bracket.shiroQueue?.length || 0)
+            + (bracket.currentMatch ? 2 : 0) + (bracket.matches?.length || 0)
+            + (bracket.round1Finalist ? 1 : 0) + (bracket.goldMedalist ? 0 : 0); // rough count
+        const completedMatches = bracket.matches?.length || 0;
+        const totalMatches = bracket.status === 'complete'
+            ? completedMatches
+            : '?';
+        const roundLabel = bracket.round === 2 ? 'Round 2 (Bronze)' : 'Round 1 (Golden)';
+        const statusColor = bracket.status === 'complete' ? '#22c55e' : bracket.status === 'round2' || bracket.status === 'r2final' ? '#f59e0b' : '#3b82f6';
+        const statusLabel = bracket.status === 'complete' ? 'Complete' : bracket.status === 'r2final' ? 'Silver/Bronze Final' : bracket.status === 'round2' ? 'Round 2 Active' : 'Round 1 Active';
+        const akaLeft = bracket.akaQueue?.length || 0;
+        const shiroElim = bracket.shiroQueue?.length || 0;
+
+        const medalHTML = bracket.medals?.gold ? `
+            <div style="text-align: center; padding: 8px 0; border-top: 1px solid var(--glass-border); margin-top: 8px; display: flex; gap: 16px; justify-content: center;">
+                ${bracket.medals.gold   ? `<span>🥇 ${bracket.medals.gold.firstName} ${bracket.medals.gold.lastName}</span>`   : ''}
+                ${bracket.medals.silver ? `<span>🥈 ${bracket.medals.silver.firstName} ${bracket.medals.silver.lastName}</span>` : ''}
+                ${bracket.medals.bronze ? `<span>🥉 ${bracket.medals.bronze.firstName} ${bracket.medals.bronze.lastName}</span>` : ''}
+            </div>
+        ` : '';
+
+        return `
+            <div style="padding: 16px; background: rgba(255,255,255,0.02); border-radius: 8px;">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 8px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Format</div>
+                        <div style="font-size: 13px; font-weight: 700; color: #f59e0b;">AAU Queue</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Phase</div>
+                        <div style="font-size: 13px; font-weight: 600;">${roundLabel}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Matches</div>
+                        <div style="font-size: 24px; font-weight: 700;">${completedMatches}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Status</div>
+                        <div style="font-size: 13px; font-weight: 700; color: ${statusColor};">${statusLabel}</div>
+                    </div>
+                </div>
+                ${bracket.status !== 'complete' ? `
+                    <div style="display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                        <span style="color: #ef4444;">● AKA queue: ${akaLeft} remaining</span>
+                        <span style="color: #6b7280;">● SHIRO: ${shiroElim} eliminated</span>
+                        ${bracket.currentMatch ? `<span style="color: #22c55e;">● Live: ${bracket.currentMatch.aka?.firstName || '?'} vs ${bracket.currentMatch.shiro?.firstName || '?'}</span>` : ''}
+                    </div>
+                ` : ''}
+                ${medalHTML}
+            </div>
+        `;
+    } else if (bracket.type === 'pool-play') {
         const numPools = bracket.pools?.length || 0;
         const totalMatches = bracket.pools?.reduce((sum, pool) => sum + pool.matches.length, 0) || 0;
         const completedMatches = bracket.pools?.reduce((sum, pool) =>
@@ -13671,12 +14342,13 @@ function renderBracketPreview(bracket) {
         const totalMatches = bracket.matches.length;
         const completedMatches = bracket.matches.filter(m => m.status === 'completed').length;
         const rounds = bracket.rounds;
+        const roundsDisplay = bracket.solo ? 'Solo' : (rounds ?? '—');
 
         return `
             <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; padding: 16px; background: rgba(255,255,255,0.02); border-radius: 8px;">
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Rounds</div>
-                    <div style="font-size: 24px; font-weight: 700;">${rounds}</div>
+                    <div style="font-size: 24px; font-weight: 700;">${roundsDisplay}</div>
                 </div>
                 <div style="text-align: center;">
                     <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Matches</div>
@@ -15425,7 +16097,27 @@ function loadStagingView() {
         return;
     }
 
-    grid.innerHTML = mats.map(mat => {
+    // ── Unapproved-competitor warning banner ──────────────────────────────────
+    // Unapproved competitors are excluded from bracket generation silently.
+    // Surface a visible warning so directors know before scoring begins.
+    const allCompetitors = JSON.parse(_msGet(_scopedKey('competitors')) || '[]');
+    const unapprovedList = allCompetitors.filter(c => c.approved === false);
+    const unapprovedBanner = unapprovedList.length > 0
+        ? `<div style="grid-column:1/-1; background:rgba(245,158,11,0.15); border:1px solid #f59e0b;
+                       border-radius:8px; padding:10px 16px; margin-bottom:12px; display:flex;
+                       align-items:flex-start; gap:10px;">
+               <span style="font-size:18px; flex-shrink:0;">⚠️</span>
+               <div>
+                   <strong style="color:#f59e0b;">${unapprovedList.length} competitor${unapprovedList.length > 1 ? 's' : ''} pending approval</strong>
+                   — excluded from all brackets until approved:
+                   <span style="color:var(--text-secondary); font-size:13px;">
+                       ${unapprovedList.map(c => `${c.firstName} ${c.lastName}`).join(', ')}
+                   </span>
+               </div>
+           </div>`
+        : '';
+
+    grid.innerHTML = unapprovedBanner + mats.map(mat => {
         const slots = (schedule[mat.id] || []).sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const divisionsHTML = slots.length === 0
@@ -15459,7 +16151,7 @@ function loadStagingView() {
 
                 return `<div class="staging-division-card${isActive ? ' staging-current' : ''}">
                     <div class="staging-div-header">
-                        <span class="staging-div-name">${slot.division}</span>
+                        <span class="staging-div-name">${stripDivisionCodePrefix(slot.division)}</span>
                         <span class="staging-div-time" style="color:${timeColor};">${slot.estimatedStartTime || '--:--'}</span>
                         ${isActive ? '<span class="staging-live-badge">● LIVE</span>' : ''}
                     </div>
@@ -17852,9 +18544,10 @@ let currentOperatorEventId = null;
 let activeScoreboardType = null; // 'kumite', 'kata-flags', 'kata-points', 'standalone', null
 
 // Stored params for on-the-fly type switching (persist for the browser session until page reload)
-let _opKumiteParams     = null; // { matId, divisionName, eventId }
-let _opKataPointsParams = null; // { matId, divisionName, eventId, bracket, scoreboardType }
-let _opKataFlagsParams  = null; // { matId, divisionName, eventId, bracket, scoreboardConfig }
+let _opKumiteParams        = null; // { matId, divisionName, eventId }
+let _opKataPointsParams    = null; // { matId, divisionName, eventId, bracket, scoreboardType }
+let _opKataFlagsParams     = null; // { matId, divisionName, eventId, bracket, scoreboardConfig }
+let _opRankingListParams   = null; // { matId, divisionName, eventId, bracket, scoreboardType }
 
 // Staging view auto-refresh timer
 let _stagingRefreshTimer = null;
@@ -18244,12 +18937,12 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         } else {
             // scoreboardConfigId may be a raw type string (e.g. 'kata-flags', 'kumite')
             // from unified config — use it directly as the scoreboard type
-            const validTypes = ['kumite', 'kata-flags', 'kata-points', 'kobudo'];
+            const validTypes = ['kumite', 'kata-flags', 'aau-kata-flags', 'kata-points', 'kobudo'];
             if (validTypes.includes(currentBracket.scoreboardConfigId)) {
                 scoreboardType = currentBracket.scoreboardConfigId;
                 // Also load the unified config for this type
                 const unifiedCfg = getUnifiedScoreboardConfig();
-                const typeKeyMap = { 'kumite': 'kumite', 'kata-flags': 'kataFlags', 'kata-points': 'kataPoints', 'kobudo': 'kobudo' };
+                const typeKeyMap = { 'kumite': 'kumite', 'kata-flags': 'kataFlags', 'aau-kata-flags': 'kataFlags', 'kata-points': 'kataPoints', 'kobudo': 'kobudo' };
                 const typeKey = typeKeyMap[scoreboardType];
                 if (unifiedCfg && typeKey && unifiedCfg[typeKey]) {
                     scoreboardConfig = {
@@ -18269,6 +18962,16 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
         scoreboardType = eventType.scoreboardType;
     }
 
+    // If bracket IS the aau-kata-flags type, override scoreboard type regardless of config
+    if (currentBracket && currentBracket.type === 'aau-kata-flags') {
+        scoreboardType = 'aau-kata-flags';
+        if (!scoreboardConfig) {
+            const unifiedCfg = getUnifiedScoreboardConfig();
+            if (unifiedCfg?.kataFlags) {
+                scoreboardConfig = { id: 'unified-kata-flags', name: 'Kata Flags', baseType: 'kata-flags', settings: unifiedCfg.kataFlags };
+            }
+        }
+    }
 
     // Check if this should use kata-style operator
     // Only route to kata operator if:
@@ -18295,6 +18998,13 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
             return;
         }
         openKataScoreboard(matId, divisionName, eventId, currentBracket, scoreboardType);
+        return;
+    }
+
+    // AAU kata flags — sequential queue competition system
+    if (scoreboardType === 'aau-kata-flags') {
+        const flagsConfig = scoreboardConfig || currentBracket?.scoreboardConfig || null;
+        openAAUKataFlagsOperator(matId, divisionName, eventId, currentBracket, flagsConfig);
         return;
     }
 
@@ -18492,7 +19202,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     const title = document.getElementById('scoreboard-title');
     const content = document.getElementById('operator-scoreboard-content');
 
-    title.textContent = `${matName} - ${divisionName}`;
+    title.textContent = `${matName} - ${stripDivisionCodePrefix(divisionName)}`;
 
     // Enable keyboard shortcuts and reset score history
     operatorKeyboardEnabled = true;
@@ -18614,7 +19324,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                         <div id="operator-red-name" style="font-size: clamp(14px, 2vw, 22px); font-weight: 700; color: ${corner1TextColor}; margin-bottom: clamp(2px, 0.3vh, 8px); word-wrap: break-word;">${operatorRedCompetitor ? `${operatorRedCompetitor.firstName} ${operatorRedCompetitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}</div>
                         ${operatorRedCompetitor ? `
                             <div style="font-size: clamp(10px, 1.1vw, 13px); color: ${corner1TextColor}; opacity: 0.8; margin-bottom: clamp(4px, 0.5vh, 10px);">
-                                ${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight || 'N/A'}${getTournamentWeightUnit()} | ${operatorRedCompetitor.rank || 'N/A'}
+                                ${fmtAge(operatorRedCompetitor)} | ${fmtWeight(operatorRedCompetitor.weight)} | ${operatorRedCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorRedCompetitor.clubLogo ? `<img src="${operatorRedCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
                                     <span>${operatorRedCompetitor.club || 'No Dojo'}</span>
@@ -18668,7 +19378,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                         <div id="operator-blue-name" style="font-size: clamp(14px, 2vw, 22px); font-weight: 700; color: ${corner2TextColor}; margin-bottom: clamp(2px, 0.3vh, 8px); word-wrap: break-word;">${operatorBlueCompetitor ? `${operatorBlueCompetitor.firstName} ${operatorBlueCompetitor.lastName}`.toUpperCase() : 'NO COMPETITOR'}</div>
                         ${operatorBlueCompetitor ? `
                             <div style="font-size: clamp(10px, 1.1vw, 13px); color: ${corner2TextColor}; opacity: 0.8; margin-bottom: clamp(4px, 0.5vh, 10px);">
-                                ${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight || 'N/A'}${getTournamentWeightUnit()} | ${operatorBlueCompetitor.rank || 'N/A'}
+                                ${fmtAge(operatorBlueCompetitor)} | ${fmtWeight(operatorBlueCompetitor.weight)} | ${operatorBlueCompetitor.rank || 'N/A'}
                                 <div style="display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 2px;">
                                     ${operatorBlueCompetitor.clubLogo ? `<img src="${operatorBlueCompetitor.clubLogo}" alt="" style="width: 16px; height: 16px; object-fit: contain; border-radius: 3px;">` : ''}
                                     <span>${operatorBlueCompetitor.club || 'No Dojo'}</span>
@@ -18807,7 +19517,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
         const title = document.getElementById('scoreboard-title');
         const content = document.getElementById('operator-scoreboard-content');
 
-        title.textContent = `${matName} - ${divisionName} (Kata Flags)`;
+        title.textContent = `${matName} - ${stripDivisionCodePrefix(divisionName)} (Kata Flags)`;
         modal.classList.remove('hidden');
         modal.style.display = 'flex';
 
@@ -18916,7 +19626,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
     const title = document.getElementById('scoreboard-title');
     const content = document.getElementById('operator-scoreboard-content');
 
-    title.textContent = `${matName} - ${divisionName} (Kata Flags)`;
+    title.textContent = `${matName} - ${stripDivisionCodePrefix(divisionName)} (Kata Flags)`;
 
     // Compute text colors for opaque corner backgrounds
     const corner1TextColor = getCornerTextColor(corner1Color);
@@ -18946,7 +19656,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner1TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor1.firstName} ${competitor1.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner1TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Dojo'}
+                        ${fmtAge(competitor1)} | ${competitor1.rank || 'N/A'} | ${competitor1.club || 'No Dojo'}
                     </div>
                     <div id="corner1-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner1TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner1TextColor}; opacity: 0.7;">Flags</div>
@@ -18963,7 +19673,7 @@ function openKataFlagsHeadToHeadOperator(matId, divisionName, eventId, bracket, 
                     ` : ''}
                     <div style="font-size: clamp(16px, 2vw, 22px); font-weight: 700; color: ${corner2TextColor}; margin-bottom: clamp(2px, 0.3vh, 6px);">${competitor2.firstName} ${competitor2.lastName}</div>
                     <div style="font-size: clamp(10px, 1.1vw, 12px); color: ${corner2TextColor}; opacity: 0.8;">
-                        ${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Dojo'}
+                        ${fmtAge(competitor2)} | ${competitor2.rank || 'N/A'} | ${competitor2.club || 'No Dojo'}
                     </div>
                     <div id="corner2-flag-count" style="font-size: clamp(32px, 4vh, 48px); font-weight: 700; color: ${corner2TextColor}; margin-top: clamp(4px, 0.6vh, 12px);">0</div>
                     <div style="font-size: 11px; color: ${corner2TextColor}; opacity: 0.7;">Flags</div>
@@ -19173,13 +19883,16 @@ function updateKataFlagsTVDisplay() {
 
     const state = {
         scoreboardType: 'kata-flags',
+        // ring must be set so the server stores state under _rings.ring{N}
+        // and the TV display polling ?ring=N can find it.
+        ring: kataFlagsMatId,
         matName: kataFlagsMatName || `Mat ${kataFlagsMatId}`,
         divisionName: kataFlagsDivisionName,
         matchInfo: `Round ${kataFlagsCurrentMatch.round} - Match ${kataFlagsCurrentMatch.id}`,
 
         // Corner 1
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
+        redInfo: `${fmtAge(competitor1)} | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -19189,7 +19902,7 @@ function updateKataFlagsTVDisplay() {
 
         // Corner 2
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
+        blueInfo: `${fmtAge(competitor2)} | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -19363,9 +20076,26 @@ function kataFlagsDeclareWinner() {
         handleRepechageWinnerDeclaration(bracket, match, winner, loser_competitor);
     }
 
-    // Save updated bracket
-    saveBrackets(brackets);
+    // Save updated bracket to localStorage immediately
+    saveBrackets(brackets, [window.currentBracketId]);
     _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
+
+    // Append to server-side audit log (fire-and-forget)
+    _logMatchResult({
+        bracketId: window.currentBracketId,
+        matchId: match.id,
+        winnerId: winner.id || null,
+        winnerName: `${winner.firstName} ${winner.lastName}`,
+        loserId: loser_competitor?.id || null,
+        loserName: loser_competitor ? `${loser_competitor.firstName} ${loser_competitor.lastName}` : null,
+        divisionName: kataFlagsDivisionName || null,
+        eventId: kataFlagsEventId || null,
+        scoreboardType: 'kata-flags',
+        method: 'decision',
+        winNote: match.winNote || null,
+        scores: { corner1: corner1Votes, corner2: corner2Votes },
+        matId: currentOperatorMat || null,
+    });
 
     // Save to results/history
     const results = JSON.parse(_msGet(_scopedKey('results')) || '[]');
@@ -19451,11 +20181,18 @@ function kataFlagsDeclareWinner() {
             <div style="font-size: 18px; color: var(--text-secondary); margin-bottom: 16px;">
                 ${winnerCorner} Corner: ${corner1Votes > corner2Votes ? corner1Votes : corner2Votes} flags vs ${corner1Votes > corner2Votes ? corner2Votes : corner1Votes} flags
             </div>
-            <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
-                ${divisionDone ? 'View Results →' : 'Next Match →'}
-            </button>
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
+                    ${divisionDone ? 'View Results →' : 'Next Match →'}
+                </button>
+                <span id="_kata-flags-publish-status" style="font-size: 13px; color: #94a3b8;">Saving...</span>
+            </div>
         </div>
     `;
+
+    // Immediately publish result to server (Smoothcomp publish-on-complete pattern)
+    const _kfPublishEl = document.getElementById('_kata-flags-publish-status');
+    _publishBracket(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId], _kfPublishEl);
 
     // Update TV display to show winner
     updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes);
@@ -19475,13 +20212,14 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
 
     const state = {
         scoreboardType: 'kata-flags',
+        ring: kataFlagsMatId,
         matName: kataFlagsMatName || `Mat ${kataFlagsMatId}`,
         divisionName: kataFlagsDivisionName,
         matchInfo: `Round ${kataFlagsCurrentMatch.round} - Match ${kataFlagsCurrentMatch.id}`,
 
         // Keep current competitors and flag counts
         redName: `${competitor1.firstName} ${competitor1.lastName}`,
-        redInfo: `${getDisplayAge(competitor1)} yrs | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
+        redInfo: `${fmtAge(competitor1)} | ${competitor1.rank || 'N/A'}\n${competitor1.club || 'No Dojo'}`,
         redPhoto: competitor1.photo || null,
         redClubLogo: competitor1.clubLogo || null,
         redFlags: corner1Votes,
@@ -19490,7 +20228,7 @@ function updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes) {
         corner1Color: corner1Color,
 
         blueName: `${competitor2.firstName} ${competitor2.lastName}`,
-        blueInfo: `${getDisplayAge(competitor2)} yrs | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
+        blueInfo: `${fmtAge(competitor2)} | ${competitor2.rank || 'N/A'}\n${competitor2.club || 'No Dojo'}`,
         bluePhoto: competitor2.photo || null,
         blueClubLogo: competitor2.clubLogo || null,
         blueFlags: corner2Votes,
@@ -19540,6 +20278,911 @@ function kataFlagsNextMatch() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AAU KATA FLAGS OPERATOR — FULL IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Global state ──────────────────────────────────────────────────────────
+let _aauBracket          = null;   // live bracket object
+let _aauBracketId        = null;   // bracket key in localStorage
+let _aauJudgeVotes       = [];     // null | 'aka' | 'shiro' per judge
+let _aauHanteiCalled     = false;  // true after HANTEI pressed (votes revealed)
+let _aauMatId            = null;
+let _aauMatName          = null;
+let _aauDivisionName     = null;
+let _aauEventId          = null;
+let _aauScoreboardConfig = null;
+
+// ── Entry point ───────────────────────────────────────────────────────────
+function openAAUKataFlagsOperator(matId, divisionName, eventId, bracket, scoreboardConfig) {
+    activeScoreboardType = 'aau-kata-flags';
+    _updateOperatorTypeSwitcher('kata-flags'); // reuse kata-flags switcher label
+
+    // Stop kumite timers
+    if (operatorTimerInterval) { clearInterval(operatorTimerInterval); operatorTimerInterval = null; }
+    operatorRedCompetitor = null; operatorBlueCompetitor = null;
+
+    // Resolve bracket ID from localStorage
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const bracketKey = Object.keys(brackets).find(id => {
+        const b = brackets[id];
+        return (b.division === divisionName || b.divisionName === divisionName) &&
+               b.eventId == eventId && b.type === 'aau-kata-flags';
+    });
+
+    // Store globals
+    _aauBracket          = bracketKey ? brackets[bracketKey] : bracket;
+    _aauBracketId        = bracketKey || null;
+    _aauMatId            = matId;
+    _aauEventId          = eventId;
+    _aauDivisionName     = divisionName;
+    _aauScoreboardConfig = scoreboardConfig;
+    const mats           = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
+    const mat            = mats.find(m => m.id == matId);
+    _aauMatName          = mat ? mat.name : `Mat ${matId}`;
+
+    const numJudges = scoreboardConfig?.settings?.judges || 5;
+    _aauJudgeVotes  = Array(numJudges).fill(null);
+    _aauHanteiCalled = false;
+
+    _aauRenderOperator();
+}
+
+// ── Render the full operator UI ───────────────────────────────────────────
+function _aauRenderOperator() {
+    const b       = _aauBracket;
+    const modal   = document.getElementById('operator-scoreboard-modal');
+    const title   = document.getElementById('scoreboard-title');
+    const content = document.getElementById('operator-scoreboard-content');
+    const numJudges = _aauScoreboardConfig?.settings?.judges || 5;
+
+    const akaColor   = _aauScoreboardConfig?.settings?.corner1Color || '#ef4444';
+    const shiroColor = _aauScoreboardConfig?.settings?.corner2Color || '#ffffff';
+    const akaName    = _aauScoreboardConfig?.settings?.corner1Name  || 'AKA';
+    const shiroName  = _aauScoreboardConfig?.settings?.corner2Name  || 'SHIRO';
+
+    title.textContent = `${_aauMatName} — ${stripDivisionCodePrefix(_aauDivisionName)} (AAU Kata Flags)`;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    // ── Completed: show medal podium ───────────────────────────────────
+    if (b.status === 'complete') {
+        content.innerHTML = _aauRenderCompletePodium(b);
+        _aauAttachClickHandler();
+        return;
+    }
+
+    // ── No current match (shouldn't happen normally) ───────────────────
+    if (!b.currentMatch) {
+        content.innerHTML = `
+            <div class="glass-panel" style="text-align:center;padding:40px;">
+                <div style="font-size:20px;margin-bottom:12px;">⏳</div>
+                <h3>No active match</h3>
+                <p style="color:var(--text-secondary);margin-top:8px;">Bracket may be in an invalid state.</p>
+                <button class="btn btn-secondary" onclick="closeOperatorScoreboard()" style="margin-top:16px;">Close</button>
+            </div>`;
+        return;
+    }
+
+    const m         = b.currentMatch;
+    const akaComp   = rehydrateCompetitor(m.aka);
+    const shiroComp = rehydrateCompetitor(m.shiro);
+    const akaTC     = getCornerTextColor(akaColor);
+    const shiroTC   = getCornerTextColor(shiroColor);
+    const totalComps = (b.akaQueue?.length || 0) + (b.shiroQueue?.length || 0)
+                     + 2  /* in current match */
+                     + (b.matches?.length || 0)
+                     + (b.round1Finalist ? 1 : 0);
+    const roundLabel = b.round === 2
+        ? (b.status === 'r2final' ? 'Round 2 — Silver/Bronze Final' : 'Round 2 — Bronze Round')
+        : 'Round 1 — Golden Round';
+
+    // Queue panels
+    const akaQueueHTML = _aauRenderQueuePanel(b.akaQueue || [], akaColor, akaName, 'On Deck', false);
+    const shiroQueueHTML = _aauRenderShiroQueuePanel(b.shiroQueue || [], b.round1Finalist, shiroColor);
+
+    // Judge cards
+    const judgeCardsHTML = Array.from({ length: numJudges }, (_, i) => {
+        const vote = _aauJudgeVotes[i];
+        const revealed = _aauHanteiCalled && vote !== null;
+        const pending  = !_aauHanteiCalled;
+        const bgColor  = revealed && vote === 'aka'   ? akaColor
+                       : revealed && vote === 'shiro' ? shiroColor
+                       : 'var(--bg-secondary)';
+        const textColor = revealed ? (vote === 'aka' ? akaTC : shiroTC) : 'var(--text-primary)';
+        const label    = pending    ? '?'
+                       : vote === 'aka'   ? akaName
+                       : vote === 'shiro' ? shiroName
+                       : '—';
+        return `
+            <div class="aau-judge-card glass-panel" data-judge="${i}" style="
+                text-align:center; background:${bgColor}; color:${textColor};
+                border-color:${revealed ? bgColor : 'var(--glass-border)'};
+                transition: background 0.4s, color 0.3s;
+                cursor: pointer; padding: clamp(6px,0.8vh,12px) 4px;
+            ">
+                <div style="font-size:11px;font-weight:600;opacity:0.7;margin-bottom:4px;">J${i + 1}</div>
+                <div style="font-size:clamp(16px,2.2vh,26px);font-weight:700;line-height:1;">${label}</div>
+                ${!pending && vote !== null ? '' : `
+                    <div style="display:flex;gap:4px;justify-content:center;margin-top:6px;">
+                        <button class="btn btn-small aau-vote-btn" data-judge="${i}" data-side="aka"
+                            style="background:${akaColor};color:${akaTC};font-size:10px;padding:3px 6px;flex:1;">${akaName}</button>
+                        <button class="btn btn-small aau-vote-btn" data-judge="${i}" data-side="shiro"
+                            style="background:${shiroColor};color:${shiroTC};font-size:10px;padding:3px 6px;flex:1;">${shiroName}</button>
+                    </div>
+                `}
+            </div>
+        `;
+    }).join('');
+
+    // Vote tally
+    const akaVotes   = _aauJudgeVotes.filter(v => v === 'aka').length;
+    const shiroVotes = _aauJudgeVotes.filter(v => v === 'shiro').length;
+    const votedCount = akaVotes + shiroVotes;
+
+    content.innerHTML = `
+        <div class="operator-scoreboard" style="display:flex;flex-direction:column;gap:clamp(6px,0.8vh,12px);height:100%;">
+
+            <!-- Header bar -->
+            <div class="glass-panel" style="text-align:center;flex-shrink:0;padding:8px 16px;position:relative;">
+                <div style="font-size:clamp(11px,1.2vw,14px);font-weight:600;color:var(--text-secondary);">
+                    ${roundLabel} &nbsp;•&nbsp; Match ${m.matchNumber} &nbsp;•&nbsp; ${numJudges} Judges
+                </div>
+                <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">
+                    AKA queue: ${(b.akaQueue?.length || 0)} remaining &nbsp;•&nbsp;
+                    SHIRO: ${(b.shiroQueue?.length || 0)} eliminated
+                    ${b.round1Finalist ? '&nbsp;•&nbsp; 🔒 R1 Finalist held aside' : ''}
+                </div>
+            </div>
+
+            <!-- 3-column layout: AKA queue | Match | SHIRO queue -->
+            <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 3fr 1fr;gap:clamp(6px,0.8vh,12px);">
+
+                <!-- AKA Queue -->
+                <div style="overflow-y:auto;">${akaQueueHTML}</div>
+
+                <!-- Center: current match -->
+                <div style="display:flex;flex-direction:column;gap:clamp(4px,0.6vh,10px);min-height:0;">
+
+                    <!-- Competitor panels -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:clamp(6px,0.8vh,12px);flex-shrink:0;">
+                        <!-- AKA -->
+                        <div id="aau-aka-panel" class="glass-panel" style="
+                            background:${akaColor};border-color:${akaColor};text-align:center;
+                            transition:box-shadow 0.5s;
+                            ${_aauHanteiCalled && akaVotes > shiroVotes ? 'box-shadow:0 0 40px ' + akaColor + '99;' : ''}
+                        ">
+                            <div style="font-size:clamp(11px,1.2vw,14px);font-weight:700;color:${akaTC};opacity:0.85;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">${akaName}</div>
+                            ${akaComp.photo ? `<img src="${akaComp.photo}" style="width:clamp(36px,5vh,60px);height:clamp(36px,5vh,60px);border-radius:50%;object-fit:cover;border:2px solid ${akaTC}44;margin-bottom:4px;">` : ''}
+                            <div style="font-size:clamp(14px,1.8vw,20px);font-weight:700;color:${akaTC};">${akaComp.firstName} ${akaComp.lastName}</div>
+                            <div style="font-size:11px;color:${akaTC};opacity:0.75;">${akaComp.club || ''}</div>
+                            <div id="aau-aka-flag-count" style="font-size:clamp(28px,4vh,44px);font-weight:700;color:${akaTC};margin-top:6px;">${akaVotes}</div>
+                            <div style="font-size:10px;color:${akaTC};opacity:0.6;">FLAGS</div>
+                        </div>
+                        <!-- SHIRO -->
+                        <div id="aau-shiro-panel" class="glass-panel" style="
+                            background:${shiroColor};border-color:${shiroColor};text-align:center;
+                            transition:box-shadow 0.5s;
+                            ${_aauHanteiCalled && shiroVotes > akaVotes ? 'box-shadow:0 0 40px ' + shiroColor + '99;' : ''}
+                        ">
+                            <div style="font-size:clamp(11px,1.2vw,14px);font-weight:700;color:${shiroTC};opacity:0.85;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">${shiroName}</div>
+                            ${shiroComp.photo ? `<img src="${shiroComp.photo}" style="width:clamp(36px,5vh,60px);height:clamp(36px,5vh,60px);border-radius:50%;object-fit:cover;border:2px solid ${shiroTC}44;margin-bottom:4px;">` : ''}
+                            <div style="font-size:clamp(14px,1.8vw,20px);font-weight:700;color:${shiroTC};">${shiroComp.firstName} ${shiroComp.lastName}</div>
+                            <div style="font-size:11px;color:${shiroTC};opacity:0.75;">${shiroComp.club || ''}</div>
+                            <div id="aau-shiro-flag-count" style="font-size:clamp(28px,4vh,44px);font-weight:700;color:${shiroTC};margin-top:6px;">${shiroVotes}</div>
+                            <div style="font-size:10px;color:${shiroTC};opacity:0.6;">FLAGS</div>
+                        </div>
+                    </div>
+
+                    <!-- Judge panel -->
+                    <div class="glass-panel" style="flex-shrink:0;">
+                        <div style="font-weight:600;text-align:center;font-size:clamp(11px,1.2vw,13px);margin-bottom:8px;color:var(--text-secondary);">
+                            JUDGE PANEL — ${votedCount}/${numJudges} voted
+                            ${!_aauHanteiCalled && votedCount > 0 ? '<span style="color:#f59e0b;font-size:11px;margin-left:8px;">Votes hidden until HANTEI</span>' : ''}
+                            ${_aauHanteiCalled ? '<span style="color:#22c55e;font-size:11px;margin-left:8px;">✓ Flags revealed</span>' : ''}
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(${numJudges},1fr);gap:6px;">
+                            ${judgeCardsHTML}
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="glass-panel" style="flex-shrink:0;text-align:center;">
+                        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center;">
+                            ${!_aauHanteiCalled ? `
+                                <button class="btn btn-primary aau-hantei-btn" style="
+                                    font-size:clamp(14px,1.6vw,18px);padding:10px 28px;
+                                    background:linear-gradient(135deg,#f59e0b,#d97706);
+                                    border-color:#f59e0b;letter-spacing:0.08em;font-weight:700;
+                                    ${votedCount < numJudges ? 'opacity:0.65;' : ''}
+                                ">
+                                    🚩 HANTEI${votedCount < numJudges ? ` (${votedCount}/${numJudges})` : ''}
+                                </button>
+                            ` : `
+                                <button class="btn btn-primary aau-declare-btn" style="
+                                    font-size:clamp(14px,1.6vw,18px);padding:10px 28px;
+                                    background:linear-gradient(135deg,#22c55e,#16a34a);
+                                    border-color:#22c55e;letter-spacing:0.04em;font-weight:700;
+                                    ${votedCount === 0 ? 'opacity:0.5;pointer-events:none;' : ''}
+                                ">
+                                    ✓ Declare Winner
+                                </button>
+                            `}
+                            <button class="btn btn-secondary aau-reset-btn" style="font-size:12px;padding:6px 14px;">
+                                Reset Votes
+                            </button>
+                        </div>
+                        <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px;border-top:1px solid var(--glass-border);padding-top:8px;">
+                            <button class="btn btn-secondary aau-absent-btn" data-side="aka"
+                                style="font-size:11px;padding:3px 10px;color:#ff453a;border-color:#ff453a44;">${akaName} Absent</button>
+                            <button class="btn btn-secondary aau-absent-btn" data-side="shiro"
+                                style="font-size:11px;padding:3px 10px;color:#ff453a;border-color:#ff453a44;">${shiroName} Absent</button>
+                        </div>
+                        <div id="aau-result-msg" style="margin-top:6px;font-size:13px;color:var(--text-secondary);"></div>
+                    </div>
+
+                </div><!-- end center -->
+
+                <!-- SHIRO Queue -->
+                <div style="overflow-y:auto;">${shiroQueueHTML}</div>
+
+            </div><!-- end 3-col -->
+        </div>
+    `;
+
+    _aauUpdateTVDisplay();
+    _aauAttachClickHandler();
+}
+
+function _aauRenderQueuePanel(queue, color, label, subtitle, highlight) {
+    if (!queue.length) return `
+        <div class="glass-panel" style="height:100%;display:flex;flex-direction:column;">
+            <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.1em;padding:8px;border-bottom:1px solid var(--glass-border);">
+                ${label} QUEUE
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center;">
+                ${subtitle === 'On Deck' ? 'Queue empty' : 'None yet'}
+            </div>
+        </div>`;
+    return `
+        <div class="glass-panel" style="height:100%;display:flex;flex-direction:column;">
+            <div style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.1em;padding:8px;border-bottom:1px solid var(--glass-border);flex-shrink:0;">
+                ${label} — ${queue.length} remaining
+            </div>
+            <div style="flex:1;overflow-y:auto;">
+                ${queue.map((c, idx) => `
+                    <div style="
+                        display:flex;align-items:center;gap:8px;padding:6px 8px;
+                        border-bottom:1px solid var(--glass-border);
+                        ${idx === 0 ? 'background:rgba(239,68,68,0.12);' : ''}
+                    ">
+                        <div style="font-size:11px;color:var(--text-tertiary);width:18px;text-align:right;flex-shrink:0;">${idx + 1}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                ${idx === 0 ? '→ ' : ''}${c.firstName} ${c.lastName}
+                            </div>
+                            <div style="font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.club || ''}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+}
+
+function _aauRenderShiroQueuePanel(shiroQueue, round1Finalist, color) {
+    const akaTC = getCornerTextColor(color);
+    const hasItems = shiroQueue.length > 0 || round1Finalist;
+    if (!hasItems) return `
+        <div class="glass-panel" style="height:100%;display:flex;flex-direction:column;">
+            <div style="font-size:11px;font-weight:700;color:${color === '#ffffff' ? '#aaa' : color};text-transform:uppercase;letter-spacing:0.1em;padding:8px;border-bottom:1px solid var(--glass-border);">
+                SHIRO — ELIMINATED
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);font-size:12px;padding:16px;text-align:center;">No eliminations yet</div>
+        </div>`;
+    const titleColor = color === '#ffffff' ? '#aaa' : color;
+    return `
+        <div class="glass-panel" style="height:100%;display:flex;flex-direction:column;">
+            <div style="font-size:11px;font-weight:700;color:${titleColor};text-transform:uppercase;letter-spacing:0.1em;padding:8px;border-bottom:1px solid var(--glass-border);flex-shrink:0;">
+                SHIRO — ${shiroQueue.length} eliminated
+            </div>
+            <div style="flex:1;overflow-y:auto;">
+                ${round1Finalist ? `
+                    <div style="padding:6px 8px;border-bottom:1px solid var(--glass-border);background:rgba(245,158,11,0.1);">
+                        <div style="font-size:10px;font-weight:700;color:#f59e0b;margin-bottom:2px;">🔒 R1 FINALIST</div>
+                        <div style="font-size:12px;font-weight:600;">${round1Finalist.firstName} ${round1Finalist.lastName}</div>
+                        <div style="font-size:10px;color:var(--text-tertiary);">${round1Finalist.club || ''}</div>
+                    </div>
+                ` : ''}
+                ${shiroQueue.map((c, idx) => `
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--glass-border);">
+                        <div style="font-size:11px;color:var(--text-tertiary);width:18px;text-align:right;flex-shrink:0;">✗</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.firstName} ${c.lastName}</div>
+                            <div style="font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.club || ''}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+}
+
+function _aauRenderCompletePodium(b) {
+    const g = b.medals.gold;
+    const s = b.medals.silver;
+    const br = b.medals.bronze;
+    const total = b.matches?.length || 0;
+    return `
+        <div style="display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;height:100%;padding:24px;">
+            <div style="font-size:28px;font-weight:700;color:#22c55e;">🏁 Division Complete</div>
+            <div style="font-size:14px;color:var(--text-secondary);">${total} total matches played</div>
+            <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:420px;">
+                ${g  ? `<div class="glass-panel" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(251,191,36,0.12);border-color:#fbbf24;">
+                    <span style="font-size:36px;">🥇</span>
+                    <div><div style="font-size:18px;font-weight:700;">${g.firstName} ${g.lastName}</div><div style="font-size:12px;color:var(--text-secondary);">${g.club || ''}</div></div>
+                </div>` : ''}
+                ${s  ? `<div class="glass-panel" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(148,163,184,0.12);border-color:#94a3b8;">
+                    <span style="font-size:36px;">🥈</span>
+                    <div><div style="font-size:18px;font-weight:700;">${s.firstName} ${s.lastName}</div><div style="font-size:12px;color:var(--text-secondary);">${s.club || ''}</div></div>
+                </div>` : ''}
+                ${br ? `<div class="glass-panel" style="display:flex;align-items:center;gap:12px;padding:16px;background:rgba(180,83,9,0.12);border-color:#b45309;">
+                    <span style="font-size:36px;">🥉</span>
+                    <div><div style="font-size:18px;font-weight:700;">${br.firstName} ${br.lastName}</div><div style="font-size:12px;color:var(--text-secondary);">${br.club || ''}</div></div>
+                </div>` : ''}
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
+                <button class="btn btn-primary aau-open-tv-btn" style="font-size:14px;padding:10px 20px;">📺 Open TV Display</button>
+                <button class="btn btn-secondary" onclick="closeOperatorScoreboard()" style="font-size:14px;">Close</button>
+            </div>
+        </div>`;
+}
+
+// ── Event delegation ───────────────────────────────────────────────────────
+function _aauAttachClickHandler() {
+    if (window._aauClickHandler) {
+        window.removeEventListener('click', window._aauClickHandler, true);
+        window._aauClickHandler = null;
+    }
+    const handler = function(e) {
+        // Vote button inside a judge card (before HANTEI)
+        const voteBtn = e.target.closest('.aau-vote-btn');
+        if (voteBtn) {
+            e.preventDefault(); e.stopPropagation();
+            _aauVote(parseInt(voteBtn.dataset.judge), voteBtn.dataset.side);
+            return;
+        }
+        // HANTEI button
+        if (e.target.closest('.aau-hantei-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauHantei();
+            return;
+        }
+        // Declare Winner button
+        if (e.target.closest('.aau-declare-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauDeclareWinner();
+            return;
+        }
+        // Reset Votes
+        if (e.target.closest('.aau-reset-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauResetVotes();
+            return;
+        }
+        // Absent buttons
+        const absentBtn = e.target.closest('.aau-absent-btn');
+        if (absentBtn) {
+            e.preventDefault(); e.stopPropagation();
+            _aauMarkAbsent(absentBtn.dataset.side);
+            return;
+        }
+        // Open TV Display
+        if (e.target.closest('.aau-open-tv-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauOpenTVDisplay();
+            return;
+        }
+        // Next Match
+        if (e.target.closest('.aau-next-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauNextMatch();
+            return;
+        }
+        // Round 2 transition confirm
+        if (e.target.closest('.aau-start-round2-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            _aauStartRound2();
+            return;
+        }
+    };
+    window.addEventListener('click', handler, true);
+    window._aauClickHandler = handler;
+}
+
+// ── Voting ─────────────────────────────────────────────────────────────────
+function _aauVote(judgeIndex, side) {
+    _aauJudgeVotes[judgeIndex] = side; // 'aka' | 'shiro'
+    _aauRenderOperator(); // re-render so counts update live
+}
+
+// ── HANTEI reveal ──────────────────────────────────────────────────────────
+function _aauHantei() {
+    const votedCount = _aauJudgeVotes.filter(v => v !== null).length;
+    const numJudges  = _aauScoreboardConfig?.settings?.judges || 5;
+    if (votedCount === 0) {
+        showToast('No votes recorded. Enter judge votes before calling HANTEI.', 'error');
+        return;
+    }
+    if (votedCount < numJudges) {
+        if (!confirm(`Only ${votedCount} of ${numJudges} judges have voted. Call HANTEI anyway?`)) return;
+    }
+    _aauHanteiCalled = true;
+    _aauRenderOperator();
+    _aauUpdateTVDisplay(); // TV now shows real votes (revealed state)
+}
+
+// ── Reset votes ────────────────────────────────────────────────────────────
+function _aauResetVotes() {
+    _aauJudgeVotes.fill(null);
+    _aauHanteiCalled = false;
+    _aauRenderOperator();
+    _aauUpdateTVDisplay();
+}
+
+// ── Mark absent (forfeit) ─────────────────────────────────────────────────
+function _aauMarkAbsent(side) {
+    const b = _aauBracket;
+    if (!b?.currentMatch) return;
+    const absentComp  = side === 'aka' ? b.currentMatch.aka  : b.currentMatch.shiro;
+    const presentComp = side === 'aka' ? b.currentMatch.shiro : b.currentMatch.aka;
+    if (!confirm(`Mark ${absentComp.firstName} ${absentComp.lastName} as absent? ${presentComp.firstName} ${presentComp.lastName} advances.`)) return;
+    _aauProcessMatchResult(presentComp, absentComp, 0, 0, 'absent');
+}
+
+// ── Declare winner after HANTEI ────────────────────────────────────────────
+function _aauDeclareWinner() {
+    if (window._aauDeclaring) return;
+    window._aauDeclaring = true;
+
+    const akaVotes   = _aauJudgeVotes.filter(v => v === 'aka').length;
+    const shiroVotes = _aauJudgeVotes.filter(v => v === 'shiro').length;
+
+    if (akaVotes === 0 && shiroVotes === 0) {
+        window._aauDeclaring = false;
+        showToast('No votes recorded.', 'error');
+        return;
+    }
+    if (akaVotes === shiroVotes) {
+        window._aauDeclaring = false;
+        showToast('Tie! Judges must break the tie. AAU rules prohibit ties.', 'warning');
+        return;
+    }
+
+    const b         = _aauBracket;
+    const m         = b.currentMatch;
+    const winner    = akaVotes > shiroVotes ? m.aka : m.shiro;
+    const loser     = akaVotes > shiroVotes ? m.shiro : m.aka;
+
+    _aauProcessMatchResult(winner, loser, akaVotes, shiroVotes, 'decision');
+    window._aauDeclaring = false;
+}
+
+// ── Core match result processor ────────────────────────────────────────────
+function _aauProcessMatchResult(winner, loser, akaVotes, shiroVotes, method) {
+    const b = _aauBracket;
+    const m = b.currentMatch;
+
+    // Record completed match in history
+    const completedMatch = {
+        id:          m.id,
+        matchNumber: m.matchNumber,
+        round:       b.round,
+        aka:         m.aka,
+        shiro:       m.shiro,
+        winner,
+        loser,
+        akaFlags:    akaVotes,
+        shiroFlags:  shiroVotes,
+        judgeVotes:  [..._aauJudgeVotes],
+        method,
+        status:      'completed',
+        timestamp:   new Date().toISOString()
+    };
+    b.matches.push(completedMatch);
+
+    // ── Update TV display with winner overlay ──────────────────────────
+    _aauUpdateTVDisplayWinner(winner, akaVotes, shiroVotes);
+
+    // ── Determine next state ───────────────────────────────────────────
+    if (b.round === 1) {
+        _aauAdvanceRound1(winner, loser, akaVotes, shiroVotes);
+    } else {
+        _aauAdvanceRound2(winner, loser, akaVotes, shiroVotes);
+    }
+}
+
+// ── Round 1 advancement ────────────────────────────────────────────────────
+function _aauAdvanceRound1(winner, loser, akaVotes, shiroVotes) {
+    const b = _aauBracket;
+
+    // Winner rejoins AKA queue at the back
+    b.akaQueue.push(winner);
+    b.currentMatch = null;
+    _aauHanteiCalled = false;
+    _aauJudgeVotes.fill(null);
+
+    if (b.akaQueue.length === 1) {
+        // ── ROUND 1 COMPLETE ──────────────────────────────────────────
+        b.goldMedalist    = b.akaQueue[0];
+        b.medals.gold     = b.akaQueue[0];
+        b.round1Finalist  = loser;   // held aside — does NOT go to shiroQueue
+        b.akaQueue        = [];
+
+        _aauSaveBracket();
+        _aauRenderRound1Complete();
+        return;
+    }
+
+    // Loser moves to SHIRO side
+    b.shiroQueue.push(loser);
+
+    // Set up next match from AKA queue
+    _aauSetNextMatch();
+    _aauSaveBracket();
+    _aauShowMatchResult(winner, akaVotes, shiroVotes, false);
+}
+
+// ── Round 2 advancement ────────────────────────────────────────────────────
+function _aauAdvanceRound2(winner, loser, akaVotes, shiroVotes) {
+    const b = _aauBracket;
+
+    if (b.status === 'r2final') {
+        // ── TOURNAMENT COMPLETE ───────────────────────────────────────
+        b.medals.silver = winner;
+        b.medals.bronze = loser;
+        b.status        = 'complete';
+        b.currentMatch  = null;
+        _aauSaveBracket();
+        _aauUpdateTVDisplayPodium();
+        _aauRenderOperator();
+        return;
+    }
+
+    // Winner rejoins AKA queue at back
+    b.akaQueue.push(winner);
+    b.currentMatch = null;
+    _aauHanteiCalled = false;
+    _aauJudgeVotes.fill(null);
+
+    if (b.akaQueue.length === 1) {
+        // ── ROUND 2 FINAL: last survivor vs Round 1 Finalist ─────────
+        const finalist = b.round1Finalist;
+        b.matchCounter++;
+        b.currentMatch = {
+            id:          generateUniqueId(),
+            matchNumber: b.matchCounter,
+            round:       2,
+            aka:         b.akaQueue[0],   // last Round 2 survivor → AKA
+            shiro:       finalist,         // Round 1 Finalist → SHIRO
+            hanteiCalled: false
+        };
+        b.akaQueue  = [];
+        b.status    = 'r2final';
+        _aauSaveBracket();
+        _aauShowMatchResult(winner, akaVotes, shiroVotes, false);
+        return;
+    }
+
+    // Loser exits (no Round 3 — they're eliminated)
+    b.shiroQueue.push(loser);
+    _aauSetNextMatch();
+    _aauSaveBracket();
+    _aauShowMatchResult(winner, akaVotes, shiroVotes, false);
+}
+
+// ── Pull next two from AKA queue into currentMatch ─────────────────────────
+function _aauSetNextMatch() {
+    const b = _aauBracket;
+    if (b.akaQueue.length < 2) return;
+    const aka   = b.akaQueue.shift();
+    const shiro = b.akaQueue.shift();
+    b.matchCounter++;
+    b.currentMatch = {
+        id:          generateUniqueId(),
+        matchNumber: b.matchCounter,
+        round:       b.round,
+        aka,
+        shiro,
+        hanteiCalled: false
+    };
+}
+
+// ── Show "winner declared" UI before advancing ─────────────────────────────
+function _aauShowMatchResult(winner, akaVotes, shiroVotes, isFinal) {
+    const resultEl = document.getElementById('aau-result-msg');
+    if (!resultEl) { _aauRenderOperator(); return; }
+    const totalFlags = Math.max(akaVotes, shiroVotes) + Math.min(akaVotes, shiroVotes);
+    const winFlags   = Math.max(akaVotes, shiroVotes);
+    const loseFlags  = Math.min(akaVotes, shiroVotes);
+    resultEl.innerHTML = `
+        <div style="background:rgba(34,197,94,0.15);border:1px solid #22c55e;border-radius:8px;padding:10px 16px;margin-top:8px;">
+            <div style="font-size:16px;font-weight:700;color:#22c55e;margin-bottom:4px;">
+                🏆 ${winner.firstName} ${winner.lastName} wins ${winFlags}–${loseFlags}
+            </div>
+            <button class="btn btn-primary aau-next-btn" style="font-size:14px;padding:8px 24px;margin-top:6px;">
+                ${isFinal ? 'View Final Results →' : 'Next Match →'}
+            </button>
+        </div>`;
+}
+
+function _aauNextMatch() {
+    _aauRenderOperator();
+}
+
+// ── Round 1 complete transition screen ────────────────────────────────────
+function _aauRenderRound1Complete() {
+    const b = _aauBracket;
+    const g = b.goldMedalist;
+    const f = b.round1Finalist;
+    const content = document.getElementById('operator-scoreboard-content');
+    if (!content) return;
+
+    const r1Matches = b.matches.filter(m => m.round === 1).length;
+    const r2Count   = b.shiroQueue?.length || 0;
+
+    content.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;padding:24px;text-align:center;">
+            <div class="glass-panel" style="background:rgba(251,191,36,0.1);border-color:#fbbf24;padding:24px;width:100%;max-width:520px;">
+                <div style="font-size:40px;margin-bottom:8px;">🥇</div>
+                <div style="font-size:13px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:8px;">ROUND 1 COMPLETE — GOLD MEDALIST</div>
+                <div style="font-size:28px;font-weight:700;">${g.firstName} ${g.lastName}</div>
+                <div style="font-size:14px;color:var(--text-secondary);margin-top:4px;">${g.club || ''}</div>
+                <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">${r1Matches} matches played</div>
+            </div>
+            <div class="glass-panel" style="background:rgba(245,158,11,0.08);border-color:#f59e0b;padding:16px;width:100%;max-width:520px;">
+                <div style="font-size:11px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">🔒 HELD FOR SILVER/BRONZE FINAL</div>
+                <div style="font-size:17px;font-weight:600;">${f.firstName} ${f.lastName}</div>
+                <div style="font-size:12px;color:var(--text-secondary);">${f.club || ''}</div>
+            </div>
+            <div style="font-size:14px;color:var(--text-secondary);">
+                Round 2 will determine <strong>🥈 Silver</strong> and <strong>🥉 Bronze</strong><br>
+                <span style="font-size:12px;">${r2Count} competitor${r2Count !== 1 ? 's' : ''} compete in the bronze round</span>
+            </div>
+            <button class="btn btn-primary aau-start-round2-btn" style="font-size:16px;padding:12px 32px;letter-spacing:0.05em;">
+                Begin Round 2 →
+            </button>
+        </div>`;
+    _aauAttachClickHandler();
+
+    // TV: show Gold celebration
+    _aauUpdateTVDisplayGold();
+}
+
+// ── Start Round 2 ──────────────────────────────────────────────────────────
+function _aauStartRound2() {
+    const b = _aauBracket;
+    b.round = 2;
+    b.status = 'round2';
+
+    if (b.shiroQueue.length === 0) {
+        // Only 2 competitors total — no Round 2 players (happens with exactly 2 competitors)
+        // round1Finalist is the only other person; they become Silver by default
+        b.medals.silver = b.round1Finalist;
+        b.status = 'complete';
+        _aauSaveBracket();
+        _aauRenderOperator();
+        return;
+    }
+
+    if (b.shiroQueue.length === 1) {
+        // Only 1 Round 2 competitor — they face the Round 1 Finalist directly
+        const aka   = b.shiroQueue[0];
+        const shiro = b.round1Finalist;
+        b.akaQueue   = [];
+        b.shiroQueue = [];
+        b.matchCounter++;
+        b.currentMatch = {
+            id: generateUniqueId(),
+            matchNumber: b.matchCounter,
+            round: 2,
+            aka, shiro,
+            hanteiCalled: false
+        };
+        b.status = 'r2final';
+        _aauJudgeVotes.fill(null);
+        _aauHanteiCalled = false;
+        _aauSaveBracket();
+        _aauRenderOperator();
+        return;
+    }
+
+    // Normal Round 2: all SHIRO losers move to AKA queue
+    b.akaQueue   = [...b.shiroQueue];
+    b.shiroQueue = [];
+    _aauSetNextMatch();
+    _aauJudgeVotes.fill(null);
+    _aauHanteiCalled = false;
+    _aauSaveBracket();
+    _aauRenderOperator();
+}
+
+// ── Persist bracket ────────────────────────────────────────────────────────
+function _aauSaveBracket() {
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    if (_aauBracketId && brackets[_aauBracketId]) {
+        brackets[_aauBracketId] = _aauBracket;
+        saveBrackets(brackets);
+        // Immediate targeted write (no debounce) so each match result is persisted right away
+        _publishBracket(currentTournamentId, _aauBracketId, _aauBracket, null);
+    }
+}
+
+// ── TV Display: current match ─────────────────────────────────────────────
+function _aauUpdateTVDisplay() {
+    if (activeScoreboardType !== 'aau-kata-flags') return;
+    const b = _aauBracket;
+    if (!b?.currentMatch) return;
+
+    const m        = b.currentMatch;
+    const aka      = m.aka;
+    const shiro    = m.shiro;
+    const akaC     = _aauScoreboardConfig?.settings?.corner1Color || '#ef4444';
+    const shiroC   = _aauScoreboardConfig?.settings?.corner2Color || '#ffffff';
+    const akaName  = _aauScoreboardConfig?.settings?.corner1Name  || 'AKA';
+    const shiroN   = _aauScoreboardConfig?.settings?.corner2Name  || 'SHIRO';
+    const akaVotes   = _aauJudgeVotes.filter(v => v === 'aka').length;
+    const shiroVotes = _aauJudgeVotes.filter(v => v === 'shiro').length;
+    const numJudges  = _aauScoreboardConfig?.settings?.judges || 5;
+
+    // Only reveal votes on TV after HANTEI
+    const tvVotes = _aauHanteiCalled
+        ? _aauJudgeVotes.map(v => v === 'aka' ? 'corner1' : v === 'shiro' ? 'corner2' : null)
+        : Array(numJudges).fill(null); // hidden until HANTEI
+
+    const roundLabel = b.round === 2
+        ? (b.status === 'r2final' ? 'Silver/Bronze Final' : `Round 2 — Match ${m.matchNumber}`)
+        : `Round 1 — Match ${m.matchNumber}`;
+
+    const state = {
+        scoreboardType: 'aau-kata-flags',
+        ring:           _aauMatId,
+        matName:        _aauMatName || `Mat ${_aauMatId}`,
+        divisionName:   _aauDivisionName,
+        matchInfo:      roundLabel,
+        hanteiCalled:   _aauHanteiCalled,
+
+        redName:      `${aka.firstName} ${aka.lastName}`,
+        redInfo:      `${fmtAge(aka)} | ${aka.rank || 'N/A'}\n${aka.club || ''}`,
+        redPhoto:     aka.photo || null,
+        redClubLogo:  aka.clubLogo || null,
+        redFlags:     _aauHanteiCalled ? akaVotes : 0,
+        redScore:     _aauHanteiCalled ? akaVotes : 0,
+        corner1Name:  akaName,
+        corner1Color: akaC,
+
+        blueName:     `${shiro.firstName} ${shiro.lastName}`,
+        blueInfo:     `${fmtAge(shiro)} | ${shiro.rank || 'N/A'}\n${shiro.club || ''}`,
+        bluePhoto:    shiro.photo || null,
+        blueClubLogo: shiro.clubLogo || null,
+        blueFlags:    _aauHanteiCalled ? shiroVotes : 0,
+        blueScore:    _aauHanteiCalled ? shiroVotes : 0,
+        corner2Name:  shiroN,
+        corner2Color: shiroC,
+
+        judges:       numJudges,
+        judgeVotes:   tvVotes,
+        winner:       null,
+
+        // AAU-specific queue info for TV display
+        aauRound:     b.round,
+        aauAkaQueue:  (b.akaQueue || []).map(c => `${c.firstName} ${c.lastName}`),
+        aauShiroElim: (b.shiroQueue || []).length,
+        aauStatus:    b.status
+    };
+
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
+}
+
+function _aauUpdateTVDisplayWinner(winner, akaVotes, shiroVotes) {
+    if (activeScoreboardType !== 'aau-kata-flags') return;
+    const b = _aauBracket;
+    if (!b?.currentMatch) return;
+
+    const m       = b.currentMatch;
+    const akaC    = _aauScoreboardConfig?.settings?.corner1Color || '#ef4444';
+    const shiroC  = _aauScoreboardConfig?.settings?.corner2Color || '#ffffff';
+    const akaName = _aauScoreboardConfig?.settings?.corner1Name  || 'AKA';
+    const shiroN  = _aauScoreboardConfig?.settings?.corner2Name  || 'SHIRO';
+    const numJudges = _aauScoreboardConfig?.settings?.judges || 5;
+
+    const isAkaWinner = winner === m.aka || winner?.id === m.aka?.id;
+    const state = {
+        scoreboardType: 'aau-kata-flags',
+        ring:    _aauMatId,
+        matName: _aauMatName,
+        divisionName: _aauDivisionName,
+        matchInfo: `Round ${b.round} — Match ${m.matchNumber}`,
+        hanteiCalled: true,
+        redName:  `${m.aka.firstName} ${m.aka.lastName}`,
+        redInfo:  `${fmtAge(m.aka)} | ${m.aka.rank || 'N/A'}\n${m.aka.club || ''}`,
+        redPhoto: m.aka.photo || null, redClubLogo: m.aka.clubLogo || null,
+        redFlags: akaVotes, redScore: akaVotes,
+        corner1Name: akaName, corner1Color: akaC,
+        blueName: `${m.shiro.firstName} ${m.shiro.lastName}`,
+        blueInfo: `${fmtAge(m.shiro)} | ${m.shiro.rank || 'N/A'}\n${m.shiro.club || ''}`,
+        bluePhoto: m.shiro.photo || null, blueClubLogo: m.shiro.clubLogo || null,
+        blueFlags: shiroVotes, blueScore: shiroVotes,
+        corner2Name: shiroN, corner2Color: shiroC,
+        judges: numJudges,
+        judgeVotes: _aauJudgeVotes.map(v => v === 'aka' ? 'corner1' : v === 'shiro' ? 'corner2' : null),
+        winner: {
+            name:   `${winner.firstName} ${winner.lastName}`.toUpperCase(),
+            photo:  winner.photo || null,
+            club:   winner.club  || null,
+            clubLogo: winner.clubLogo || null,
+            corner: isAkaWinner ? 'red' : 'blue'
+        }
+    };
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
+}
+
+function _aauUpdateTVDisplayGold() {
+    if (activeScoreboardType !== 'aau-kata-flags') return;
+    const b = _aauBracket;
+    const g = b.goldMedalist;
+    if (!g) return;
+    const akaC = _aauScoreboardConfig?.settings?.corner1Color || '#ef4444';
+    const state = {
+        scoreboardType: 'aau-kata-flags',
+        ring:    _aauMatId,
+        matName: _aauMatName,
+        divisionName: _aauDivisionName,
+        matchInfo: 'Round 1 Complete',
+        hanteiCalled: true,
+        aauStatus: 'round1-complete',
+        winner: {
+            name:   `${g.firstName} ${g.lastName}`.toUpperCase(),
+            photo:  g.photo || null,
+            club:   g.club  || null,
+            clubLogo: g.clubLogo || null,
+            corner: 'red',
+            medal:  'gold'
+        }
+    };
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
+}
+
+function _aauUpdateTVDisplayPodium() {
+    if (activeScoreboardType !== 'aau-kata-flags') return;
+    const b = _aauBracket;
+    const state = {
+        scoreboardType: 'aau-kata-flags',
+        ring:    _aauMatId,
+        matName: _aauMatName,
+        divisionName: _aauDivisionName,
+        matchInfo: 'Division Complete',
+        hanteiCalled: true,
+        aauStatus: 'complete',
+        aauPodium: {
+            gold:   b.medals.gold   ? { name: `${b.medals.gold.firstName} ${b.medals.gold.lastName}`,     club: b.medals.gold.club   || '', photo: b.medals.gold.photo   || null } : null,
+            silver: b.medals.silver ? { name: `${b.medals.silver.firstName} ${b.medals.silver.lastName}`, club: b.medals.silver.club || '', photo: b.medals.silver.photo || null } : null,
+            bronze: b.medals.bronze ? { name: `${b.medals.bronze.firstName} ${b.medals.bronze.lastName}`, club: b.medals.bronze.club || '', photo: b.medals.bronze.photo || null } : null
+        }
+    };
+    _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
+    _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 500);
+}
+
+function _aauOpenTVDisplay() {
+    const windowName  = `TVDisplay_Mat${_aauMatId}`;
+    const tidParam    = currentTournamentId ? `?tid=${currentTournamentId}` : '';
+    const newWindow   = window.open(`/kata-flags-scoreboard.html${tidParam}`, windowName, 'width=1920,height=1080,fullscreen=yes');
+    if (!newWindow) showToast('Failed to open TV display. Please allow popups.', 'error');
+}
+window._aauOpenTVDisplay = _aauOpenTVDisplay;
+
 function selectOperatorCompetitor(corner) {
     const select = document.getElementById(`${corner}-competitor-select`);
     const competitorId = parseInt(select.value);
@@ -19561,7 +21204,7 @@ function selectOperatorCompetitor(corner) {
 
     document.getElementById(`${corner}-competitor-info`).innerHTML = `
         <strong>${competitor.firstName} ${competitor.lastName}</strong><br>
-        ${getDisplayAge(competitor)} yrs | ${competitor.weight}${getTournamentWeightUnit()} | ${competitor.rank}<br>
+        ${fmtAge(competitor)} | ${fmtWeight(competitor.weight)} | ${competitor.rank || 'N/A'}<br>
         ${competitor.club}
     `;
 
@@ -20224,14 +21867,18 @@ function _updateOperatorTypeSwitcher(activeType) {
     if (!switcher) return;
     switcher.style.display = 'flex';
     const map = {
-        'kumite':      { id: 'type-btn-kumite',      params: _opKumiteParams },
-        'kata-points': { id: 'type-btn-kata-points', params: _opKataPointsParams },
-        'kata-flags':  { id: 'type-btn-kata-flags',  params: _opKataFlagsParams },
+        'kumite':        { id: 'type-btn-kumite',        params: _opKumiteParams },
+        'kata-points':   { id: 'type-btn-kata-points',   params: _opKataPointsParams },
+        'kata-flags':    { id: 'type-btn-kata-flags',    params: _opKataFlagsParams },
+        'ranking-list':  { id: 'type-btn-ranking-list',  params: _opRankingListParams },
     };
     for (const [type, { id, params }] of Object.entries(map)) {
         const btn = document.getElementById(id);
         if (!btn) continue;
-        const isActive  = type === activeType;
+        // Ranking-list button is also used for kobudo (scoreboardType may be 'kobudo' or 'kata-points'
+        // but the bracket type is 'ranking-list').
+        const isActive  = type === activeType ||
+            (type === 'ranking-list' && ['kobudo', 'kata-points'].includes(activeType) && !!_opRankingListParams);
         const isEnabled = !!params;
         btn.disabled = !isEnabled || isActive;
         btn.style.opacity = isActive ? '1' : isEnabled ? '0.75' : '0.35';
@@ -20262,6 +21909,9 @@ function operatorSwitchScoreboardType(type) {
     } else if (type === 'kata-points' && _opKataPointsParams) {
         const { matId, divisionName, eventId, bracket, scoreboardType } = _opKataPointsParams;
         openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardType);
+    } else if (type === 'ranking-list' && _opRankingListParams) {
+        const { matId, divisionName, eventId, bracket, scoreboardType } = _opRankingListParams;
+        openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreboardType);
     } else {
         showMessage('Open a bracket of that type first to enable switching.', 'warning');
     }
@@ -20486,26 +22136,26 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
                     handleRepechageWinnerDeclaration(bracket, match, winner, loser);
                 }
 
-                // Save updated bracket
-                saveBrackets(brackets);
-                // Cancel the debounced bulk sync queued by saveBrackets.
-                // We replace it with an immediate single-bracket PUT so the
-                // changed bracket is written without touching other brackets
-                // (prevents Device B overwriting Device A's concurrent results).
-                if (_syncDebounceTimers['brackets']) {
-                    clearTimeout(_syncDebounceTimers['brackets']);
-                    _syncDebounceTimers['brackets'] = null;
-                }
-                // Immediate write of only the modified bracket
-                (function(tid, bid, b) {
-                    fetch(`/api/tournaments/${tid}/brackets/${bid}`, {
-                        method: 'PUT',
-                        credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ bracket: b }),
-                    }).catch(err => console.error('[bracket] Failed to save match result:', err));
-                })(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId]);
+                // Save updated bracket to localStorage immediately
+                saveBrackets(brackets, [window.currentBracketId]);
                 _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
+
+                // Append to server-side audit log (fire-and-forget)
+                _logMatchResult({
+                    bracketId: window.currentBracketId,
+                    matchId: match.id,
+                    winnerId: winner.id || null,
+                    winnerName: `${winner.firstName} ${winner.lastName}`,
+                    loserId: loser?.id || null,
+                    loserName: loser ? `${loser.firstName} ${loser.lastName}` : null,
+                    divisionName: currentOperatorDivision || null,
+                    eventId: currentOperatorEventId || null,
+                    scoreboardType: 'kumite',
+                    method: winMethod || 'points',
+                    winNote: winNote || null,
+                    scores: { red: operatorRedScore, blue: operatorBlueScore },
+                    matId: currentOperatorMat || null,
+                });
             }
         }
     }
@@ -20551,16 +22201,37 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
             <button class="btn btn-primary" onclick="operatorNextAfterWin()" style="font-size: 14px; padding: 8px 24px;">
                 ${divisionComplete ? 'View Results →' : 'Next Match →'}
             </button>
+            <span id="_kumite-publish-status" style="font-size: 13px; color: #94a3b8; align-self: center;">Saving...</span>
             <span style="font-size: 13px; color: var(--text-tertiary); align-self: center;">
                 Auto-advancing in <span id="winner-countdown">10</span>s
             </span>
         </div>
     `;
 
+    // Disable all scoring / penalty buttons so the SHIKKAKU bar and score buttons
+    // cannot be accidentally triggered while the result panel is visible.
+    // (Buttons inside .operator-scoreboard that are not the new result panel.)
+    const operatorScoreboardDiv = operatorContent?.querySelector('.operator-scoreboard');
+    if (operatorScoreboardDiv) {
+        operatorScoreboardDiv.querySelectorAll('button').forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.pointerEvents = 'none';
+        });
+    }
+
     // Find the operator-scoreboard div and append the result
     const scoreboardDiv = operatorContent?.querySelector('.operator-scoreboard');
     if (scoreboardDiv) {
         scoreboardDiv.appendChild(resultPanel);
+    }
+
+    // Immediately publish result to server (Smoothcomp publish-on-complete pattern)
+    const _kumitePublishEl = document.getElementById('_kumite-publish-status');
+    const _publishBid = window.currentBracketId;
+    const _publishBracketData = JSON.parse(_msGet(_scopedKey('brackets')) || '{}')[_publishBid];
+    if (_publishBracketData) {
+        _publishBracket(currentTournamentId, _publishBid, _publishBracketData, _kumitePublishEl);
     }
 
     // Countdown and auto-advance
@@ -21087,7 +22758,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
     const title = document.getElementById('scoreboard-title');
     const content = document.getElementById('operator-scoreboard-content');
 
-    title.textContent = `${matName} - ${divisionName} (KATA)`;
+    title.textContent = `${matName} - ${stripDivisionCodePrefix(divisionName)} (KATA)`;
 
     // Build Kata scoreboard HTML
     const scoringRange = bracket.scoringRange || { min: 0, max: 10 };
@@ -21112,7 +22783,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
                         </div>
                         ${currentKataCompetitor ? `
                             <div style="font-size: clamp(12px, 1.3vw, 16px); color: var(--text-secondary); margin-top: 4px;">
-                                ${getDisplayAge(currentKataCompetitor)} yrs | ${currentKataCompetitor.weight}${getTournamentWeightUnit()} | ${currentKataCompetitor.rank} | ${currentKataCompetitor.club}
+                                ${fmtAge(currentKataCompetitor)} | ${fmtWeight(currentKataCompetitor.weight)} | ${currentKataCompetitor.rank || 'N/A'} | ${currentKataCompetitor.club || 'No Dojo'}
                             </div>
                         ` : ''}
                     </div>
@@ -21144,6 +22815,7 @@ function openKataScoreboard(matId, divisionName, eventId, bracket, scoreboardTyp
                                     step="0.1"
                                     value="${scoringRange.min}"
                                     onchange="updateKataScore(${i}, this.value)"
+                                    onkeydown="_judgeTabHandler(event,'judge',${i})"
                                     style="width: 100%; padding: clamp(8px, 1.2vh, 16px); border-radius: 10px; font-size: clamp(18px, 2.5vw, 24px); font-weight: 700; text-align: center; background: var(--bg-secondary); color: var(--text-primary); border: 2px solid var(--glass-border);">
                             `}
                         </div>
@@ -21327,6 +22999,11 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     currentOperatorDivision = divisionName;
     currentOperatorEventId = eventId;
 
+    // Store params for the type-switcher so the Ranking List tab can be highlighted.
+    // This is also used by openRankingListScoreboard re-entrantly (next competitor).
+    _opRankingListParams = { matId, divisionName, eventId, bracket, scoreboardType };
+    _updateOperatorTypeSwitcher('ranking-list');
+
     const mats = JSON.parse(_msGet(_scopedKey('mats')) || '[]');
     const mat = mats.find(m => m.id == matId);
     const matName = mat ? mat.name : `Mat ${matId}`;
@@ -21367,7 +23044,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     const title = document.getElementById('scoreboard-title');
     const content = document.getElementById('operator-scoreboard-content');
 
-    title.textContent = `${matName} - ${divisionName} (Ranking List)`;
+    title.textContent = `${matName} - ${stripDivisionCodePrefix(divisionName)} (Ranking List)`;
 
     const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null;
     const competitor = currentEntry?.competitor;
@@ -21388,7 +23065,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
                     </div>
                     ${competitor ? `
                         <div style="font-size: clamp(12px, 1.3vw, 16px); color: var(--text-secondary); margin-top: 4px;">
-                            ${getDisplayAge(competitor)} yrs | ${competitor.rank || '-'}
+                            ${fmtAge(competitor)} | ${competitor.rank || 'N/A'}
                             ${competitor.club ? ` | ${competitor.club}` : ''}
                         </div>
                     ` : ''}
@@ -21409,6 +23086,7 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
                                     value=""
                                     placeholder="0.0"
                                     oninput="updateRankingListTotal(${numJudges})"
+                                    onkeydown="_judgeTabHandler(event,'rl-judge',${i})"
                                     style="width: 100%; padding: clamp(8px, 1.2vh, 16px); border-radius: 10px; font-size: clamp(18px, 2.5vw, 24px); font-weight: 700; text-align: center; background: var(--bg-secondary); color: var(--text-primary); border: 2px solid var(--glass-border);">
                             </div>
                         `).join('')}
@@ -21554,6 +23232,7 @@ function updateRankingListTVDisplay(bracket, status) {
 
     const state = {
         scoreboardType: 'kata',
+        ring: currentOperatorMat,
         matName: matName,
         divisionName: currentOperatorDivision || 'Division',
         eventName: eventName,
@@ -21751,6 +23430,12 @@ function closeOperatorScoreboard() {
     // Clear active scoreboard type
     activeScoreboardType = null;
 
+    // Reset per-session operator type params so stale tabs are not re-activated
+    _opKumiteParams      = null;
+    _opKataPointsParams  = null;
+    _opKataFlagsParams   = null;
+    _opRankingListParams = null;
+
     // Reset operator scoreboard state variables
     currentOperatorMat = null;
     currentOperatorDivision = null;
@@ -21817,12 +23502,19 @@ function getMatSchedulePosition(matId, divisionName, eventId) {
     return { current, total, isLast, completedCount };
 }
 
-// Build HTML snippet for division progress counter
-function buildDivisionProgressHTML(matId, divisionName, eventId) {
+// Build HTML snippet for division progress counter.
+// Pass isDone=true only after all scoring for this division is confirmed complete;
+// the "FINAL DIVISION 🏁" label is then appropriate to show.  While still scoring
+// the last division we show a neutral "Final (in progress)" hint so the operator
+// is informed without feeling the tournament is already over.
+function buildDivisionProgressHTML(matId, divisionName, eventId, isDone) {
     const progress = getMatSchedulePosition(matId, divisionName, eventId);
     if (!progress.current || progress.total <= 1) return '';
     if (progress.isLast) {
-        return `<div style="font-size: 11px; color: #ff9500; font-weight: 600; margin-top: 2px;">Division ${progress.current} of ${progress.total} — FINAL DIVISION 🏁</div>`;
+        if (isDone) {
+            return `<div style="font-size: 11px; color: #ff9500; font-weight: 600; margin-top: 2px;">Division ${progress.current} of ${progress.total} — FINAL DIVISION 🏁</div>`;
+        }
+        return `<div style="font-size: 11px; color: var(--text-secondary); font-weight: 500; margin-top: 2px;">Division ${progress.current} of ${progress.total} — Final (in progress)</div>`;
     }
     return `<div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Division ${progress.current} of ${progress.total}</div>`;
 }
@@ -22049,7 +23741,7 @@ function showDivisionCompleteCountdown(matId, divisionName, eventId, resultsSumm
             <div class="glass-panel" style="margin-bottom: 20px; text-align: center; padding: 20px; background: rgba(34, 197, 94, 0.1); border-color: #22c55e;">
                 <div style="font-size: 32px; margin-bottom: 8px;">${divProgress.isLast ? '🏁' : '✅'}</div>
                 <h3 style="color: #22c55e; margin-bottom: 4px;">${divProgress.isLast ? 'Final Division Complete!' : 'Division Complete'}</h3>
-                <p style="color: var(--text-secondary); font-size: 14px;">${divisionName}</p>
+                <p style="color: var(--text-secondary); font-size: 14px;">${stripDivisionCodePrefix(divisionName)}</p>
                 ${divProgress.current ? `<p style="color: ${divProgress.isLast ? '#ff9500' : 'var(--text-tertiary)'}; font-size: 12px; font-weight: ${divProgress.isLast ? '600' : '400'}; margin-top: 4px;">${divProgress.isLast ? `All ${divProgress.total} divisions complete 🏁` : `Division ${divProgress.current} of ${divProgress.total} complete`}</p>` : ''}
             </div>
             ${resultsHTML}
@@ -22083,6 +23775,19 @@ function advanceToNextDivisionNow() {
     if (!matId || !divisionName) {
         closeOperatorScoreboard();
         return;
+    }
+
+    // Briefly lock the entire operator content panel to prevent accidental clicks
+    // during the screen transition (e.g. coordinate (737,621) was "Submit & Next"
+    // in the RL view and becomes "SHIRO Absent" in the new Kumite view).
+    const _content = document.getElementById('operator-scoreboard-content');
+    if (_content) {
+        _content.style.pointerEvents = 'none';
+        _content.style.opacity = '0.6';
+        setTimeout(() => {
+            _content.style.pointerEvents = '';
+            _content.style.opacity = '';
+        }, 600);
     }
 
     const nextDivision = findNextScheduledDivision(matId, divisionName, eventId);
@@ -23035,14 +24740,14 @@ function updateOperatorTVDisplay(winner = null) {
 
         // Competitor data
         redName: operatorRedCompetitor ? `${operatorRedCompetitor.firstName} ${operatorRedCompetitor.lastName}`.toUpperCase() : corner1Name,
-        redInfo: operatorRedCompetitor ? `${getDisplayAge(operatorRedCompetitor)} yrs | ${operatorRedCompetitor.weight}${getTournamentWeightUnit()} | ${operatorRedCompetitor.rank} | ${operatorRedCompetitor.club}` : '',
+        redInfo: operatorRedCompetitor ? `${fmtAge(operatorRedCompetitor)} | ${fmtWeight(operatorRedCompetitor.weight)} | ${operatorRedCompetitor.rank || 'N/A'} | ${operatorRedCompetitor.club || 'No Dojo'}` : '',
         redPhoto: operatorRedCompetitor?.photo || null,
         redClubLogo: operatorRedCompetitor?.clubLogo || null,
         redScore: operatorRedScore,
         redPenalties: operatorRedPenalties,
 
         blueName: operatorBlueCompetitor ? `${operatorBlueCompetitor.firstName} ${operatorBlueCompetitor.lastName}`.toUpperCase() : corner2Name,
-        blueInfo: operatorBlueCompetitor ? `${getDisplayAge(operatorBlueCompetitor)} yrs | ${operatorBlueCompetitor.weight}${getTournamentWeightUnit()} | ${operatorBlueCompetitor.rank} | ${operatorBlueCompetitor.club}` : '',
+        blueInfo: operatorBlueCompetitor ? `${fmtAge(operatorBlueCompetitor)} | ${fmtWeight(operatorBlueCompetitor.weight)} | ${operatorBlueCompetitor.rank || 'N/A'} | ${operatorBlueCompetitor.club || 'No Dojo'}` : '',
         bluePhoto: operatorBlueCompetitor?.photo || null,
         blueClubLogo: operatorBlueCompetitor?.clubLogo || null,
         blueScore: operatorBlueScore,
@@ -23393,7 +25098,7 @@ function renderActiveScoreboard() {
                 <div class="competitor red-corner">
                     <img id="mat-red-photo" class="competitor-photo hidden" alt="Red Corner">
                     <div class="competitor-name" id="mat-red-name">${redComp ? (redComp.firstName + ' ' + redComp.lastName).toUpperCase() : 'RED CORNER'}</div>
-                    <div class="competitor-info" id="mat-red-info">${redComp ? `${getDisplayAge(redComp)} yrs | ${redComp.weight}${getTournamentWeightUnit()} | ${redComp.rank} | ${redComp.club}` : ''}</div>
+                    <div class="competitor-info" id="mat-red-info">${redComp ? `${fmtAge(redComp)} | ${fmtWeight(redComp.weight)} | ${redComp.rank || 'N/A'} | ${redComp.club || 'No Dojo'}` : ''}</div>
                     <div class="score" id="mat-red-score">${matData.redScore}</div>
                     <div class="controls">
                         <button class="btn btn-small" onclick="addMatScore('red', 1)">+1</button>
@@ -23414,7 +25119,7 @@ function renderActiveScoreboard() {
                 <div class="competitor blue-corner">
                     <img id="mat-blue-photo" class="competitor-photo hidden" alt="Blue Corner">
                     <div class="competitor-name" id="mat-blue-name">${blueComp ? (blueComp.firstName + ' ' + blueComp.lastName).toUpperCase() : 'BLUE CORNER'}</div>
-                    <div class="competitor-info" id="mat-blue-info">${blueComp ? `${getDisplayAge(blueComp)} yrs | ${blueComp.weight}${getTournamentWeightUnit()} | ${blueComp.rank} | ${blueComp.club}` : ''}</div>
+                    <div class="competitor-info" id="mat-blue-info">${blueComp ? `${fmtAge(blueComp)} | ${fmtWeight(blueComp.weight)} | ${blueComp.rank || 'N/A'} | ${blueComp.club || 'No Dojo'}` : ''}</div>
                     <div class="score" id="mat-blue-score">${matData.blueScore}</div>
                     <div class="controls">
                         <button class="btn btn-small" onclick="addMatScore('blue', 1)">+1</button>
@@ -24841,7 +26546,6 @@ function saveCertificateTemplate() {
         };
 
         _msSet(_scopedKey('certificateTemplate'), JSON.stringify(template));
-        showMessage('Certificate template saved successfully!');
 
         // Show merge tag config
         document.getElementById('merge-tag-config-panel').style.display = 'block';
@@ -24854,6 +26558,39 @@ function saveCertificateTemplate() {
             previewImg.src = template.data;
             previewDiv.style.display = 'block';
             previewImg.onload = _initCertDragUI;
+        }
+
+        // Auto-upload to server so the template survives page reloads.
+        // _msData is in-memory only — without a server copy the template is
+        // lost as soon as the page is refreshed.
+        if (currentTournamentId) {
+            const statusEl = document.getElementById('cert-sync-status');
+            if (statusEl) statusEl.textContent = 'Saving to server…';
+
+            const formData = new FormData();
+            formData.append('template', file);
+
+            fetch(`/api/tournaments/${currentTournamentId}/certificate-template`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData,
+            })
+            .then(async res => {
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    throw new Error(d.error || 'Upload failed');
+                }
+                if (statusEl) statusEl.textContent = 'Template saved & synced to server.';
+                showMessage('Certificate template saved & uploaded to server!');
+                // Also sync the merge-tag config if already configured
+                syncCertificateConfigToServerSilent().catch(() => {});
+            })
+            .catch(err => {
+                if (statusEl) statusEl.textContent = 'Saved locally (server sync failed: ' + err.message + ')';
+                showMessage('Certificate template saved locally. Server sync failed: ' + err.message, 'warning');
+            });
+        } else {
+            showMessage('Certificate template saved successfully!');
         }
     };
 
@@ -25031,16 +26768,24 @@ function renderCertificateOnCanvas(canvas, data, callback) {
     img.src = template.data;
 }
 
+function _certNavigateToSettings(msg) {
+    showMessage(msg, 'error');
+    // Navigate to the certificate settings panel so the director can upload immediately
+    if (typeof navigateTo === 'function') {
+        navigateTo('settings-certificates');
+    }
+}
+
 function generateAllCertificates() {
     const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
-        showMessage('Please upload a certificate template first in Settings', 'error');
+        _certNavigateToSettings('No certificate template found — please upload one here first.');
         return;
     }
 
     const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
-        showMessage('Please configure merge tag positions in Settings first', 'error');
+        _certNavigateToSettings('Certificate merge tags are not configured yet — please set them up here first.');
         return;
     }
 
@@ -25116,13 +26861,13 @@ function generateAllCertificates() {
 function printCertificatesForDivision(divisionName, serverPlacements) {
     const template = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
     if (!template) {
-        showMessage('Please upload a certificate template first in Settings → Certificates', 'error');
+        _certNavigateToSettings('No certificate template found — please upload one here first.');
         return;
     }
 
     const config = JSON.parse(_msGet(_scopedKey('certificateConfig')) || 'null');
     if (!config) {
-        showMessage('Please configure merge tag positions in Settings → Certificates first', 'error');
+        _certNavigateToSettings('Certificate merge tags are not configured yet — please set them up here first.');
         return;
     }
 
@@ -25443,6 +27188,10 @@ async function downloadBatchCertificatePDF() {
         return;
     }
 
+    // Quick client-side check before hitting the server — if the template
+    // isn't in memory we know the server won't have it either (unless it was
+    // uploaded in a previous session that was synced).  We try the server
+    // anyway, but if it returns 400 we redirect to the settings panel.
     showMessage('Generating batch certificate PDF...', 'info');
 
     try {
@@ -25467,7 +27216,12 @@ async function downloadBatchCertificatePDF() {
 
         showMessage('Batch certificate PDF downloaded!');
     } catch (err) {
-        showMessage('Failed to generate PDF: ' + err.message, 'error');
+        // If the server says no template was uploaded, send the director there
+        if (err.message && err.message.toLowerCase().includes('no certificate template')) {
+            _certNavigateToSettings('No certificate template on server — please upload one here first.');
+        } else {
+            showMessage('Failed to generate PDF: ' + err.message, 'error');
+        }
     }
 }
 
@@ -25526,7 +27280,7 @@ function selectCompetitor(corner) {
     const competitor = competitors.find(c => c.id === competitorId);
 
     if (competitor) {
-        const info = `${getDisplayAge(competitor)} yrs | ${competitor.weight}${getTournamentWeightUnit()} | ${competitor.rank} | ${competitor.club}`;
+        const info = `${fmtAge(competitor)} | ${fmtWeight(competitor.weight)} | ${competitor.rank || 'N/A'} | ${competitor.club || 'No Dojo'}`;
 
         if (corner === 'red') {
             redCompetitor = competitor;
@@ -25594,14 +27348,15 @@ function updateTVDisplay() {
 
     const state = {
         scoreboardType: 'kumite', // Standalone scoreboard is kumite-style
+        ring: currentOperatorMat ?? kataFlagsMatId ?? 1, // ensure per-ring server storage
         redName: redCompetitor ? `${redCompetitor.firstName} ${redCompetitor.lastName}`.toUpperCase() : 'RED CORNER',
-        redInfo: redCompetitor ? `${getDisplayAge(redCompetitor)} yrs | ${redCompetitor.weight}${getTournamentWeightUnit()} | ${redCompetitor.rank} | ${redCompetitor.club}` : '',
+        redInfo: redCompetitor ? `${fmtAge(redCompetitor)} | ${fmtWeight(redCompetitor.weight)} | ${redCompetitor.rank || 'N/A'} | ${redCompetitor.club || 'No Dojo'}` : '',
         redPhoto: redCompetitor?.photo || null,
         redScore: redScore,
         redPenalties: redPenalties,
 
         blueName: blueCompetitor ? `${blueCompetitor.firstName} ${blueCompetitor.lastName}`.toUpperCase() : 'BLUE CORNER',
-        blueInfo: blueCompetitor ? `${getDisplayAge(blueCompetitor)} yrs | ${blueCompetitor.weight}${getTournamentWeightUnit()} | ${blueCompetitor.rank} | ${blueCompetitor.club}` : '',
+        blueInfo: blueCompetitor ? `${fmtAge(blueCompetitor)} | ${fmtWeight(blueCompetitor.weight)} | ${blueCompetitor.rank || 'N/A'} | ${blueCompetitor.club || 'No Dojo'}` : '',
         bluePhoto: blueCompetitor?.photo || null,
         blueScore: blueScore,
         bluePenalties: bluePenalties,
@@ -27617,7 +29372,8 @@ function showCreateTeamModal() {
         const eventTypes = db.load('eventTypes');
         eventTypes
             .filter(e => e.event_type === 'team-kumite' || e.event_type === 'team-kata' ||
-                         e.eventType === 'team-kumite' || e.eventType === 'team-kata')
+                         e.eventType === 'team-kumite' || e.eventType === 'team-kata' ||
+                         (e.teamSize > 1) || (e.team_size > 1))
             .forEach(e => {
                 const opt = document.createElement('option');
                 opt.value = e.id;
@@ -27757,4 +29513,80 @@ async function deleteTeam(teamId) {
         showMessage('Team deleted');
         loadTeamsDashboard();
     } catch (err) { showMessage('Error: ' + err.message, 'error'); }
+}
+
+// ── PWA: Service Worker Registration ─────────────────────────────────────────
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('[SW] registered', reg.scope);
+    }).catch(err => {
+        console.warn('[SW] registration failed:', err.message);
+    });
+}
+
+// ── PWA: Push Notification Subscription ──────────────────────────────────────
+
+/**
+ * Request push permission and subscribe the user.
+ * Called after successful login to prompt the user once.
+ */
+async function subscribeToPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    const existingPermission = Notification.permission;
+    if (existingPermission === 'denied') return;
+
+    try {
+        const keyRes = await fetch('/api/push/vapid-public-key');
+        if (!keyRes.ok) return;
+
+        const { publicKey } = await keyRes.json();
+        if (!publicKey) return;
+
+        const reg = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) {
+            await _savePushSubscription(existing);
+            return;
+        }
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        const subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: _urlBase64ToUint8Array(publicKey),
+        });
+
+        await _savePushSubscription(subscription);
+        console.log('[Push] Subscribed to push notifications');
+    } catch (err) {
+        console.warn('[Push] Subscription failed:', err.message);
+    }
+}
+
+async function _savePushSubscription(subscription) {
+    try {
+        await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ subscription: subscription.toJSON() }),
+        });
+    } catch (err) {
+        console.warn('[Push] Failed to save subscription:', err.message);
+    }
+}
+
+/** Convert VAPID base64 key to Uint8Array for PushManager.subscribe() */
+function _urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
 }
