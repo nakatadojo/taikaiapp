@@ -17,6 +17,15 @@
     .sb-watermark img { height: 22px; width: auto; }
     .sb-watermark span { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #fff; letter-spacing: 0.5px; }
   </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TournamentMgr">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
   <div id="root"></div>
@@ -551,7 +560,7 @@
 
         function applyState(newState) {
           if (!newState) return;
-          if (newState.scoreboardType && newState.scoreboardType !== 'kata-flags') {
+          if (newState.scoreboardType && newState.scoreboardType !== 'kata-flags' && newState.scoreboardType !== 'aau-kata-flags') {
             const redirect = { 'kumite': 'kumite-scoreboard.html', 'kata': 'kata-scoreboard.html' };
             if (redirect[newState.scoreboardType]) { window.location.href = redirect[newState.scoreboardType] + _tidParam; return; }
           }
@@ -573,6 +582,242 @@
 
         return () => { if (bc) bc.close(); };
       }, []);
+
+      // ── AAU Kata Flags — Sequential Queue Competition ─────────────────────
+      if (state && state.scoreboardType === 'aau-kata-flags') {
+
+        // ── Podium overlay (division complete) ─────────────────────────────
+        if (state.aauStatus === 'complete' && state.aauPodium) {
+          const p = state.aauPodium;
+          const confettiColors = ['#fbbf24','#ef4444','#22c55e','#3b82f6','#a855f7','#f59e0b','#64d2ff','#ff375f'];
+          return (
+            <div style={{ width:'100vw', height:'100vh', overflow:'hidden', background:'#080810', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'0' }}>
+              <style>{`
+                @keyframes podiumFadeIn { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
+                @keyframes podiumConfetti { 0%{transform:translateY(-10vh) rotate(0deg);opacity:1} 100%{transform:translateY(110vh) rotate(720deg);opacity:0} }
+                @keyframes medalGlow { 0%,100%{filter:drop-shadow(0 0 8px #fbbf24)} 50%{filter:drop-shadow(0 0 28px #fbbf24)} }
+                .conf-p { position:fixed; border-radius:2px; }
+              `}</style>
+              {Array.from({length:80},(_,i)=>(
+                <div key={i} className="conf-p" style={{
+                  left:(Math.random()*100)+'%', width:(6+Math.random()*8)+'px', height:(3+Math.random()*5)+'px',
+                  background: confettiColors[i%confettiColors.length],
+                  animation:`podiumConfetti ${2.5+Math.random()*3}s linear ${Math.random()*4}s infinite`
+                }}/>
+              ))}
+              <div style={{...OSW(700),fontSize:'clamp(1.2rem,2.5vw,2.2rem)',color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.3em',marginBottom:'32px',animation:'podiumFadeIn 1s ease-out'}}>
+                {state.divisionName}
+              </div>
+              <div style={{display:'flex',gap:'clamp(16px,3vw,48px)',alignItems:'flex-end',animation:'podiumFadeIn 0.8s ease-out 0.2s both'}}>
+                {/* Silver */}
+                {p.silver && (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'12px'}}>
+                    <div style={{...OSW(700),fontSize:'clamp(1rem,2vw,1.8rem)',color:'#94a3b8',textTransform:'uppercase'}}>{p.silver.name}</div>
+                    <div style={{...ROB(500),fontSize:'clamp(0.7rem,1.2vw,1rem)',color:'rgba(255,255,255,0.4)'}}>{p.silver.club}</div>
+                    <div style={{fontSize:'clamp(60px,10vh,110px)',lineHeight:1}}>🥈</div>
+                    <div style={{background:'#334155',width:'clamp(140px,18vw,240px)',height:'clamp(120px,14vh,180px)',borderRadius:'8px 8px 0 0',display:'flex',alignItems:'center',justifyContent:'center',border:'1px solid #475569'}}>
+                      <span style={{...OSW(700),fontSize:'clamp(3rem,6vw,7rem)',color:'#94a3b8'}}>2</span>
+                    </div>
+                  </div>
+                )}
+                {/* Gold */}
+                {p.gold && (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'12px'}}>
+                    <div style={{...OSW(700),fontSize:'clamp(1.3rem,2.5vw,2.4rem)',color:'#fbbf24',textTransform:'uppercase',animation:'podiumFadeIn 0.8s ease-out 0s both'}}>{p.gold.name}</div>
+                    <div style={{...ROB(500),fontSize:'clamp(0.7rem,1.2vw,1rem)',color:'rgba(255,255,255,0.5)'}}>{p.gold.club}</div>
+                    <div style={{fontSize:'clamp(80px,13vh,150px)',lineHeight:1,animation:'medalGlow 2s ease-in-out infinite'}}>🥇</div>
+                    <div style={{background:'linear-gradient(180deg,#78350f,#451a03)',width:'clamp(160px,22vw,280px)',height:'clamp(180px,22vh,280px)',borderRadius:'8px 8px 0 0',display:'flex',alignItems:'center',justifyContent:'center',border:'1px solid #92400e',boxShadow:'0 0 60px #fbbf2433'}}>
+                      <span style={{...OSW(700),fontSize:'clamp(4rem,9vw,11rem)',color:'#fbbf24',textShadow:'0 0 40px #fbbf24'}}>1</span>
+                    </div>
+                  </div>
+                )}
+                {/* Bronze */}
+                {p.bronze && (
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'12px'}}>
+                    <div style={{...OSW(700),fontSize:'clamp(1rem,2vw,1.8rem)',color:'#b45309',textTransform:'uppercase'}}>{p.bronze.name}</div>
+                    <div style={{...ROB(500),fontSize:'clamp(0.7rem,1.2vw,1rem)',color:'rgba(255,255,255,0.4)'}}>{p.bronze.club}</div>
+                    <div style={{fontSize:'clamp(60px,10vh,110px)',lineHeight:1}}>🥉</div>
+                    <div style={{background:'#292524',width:'clamp(140px,18vw,240px)',height:'clamp(100px,12vh,150px)',borderRadius:'8px 8px 0 0',display:'flex',alignItems:'center',justifyContent:'center',border:'1px solid #44403c'}}>
+                      <span style={{...OSW(700),fontSize:'clamp(3rem,6vw,7rem)',color:'#b45309'}}>3</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Floor line */}
+              <div style={{width:'80vw',maxWidth:'900px',height:'4px',background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)',marginTop:0}}/>
+            </div>
+          );
+        }
+
+        // ── Match view (active competition) ────────────────────────────────
+        const parseClub = (info) => {
+          if (!info) return '';
+          const lines = info.split('\n');
+          return lines[lines.length - 1]?.trim() || '';
+        };
+        const hantei = state.hanteiCalled;
+        const akaVotes   = (state.judgeVotes||[]).filter(v=>v==='corner1').length;
+        const shiroVotes = (state.judgeVotes||[]).filter(v=>v==='corner2').length;
+
+        // Build AAU-specific match info string
+        const aauMatchInfo = state.matchInfo || '';
+        const aauQueueInfo = state.aauAkaQueue?.length > 0
+          ? `NEXT: ${state.aauAkaQueue.slice(0,2).join(' · ')}${state.aauAkaQueue.length > 2 ? ` +${state.aauAkaQueue.length-2} more` : ''}`
+          : '';
+
+        return (
+          <div style={{width:'100vw', height:'100vh', overflow:'hidden', display:'flex', flexDirection:'column', background:'#0f0f14'}}>
+            <style>{`
+              @keyframes hanteiReveal {
+                0%   { transform: rotateY(90deg); opacity:0; }
+                60%  { transform: rotateY(-8deg); }
+                100% { transform: rotateY(0deg);  opacity:1; }
+              }
+              @keyframes winnerPulse { 0%,100%{box-shadow:0 0 0 rgba(255,255,255,0)} 50%{box-shadow:0 0 60px rgba(255,255,255,0.15)} }
+              .hantei-revealed { animation: hanteiReveal 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
+              .winner-glow     { animation: winnerPulse 1.8s ease-in-out infinite; }
+            `}</style>
+
+            {/* Header */}
+            <div style={{height:'10vh',flexShrink:0,display:'flex',alignItems:'center',padding:'0 36px',gap:'24px',background:'rgba(0,0,0,0.3)'}}>
+              <span style={{...OSW(700),fontSize:'clamp(2rem,5.5vw,5rem)',color:'#fff',textTransform:'uppercase',letterSpacing:'0.02em',fontStyle:'italic',flexShrink:0}}>
+                {state.matName || 'TATAMI 1'}
+              </span>
+              <div style={{flex:1,minWidth:0,overflow:'hidden',display:'flex',flexDirection:'column',gap:'4px',alignItems:'flex-end'}}>
+                <AutoFit text={state.divisionName||''} maxPx={40} minPx={10}
+                  style={{...OSW(600),color:'rgba(255,255,255,0.6)',textTransform:'uppercase',letterSpacing:'0.04em',textAlign:'right'}}/>
+                <div style={{...ROB(600),fontSize:'clamp(0.6rem,0.9vw,0.95rem)',color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'right'}}>
+                  {aauMatchInfo}
+                </div>
+              </div>
+              {/* HANTEI indicator pill */}
+              <div style={{
+                flexShrink:0, padding:'6px 16px', borderRadius:'20px',
+                background: hantei ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.15)',
+                border: `1px solid ${hantei ? 'rgba(34,197,94,0.5)' : 'rgba(245,158,11,0.4)'}`,
+                ...ROB(700), fontSize:'clamp(0.6rem,0.85vw,0.85rem)',
+                color: hantei ? '#22c55e' : '#f59e0b',
+                textTransform:'uppercase', letterSpacing:'0.1em'
+              }}>
+                {hantei ? '✓ HANTEI' : '⏳ HANTEI PENDING'}
+              </div>
+            </div>
+
+            {/* Main: Competitors */}
+            <div style={{flex:1,minHeight:0,display:'flex'}}>
+              <CompetitorPanel side="red" c={{
+                name:   state.redName  || '',
+                school: parseClub(state.redInfo),
+                photo:  state.redPhoto || null,
+                logo:   state.redClubLogo || null,
+                flags:  hantei ? (state.redFlags ?? 0) : 0,
+                color:  state.corner1Color || '#ef4444',
+                label:  state.corner1Name  || 'AKA',
+              }}/>
+              {/* Center column */}
+              <div style={{width:'clamp(140px,15vw,220px)',flexShrink:0,background:'#12121e',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'8px',padding:'0 8px'}}>
+                <div style={{...ROB(700),fontSize:'clamp(0.55rem,0.75vw,0.8rem)',color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:'0.18em'}}>VS</div>
+                <div style={{...ROB(700),fontSize:'clamp(0.65rem,0.85vw,0.9rem)',color:'rgba(255,255,255,0.45)',textTransform:'uppercase',letterSpacing:'0.12em',textAlign:'center',lineHeight:1.4}}>
+                  {hantei ? 'FLAG\nDECISION' : 'AWAITING\nHANTEI'}
+                </div>
+              </div>
+              <CompetitorPanel side="blue" c={{
+                name:   state.blueName  || '',
+                school: parseClub(state.blueInfo),
+                photo:  state.bluePhoto || null,
+                logo:   state.blueClubLogo || null,
+                flags:  hantei ? (state.blueFlags ?? 0) : 0,
+                color:  state.corner2Color || '#ffffff',
+                label:  state.corner2Name  || 'SHIRO',
+              }}/>
+            </div>
+
+            {/* Judge votes bar */}
+            <div style={{height:'16vh',flexShrink:0,background:'#141420',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',padding:'0 36px',gap:'12px',overflow:'hidden'}}>
+              <span style={{...OSW(700),fontSize:'clamp(0.8rem,1.2vw,1.2rem)',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',flexShrink:0}}>JUDGES :</span>
+              <div style={{flex:1,display:'flex',gap:'10px',alignItems:'center',justifyContent:'center'}}>
+                {Array.from({length:(state.judges||5)},(_,i)=>{
+                  const vote = (state.judgeVotes||[])[i];
+                  const hasVote = vote === 'corner1' || vote === 'corner2';
+                  const voteColor = vote==='corner1' ? (state.corner1Color||'#ef4444')
+                                  : vote==='corner2' ? (state.corner2Color||'#fff')
+                                  : 'rgba(255,255,255,0.1)';
+                  const voteName  = vote==='corner1' ? (state.corner1Name||'AKA')
+                                  : vote==='corner2' ? (state.corner2Name||'SHIRO') : '';
+                  return (
+                    <div key={i} className={hantei && hasVote ? 'hantei-revealed' : ''}
+                      style={{
+                        animationDelay: `${i*0.08}s`,
+                        flex:1, maxWidth:'160px',
+                        background: hasVote && hantei ? `color-mix(in srgb, ${voteColor} 18%, #1e1e2e)` : '#1e1e2e',
+                        border: hasVote && hantei ? `2px solid ${voteColor}66` : '1px solid #35354a',
+                        borderRadius:'12px', display:'flex', flexDirection:'column',
+                        alignItems:'center', justifyContent:'center', padding:'8px 6px', gap:'6px',
+                      }}>
+                      <div style={{...ROB(700),fontSize:'clamp(0.55rem,0.8vw,0.85rem)',color:'#9999bb',textTransform:'uppercase',letterSpacing:'0.1em'}}>J{i+1}</div>
+                      <div style={{
+                        width:'clamp(12px,1.6vh,20px)', height:'clamp(12px,1.6vh,20px)',
+                        borderRadius:'50%',
+                        background: hantei && hasVote ? voteColor : 'rgba(255,255,255,0.08)',
+                        boxShadow: hantei && hasVote ? `0 0 14px ${voteColor}88` : 'none',
+                        transition:'background 0.3s',
+                      }}/>
+                      {hantei && hasVote && (
+                        <div style={{...ROB(600),fontSize:'clamp(0.45rem,0.6vw,0.65rem)',color:voteColor,textTransform:'uppercase',letterSpacing:'0.05em'}}>
+                          {voteName}
+                        </div>
+                      )}
+                      {!hantei && (
+                        <div style={{...ROB(500),fontSize:'clamp(0.5rem,0.65vw,0.7rem)',color:'rgba(255,255,255,0.2)',letterSpacing:'0.05em'}}>?</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Queue strip */}
+              {state.aauAkaQueue?.length > 0 && (
+                <div style={{flexShrink:0,borderLeft:'1px solid rgba(255,255,255,0.08)',paddingLeft:'16px',maxWidth:'200px'}}>
+                  <div style={{...ROB(700),fontSize:'clamp(0.5rem,0.65vw,0.7rem)',color:'rgba(255,255,255,0.25)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'4px'}}>NEXT UP</div>
+                  {state.aauAkaQueue.slice(0,3).map((name,i)=>(
+                    <div key={i} style={{...ROB(500),fontSize:'clamp(0.5rem,0.7vw,0.75rem)',color: i===0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginBottom:'2px'}}>
+                      {i===0?'→ ':''}{name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Winner overlay */}
+            {state.winner && (() => {
+              const w = typeof state.winner==='string' ? {name:state.winner} : state.winner;
+              const wColor = w.corner==='red' ? (state.corner1Color||'#ef4444') : w.corner==='blue' ? (state.corner2Color||'#fff') : '#22c55e';
+              const medalEmoji = w.medal==='gold' ? '🥇' : w.medal==='silver' ? '🥈' : w.medal==='bronze' ? '🥉' : '🏆';
+              const confettiColors2 = ['#ef4444','#fbbf24','#22c55e','#3b82f6','#a855f7','#f59e0b'];
+              return (
+                <div style={{position:'fixed',inset:0,background:'linear-gradient(135deg,rgba(0,0,0,0.96),rgba(0,0,0,0.9))',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:9999,overflow:'hidden'}}>
+                  <style>{`
+                    @keyframes winFadeIn{from{opacity:0}to{opacity:1}}
+                    @keyframes winSlideUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+                    @keyframes winPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+                    @keyframes winConf{0%{transform:translateY(-10vh) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
+                    .wc{position:absolute;border-radius:2px}
+                  `}</style>
+                  {Array.from({length:70},(_,i)=>(
+                    <div key={i} className="wc" style={{left:(Math.random()*100)+'%',width:(5+Math.random()*9)+'px',height:(3+Math.random()*5)+'px',background:confettiColors2[i%confettiColors2.length],animation:`winConf ${2.5+Math.random()*3}s linear ${Math.random()*3}s infinite`}}/>
+                  ))}
+                  <div style={{textAlign:'center',animation:'winSlideUp 0.8s ease-out',zIndex:1}}>
+                    <div style={{fontSize:'clamp(60px,11vh,130px)',marginBottom:'12px',animation:'winPulse 2s ease-in-out infinite'}}>{medalEmoji}</div>
+                    <div style={{...ROB(700),fontSize:'clamp(1.2rem,3vw,3rem)',color:'#22c55e',textTransform:'uppercase',letterSpacing:'0.2em',marginBottom:'16px',textShadow:'0 0 30px rgba(34,197,94,0.5)'}}>WINNER</div>
+                    {w.photo && <div style={{marginBottom:'20px'}}><img src={w.photo} alt="" style={{width:'clamp(110px,16vh,200px)',height:'clamp(110px,16vh,200px)',borderRadius:'50%',objectFit:'cover',border:`5px solid ${wColor}`,boxShadow:`0 0 30px ${wColor}44`}}/></div>}
+                    <div style={{...OSW(700),fontSize:'clamp(2.5rem,7vw,9rem)',color:wColor,textTransform:'uppercase',lineHeight:0.95,padding:'0 40px',textShadow:`0 4px 20px rgba(0,0,0,0.5)`}}>{w.name}</div>
+                    {w.club && <div style={{...ROB(500),fontSize:'clamp(0.9rem,1.8vw,1.8rem)',color:'rgba(255,255,255,0.4)',marginTop:'12px'}}>{w.club}</div>}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      }
 
       if (state && state.scoreboardType === 'kata-flags') {
         // redInfo format: "22 yrs | Brown Belt\nClub Name" — club is the last newline segment
