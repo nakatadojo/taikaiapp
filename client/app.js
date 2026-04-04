@@ -469,7 +469,7 @@ class Database {
         const key = _scopedKey(table);
         _msSet(key, JSON.stringify(data));
         if (table === 'mats') {
-            _debouncedSync('mats', _syncMatsToServer, 1500);
+            _syncMatsToServer().catch(e => console.warn('[mats] sync failed:', e.message));
         }
     }
 
@@ -7064,7 +7064,7 @@ function generateTestCompetitors() {
     }
     teamCodesToDelete.forEach(code => delete teams[code]);
     _msSet(_scopedKey('teams'), JSON.stringify(teams));
-    _debouncedSync('teams', _syncTeamsToServer, 2000);
+    _syncTeamsToServer().catch(e => console.warn('[teams] clear-event sync failed:', e.message));
 
     // ── STEP 2: Ensure 6-8 clubs ──
     let existingClubs = db.load('clubs');
@@ -7412,9 +7412,9 @@ function generateTestCompetitors() {
         }
     }
 
-    // Save team registry
+    // Save team registry and immediately persist to server
     _msSet(_scopedKey('teams'), JSON.stringify(teamRegistry));
-    _debouncedSync('teams', _syncTeamsToServer, 2000);
+    _syncTeamsToServer().catch(e => console.warn('[teams] bulk-import sync failed:', e.message));
 
     // ── STEP 7: Refresh UI and log summary ──
     syncCompetitorClubsToTable();
@@ -7654,7 +7654,7 @@ document.getElementById('club-form')?.addEventListener('submit', (e) => {
         showMessage('Dojo added successfully!');
     }
 
-    _queueCompetitorsSync();
+    _syncClubsToServer().catch(e => console.warn('[clubs] dojo-form sync failed:', e.message));
     hideClubForm();
     loadClubs();
     loadClubDropdown(); // Refresh dropdown in competitor form
@@ -7752,7 +7752,7 @@ async function deleteClub(id) {
     )) return;
 
     db.delete('clubs', id);
-    _queueCompetitorsSync();
+    _syncClubsToServer().catch(e => console.warn('[clubs] dojo-delete sync failed:', e.message));
     loadClubs();
     loadClubDropdown();
     showMessage('Dojo deleted successfully!');
@@ -7857,7 +7857,7 @@ if (instructorForm) {
         }
 
         db.add('instructors', instructor);
-        _queueInstructorsSync();
+        _syncInstructorsToServer().catch(e => console.warn('[instructors] sync failed:', e.message));
         showMessage('Coach registered successfully!');
         hideInstructorForm();
         loadInstructors();
@@ -7911,7 +7911,7 @@ async function loadInstructors() {
 async function deleteInstructor(id) {
     if (!await showConfirm('Are you sure you want to delete this instructor?')) return;
     db.delete('instructors', id);
-    _queueInstructorsSync();
+    _syncInstructorsToServer().catch(e => console.warn('[instructors] sync failed:', e.message));
     loadInstructors();
     loadClubDropdown(); // Refresh club dropdown
     showMessage('Coach deleted successfully!');
@@ -15774,8 +15774,8 @@ function saveScheduleSettings() {
     showMessage('Schedule settings saved');
     recalculateScheduleTimes();
     loadScheduleGrid();
-    // Sync to server (debounced)
-    _debouncedSync('schedule', _syncScheduleToServer, 1500);
+    // Immediately sync — no debounce
+    _syncScheduleToServer().catch(e => console.warn('[schedule] settings sync failed:', e.message));
 }
 
 function resetScheduleSettings() {
@@ -15855,8 +15855,8 @@ function saveMatScheduleData(data) {
     _msSet(key, JSON.stringify(data));
     // Also update the scoped key (passthrough to localStorage for staging-display.html)
     _msSet(_scopedKey('matSchedule'), JSON.stringify(data));
-    // Sync to server (debounced)
-    _debouncedSync('schedule', _syncScheduleToServer, 1500);
+    // Immediately sync — no debounce to eliminate race window
+    _syncScheduleToServer().catch(e => console.warn('[schedule] mat-schedule sync failed:', e.message));
 }
 
 function migrateMatScheduleData(oldData) {
@@ -16498,7 +16498,7 @@ function saveOfficial(event) {
         data.assignments = [];
         db.add('officials', data);
     }
-    _queueOfficialsSync();
+    _syncOfficialsToServer().catch(e => console.warn('[officials] sync failed:', e.message));
 
     hideOfficialForm();
     loadOfficials();
@@ -16509,7 +16509,7 @@ function deleteOfficial(id) {
     if (!confirm('Remove this official?')) return;
     const records = db.load('officials').filter(o => o.id != id);
     db.save('officials', records);
-    _queueOfficialsSync();
+    _syncOfficialsToServer().catch(e => console.warn('[officials] sync failed:', e.message));
     loadOfficials();
     showToast('Official removed', 'success');
 }
@@ -16539,7 +16539,7 @@ function saveStaff(event) {
         data.assignments = [];
         db.add('staffMembers', data);
     }
-    _queueStaffSync();
+    _syncStaffToServer().catch(e => console.warn('[staff] sync failed:', e.message));
 
     hideStaffForm();
     loadStaff();
@@ -16550,7 +16550,7 @@ function deleteStaff(id) {
     if (!confirm('Remove this staff member?')) return;
     const records = db.load('staffMembers').filter(s => s.id != id);
     db.save('staffMembers', records);
-    _queueStaffSync();
+    _syncStaffToServer().catch(e => console.warn('[staff] sync failed:', e.message));
     loadStaff();
     showToast('Staff member removed', 'success');
 }
@@ -16609,7 +16609,7 @@ function addOfficialAssignment() {
     if (!records[idx].assignments) records[idx].assignments = [];
     records[idx].assignments.push({ matId, matName, role, timeSlot: time, divisionName: div });
     db.save('officials', records);
-    _queueOfficialsSync();
+    _syncOfficialsToServer().catch(e => console.warn('[officials] sync failed:', e.message));
 
     _renderPersonnelAssignmentList('official-assignment-list', id,
         records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
@@ -16626,7 +16626,7 @@ function deleteOfficialAssignment(officialId, index) {
     if (idx < 0) return;
     records[idx].assignments.splice(index, 1);
     db.save('officials', records);
-    _queueOfficialsSync();
+    _syncOfficialsToServer().catch(e => console.warn('[officials] sync failed:', e.message));
     _renderPersonnelAssignmentList('official-assignment-list', officialId,
         records[idx].assignments, 'deleteOfficialAssignment', 'divisionName');
     loadOfficials();
@@ -16664,7 +16664,7 @@ function addStaffAssignment() {
     if (!records[idx].assignments) records[idx].assignments = [];
     records[idx].assignments.push({ matId, matName, role, timeSlot: time });
     db.save('staffMembers', records);
-    _queueStaffSync();
+    _syncStaffToServer().catch(e => console.warn('[staff] sync failed:', e.message));
 
     _renderPersonnelAssignmentList('staff-assignment-list', id,
         records[idx].assignments, 'deleteStaffAssignment', 'area');
@@ -16680,7 +16680,7 @@ function deleteStaffAssignment(staffId, index) {
     if (idx < 0) return;
     records[idx].assignments.splice(index, 1);
     db.save('staffMembers', records);
-    _queueStaffSync();
+    _syncStaffToServer().catch(e => console.warn('[staff] sync failed:', e.message));
     _renderPersonnelAssignmentList('staff-assignment-list', staffId,
         records[idx].assignments, 'deleteStaffAssignment', 'area');
     loadStaff();
@@ -17321,14 +17321,14 @@ async function performDirectorCompetitorCheckin(competitorId) {
         const idx = _checkinDirectorData.findIndex(c => String(c.id) === String(competitorId));
         if (idx >= 0) { _checkinDirectorData[idx] = { ..._checkinDirectorData[idx], checkedIn: true, checkedInAt: data.competitor?.checkedInAt || new Date().toISOString() }; }
 
-        // Also persist to localStorage + queue sync so next competitor load is consistent
+        // Also update the local in-memory cache for immediate UI consistency.
+        // No server sync needed — the PATCH above already persisted the state.
         const localCompetitors = db.load('competitors');
         const localIdx = localCompetitors.findIndex(c => String(c.id) === String(competitorId));
         if (localIdx >= 0) {
             localCompetitors[localIdx].checkedIn = true;
             localCompetitors[localIdx].checkedInAt = _checkinDirectorData[idx]?.checkedInAt;
             db.save('competitors', localCompetitors);
-            _queueCompetitorsSync();
         }
 
         _renderCheckinStats(_computeCheckinStats());
@@ -17354,14 +17354,14 @@ async function undoDirectorCompetitorCheckin(competitorId) {
         const idx = _checkinDirectorData.findIndex(c => String(c.id) === String(competitorId));
         if (idx >= 0) { _checkinDirectorData[idx] = { ..._checkinDirectorData[idx], checkedIn: false, checkedInAt: null }; }
 
-        // Persist to localStorage + queue sync
+        // Update local in-memory cache for UI consistency only.
+        // No server sync needed — the DELETE above already persisted the state.
         const localCompetitors = db.load('competitors');
         const localIdx = localCompetitors.findIndex(c => String(c.id) === String(competitorId));
         if (localIdx >= 0) {
             localCompetitors[localIdx].checkedIn = false;
             localCompetitors[localIdx].checkedInAt = null;
             db.save('competitors', localCompetitors);
-            _queueCompetitorsSync();
         }
 
         _renderCheckinStats(_computeCheckinStats());
