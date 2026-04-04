@@ -846,6 +846,23 @@ function _queueCompetitorsSync() {
     _competitorsSyncTimer = setTimeout(_syncCompetitorsToServer, 1000);
 }
 
+async function _syncClubsToServer() {
+    if (!currentTournamentId) return;
+    const clubs = db.load('clubs');
+    if (!clubs.length) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/clubs/sync`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clubs }),
+        });
+        if (!res.ok) console.warn('[clubs] sync failed:', res.status);
+    } catch (e) {
+        console.warn('[clubs] sync failed:', e.message);
+    }
+}
+
 async function _syncCompetitorsToServer() {
     if (!currentTournamentId) return false;
     setSyncIndicator('syncing');
@@ -954,8 +971,8 @@ function _syncApprovedStatusInDivisions(freshCompetitors) {
     });
     if (changed) {
         db.save('divisions', divisions);
-        // Persist updated approved flags back to server
-        _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+        // Server is authoritative for approved status — no client push needed.
+        // Division snapshots are refreshed from server via _loadDivisionsFromServer().
     }
 }
 
@@ -4116,11 +4133,11 @@ function saveClubData(clubName, clubLogo) {
             logo: clubLogo,
             createdAt: new Date().toISOString()
         });
-        _queueCompetitorsSync();
+        _syncClubsToServer().catch(e => console.warn('[clubs] saveClubData sync failed:', e.message));
     } else if (existingClub && clubLogo && !existingClub.logo) {
         // Update existing club with logo if it doesn't have one
         db.update('clubs', existingClub.id, { logo: clubLogo });
-        _queueCompetitorsSync();
+        _syncClubsToServer().catch(e => console.warn('[clubs] saveClubData sync failed:', e.message));
     }
 }
 
@@ -4173,9 +4190,11 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         const existingClub = clubs.find(c => c.name === clubName);
         if (!existingClub) {
             db.add('clubs', { name: clubName, logo: currentNewClubLogoData || null, country: '', createdAt: new Date().toISOString() });
+            _syncClubsToServer().catch(e => console.warn('[clubs] competitor-form sync failed:', e.message));
         } else if (currentNewClubLogoData) {
             existingClub.logo = currentNewClubLogoData;
             db.save('clubs', clubs);
+            _syncClubsToServer().catch(e => console.warn('[clubs] competitor-form sync failed:', e.message));
         }
         clubLogo = currentNewClubLogoData || getClubLogo(clubName);
     }
@@ -4677,8 +4696,9 @@ function autoAssignToDivisions(competitor, competitorId) {
     });
 
     _msSet(_scopedKey('divisions'), JSON.stringify(freshDivisions));
-    // Persist auto-generated divisions to server so they survive page refreshes
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    // Immediately persist to server — no debounce to eliminate the race window
+    // where a concurrent page load could overwrite these newly generated divisions.
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] auto-assign sync failed:', e.message));
 }
 
 /**
@@ -5749,7 +5769,9 @@ function _silentlyRegenerateDivisionsForEvents(eventIds) {
 
     if (!anyChanged) return;
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    // Immediately sync — eliminates the race window where concurrent approvals
+    // could overwrite each other's division regenerations.
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] regen sync failed:', e.message));
     // Refresh UI components that display division data
     if (typeof loadEventTypeCards === 'function') {
         try { loadEventTypeCards(); } catch (_) {}
@@ -7664,6 +7686,7 @@ function syncCompetitorClubsToTable() {
     });
 
     if (addedCount > 0) {
+        _syncClubsToServer().catch(e => console.warn('[clubs] table-sync failed:', e.message));
     }
 }
 
@@ -8101,7 +8124,7 @@ function handleDefaultEventChange() {
 // Event form submission
 const eventForm = document.getElementById('event-form');
 if (eventForm) {
-    eventForm.addEventListener('submit', (e) => {
+    eventForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         if (!ensureTournamentSelected()) return;
@@ -8153,7 +8176,7 @@ if (eventForm) {
             if (idx !== -1) {
                 eventTypes[idx] = { ...eventTypes[idx], ...fields };
                 db.save('eventTypes', eventTypes);
-                _syncEventTypeToServer(eventTypes[idx], 'PUT');
+                await _syncEventTypeToServer(eventTypes[idx], 'PUT');
             }
             showMessage('Event type updated!');
         } else {
@@ -8163,7 +8186,7 @@ if (eventForm) {
             }
             const newEventType = { ...fields, createdAt: new Date().toISOString() };
             db.add('eventTypes', newEventType);
-            _syncEventTypeToServer(newEventType, 'POST');
+            await _syncEventTypeToServer(newEventType, 'POST');
             showMessage('Event type created successfully!');
         }
 
@@ -10764,8 +10787,8 @@ function generateDivisions() {
 
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
 
-    // Sync generated divisions to server (debounced)
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    // Immediately persist to server — no debounce, director action should be atomic
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] generate sync failed:', e.message));
 
     loadDivisions();
     loadDashboard();
@@ -11237,9 +11260,9 @@ function executeCompetitorMove(fromDivision, competitorId) {
     if (!Array.isArray(divisions[target])) divisions[target] = [];
     divisions[target].push(moved);
 
-    // Save back and sync to server so the move persists across reloads
+    // Save back and immediately sync to server — manual moves must be atomic
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] move-competitor sync failed:', e.message));
 
     // Close modal and refresh
     const overlay = document.getElementById('move-comp-overlay');
@@ -11336,7 +11359,7 @@ function executeCompetitorCopy(fromDivision, competitorId) {
     divisions[target].push(copy);
 
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] copy-competitor sync failed:', e.message));
 
     const overlay = document.getElementById('copy-comp-overlay');
     if (overlay) overlay.remove();
@@ -11383,7 +11406,7 @@ async function removeCompetitorFromDivision(divisionName, competitorId) {
 
     allDivisions[eventId] = eventData;
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _debouncedSync('divisions', _syncDivisionsToServer, 2000);
+    _syncDivisionsToServer().catch(e => console.warn('[divisions] remove-competitor sync failed:', e.message));
     loadDivisions();
 }
 
