@@ -353,6 +353,44 @@ async function markTeamPayment(req, res, next) {
   }
 }
 
+// ── POST /api/tournaments/:id/teams/:teamId/members ──────────────────────────
+// Atomically appends a single member object to the team's JSONB members array.
+// Uses PostgreSQL's || operator for a true atomic append — no read-modify-write
+// race condition. Safe for concurrent registrations.
+
+async function addTeamMember(req, res, next) {
+  try {
+    const { id: tournamentId, teamId } = req.params;
+    const { member } = req.body;
+
+    if (!member || typeof member !== 'object') {
+      return res.status(400).json({ error: 'member object is required' });
+    }
+
+    // Verify team exists in this tournament
+    const teamRes = await pool.query(
+      'SELECT id, members FROM tournament_teams WHERE id = $1 AND tournament_id = $2',
+      [teamId, tournamentId]
+    );
+    if (teamRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    // Atomic JSONB array append — avoids full read-modify-write race
+    const updRes = await pool.query(
+      `UPDATE tournament_teams
+       SET members = members || $1::jsonb, updated_at = NOW()
+       WHERE id = $2 AND tournament_id = $3
+       RETURNING *`,
+      [JSON.stringify([member]), teamId, tournamentId]
+    );
+
+    res.json({ team: updRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ── DELETE /api/tournaments/:id/teams/:teamId ─────────────────────────────────
 
 async function deleteTeam(req, res, next) {
@@ -376,4 +414,4 @@ async function deleteTeam(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getTeams, createTeam, updateTeam, markTeamPayment, deleteTeam };
+module.exports = { getTeams, createTeam, updateTeam, markTeamPayment, deleteTeam, addTeamMember };

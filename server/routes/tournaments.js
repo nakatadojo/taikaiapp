@@ -463,13 +463,16 @@ router.post('/:id/generate-test-data', requireAuth, requireTournamentOwner, test
 router.post('/:id/clear-test-data', requireAuth, requireTournamentOwner, testDataController.clearTestData);
 
 // ── Team Registration ────────────────────────────────────────────────────────
-const { getTeams, createTeam, updateTeam, markTeamPayment, deleteTeam } = require('../controllers/teamsController');
+const { getTeams, createTeam, updateTeam, markTeamPayment, deleteTeam, addTeamMember } = require('../controllers/teamsController');
 
 // GET /api/tournaments/:id/teams — list teams (director + authenticated users)
 router.get('/:id/teams', requireAuth, getTeams);
 
 // POST /api/tournaments/:id/teams — create a team
 router.post('/:id/teams', requireAuth, createTeam);
+
+// POST /api/tournaments/:id/teams/:teamId/members — atomically add a member (race-safe)
+router.post('/:id/teams/:teamId/members', requireAuth, addTeamMember);
 
 // PUT /api/tournaments/:id/teams/:teamId — update team (creator or director)
 router.put('/:id/teams/:teamId', requireAuth, updateTeam);

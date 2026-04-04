@@ -3931,7 +3931,7 @@ function selectExistingTeam(teamData, maxSize) {
     const infoDiv = document.getElementById('team-selection-info');
     if (input) input.value = teamData.name;
     if (suggestionsDiv) suggestionsDiv.style.display = 'none';
-    _selectedTeamData = { code: teamData.code, name: teamData.name, memberCount: teamData.memberCount, isNew: false };
+    _selectedTeamData = { code: teamData.code, id: teamData.id, name: teamData.name, memberCount: teamData.memberCount, isNew: false };
     if (infoDiv) {
         infoDiv.classList.remove('hidden');
         infoDiv.innerHTML = `
@@ -4195,6 +4195,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
     // Handle team registration (new name-search flow — no team codes shown to users)
     let teamCode = null;
     let teamName = null;
+    let teamEventId = null; // declared here so ADD mode block can use it for new-team creation
     const teamSection = document.getElementById('team-registration-section');
 
     if (teamSection && !teamSection.classList.contains('hidden')) {
@@ -4211,46 +4212,17 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         }
 
         // Find the team event in the registration
-        const teamEventId = selectedEvents.find(eventId => {
+        teamEventId = selectedEvents.find(eventId => {
             const ev = eventTypes.find(e => e.id === eventId);
-            return ev && ev.teamSize > 1;
+            return ev && (ev.teamSize > 1 || ev.team_size > 1);
         });
-        const teamEvent = eventTypes.find(e => e.id === teamEventId);
 
         if (_selectedTeamData.isNew) {
             // ── Creating a new team ──
+            // Team is created on the server inside the ADD mode block below so we
+            // have the competitor's data to set as the first member. No local write.
             teamName = _selectedTeamData.name;
-
-            // Check no existing team has same name for this event (prevent accidental duplicates)
-            const existingTeams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
-            const duplicate = Object.values(existingTeams).find(
-                t => t.name.toLowerCase() === teamName.toLowerCase() && t.eventId === teamEventId
-            );
-            if (duplicate) {
-                // Team by that name already exists locally — auto-join if not full
-                if (duplicate.members.length >= (duplicate.maxSize || teamEvent?.teamSize || 2)) {
-                    showMessage(`A team named "${teamName}" already exists and is full. Choose a different name.`, 'error');
-                    return;
-                }
-                // Join the existing local team silently
-                teamCode = duplicate.code;
-                _selectedTeamData = { code: teamCode, name: teamName, isNew: false };
-            } else {
-                teamCode = generateTeamCode();
-                const allTeams = existingTeams;
-                allTeams[teamCode] = {
-                    code: teamCode,
-                    name: teamName,
-                    eventId: teamEventId,
-                    maxSize: teamEvent?.teamSize || 2,
-                    captainName: (document.getElementById('firstName')?.value || '') + ' ' + (document.getElementById('lastName')?.value || ''),
-                    members: [],
-                    createdAt: new Date().toISOString()
-                };
-                _msSet(_scopedKey('teams'), JSON.stringify(allTeams));
-                _debouncedSync('teams', _syncTeamsToServer, 2000);
-            }
-
+            // teamCode stays null here — will be set from server response
         } else {
             // ── Joining an existing team ──
             teamCode = _selectedTeamData.code;
@@ -4260,13 +4232,7 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
                 showMessage('Invalid team selection. Please search and select a team.', 'error');
                 return;
             }
-
-            const allTeams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
-            const localTeam = allTeams[teamCode];
-            if (localTeam && localTeam.members.length >= (localTeam.maxSize || teamEvent?.teamSize || 2)) {
-                showMessage(`The team "${teamName}" is already full.`, 'error');
-                return;
-            }
+            // Server validates capacity atomically when we POST the member
         }
     }
 
@@ -4418,17 +4384,84 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
 
         const competitorId = savedComp.id;
 
-        // Add competitor to team members list and immediately sync to server
-        // (not debounced — a page reload within the debounce window would cause
-        // _loadTeamsFromServer to overwrite localStorage and lose the new team)
-        if (teamCode) {
-            const teams = JSON.parse(_msGet(_scopedKey('teams')) || '{}');
-            const team = teams[teamCode];
-            if (team) {
-                team.members.push(competitorId);
-                _msSet(_scopedKey('teams'), JSON.stringify(teams));
-                _syncTeamsToServer().catch(e => console.warn('[teams] immediate sync failed:', e.message));
+        // ── API-first team handling — no local cache writes, no full-replace sync ──
+        if (_selectedTeamData?.isNew && teamName && teamEventId) {
+            // New team: POST to server first to get the authoritative team_code.
+            // The competitor's contact info becomes the first member entry.
+            const newTeamRes = await fetch(`/api/tournaments/${currentTournamentId}/teams`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    event_id: teamEventId,
+                    team_name: teamName,
+                    members: [{
+                        name: `${competitorFields.firstName} ${competitorFields.lastName}`.trim(),
+                        first_name: competitorFields.firstName,
+                        last_name: competitorFields.lastName,
+                        email: competitorFields.email || null,
+                        user_id: null,
+                        is_registrant: true,
+                    }],
+                }),
+            });
+            if (newTeamRes.status === 409) {
+                showMessage(
+                    `A team named "${teamName}" already exists for this event. ` +
+                    `Search for it and select it to join instead.`,
+                    'error'
+                );
+                // Competitor was already saved — show partial success, then reload
+                await _loadCompetitorsFromServer();
+                loadCompetitors(true);
+            } else if (!newTeamRes.ok) {
+                const errData = await newTeamRes.json().catch(() => ({}));
+                console.warn('[teams] Failed to create team:', errData.error);
+                showMessage(
+                    `Competitor saved, but team "${teamName}" could not be created: ` +
+                    (errData.error || 'unknown error'),
+                    'error'
+                );
+            } else {
+                const { team: serverTeam } = await newTeamRes.json();
+                teamCode = serverTeam.team_code;
+                // Back-patch the competitor record with the server-assigned team code
+                await fetch(`/api/tournaments/${currentTournamentId}/competitors/${competitorId}`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ competitor: { ...savedComp, teamCode, teamName } }),
+                }).catch(e => console.warn('[teams] Failed to update competitor team code:', e.message));
             }
+
+        } else if (!_selectedTeamData?.isNew && teamCode && _selectedTeamData?.id) {
+            // Existing team: atomically append this member using PostgreSQL || operator.
+            // No read-modify-write — safe for concurrent registrations.
+            const memberAddRes = await fetch(
+                `/api/tournaments/${currentTournamentId}/teams/${_selectedTeamData.id}/members`,
+                {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        member: {
+                            name: `${competitorFields.firstName} ${competitorFields.lastName}`.trim(),
+                            first_name: competitorFields.firstName,
+                            last_name: competitorFields.lastName,
+                            email: competitorFields.email || null,
+                            user_id: null,
+                        },
+                    }),
+                }
+            );
+            if (!memberAddRes.ok) {
+                console.warn('[teams] Failed to add member to existing team');
+            }
+        }
+
+        // Refresh teams tab from server (single source of truth)
+        if (teamCode || _selectedTeamData?.isNew) {
+            _loadTeamsFromServer().catch(() => {});
         }
 
         // Server handles auto-division assignment — autoUpdateBrackets still runs client-side
@@ -4439,10 +4472,9 @@ document.getElementById('competitor-form').addEventListener('submit', async (e) 
         }
 
         // Show success message — team info if applicable
-        if (teamCode && teamName && competitor.teamCode === teamCode) {
-            const isNewTeam = _selectedTeamData?.isNew !== false; // true if created, false if joined
-            if (isNewTeam) {
-                const teamSize = eventTypes.find(e => e.teamSize > 1)?.teamSize || 2;
+        const _hadTeamIntent = teamName && (teamCode || _selectedTeamData?.isNew);
+        if (_hadTeamIntent) {
+            if (_selectedTeamData?.isNew) {
                 showMessage(`Competitor registered! Team "${teamName}" created. Teammates can join by searching for "${teamName}" during their registration.`, 'success');
                 showToast(`Team "${teamName}" created — teammates search by name to join`, 'success');
             } else {

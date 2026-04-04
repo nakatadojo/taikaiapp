@@ -63,6 +63,7 @@ async function listTeamsPublic(req, res, next) {
     }
 
     const teams = filtered.map(r => ({
+      id: r.id,
       code: r.team_code,
       name: r.team_name,
       memberCount: Array.isArray(r.members) ? r.members.length : 0,

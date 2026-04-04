@@ -89,7 +89,7 @@ async function sync(tournamentId, teams) {
  */
 async function getByEvent(tournamentId, eventId) {
   const { rows } = await pool.query(
-    `SELECT team_code, team_name, members
+    `SELECT id, team_code, team_name, members
      FROM tournament_teams
      WHERE tournament_id = $1
        AND event_id = $2
