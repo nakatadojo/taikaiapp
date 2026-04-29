@@ -23,6 +23,31 @@ router.post('/:id/scoreboard-actions',
   scoreboardStateController.appendScoreboardAction
 );
 
+// Operator mat lock — acquire, release, heartbeat, force-take
+router.post('/:id/scoreboard-lock',
+  requireAuth,
+  requireTournamentPermission('operate_scoreboard'),
+  scoreboardStateController.acquireScoreboardLock
+);
+
+router.delete('/:id/scoreboard-lock',
+  requireAuth,
+  requireTournamentPermission('operate_scoreboard'),
+  scoreboardStateController.releaseScoreboardLock
+);
+
+router.post('/:id/scoreboard-lock/heartbeat',
+  requireAuth,
+  requireTournamentPermission('operate_scoreboard'),
+  scoreboardStateController.heartbeatScoreboardLock
+);
+
+router.post('/:id/scoreboard-lock/take',
+  requireAuth,
+  requireTournamentPermission('operate_scoreboard'),
+  scoreboardStateController.forceScoreboardLock
+);
+
 // Staging display settings — GET is public (TV/staging displays are unauthenticated)
 router.get('/:id/staging-settings',
   scoreboardStateController.getStagingSettings

@@ -173,10 +173,138 @@ async function setStagingSettings(req, res, next) {
   }
 }
 
+// ─── Operator mat lock ────────────────────────────────────────────────────────
+
+const LOCK_TTL_SECONDS = 30;
+
+/**
+ * POST /api/tournaments/:id/scoreboard-lock
+ * Acquire exclusive operator lock on a ring.
+ * Succeeds if: ring is unlocked, lock is stale (> TTL), or same user refreshing.
+ * Returns 409 { error, lock } when held by someone else with a fresh lock.
+ */
+async function acquireScoreboardLock(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const { ring, lockedByName } = req.body;
+    if (!ring) return res.status(400).json({ error: 'ring is required' });
+
+    const userId      = req.user.id;
+    const displayName = lockedByName || req.user.email || 'Operator';
+
+    const { rows } = await pool.query(
+      `INSERT INTO scoreboard_locks (tournament_id, ring, locked_by, locked_by_name, locked_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (tournament_id, ring)
+       DO UPDATE SET
+         locked_by      = EXCLUDED.locked_by,
+         locked_by_name = EXCLUDED.locked_by_name,
+         locked_at      = NOW()
+       WHERE scoreboard_locks.locked_by = $3
+          OR scoreboard_locks.locked_at < NOW() - ($5 || ' seconds')::interval
+       RETURNING *`,
+      [tournamentId, String(ring), userId, displayName, LOCK_TTL_SECONDS]
+    );
+
+    if (rows.length > 0) return res.json({ ok: true, lock: rows[0] });
+
+    // Lock is fresh and held by someone else — return their info
+    const { rows: existing } = await pool.query(
+      `SELECT locked_by, locked_by_name, locked_at
+       FROM scoreboard_locks
+       WHERE tournament_id = $1 AND ring = $2`,
+      [tournamentId, String(ring)]
+    );
+    return res.status(409).json({ error: 'Mat is locked', lock: existing[0] || null });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * DELETE /api/tournaments/:id/scoreboard-lock
+ * Release the lock. Only the current holder can release.
+ */
+async function releaseScoreboardLock(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const ring = req.body?.ring ?? req.query?.ring;
+    if (!ring) return res.status(400).json({ error: 'ring is required' });
+
+    await pool.query(
+      `DELETE FROM scoreboard_locks
+       WHERE tournament_id = $1 AND ring = $2 AND locked_by = $3`,
+      [tournamentId, String(ring), req.user.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/tournaments/:id/scoreboard-lock/heartbeat
+ * Refresh locked_at to keep the lock alive.
+ * Returns 409 if the lock has been taken by someone else.
+ */
+async function heartbeatScoreboardLock(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const { ring } = req.body;
+    if (!ring) return res.status(400).json({ error: 'ring is required' });
+
+    const { rows } = await pool.query(
+      `UPDATE scoreboard_locks SET locked_at = NOW()
+       WHERE tournament_id = $1 AND ring = $2 AND locked_by = $3
+       RETURNING *`,
+      [tournamentId, String(ring), req.user.id]
+    );
+
+    if (rows.length === 0) return res.status(409).json({ error: 'Lock lost' });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/tournaments/:id/scoreboard-lock/take
+ * Forcibly acquire the lock regardless of who holds it (director override / "Take Control").
+ */
+async function forceScoreboardLock(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const { ring, lockedByName } = req.body;
+    if (!ring) return res.status(400).json({ error: 'ring is required' });
+
+    const userId      = req.user.id;
+    const displayName = lockedByName || req.user.email || 'Operator';
+
+    const { rows } = await pool.query(
+      `INSERT INTO scoreboard_locks (tournament_id, ring, locked_by, locked_by_name, locked_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (tournament_id, ring)
+       DO UPDATE SET
+         locked_by      = EXCLUDED.locked_by,
+         locked_by_name = EXCLUDED.locked_by_name,
+         locked_at      = NOW()
+       RETURNING *`,
+      [tournamentId, String(ring), userId, displayName]
+    );
+    res.json({ ok: true, lock: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getScoreboardState,
   setScoreboardState,
   appendScoreboardAction,
   getStagingSettings,
   setStagingSettings,
+  acquireScoreboardLock,
+  releaseScoreboardLock,
+  heartbeatScoreboardLock,
+  forceScoreboardLock,
 };

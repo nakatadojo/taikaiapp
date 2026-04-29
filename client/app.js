@@ -1374,7 +1374,8 @@ window._serverClockOffset = 0;
 // Last seen sequence number per room, for split-brain detection on reconnect.
 let _lastBracketSeq = 0;
 let _lastRingSeq    = 0;
-let _currentOperatorRing = null; // ring we've subscribed to for scoreboard updates
+let _currentOperatorRing    = null; // ring we've subscribed to for scoreboard updates
+let _lockHeartbeatInterval  = null; // setInterval handle for mat lock keepalive
 
 function _initWebSocket() {
     if (_socket) return; // Already connected
@@ -1686,6 +1687,138 @@ function _updatePresenceBanner(bracketId, count, overrideMsg) {
     }
     el.textContent = overrideMsg || `⚠ ${count} operators on this bracket — coordinate before scoring`;
 }
+
+// ─── Operator mat lock ────────────────────────────────────────────────────────
+
+function _matLockDisplayName() {
+    const u = Auth.currentUser;
+    if (!u) return 'Operator';
+    const full = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+    return full || u.email || 'Operator';
+}
+
+async function _acquireMatLock(matId) {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-lock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ ring: String(matId), lockedByName: _matLockDisplayName() }),
+        });
+        if (res.ok) {
+            _clearMatLockBlocker();
+            _startLockHeartbeat(matId);
+        } else if (res.status === 409) {
+            const data = await res.json();
+            const lock = data.lock || {};
+            _showMatLockBlocker(matId, lock.locked_by_name || 'Someone', lock.locked_at);
+        }
+    } catch { /* network error — proceed without lock */ }
+}
+
+async function _releaseMatLock(matId) {
+    clearInterval(_lockHeartbeatInterval);
+    _lockHeartbeatInterval = null;
+    if (!currentTournamentId || matId == null) return;
+    try {
+        await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-lock`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ ring: String(matId) }),
+        });
+    } catch { /* best effort */ }
+}
+
+async function _takeMatLock(matId) {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-lock/take`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ ring: String(matId), lockedByName: _matLockDisplayName() }),
+        });
+        if (res.ok) {
+            _clearMatLockBlocker();
+            _startLockHeartbeat(matId);
+        }
+    } catch { /* network error */ }
+}
+
+function _startLockHeartbeat(matId) {
+    clearInterval(_lockHeartbeatInterval);
+    _lockHeartbeatInterval = setInterval(async () => {
+        if (!currentTournamentId || matId == null) return;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-lock/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ ring: String(matId) }),
+            });
+            if (res.status === 409) {
+                clearInterval(_lockHeartbeatInterval);
+                _lockHeartbeatInterval = null;
+                showToast('Another operator has taken control of this mat.', 'warning');
+            }
+        } catch { /* network hiccup — retry next interval */ }
+    }, 15000);
+}
+
+function _showMatLockBlocker(matId, ownerName, lockedAt) {
+    const modal = document.getElementById('operator-scoreboard-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    _clearMatLockBlocker();
+
+    const ageSeconds = lockedAt ? Math.round((Date.now() - new Date(lockedAt).getTime()) / 1000) : null;
+    const ageText    = ageSeconds != null ? `Last active ${ageSeconds}s ago` : '';
+
+    const blocker = document.createElement('div');
+    blocker.id = '_mat-lock-blocker';
+    blocker.style.cssText = [
+        'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:10000',
+        'display:flex;align-items:center;justify-content:center',
+    ].join(';');
+    blocker.innerHTML = `
+        <div style="background:#1e293b;border:2px solid #ef4444;border-radius:16px;padding:36px 32px;text-align:center;max-width:380px;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+            <div style="font-size:36px;margin-bottom:16px;">🔒</div>
+            <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Mat ${matId} is locked</div>
+            <div style="color:#94a3b8;margin-bottom:6px;font-size:14px;">Currently operated by</div>
+            <div style="font-size:17px;font-weight:600;color:#f1f5f9;margin-bottom:6px;">${ownerName}</div>
+            <div style="color:#64748b;font-size:12px;margin-bottom:28px;">${ageText}</div>
+            <div style="display:flex;gap:12px;justify-content:center;">
+                <button
+                    onclick="closeOperatorScoreboard()"
+                    style="padding:10px 22px;background:#334155;border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;">
+                    Cancel
+                </button>
+                <button
+                    onclick="_takeMatLock(${JSON.stringify(matId)})"
+                    style="padding:10px 22px;background:#ef4444;border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;font-weight:700;">
+                    Take Control
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(blocker);
+}
+
+function _clearMatLockBlocker() {
+    const el = document.getElementById('_mat-lock-blocker');
+    if (el) el.remove();
+}
+
+// Release mat lock when the tab/window is closed
+window.addEventListener('beforeunload', () => {
+    if (currentOperatorMat != null && currentTournamentId) {
+        navigator.sendBeacon(
+            `/api/tournaments/${currentTournamentId}/scoreboard-lock`,
+            new Blob([JSON.stringify({ ring: String(currentOperatorMat) })], { type: 'application/json' })
+        );
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19244,6 +19377,11 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     // Clear matchStartedAt so it doesn't bleed from a previous match
     window._matchStartedAt = null;
 
+    // Try to acquire exclusive operator lock for this mat.
+    // Fire-and-forget: scoreboard opens immediately; if another operator holds
+    // the lock the blocker overlay is rendered once the async check returns.
+    _acquireMatLock(matId);
+
     // Get event type to determine scoreboard type
     const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
     const eventType = eventTypes.find(e => e.id == eventId);
@@ -23848,6 +23986,10 @@ function submitRankingListScore(numJudges) {
 }
 
 function closeOperatorScoreboard() {
+    // Release mat lock (best effort — also fires on beforeunload via sendBeacon)
+    _releaseMatLock(currentOperatorMat);
+    _clearMatLockBlocker();
+
     // Cancel any auto-advance countdown
     cancelAutoAdvance();
 
