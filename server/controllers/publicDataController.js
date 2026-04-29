@@ -23,16 +23,28 @@ async function getPublicCompetitors(req, res, next) {
     }
 
     const { rows } = await pool.query(
-      `SELECT
-         cp.first_name, cp.last_name, cp.academy_name,
-         array_agg(DISTINCT te.name) FILTER (WHERE te.name IS NOT NULL) AS events
-       FROM registrations r
-       JOIN competitor_profiles cp ON r.profile_id = cp.id
-       LEFT JOIN registration_events re ON re.registration_id = r.id
-       LEFT JOIN tournament_events te ON re.event_id = te.id
-       WHERE r.tournament_id = $1 AND r.status != 'cancelled'
-       GROUP BY cp.id, cp.first_name, cp.last_name, cp.academy_name
-       ORDER BY cp.last_name, cp.first_name`,
+      `SELECT first_name, last_name, academy_name, events FROM (
+         SELECT
+           cp.first_name, cp.last_name, cp.academy_name,
+           array_agg(DISTINCT te.name) FILTER (WHERE te.name IS NOT NULL) AS events
+         FROM registrations r
+         JOIN competitor_profiles cp ON r.profile_id = cp.id
+         LEFT JOIN registration_events re ON re.registration_id = r.id
+         LEFT JOIN tournament_events te ON re.event_id = te.id
+         WHERE r.tournament_id = $1 AND r.status != 'cancelled'
+         GROUP BY cp.id, cp.first_name, cp.last_name, cp.academy_name
+
+         UNION ALL
+
+         SELECT
+           (data->>'firstName') AS first_name,
+           (data->>'lastName')  AS last_name,
+           (data->>'club')      AS academy_name,
+           ARRAY[]::text[]      AS events
+         FROM tournament_director_competitors
+         WHERE tournament_id = $1
+       ) combined
+       ORDER BY last_name, first_name`,
       [tournamentId]
     );
 

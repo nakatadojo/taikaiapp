@@ -837,6 +837,29 @@
         .tab-bar-inner { display: none; }
         .tab-hamburger { display: block; }
     }
+    .academy-autocomplete { position: relative; }
+    .academy-dropdown {
+        position: absolute; left: 0; right: 0; top: 100%;
+        margin-top: 4px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-lg);
+        z-index: 50;
+        max-height: 180px;
+        overflow-y: auto;
+    }
+    .academy-dropdown:empty { display: none; }
+    .academy-dropdown-item {
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 14px;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border-color);
+        transition: background var(--transition);
+    }
+    .academy-dropdown-item:last-child { border-bottom: none; }
+    .academy-dropdown-item:hover { background: var(--bg-hover, rgba(255,255,255,0.05)); }
     </style>
     <script src="/taikai-logo.js"></script>
     <!-- Google Translate -->
@@ -2043,7 +2066,39 @@
                 <button class="reg-nav-btn primary" onclick="submitCompetitorProfiles()" id="reg-continue-btn">Continue to Events</button>
             </div>`;
         content.innerHTML = html;
+        regState.competitors.forEach((_, i) => setupAcademyAutocomplete(i));
     }
+
+    function setupAcademyAutocomplete(index) {
+        const input = document.getElementById(`comp-academy-${index}`);
+        const dropdown = document.getElementById(`comp-academy-dropdown-${index}`);
+        if (!input || !dropdown) return;
+        let timer = null;
+        input.addEventListener('input', function() {
+            clearTimeout(timer);
+            const q = this.value.trim();
+            regState.competitors[index].academyName = this.value;
+            if (q.length < 2) { dropdown.innerHTML = ''; return; }
+            timer = setTimeout(async () => {
+                try {
+                    const data = await fetch('/api/academies/search?q=' + encodeURIComponent(q)).then(r => r.json());
+                    const items = data.academies || [];
+                    dropdown.innerHTML = items.length
+                        ? items.map(a => `<div class="academy-dropdown-item" onmousedown="pickCompetitorAcademy(${index},'${esc(a.name)}')">${esc(a.name)}</div>`).join('')
+                        : '';
+                } catch { dropdown.innerHTML = ''; }
+            }, 300);
+        });
+        input.addEventListener('blur', () => setTimeout(() => { dropdown.innerHTML = ''; }, 150));
+    }
+
+    window.pickCompetitorAcademy = function(index, name) {
+        const input = document.getElementById(`comp-academy-${index}`);
+        if (input) input.value = name;
+        regState.competitors[index].academyName = name;
+        const dropdown = document.getElementById(`comp-academy-dropdown-${index}`);
+        if (dropdown) dropdown.innerHTML = '';
+    };
 
     function renderCompetitorForm(c, index) {
         const t = currentTournamentData;
@@ -2102,8 +2157,9 @@
                     </select></div>
             </div>
             <div class="reg-form-row">
-                <div class="modal-field"><label>Dojo / Academy</label>
-                    <input type="text" value="${esc(c.academyName)}" onchange="updateCompetitor(${index},'academyName',this.value)" placeholder="Start typing..."></div>
+                <div class="modal-field academy-autocomplete"><label>Dojo / Academy</label>
+                    <input type="text" id="comp-academy-${index}" value="${esc(c.academyName)}" autocomplete="off" placeholder="Start typing to search...">
+                    <div class="academy-dropdown" id="comp-academy-dropdown-${index}"></div></div>
             </div>
             <div id="guardian-fields-${index}" style="display:none;">
                 <div class="reg-form-row">
