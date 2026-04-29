@@ -37,6 +37,10 @@ const templates = {
   waiverRequest:            require('./emails/waiverRequest'),
   waiverSigned:             require('./emails/waiverSigned'),
   tournamentInvite:         require('./emails/tournamentInvite'),
+  bracketPublished:         require('./emails/bracketPublished'),
+  schedulePosted:           require('./emails/schedulePosted'),
+  divisionReady:            require('./emails/divisionReady'),
+  registrationClosing:      require('./emails/registrationClosing'),
 };
 
 // ── Core send helper ─────────────────────────────────────────────────────────
@@ -320,8 +324,252 @@ function escHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ── Tournament notification dedup log ────────────────────────────────────────
+// Prevent the same notification type from being sent twice for the same entity.
+// Stored in the DB in the email_notification_log table (migration 057).
+// Falls back to fire-and-forget if the table doesn't exist yet.
+
+const pool_email = require('./db/pool');
+
+// ── Push notification integration ────────────────────────────────────────────
+// Lazy-require to avoid circular deps and allow server to start without VAPID keys.
+let _pushService = null;
+function _push() {
+  if (!_pushService) {
+    try { _pushService = require('./services/pushService'); } catch (_) {}
+  }
+  return _pushService;
+}
+
+async function _checkNotificationSent(tournamentId, eventType, entityId) {
+  try {
+    const { rows } = await pool_email.query(
+      `SELECT id FROM email_notification_log
+       WHERE tournament_id = $1 AND event_type = $2 AND COALESCE(entity_id,'') = COALESCE($3,'')
+       LIMIT 1`,
+      [tournamentId, eventType, entityId || null]
+    );
+    return rows.length > 0;
+  } catch { return false; }
+}
+
+async function _markNotificationSent(tournamentId, eventType, entityId, recipientCount) {
+  try {
+    await pool_email.query(
+      `INSERT INTO email_notification_log (tournament_id, event_type, entity_id, recipient_count)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tournament_id, event_type, COALESCE(entity_id,'')) DO NOTHING`,
+      [tournamentId, eventType, entityId || null, recipientCount || 0]
+    );
+  } catch (e) { console.warn('[email] dedup log failed:', e.message); }
+}
+
+/**
+ * Send bracket-published notification to all competitors in a division.
+ * Fire-and-forget — never blocks the caller.
+ */
+async function sendBracketPublishedEmails(tournamentId, bracketId, divisionName) {
+  try {
+    const alreadySent = await _checkNotificationSent(tournamentId, 'bracket_published', bracketId);
+    if (alreadySent) return;
+
+    // Get tournament info and all competitor emails for this division
+    const { rows: tRows } = await pool_email.query(
+      `SELECT t.name, t.slug FROM tournaments t WHERE t.id = $1`,
+      [tournamentId]
+    );
+    if (!tRows[0]) return;
+    const tournament = tRows[0];
+    const bracketsUrl = `${APP_URL()}/tournaments/${tournament.slug}#results`;
+
+    // Get emails of registered competitors in this division
+    const { rows: compRows } = await pool_email.query(
+      `SELECT DISTINCT COALESCE(u.email, cp.guardian_email) AS email,
+              cp.first_name AS first_name
+       FROM registrations r
+       LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+       LEFT JOIN users u ON u.id = r.user_id
+       LEFT JOIN registration_events re ON re.registration_id = r.id
+       WHERE r.tournament_id = $1
+         AND r.status != 'cancelled'
+         AND r.payment_status IN ('paid', 'waived')
+         AND (re.assigned_division = $2 OR $2 IS NULL)
+         AND COALESCE(u.email, cp.guardian_email) IS NOT NULL`,
+      [tournamentId, divisionName || null]
+    );
+
+    let sent = 0;
+    for (const c of compRows) {
+      if (!c.email) continue;
+      const html = templates.bracketPublished({
+        tournament: { name: tournament.name },
+        divisionName: divisionName || 'your division',
+        bracketsUrl,
+        competitorName: c.first_name,
+      });
+      sendEmail(c.email, `Bracket posted — ${divisionName || tournament.name}`, html)
+        .catch(e => console.warn('[email] bracketPublished send failed:', e.message));
+      sent++;
+    }
+    if (sent > 0) await _markNotificationSent(tournamentId, 'bracket_published', bracketId, sent);
+
+    // Push notification: "Your bracket is ready"
+    try {
+      const ps = _push();
+      if (ps && ps.pushEnabled) {
+        await ps.sendToAll(tournamentId, {
+          title: tournament.name,
+          body: `Your bracket is ready — ${divisionName || 'check the app'}`,
+          url: bracketsUrl,
+          icon: '/icons/icon-192.png',
+        });
+      }
+    } catch (pushErr) {
+      console.warn('[push] bracketPublished notification failed:', pushErr.message);
+    }
+  } catch (err) {
+    console.warn('[email] sendBracketPublishedEmails failed:', err.message);
+  }
+}
+
+/**
+ * Send schedule-posted notification to all registered competitors.
+ * Fire-and-forget.
+ */
+async function sendSchedulePostedEmails(tournamentId) {
+  try {
+    const alreadySent = await _checkNotificationSent(tournamentId, 'schedule_posted', null);
+    if (alreadySent) return;
+
+    const { rows: tRows } = await pool_email.query(
+      `SELECT name, slug FROM tournaments WHERE id = $1`, [tournamentId]
+    );
+    if (!tRows[0]) return;
+    const tournament = tRows[0];
+    const scheduleUrl = `${APP_URL()}/tournaments/${tournament.slug}#schedule`;
+
+    const { rows: compRows } = await pool_email.query(
+      `SELECT DISTINCT COALESCE(u.email, cp.guardian_email) AS email, cp.first_name
+       FROM registrations r
+       LEFT JOIN competitor_profiles cp ON cp.id = r.profile_id
+       LEFT JOIN users u ON u.id = r.user_id
+       WHERE r.tournament_id = $1
+         AND r.status != 'cancelled'
+         AND r.payment_status IN ('paid','waived')
+         AND COALESCE(u.email, cp.guardian_email) IS NOT NULL`,
+      [tournamentId]
+    );
+
+    let sent = 0;
+    for (const c of compRows) {
+      if (!c.email) continue;
+      const html = templates.schedulePosted({
+        tournament: { name: tournament.name },
+        scheduleUrl,
+        competitorName: c.first_name,
+      });
+      sendEmail(c.email, `Schedule posted — ${tournament.name}`, html)
+        .catch(e => console.warn('[email] schedulePosted send failed:', e.message));
+      sent++;
+    }
+    if (sent > 0) await _markNotificationSent(tournamentId, 'schedule_posted', null, sent);
+  } catch (err) {
+    console.warn('[email] sendSchedulePostedEmails failed:', err.message);
+  }
+}
+
+/**
+ * Send division-ready (mat-call) email to a single competitor.
+ * Called from the check-in mat-call endpoint.
+ */
+async function sendDivisionReadyEmail({ competitorEmail, competitorName, tournament, divisionName, matName, userId }) {
+  if (!competitorEmail) return;
+  try {
+    const html = templates.divisionReady({
+      tournament,
+      divisionName,
+      matName,
+      competitorName,
+    });
+    await sendEmail(competitorEmail, `Report to the mat — ${divisionName}`, html);
+
+    // Push notification: "Report to mat now"
+    if (userId) {
+      try {
+        const ps = _push();
+        if (ps && ps.pushEnabled) {
+          await ps.sendToUser(userId, {
+            title: 'Report to the mat now!',
+            body: `${divisionName}${matName ? ` — ${matName}` : ''}`,
+            icon: '/icons/icon-192.png',
+          });
+        }
+      } catch (pushErr) {
+        console.warn('[push] divisionReady notification failed:', pushErr.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[email] sendDivisionReadyEmail failed:', err.message);
+  }
+}
+
+/**
+ * Send registration-closing warning emails to all users who have an account
+ * but haven't registered yet for a tournament closing within 24h.
+ * Intended to be called from a periodic check (e.g. hourly interval).
+ */
+async function sendRegistrationClosingEmails(tournamentId) {
+  try {
+    const alreadySent = await _checkNotificationSent(tournamentId, 'registration_closing', null);
+    if (alreadySent) return;
+
+    const { rows: tRows } = await pool_email.query(
+      `SELECT name, slug, registration_deadline FROM tournaments
+       WHERE id = $1 AND published = true AND registration_deadline IS NOT NULL`,
+      [tournamentId]
+    );
+    if (!tRows[0]) return;
+    const tournament = tRows[0];
+    const deadline = new Date(tournament.registration_deadline);
+    const hoursLeft = Math.ceil((deadline - Date.now()) / 3600000);
+    if (hoursLeft < 0 || hoursLeft > 26) return; // only within 26h window
+
+    const registerUrl = `${APP_URL()}/tournaments/${tournament.slug}#register`;
+
+    // Target: users who have an account but are not yet registered
+    const { rows: userRows } = await pool_email.query(
+      `SELECT u.email FROM users u
+       WHERE u.email IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM registrations r
+           WHERE r.tournament_id = $1
+             AND r.user_id = u.id
+             AND r.status != 'cancelled'
+         )
+       LIMIT 500`,
+      [tournamentId]
+    );
+
+    let sent = 0;
+    for (const u of userRows) {
+      if (!u.email) continue;
+      const html = templates.registrationClosing({
+        tournament: { name: tournament.name },
+        registerUrl,
+        hoursLeft,
+        deadline,
+      });
+      sendEmail(u.email, `Registration closing in ${hoursLeft}h — ${tournament.name}`, html)
+        .catch(e => console.warn('[email] registrationClosing send failed:', e.message));
+      sent++;
+    }
+    if (sent > 0) await _markNotificationSent(tournamentId, 'registration_closing', null, sent);
+  } catch (err) {
+    console.warn('[email] sendRegistrationClosingEmails failed:', err.message);
+  }
+}
+
 module.exports = {
-  sendCompetitorInviteEmail,
   sendEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -336,6 +584,12 @@ module.exports = {
   sendDojoInviteEmail,
   sendDojoMemberNotification,
   sendTeamInviteEmail,
+  sendCompetitorInviteEmail,
+  // Tournament-day notification triggers
+  sendBracketPublishedEmails,
+  sendSchedulePostedEmails,
+  sendDivisionReadyEmail,
+  sendRegistrationClosingEmails,
   APP_URL,
   EMAIL_FROM,
   templates,

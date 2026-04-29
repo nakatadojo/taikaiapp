@@ -50,4 +50,12 @@ router.get('/:id/certificates/batch.pdf',
   certificateController.generateBatchPDF
 );
 
+// ── Individual Certificate by Result + Rank (Director) ──────────────────────
+
+router.get('/:id/results/:resultId/certificates/:rank',
+  requireAuth,
+  requireTournamentPermission('read_data'),
+  certificateController.generateForRank
+);
+
 module.exports = router;

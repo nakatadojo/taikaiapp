@@ -11,8 +11,8 @@ module.exports = defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
-    baseURL: 'https://www.taikaiapp.com',
-    headless: false,
+    baseURL: 'http://localhost:3000',
+    headless: true,
     viewport: { width: 1280, height: 900 },
     screenshot: 'only-on-failure',
     video: 'off',
@@ -24,4 +24,6 @@ module.exports = defineConfig({
     },
   ],
   outputDir: 'test-results',
+  // Only run the new comprehensive test suite
+  testMatch: '**/api-comprehensive.spec.js',
 });

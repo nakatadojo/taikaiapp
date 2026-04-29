@@ -371,6 +371,7 @@ async function createEvent(req, res, next) {
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
       isDefault, teamSize, description, prerequisiteEventId,
+      isEventType,
     } = req.body;
 
     const event = await tournamentQueries.createEvent({
@@ -379,6 +380,7 @@ async function createEvent(req, res, next) {
       ageMin, ageMax, rankMin, rankMax,
       priceOverride, addonPriceOverride, maxCompetitors,
       isDefault, teamSize, description, prerequisiteEventId,
+      isEventType,
     });
     res.status(201).json({ event });
   } catch (err) {

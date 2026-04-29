@@ -21,7 +21,7 @@ module.exports = function bracketPublished({ tournament, divisionName, bracketsU
           <strong style="color:#ddd;">${esc(tournament.name)}</strong> has been published.
           See who you're competing against and check your match order.
         </p>
-        <a href="${esc(bracketsUrl)}" style="display:inline-block;padding:14px 28px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">
+        <a href="${esc(bracketsUrl)}" style="display:inline-block;padding:14px 28px;background:#cc0000;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">
           View Bracket
         </a>
         <p style="color:#555;font-size:12px;margin-top:32px;line-height:1.5;">

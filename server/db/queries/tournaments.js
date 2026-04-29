@@ -297,14 +297,16 @@ async function createEvent({
   ageMin, ageMax, rankMin, rankMax,
   priceOverride, addonPriceOverride, maxCompetitors,
   isDefault, teamSize, description, prerequisiteEventId,
+  isEventType,
 }) {
   const result = await pool.query(
     `INSERT INTO tournament_events
       (tournament_id, name, event_type, division, gender,
        age_min, age_max, rank_min, rank_max,
        price_override, addon_price_override, max_competitors,
-       is_default, team_size, description, prerequisite_event_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       is_default, team_size, description, prerequisite_event_id,
+       is_event_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       tournamentId, name, eventType || null, division || null, gender || null,
@@ -312,6 +314,7 @@ async function createEvent({
       priceOverride || null, addonPriceOverride || null, maxCompetitors || null,
       isDefault || false, teamSize || null, description || null,
       prerequisiteEventId || null,
+      isEventType || false,
     ]
   );
   return result.rows[0];

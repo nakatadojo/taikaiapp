@@ -57,4 +57,10 @@ router.post('/:id/brackets/:bracketId/reset',
   c.resetBracket
 );
 
+// Append-only match result audit log
+router.post('/:id/match-results',
+  requireAuth, requireTournamentOwner,
+  c.appendMatchResult
+);
+
 module.exports = router;

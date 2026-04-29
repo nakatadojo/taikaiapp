@@ -5,11 +5,17 @@ const controller = require('../controllers/checkinController');
 
 const router = express.Router();
 
-// Stats must come before parameterized routes
+// Fixed-path routes first (before parameterized :registrationId routes)
 router.get('/:id/checkin/stats',
   requireAuth,
   requireTournamentPermission('manage_checkin'),
   controller.stats
+);
+
+router.get('/:id/checkin/absent-withdrawn',
+  requireAuth,
+  requireTournamentPermission('manage_checkin'),
+  controller.absentAndWithdrawn
 );
 
 router.get('/:id/checkin',
@@ -24,7 +30,20 @@ router.post('/:id/checkin',
   controller.checkin
 );
 
-// mat-call must come before the parameterized DELETE
+// Absent / withdrawn status routes
+router.post('/:id/checkin/absent',
+  requireAuth,
+  requireTournamentPermission('manage_checkin'),
+  controller.markAbsent
+);
+
+router.post('/:id/checkin/withdrawn',
+  requireAuth,
+  requireTournamentPermission('manage_checkin'),
+  controller.markWithdrawn
+);
+
+// mat-call before parameterized DELETE
 router.put('/:id/checkin/:registrationId/mat-call',
   requireAuth,
   requireTournamentPermission('manage_checkin'),

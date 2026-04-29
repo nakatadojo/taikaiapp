@@ -10,12 +10,22 @@
  * Rooms used:
  *   tournament:{tournamentId}:bracket:{bracketId}   — bracket updates
  *   tournament:{tournamentId}:ring:{ring}:scoreboard — scoreboard updates
+ *   tournament:{tournamentId}:competitors            — competitor CRUD events
+ *   tournament:{tournamentId}:divisions              — division generation events
+ *
+ * Operator presence:
+ *   _operatorPresence Map tracks which socket IDs are operating each bracket.
+ *   When two operators join the same bracket the client receives
+ *   `operator:presence` with count > 1 and can warn the user.
  */
 
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 
 let io;
+
+// bracketRoom → Set of socket IDs currently operating that bracket
+const _operatorPresence = new Map();
 
 /**
  * Extract the `token` cookie value from a raw Cookie header string.
@@ -26,20 +36,24 @@ function _parseCookieToken(cookieHeader) {
     return match ? decodeURIComponent(match[1]) : null;
 }
 
+function _presenceRoom(tournamentId, bracketId) {
+    return `tournament:${tournamentId}:bracket:${bracketId}`;
+}
+
+/** Broadcast current operator count for a bracket to all subscribers. */
+function _broadcastPresence(tournamentId, bracketId) {
+    const room = _presenceRoom(tournamentId, bracketId);
+    const count = (_operatorPresence.get(room) || new Set()).size;
+    io.to(room).emit('operator:presence', { bracketId, count });
+}
+
 function initWebSocket(httpServer) {
     io = new Server(httpServer, {
-        // Restrict CORS to same origin — all WebSocket clients are first-party
-        // staff/director sessions, never third-party or anonymous spectators.
         cors: { origin: false },
-        // polling fallback ensures Railway and CDN proxies work
         transports: ['websocket', 'polling'],
     });
 
     // ── Authentication gate ────────────────────────────────────────────────────
-    // Every WebSocket connection must carry a valid JWT (issued at login and
-    // stored in the httpOnly `token` cookie). Unauthenticated connections are
-    // disconnected immediately — there is no public spectator use-case for
-    // bracket or scoreboard real-time data.
     io.on('connection', (socket) => {
         const token = _parseCookieToken(socket.handshake.headers.cookie);
         if (!token) {
@@ -53,33 +67,73 @@ function initWebSocket(httpServer) {
             return;
         }
 
-        // ── Subscriptions (only reached by authenticated clients) ────────────
+        // ── Subscriptions ────────────────────────────────────────────────────
 
-        // Subscribe to a tournament's bracket channel
         socket.on('subscribe:bracket', ({ tournamentId, bracketId }) => {
             if (!tournamentId || !bracketId) return;
-            socket.join(`tournament:${tournamentId}:bracket:${bracketId}`);
+            socket.join(_presenceRoom(tournamentId, bracketId));
         });
 
-        // Subscribe to a ring's scoreboard channel
         socket.on('subscribe:ring', ({ tournamentId, ring }) => {
             if (!tournamentId || ring == null) return;
             socket.join(`tournament:${tournamentId}:ring:${ring}:scoreboard`);
         });
 
-        // Subscribe to a tournament's competitors channel
         socket.on('subscribe:competitors', ({ tournamentId }) => {
             if (!tournamentId) return;
             socket.join(`tournament:${tournamentId}:competitors`);
         });
 
-        // Subscribe to a tournament's divisions channel
         socket.on('subscribe:divisions', ({ tournamentId }) => {
             if (!tournamentId) return;
             socket.join(`tournament:${tournamentId}:divisions`);
         });
 
-        // socket.io handles room cleanup automatically on disconnect
+        // ── Operator presence ────────────────────────────────────────────────
+        // Emitted when an operator opens a bracket for scoring.
+        // Lets other devices on the same bracket see that someone is already working it.
+
+        socket.on('operator:join-bracket', ({ tournamentId, bracketId }) => {
+            if (!tournamentId || !bracketId) return;
+            const room = _presenceRoom(tournamentId, bracketId);
+
+            // Ensure the socket is in the bracket room (may have already subscribed)
+            socket.join(room);
+
+            // Track this socket as an active operator
+            if (!_operatorPresence.has(room)) _operatorPresence.set(room, new Set());
+            _operatorPresence.get(room).add(socket.id);
+
+            // Store on socket data so we can clean up on disconnect
+            socket.data.operatorRooms = socket.data.operatorRooms || [];
+            socket.data.operatorRooms.push({ tournamentId, bracketId, room });
+
+            _broadcastPresence(tournamentId, bracketId);
+        });
+
+        socket.on('operator:leave-bracket', ({ tournamentId, bracketId }) => {
+            if (!tournamentId || !bracketId) return;
+            const room = _presenceRoom(tournamentId, bracketId);
+            const set = _operatorPresence.get(room);
+            if (set) {
+                set.delete(socket.id);
+                if (set.size === 0) _operatorPresence.delete(room);
+            }
+            _broadcastPresence(tournamentId, bracketId);
+        });
+
+        // Clean up presence on disconnect
+        socket.on('disconnect', () => {
+            const rooms = socket.data.operatorRooms || [];
+            for (const { tournamentId, bracketId, room } of rooms) {
+                const set = _operatorPresence.get(room);
+                if (set) {
+                    set.delete(socket.id);
+                    if (set.size === 0) _operatorPresence.delete(room);
+                }
+                _broadcastPresence(tournamentId, bracketId);
+            }
+        });
     });
 
     return io;
@@ -90,22 +144,14 @@ function getIO() {
     return io;
 }
 
-/**
- * Emit bracket update to all subscribers of this bracket.
- * Called by upsertSingleBracket after writing to DB.
- */
 function broadcastBracketUpdate(tournamentId, bracketId, bracketData) {
     if (!io) return;
-    io.to(`tournament:${tournamentId}:bracket:${bracketId}`).emit('bracket:updated', {
+    io.to(_presenceRoom(tournamentId, bracketId)).emit('bracket:updated', {
         bracketId,
         bracket: bracketData,
     });
 }
 
-/**
- * Emit scoreboard update to all subscribers of this ring.
- * Called by setScoreboardState after writing to DB.
- */
 function broadcastScoreboardUpdate(tournamentId, ring, state) {
     if (!io) return;
     io.to(`tournament:${tournamentId}:ring:${ring}:scoreboard`).emit('scoreboard:updated', {
@@ -114,25 +160,21 @@ function broadcastScoreboardUpdate(tournamentId, ring, state) {
     });
 }
 
-/**
- * Emit competitor update to all subscribers of this tournament's competitors channel.
- * Called by directorCompetitorsController after each write.
- */
 function broadcastCompetitorUpdate(tournamentId, action, competitor) {
     if (!io) return;
     io.to(`tournament:${tournamentId}:competitors`).emit('competitors:updated', {
-        action, // 'add' | 'update' | 'delete'
+        action,
         competitor,
     });
 }
 
-/**
- * Emit division update to all subscribers of this tournament's divisions channel.
- * Called by divisionsController after auto-assign.
- */
 function broadcastDivisionUpdate(tournamentId, generatedDivisions) {
     if (!io) return;
     io.to(`tournament:${tournamentId}:divisions`).emit('divisions:updated', { generatedDivisions });
 }
 
-module.exports = { initWebSocket, getIO, broadcastBracketUpdate, broadcastScoreboardUpdate, broadcastCompetitorUpdate, broadcastDivisionUpdate };
+module.exports = {
+    initWebSocket, getIO,
+    broadcastBracketUpdate, broadcastScoreboardUpdate,
+    broadcastCompetitorUpdate, broadcastDivisionUpdate,
+};

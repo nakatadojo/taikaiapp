@@ -2,12 +2,17 @@ const pool = require('../db/pool');
 const BracketQueries = require('../db/queries/brackets');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const { broadcastBracketUpdate } = require('../websocket');
+const { sendBracketPublishedEmails } = require('../email');
 
 async function getBrackets(req, res, next) {
   try {
     const rows = await BracketQueries.getAll(req.params.id);
     const byId = {};
-    for (const b of rows) { byId[b.id] = b.data; }
+    // Embed __v (server version) in the bracket data so clients can track it
+    // without requiring a schema change to the bracket object format.
+    for (const b of rows) {
+      byId[b.id] = { ...b.data, __v: b.version };
+    }
     res.json({ brackets: byId });
   } catch (err) { next(err); }
 }
@@ -21,6 +26,10 @@ async function getBrackets(req, res, next) {
  */
 async function getBracketsStartedStatus(req, res, next) {
   try {
+    // Validate UUID to prevent a PostgreSQL cast error (500) on bad input
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
     const rows = await BracketQueries.getAll(req.params.id);
     const startedEventIds = new Set();
     for (const row of rows) {
@@ -37,7 +46,8 @@ async function getSingleBracket(req, res, next) {
     const { id: tournamentId, bracketId } = req.params;
     const row = await BracketQueries.getOne(tournamentId, bracketId);
     if (!row) return res.status(404).json({ error: 'Bracket not found' });
-    res.json({ bracket: row.data });
+    // Embed version in the returned data so polling clients stay version-aware
+    res.json({ bracket: { ...row.data, __v: row.version } });
   } catch (err) { next(err); }
 }
 
@@ -59,15 +69,24 @@ function _extractUUIDs(obj) {
 function _bracketHasResults(bracketData) {
   if (!bracketData) return false;
   const str = JSON.stringify(bracketData);
-  // winner field with a non-null value
   if (/"winner"\s*:\s*(?!null\b)[^,}\]\s]/.test(str)) return true;
-  // completed flag
   if (/"completed"\s*:\s*true/.test(str)) return true;
-  // numeric score fields (score1/score2/score/points with a number)
   if (/"(?:score1?|score2|points|redScore|blueScore)"\s*:\s*[0-9]/.test(str)) return true;
   return false;
 }
 
+/**
+ * PUT /api/tournaments/:id/brackets/:bracketId
+ *
+ * Write a single bracket. Supports optimistic locking via the `If-Match` header.
+ *
+ * If the client sends `If-Match: <version>`, the write only succeeds when the
+ * stored version equals the client version. On mismatch, returns 409 with the
+ * current server bracket so the client can resolve the conflict.
+ *
+ * If no `If-Match` header is sent (legacy clients or bulk-sync path), falls
+ * back to the unconditional upsert so nothing breaks.
+ */
 async function upsertSingleBracket(req, res, next) {
   try {
     const { id: tournamentId, bracketId } = req.params;
@@ -75,17 +94,45 @@ async function upsertSingleBracket(req, res, next) {
     if (!bracket || typeof bracket !== 'object') {
       return res.status(400).json({ error: 'bracket object is required' });
     }
-    const row = await BracketQueries.upsert({
-      id: bracketId,
-      tournamentId,
-      eventId: String(bracket.eventId || ''),
-      divisionName: bracket.divisionName || bracket.division || '',
-      bracketType: bracket.type || 'single-elimination',
-      data: bracket,
-    });
+
+    const ifMatch = req.headers['if-match'];
+    const useVersioning = ifMatch !== undefined;
+    const clientVersion = useVersioning ? parseInt(ifMatch, 10) || 0 : null;
+
+    let row;
+    if (useVersioning) {
+      const result = await BracketQueries.upsertWithVersion({
+        id: bracketId,
+        tournamentId,
+        eventId: String(bracket.eventId || ''),
+        divisionName: bracket.divisionName || bracket.division || '',
+        bracketType: bracket.type || 'single-elimination',
+        data: bracket,
+        clientVersion,
+      });
+
+      if (result.conflict) {
+        // Another device has written a newer version — return 409 with current state
+        return res.status(409).json({
+          error: 'conflict',
+          message: 'A newer version of this bracket has been saved by another device.',
+          bracket: result.row ? { ...result.row.data, __v: result.row.version } : null,
+        });
+      }
+      row = result.row;
+    } else {
+      // No version header — legacy unconditional upsert
+      row = await BracketQueries.upsert({
+        id: bracketId,
+        tournamentId,
+        eventId: String(bracket.eventId || ''),
+        divisionName: bracket.divisionName || bracket.division || '',
+        bracketType: bracket.type || 'single-elimination',
+        data: bracket,
+      });
+    }
 
     // Mark any director competitors that appear in this bracket as bracket_placed.
-    // We do this fire-and-forget so it never blocks the response.
     const uuids = _extractUUIDs(bracket);
     if (uuids.length > 0) {
       DirectorCompetitorQueries.setBracketPlaced(uuids, tournamentId).catch(err =>
@@ -94,8 +141,9 @@ async function upsertSingleBracket(req, res, next) {
     }
 
     // Broadcast to all clients subscribed to this bracket's channel
-    broadcastBracketUpdate(tournamentId, bracketId, row.data);
-    res.json({ bracket: row.data });
+    const outBracket = { ...row.data, __v: row.version };
+    broadcastBracketUpdate(tournamentId, bracketId, outBracket);
+    res.json({ bracket: outBracket });
   } catch (err) { next(err); }
 }
 
@@ -113,9 +161,10 @@ async function syncBrackets(req, res, next) {
     const bracketArray = Object.values(brackets || {});
     if (bracketArray.length === 0) return res.json({ message: 'No brackets to sync', count: 0 });
 
+    // Bulk sync uses unconditional upsert — it's a fallback path and not
+    // appropriate for conflict checking (no per-bracket version info available).
     const results = await BracketQueries.bulkUpsert(tournamentId, bracketArray);
 
-    // Mark bracket_placed for all director competitors found across all brackets
     const allUUIDs = [...new Set(bracketArray.flatMap(_extractUUIDs))];
     if (allUUIDs.length > 0) {
       DirectorCompetitorQueries.setBracketPlaced(allUUIDs, tournamentId).catch(err =>
@@ -124,6 +173,33 @@ async function syncBrackets(req, res, next) {
     }
 
     res.json({ message: `Synced ${results.length} bracket(s)`, count: results.length });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/tournaments/:id/match-results
+ *
+ * Append a match result to the audit log. Fire-and-forget from the operator —
+ * the response is always 201 as long as the payload is valid; logging failures
+ * are non-fatal and do not affect bracket state.
+ */
+async function appendMatchResult(req, res, next) {
+  try {
+    const tournamentId = req.params.id;
+    const {
+      bracketId, matchId, winnerId, winnerName, loserId, loserName,
+      divisionName, eventId, scoreboardType, method, winNote, scores, matId,
+    } = req.body;
+
+    if (!bracketId) return res.status(400).json({ error: 'bracketId is required' });
+
+    // Fire-and-forget — failures are logged but never block the caller
+    BracketQueries.logMatchResult({
+      tournamentId, bracketId, matchId, winnerId, winnerName, loserId, loserName,
+      divisionName, eventId, scoreboardType, method, winNote, scores, matId,
+    }).catch(err => console.warn('[match-results] Failed to log:', err.message));
+
+    res.status(201).json({ ok: true });
   } catch (err) { next(err); }
 }
 
@@ -138,7 +214,6 @@ async function deleteBracket(req, res, next) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    // Prevent deletion of any bracket that has results entered
     const existing = await BracketQueries.getOne(tournamentId, bracketId);
     if (!existing) return res.status(404).json({ error: 'Bracket not found' });
 
@@ -169,6 +244,15 @@ async function setBracketPublished(req, res, next) {
 
     const result = await BracketQueries.setPublished(tournamentId, bracketId, !!published);
     if (!result) return res.status(404).json({ error: 'Bracket not found' });
+
+    // Fire bracket-published notification emails (fire-and-forget)
+    if (published) {
+      const bracket = await BracketQueries.getOne(tournamentId, bracketId);
+      const divisionName = bracket?.division_name || null;
+      sendBracketPublishedEmails(tournamentId, bracketId, divisionName)
+        .catch(e => console.warn('[email] bracket notify failed:', e.message));
+    }
+
     res.json(result);
   } catch (err) { next(err); }
 }
@@ -189,11 +273,6 @@ async function setAllBracketsPublished(req, res, next) {
   } catch (err) { next(err); }
 }
 
-/**
- * Deep-clone a bracket and wipe all recorded results/scores, returning the
- * structure to a pre-competition "pending" state. Competitors and bracket type
- * are preserved — only match outcomes are cleared.
- */
 function _clearBracketResults(bracket) {
   const b = JSON.parse(JSON.stringify(bracket));
 
@@ -234,13 +313,6 @@ function _clearBracketResults(bracket) {
   return b;
 }
 
-/**
- * POST /api/tournaments/:id/brackets/:bracketId/reset
- *
- * Clear all match results from a bracket (scores, winners, statuses) while
- * preserving the bracket structure and competitors. Also resets bracket_placed
- * on all competitors so they can be unapproved if needed.
- */
 async function resetBracket(req, res, next) {
   try {
     const { id: tournamentId, bracketId } = req.params;
@@ -256,7 +328,6 @@ async function resetBracket(req, res, next) {
 
     const cleared = _clearBracketResults(existing.data);
 
-    // Reset bracket_placed for all director competitors that were in this bracket
     const uuids = _extractUUIDs(existing.data);
     if (uuids.length > 0) {
       DirectorCompetitorQueries.clearBracketPlaced(uuids, tournamentId).catch(err =>
@@ -273,9 +344,14 @@ async function resetBracket(req, res, next) {
       data: cleared,
     });
 
-    broadcastBracketUpdate(tournamentId, bracketId, updated.data);
-    res.json({ bracket: updated.data, message: 'Bracket reset — all results cleared.' });
+    const outBracket = { ...updated.data, __v: updated.version };
+    broadcastBracketUpdate(tournamentId, bracketId, outBracket);
+    res.json({ bracket: outBracket, message: 'Bracket reset — all results cleared.' });
   } catch (err) { next(err); }
 }
 
-module.exports = { getBrackets, getSingleBracket, getBracketsStartedStatus, upsertSingleBracket, syncBrackets, deleteBracket, setBracketPublished, setAllBracketsPublished, resetBracket };
+module.exports = {
+  getBrackets, getSingleBracket, getBracketsStartedStatus,
+  upsertSingleBracket, syncBrackets, appendMatchResult,
+  deleteBracket, setBracketPublished, setAllBracketsPublished, resetBracket,
+};

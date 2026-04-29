@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const ScheduleQueries = require('../db/queries/schedules');
+const { sendSchedulePostedEmails } = require('../email');
 
 async function getSchedule(req, res, next) {
   try {
@@ -43,6 +44,13 @@ async function setSchedulePublished(req, res, next) {
     }
 
     const result = await ScheduleQueries.setPublished(tournamentId, !!published);
+
+    // Fire schedule-posted notification emails (fire-and-forget)
+    if (published && result.schedule_published) {
+      sendSchedulePostedEmails(tournamentId)
+        .catch(e => console.warn('[email] schedule notify failed:', e.message));
+    }
+
     res.json({ published: result.schedule_published });
   } catch (err) { next(err); }
 }

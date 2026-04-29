@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 
 let s3Client = null;
@@ -17,7 +16,7 @@ if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID) {
   });
   console.log('✓ R2 storage configured');
 } else {
-  console.log('ℹ R2 not configured — using local uploads/ directory');
+  console.log('ℹ R2 not configured — images will be stored as base64 in the database');
 }
 
 /**
@@ -46,14 +45,9 @@ async function uploadFile(buffer, originalFilename, contentType) {
     return publicUrl;
   }
 
-  // Fallback: save to local uploads/ directory
-  const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-  const filePath = path.join(uploadsDir, key);
-  fs.writeFileSync(filePath, buffer);
-  return `/uploads/${key}`;
+  // Fallback: encode as base64 data URL so it persists in the DB without a filesystem
+  const mimeType = contentType || 'image/webp';
+  return `data:${mimeType};base64,${buffer.toString('base64')}`;
 }
 
 /**
@@ -63,8 +57,8 @@ async function uploadFile(buffer, originalFilename, contentType) {
  */
 function getFileUrl(key) {
   if (!key) return null;
-  // Already a full URL (R2 or absolute)
-  if (key.startsWith('http') || key.startsWith('/uploads')) return key;
+  // Already a full URL, data URL, or absolute path
+  if (key.startsWith('http') || key.startsWith('data:') || key.startsWith('/uploads')) return key;
   // R2 key — construct URL
   if (process.env.R2_PUBLIC_URL) return `${process.env.R2_PUBLIC_URL}/${key}`;
   return `/uploads/${key}`;

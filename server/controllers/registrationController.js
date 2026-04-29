@@ -8,6 +8,7 @@ const discountQueries = require('../db/queries/discounts');
 const creditQueries = require('../db/queries/credits');
 const notificationQueries = require('../db/queries/notifications');
 const pool = require('../db/pool');
+const AthleteProfileQueries = require('../db/queries/athleteProfiles');
 const { sendGuardianConfirmationEmail } = require('../config/email');
 const { sendRegistrationConfirmationEmail, sendDojoMemberNotification } = require('../email');
 const { assignDivision } = require('../services/divisionAssignment');
@@ -158,6 +159,29 @@ async function registerCompetitor(req, res, next) {
 
     // Fire-and-forget: place competitor into their division immediately on registration
     runAutoAssign(tournamentId).catch(e => console.warn('[registration] auto-assign failed:', e.message));
+
+    // Fire-and-forget: auto-create or link athlete profile
+    if (registration.id) {
+      (async () => {
+        try {
+          const profile = await AthleteProfileQueries.findOrCreate({
+            userId: req.user?.id || null,
+            firstName, lastName,
+            dateOfBirth,
+            gender,
+            weight,
+            beltRank: rank,
+            experienceLevel: experience,
+            academyName: club,
+            email,
+            phone,
+          });
+          await AthleteProfileQueries.linkToRegistration(registration.id, profile.id);
+        } catch (e) {
+          console.warn('[athlete-profile] auto-link failed:', e.message);
+        }
+      })();
+    }
   } catch (err) {
     next(err);
   }
@@ -486,7 +510,7 @@ async function checkout(req, res, next) {
           const currentCount = await tournamentQueries.getEventRegistrationCount(eventId);
           if (currentCount >= event.max_competitors) {
             return res.status(400).json({
-              error: `${event.name} is full (${event.max_competitors}/${event.max_competitors} spots taken).`,
+              error: `${event.name} is full (${currentCount}/${event.max_competitors} spots taken).`,
               code: 'EVENT_FULL',
             });
           }
@@ -642,9 +666,13 @@ async function checkout(req, res, next) {
 
         stripeSessionUrl = session.url;
         stripeSessionId  = session.id;
+      } else {
+        // No Stripe key configured — return a clear error to the frontend
+        return res.status(503).json({
+          error: 'Online payment is not yet configured for this tournament. Please contact the organizer.',
+          code: 'STRIPE_NOT_CONFIGURED',
+        });
       }
-      // If no stripeKey at all (not configured), stripeSessionId remains null and falls through
-      // to a pending payment_transaction without a checkout URL — director can mark paid manually.
     }
 
     // Create payment transaction record
@@ -1123,7 +1151,7 @@ async function payLater(req, res, next) {
           const currentCount = await tournamentQueries.getEventRegistrationCount(eventId);
           if (currentCount >= event.max_competitors) {
             return res.status(400).json({
-              error: `${event.name} is full (${event.max_competitors}/${event.max_competitors} spots taken).`,
+              error: `${event.name} is full (${currentCount}/${event.max_competitors} spots taken).`,
               code: 'EVENT_FULL',
             });
           }
@@ -1445,11 +1473,95 @@ async function getMyRegistrationQR(req, res, next) {
   }
 }
 
+/**
+ * GET /api/registrations/paginated?tournamentId=&cursor=&limit=&search=&status=
+ *
+ * Cursor-based paginated competitor list. Returns up to `limit` registrations
+ * per call with a `nextCursor` for the next page.
+ *
+ * Same auth rules as getRegistrations: director must own the tournament.
+ */
+async function getPaginatedRegistrations(req, res, next) {
+  try {
+    const { tournamentId, cursor, limit, search, status } = req.query;
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+
+    const userRoles = req.user.roles || [];
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('super_admin');
+    if (!isAdmin) {
+      const tournament = await tournamentQueries.findById(tournamentId);
+      if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+      if (tournament.created_by !== req.user.id) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+    }
+
+    const { rows, nextCursor, pageSize, hasMore } =
+      await registrationQueries.getPaginatedRegistrationsForTournament(tournamentId, {
+        cursor, limit, search, status,
+      });
+
+    // Re-use the same mapping logic as getRegistrations
+    const competitors = rows.map(r => {
+      const notes = typeof r.notes === 'string' ? JSON.parse(r.notes) : (r.notes || {});
+      if (notes.type === 'instructor' || notes.type === 'club') {
+        return {
+          id: r.id, type: notes.type, ...notes,
+          tournamentId: r.tournament_id,
+          paymentStatus: r.payment_status,
+          totalDue: parseFloat(r.total_due) || 0,
+          amountPaid: parseFloat(r.amount_paid) || 0,
+          status: r.status,
+          createdAt: r.created_at,
+        };
+      }
+
+      const firstName  = r.profile_first_name  || notes.firstName  || '';
+      const lastName   = r.profile_last_name   || notes.lastName   || '';
+      const club       = r.profile_club        || notes.club       || '';
+
+      return {
+        id: r.id,
+        type: 'competitor',
+        registrationId: r.id,
+        tournamentId: r.tournament_id,
+        userId: r.user_id,
+        profileId: r.profile_id,
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`.trim(),
+        dateOfBirth: r.profile_dob || notes.dateOfBirth,
+        gender: r.profile_gender || notes.gender,
+        weight: r.profile_weight != null ? r.profile_weight : notes.weight,
+        rank: r.profile_belt || notes.rank,
+        experience: r.profile_experience || notes.experience,
+        club,
+        email: notes.email,
+        phone: notes.phone,
+        guardianEmail: r.profile_guardian_email,
+        events: Array.isArray(r.events) ? r.events : [],
+        paymentStatus: r.payment_status,
+        totalDue: parseFloat(r.total_due) || 0,
+        amountPaid: parseFloat(r.amount_paid) || 0,
+        status: r.status,
+        createdAt: r.created_at,
+      };
+    });
+
+    res.json({ competitors, nextCursor, pageSize, hasMore, total: competitors.length });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   registerCompetitor,
   registerInstructor,
   registerClub,
   getRegistrations,
+  getPaginatedRegistrations,
   activateRegistration,
   checkout,
   confirmPayment,

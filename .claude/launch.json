@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "Tournament Manager",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "runtimeExecutable": "/opt/homebrew/Cellar/node/25.6.1/bin/node",
+      "runtimeArgs": ["--watch", "server/index.js"],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }

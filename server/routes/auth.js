@@ -9,21 +9,28 @@ const router = express.Router();
 
 // ── Rate Limiters ───────────────────────────────────────────────────────────
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
-  message: { error: 'Too many attempts. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// In test/development mode, bypass rate limiting so automated tests can run freely.
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.DISABLE_RATE_LIMIT === 'true';
 
-const strictLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
-  message: { error: 'Too many requests. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const authLimiter = isTestEnv
+  ? (req, res, next) => next()
+  : rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 20,
+      message: { error: 'Too many attempts. Please try again later.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+
+const strictLimiter = isTestEnv
+  ? (req, res, next) => next()
+  : rateLimit({
+      windowMs: 60 * 60 * 1000, // 1 hour
+      max: 5,
+      message: { error: 'Too many requests. Please try again later.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
 
 // ── Validation Rules ────────────────────────────────────────────────────────
 

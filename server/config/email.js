@@ -37,7 +37,7 @@ async function sendVerificationEmail(email, token) {
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:40px 20px;">
         <h2 style="color:#1d1d1f;margin-bottom:16px;">Welcome to Tournament Manager</h2>
         <p style="color:#6e6e73;font-size:15px;line-height:1.6;">Click the button below to verify your email address and activate your account.</p>
-        <a href="${verifyUrl}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#e67e22;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">Verify Email</a>
+        <a href="${verifyUrl}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#cc0000;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">Verify Email</a>
         <p style="color:#999;font-size:13px;">This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
       </div>
     `,
@@ -65,7 +65,7 @@ async function sendPasswordResetEmail(email, token) {
       <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:40px 20px;">
         <h2 style="color:#1d1d1f;margin-bottom:16px;">Password Reset</h2>
         <p style="color:#6e6e73;font-size:15px;line-height:1.6;">Click the button below to reset your password.</p>
-        <a href="${resetUrl}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#e67e22;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">Reset Password</a>
+        <a href="${resetUrl}" style="display:inline-block;margin:24px 0;padding:14px 32px;background:#cc0000;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;">Reset Password</a>
         <p style="color:#999;font-size:13px;">This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
       </div>
     `,
@@ -74,7 +74,7 @@ async function sendPasswordResetEmail(email, token) {
 
 const APP_URL = () => process.env.APP_URL || 'http://localhost:3000';
 const EMAIL_STYLE = 'font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;max-width:520px;margin:0 auto;padding:40px 20px;';
-const CTA_STYLE = 'display:inline-block;margin:24px 0;padding:14px 32px;background:#e67e22;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;';
+const CTA_STYLE = 'display:inline-block;margin:24px 0;padding:14px 32px;background:#cc0000;color:white;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;';
 
 /**
  * Send account setup email to a coach-created user.
@@ -230,7 +230,7 @@ async function sendRegistrationConfirmationEmail(email, tournament, competitors,
   }).join('');
 
   const discountLine = discountAmount > 0
-    ? `<p style="color:#e67e22;font-size:15px;">Discount: -$${discountAmount.toFixed(2)}</p>`
+    ? `<p style="color:#cc0000;font-size:15px;">Discount: -$${discountAmount.toFixed(2)}</p>`
     : '';
 
   const tournamentDate = tournament.date

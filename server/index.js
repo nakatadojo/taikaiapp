@@ -188,7 +188,12 @@ app.get('/public.html', (req, res) => {
 });
 
 // Serve client files (HTML, JS, CSS, images)
-app.use(express.static(CLIENT_DIR));
+// Disable caching in development so JS/CSS changes are picked up immediately
+const staticOpts = process.env.NODE_ENV === 'production'
+  ? {}
+  : { maxAge: 0, etag: false, lastModified: false,
+      setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') };
+app.use(express.static(CLIENT_DIR, staticOpts));
 
 // Route aliases
 app.get('/admin', (req, res) => {

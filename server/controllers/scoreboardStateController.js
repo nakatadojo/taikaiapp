@@ -54,15 +54,30 @@ async function setScoreboardState(req, res, next) {
       return res.status(400).json({ error: 'state object is required' });
     }
 
+    // Reject flat-state updates (state.ring not set) — they would overwrite the
+    // entire scoreboard_state column and wipe every other mat's live data.
+    // All operator paths must supply a ring ID before calling this endpoint.
+    if (state.ring == null) {
+      return res.status(400).json({
+        error: 'state.ring is required. Flat-state writes are rejected to prevent wiping other mats.',
+      });
+    }
+
     if (state.ring != null) {
-      // Per-ring atomic update using jsonb_set — eliminates the read-modify-write
-      // race condition that occurred when multiple rings saved state simultaneously.
-      // jsonb_set(..., create_missing => true) creates nested keys if absent.
+      // Per-ring atomic update using jsonb_set.
+      // PostgreSQL's jsonb_set with a two-level path (e.g. ['_rings','ring1']) only
+      // sets the nested key if the intermediate key '_rings' already exists — it does
+      // NOT recursively create missing intermediate objects.  We therefore ensure
+      // '_rings' exists first via a CASE expression before calling jsonb_set.
       const ringKey = `ring${state.ring}`;
       const result = await pool.query(
         `UPDATE tournaments
          SET scoreboard_state = jsonb_set(
-               COALESCE(scoreboard_state, '{}'::jsonb),
+               CASE
+                 WHEN COALESCE(scoreboard_state, '{}'::jsonb) ? '_rings'
+                 THEN COALESCE(scoreboard_state, '{}'::jsonb)
+                 ELSE COALESCE(scoreboard_state, '{}'::jsonb) || '{"_rings":{}}'::jsonb
+               END,
                ARRAY['_rings', $1::text],
                $2::jsonb,
                true
@@ -79,10 +94,13 @@ async function setScoreboardState(req, res, next) {
       broadcastScoreboardUpdate(tournamentId, state.ring, state);
     } else {
       // Flat / legacy state — store directly (no ring isolation)
-      await pool.query(
-        'UPDATE tournaments SET scoreboard_state = $1, updated_at = NOW() WHERE id = $2',
+      const result = await pool.query(
+        'UPDATE tournaments SET scoreboard_state = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
         [JSON.stringify(state), tournamentId]
       );
+      if (!result.rows[0]) {
+        return res.status(404).json({ error: 'Tournament not found' });
+      }
     }
 
     res.json({ ok: true });

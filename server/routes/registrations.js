@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { optionalAuth } = require('../middleware/auth');
 const registrationController = require('../controllers/registrationController');
 const discountController = require('../controllers/discountController');
+const certificateController = require('../controllers/certificateController');
 
 const router = express.Router();
 
@@ -28,6 +29,9 @@ router.get('/my/:id', requireAuth, registrationController.getMyRegistration);
 // GET /api/registrations/my/:id/qr — Return QR code PNG for competitor check-in
 router.get('/my/:id/qr', requireAuth, registrationController.getMyRegistrationQR);
 
+// GET /api/registrations/my/:registrationId/certificate — Competitor self-service certificate download
+router.get('/my/:registrationId/certificate', requireAuth, certificateController.downloadMyCertificate);
+
 // POST /api/registrations/validate-discount — Validate a discount code
 router.post('/validate-discount',
   requireAuth,
@@ -46,8 +50,12 @@ router.post('/competitor', optionalAuth, registrationController.registerCompetit
 router.post('/instructor', optionalAuth, registrationController.registerInstructor);
 router.post('/club', optionalAuth, registrationController.registerClub);
 
-// Admin sync endpoint
+// Admin sync endpoint (full list — kept for backward compatibility)
 router.get('/', requireAuth, registrationController.getRegistrations);
+
+// Paginated competitor list — for large tournaments (300+ competitors)
+// GET /api/registrations/paginated?tournamentId=&cursor=&limit=100&search=&status=
+router.get('/paginated', requireAuth, registrationController.getPaginatedRegistrations);
 
 // Force-activate a pending registration (guardian/owner override)
 router.put('/:id/activate', requireAuth, registrationController.activateRegistration);
