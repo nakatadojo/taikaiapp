@@ -5,6 +5,7 @@ const pool = require('../db/pool');
 const tournamentQueries = require('../db/queries/tournaments');
 const CertificateQueries = require('../db/queries/certificates');
 const ResultsQueries = require('../db/queries/results');
+const { generateCertificate } = require('../services/certificateService');
 
 // ── Ownership Check ─────────────────────────────────────────────────────────
 
@@ -152,12 +153,11 @@ async function saveConfig(req, res, next) {
  * Hex color string (#RRGGBB) to [r, g, b] array (0-255).
  */
 function hexToRgb(hex) {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
+  const h = (hex || '#000000').replace('#', '').replace(/[^0-9a-fA-F]/g, '0').padEnd(6, '0').slice(0, 6);
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return [isNaN(r) ? 0 : r, isNaN(g) ? 0 : g, isNaN(b) ? 0 : b];
 }
 
 /**
@@ -374,10 +374,157 @@ async function deleteTemplate(req, res, next) {
   }
 }
 
+// ── Individual Certificate — Director ───────────────────────────────────────
+
+/**
+ * GET /api/tournaments/:id/results/:resultId/certificates/:rank
+ *
+ * Director: generate a certificate for any competitor in a result by rank.
+ * rank is 1-based (1 = 1st place, 2 = 2nd place, etc.)
+ */
+async function generateForRank(req, res, next) {
+  try {
+    const { id: tournamentId, resultId, rank } = req.params;
+    const rankNum = parseInt(rank, 10);
+    if (!rankNum || rankNum < 1) {
+      return res.status(400).json({ error: 'rank must be a positive integer' });
+    }
+
+    const tournament = await tournamentQueries.findById(tournamentId);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    // Get the specific result
+    const { rows } = await pool.query(
+      'SELECT * FROM published_results WHERE id = $1 AND tournament_id = $2',
+      [resultId, tournamentId]
+    );
+    const result = rows[0];
+    if (!result) return res.status(404).json({ error: 'Result not found' });
+
+    const resultsData = result.results_data;
+    if (!Array.isArray(resultsData)) {
+      return res.status(400).json({ error: 'Result data is invalid' });
+    }
+
+    const entry = resultsData.find(e => (e.rank || e.place) === rankNum);
+    if (!entry) {
+      return res.status(404).json({ error: `No competitor found at rank ${rankNum}` });
+    }
+
+    const tournamentDate = tournament.date
+      ? new Date(tournament.date).toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric',
+        })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const pdfBuffer = await generateCertificate({
+      competitorName: entry.name || 'Unknown Competitor',
+      rank: rankNum,
+      divisionName: result.division_name || '',
+      eventName: result.event_name || '',
+      tournamentName: tournament.name,
+      tournamentDate,
+    });
+
+    const safeName = (entry.name || 'certificate').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="certificate_${safeName}_${rankNum}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── Individual Certificate — Competitor Self-Service ────────────────────────
+
+/**
+ * GET /api/registrations/my/:registrationId/certificate
+ *
+ * Competitor: download their own certificate.
+ * Only works if results are published.
+ */
+async function downloadMyCertificate(req, res, next) {
+  try {
+    const { registrationId } = req.params;
+
+    // Get the registration, ensuring it belongs to the requesting user
+    const { rows: regRows } = await pool.query(
+      `SELECT r.*, t.name AS tournament_name, t.date AS tournament_date
+       FROM registrations r
+       JOIN tournaments t ON r.tournament_id = t.id
+       WHERE r.id = $1 AND r.user_id = $2`,
+      [registrationId, req.user.id]
+    );
+    const reg = regRows[0];
+    if (!reg) {
+      return res.status(404).json({ error: 'Registration not found or not yours' });
+    }
+
+    const firstName = reg.notes?.firstName || '';
+    const lastName  = reg.notes?.lastName  || '';
+    const fullName  = `${firstName} ${lastName}`.trim();
+
+    // Find published results for this tournament where this competitor's name appears
+    const { rows: results } = await pool.query(
+      `SELECT * FROM published_results
+       WHERE tournament_id = $1 AND status = 'published'`,
+      [reg.tournament_id]
+    );
+
+    // Find the entry
+    let foundEntry = null;
+    let foundResult = null;
+    for (const result of results) {
+      const data = result.results_data;
+      if (!Array.isArray(data)) continue;
+      const entry = data.find(e => {
+        const name = (e.name || '').trim().toLowerCase();
+        return name === fullName.toLowerCase();
+      });
+      if (entry && (entry.rank || entry.place)) {
+        foundEntry = entry;
+        foundResult = result;
+        break;
+      }
+    }
+
+    if (!foundEntry) {
+      return res.status(404).json({
+        error: 'No published placement found for your registration. Results may not be published yet.',
+      });
+    }
+
+    const rank = foundEntry.rank || foundEntry.place;
+    const tournamentDate = reg.tournament_date
+      ? new Date(reg.tournament_date).toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric',
+        })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const pdfBuffer = await generateCertificate({
+      competitorName: fullName || foundEntry.name || 'Competitor',
+      rank,
+      divisionName: foundResult.division_name || '',
+      eventName: foundResult.event_name || '',
+      tournamentName: reg.tournament_name,
+      tournamentDate,
+    });
+
+    const safeName = fullName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'certificate';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="certificate_${safeName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   uploadTemplate,
   getTemplate,
   saveConfig,
   generateBatchPDF,
   deleteTemplate,
+  generateForRank,
+  downloadMyCertificate,
 };

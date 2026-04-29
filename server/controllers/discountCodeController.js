@@ -100,4 +100,4 @@ async function remove(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, validate, create, update, remove };
+module.exports = { validate };
