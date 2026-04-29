@@ -29,6 +29,7 @@ const BELT_ORDER = ['white', 'yellow', 'orange', 'green', 'blue', 'purple', 'bro
 function normalizeRank(r) {
   const s = (r || '').toLowerCase().replace(/ belt$/i, '').trim();
   const colorToKyu = {
+    // English color names
     'white':  '10th kyu',
     'yellow': '9th kyu',
     'orange': '8th kyu',
@@ -37,6 +38,25 @@ function normalizeRank(r) {
     'purple': '5th kyu',
     'brown':  '3rd kyu',
     'black':  '1st dan',
+    // Spanish color names
+    'blanca':   '10th kyu',
+    'amarilla': '9th kyu',
+    'naranja':  '8th kyu',
+    'verde':    '7th kyu',
+    'azul':     '6th kyu',
+    'morada':   '5th kyu',
+    'cafe':     '3rd kyu',
+    'café':     '3rd kyu',
+    'negra':    '1st dan',
+    'negro':    '1st dan',
+    // Strip "cinta" prefix (e.g. "cinta blanca" → "blanca")
+    ...Object.fromEntries(
+      ['blanca','amarilla','naranja','verde','azul','morada','cafe','café','negra'].map(c => [
+        `cinta ${c}`,
+        { blanca:'10th kyu', amarilla:'9th kyu', naranja:'8th kyu', verde:'7th kyu',
+          azul:'6th kyu', morada:'5th kyu', cafe:'3rd kyu', café:'3rd kyu', negra:'1st dan' }[c]
+      ])
+    ),
   };
   return colorToKyu[s] || s;
 }
@@ -69,11 +89,19 @@ function matchCriteria(competitor, criteria) {
 
   for (const range of ranges) {
     switch (criteria.type) {
-      case 'age':
-        if (competitor.age >= range.min && competitor.age <= range.max) {
+      case 'age': {
+        // "Under N" labels (e.g. "Under 13") mean age < N, so the effective
+        // maximum is N-1.  Imported templates (e.g. from Smoothcomp) sometimes
+        // store max = N instead of N-1, causing off-by-one misplacements.
+        const underMatch = /^under\s+(\d+)$/i.exec(range.label || '');
+        const effectiveMax = underMatch
+          ? Math.min(range.max, Number(underMatch[1]) - 1)
+          : range.max;
+        if (competitor.age >= range.min && competitor.age <= effectiveMax) {
           return range.label;
         }
         break;
+      }
 
       case 'gender':
         if ((competitor.gender || '').toLowerCase() === (range.value || '').toLowerCase()) {
