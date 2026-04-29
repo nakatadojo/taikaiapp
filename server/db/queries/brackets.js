@@ -145,21 +145,28 @@ async function remove(tournamentId, bracketId) {
  * Fire-and-forget from the controller — never blocks the response.
  */
 async function logMatchResult({ tournamentId, bracketId, matchId, winnerId, winnerName, loserId, loserName, divisionName, eventId, scoreboardType, method, winNote, scores, matId }) {
-  await pool.query(
-    `INSERT INTO match_results
-       (tournament_id, bracket_id, match_id, winner_id, winner_name, loser_id, loser_name,
-        division_name, event_id, scoreboard_type, method, win_note, scores, mat_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [
-      tournamentId, bracketId, matchId || null,
-      winnerId || null, winnerName || null,
-      loserId || null, loserName || null,
-      divisionName || null, eventId ? String(eventId) : null,
-      scoreboardType || null, method || null, winNote || null,
-      scores ? JSON.stringify(scores) : null,
-      matId ? String(matId) : null,
-    ]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO match_results
+         (tournament_id, bracket_id, match_id, winner_id, winner_name, loser_id, loser_name,
+          division_name, event_id, scoreboard_type, method, win_note, scores, mat_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        tournamentId, bracketId, matchId || null,
+        winnerId || null, winnerName || null,
+        loserId || null, loserName || null,
+        divisionName || null, eventId ? String(eventId) : null,
+        scoreboardType || null, method || null, winNote || null,
+        scores ? JSON.stringify(scores) : null,
+        matId ? String(matId) : null,
+      ]
+    );
+  } catch (err) {
+    console.error('[match_results] INSERT failed — audit record lost:', err.message, {
+      tournamentId, bracketId, matchId,
+    });
+    throw err; // re-throw so the controller .catch() is still notified
+  }
 }
 
 module.exports = {

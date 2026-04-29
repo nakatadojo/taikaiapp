@@ -192,27 +192,84 @@
         }
 
         // ── WebSocket connection (cross-device updates) ─────────────────────
+        let _matLastRingSeq = 0;
+        let _matServerOffset = 0; // ms: serverTime - Date.now(), synced on every subscribe:ack
+
+        function _showOfflineBanner() {
+            let el = document.getElementById('_mat-offline-banner');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = '_mat-offline-banner';
+                el.style.cssText = [
+                    'position:fixed', 'top:0', 'left:0', 'right:0',
+                    'background:#d97706', 'color:#fff',
+                    'text-align:center', 'padding:8px',
+                    'font-size:clamp(12px,2vw,18px)', 'font-weight:700',
+                    'z-index:9999', 'letter-spacing:0.05em',
+                ].join(';');
+                el.textContent = 'DISCONNECTED — scores may be delayed';
+                document.body.appendChild(el);
+            }
+            el.style.display = 'block';
+        }
+
+        function _hideOfflineBanner() {
+            const el = document.getElementById('_mat-offline-banner');
+            if (el) el.style.display = 'none';
+        }
+
         (function initWS() {
             if (typeof io === 'undefined') return;
-            const socket = io({ transports: ['websocket', 'polling'] });
+            const socket = io({
+                transports: ['websocket', 'polling'],
+                reconnectionDelay: 500,
+                reconnectionDelayMax: 5000,
+                randomizationFactor: 0.5,
+            });
 
             socket.on('connect', () => {
                 console.log('[mat-display] WebSocket connected');
+                _hideOfflineBanner();
                 if (_tournamentId) {
-                    socket.emit('subscribe:ring', { tournamentId: _tournamentId, ring: matId });
+                    socket.emit('subscribe:ring', {
+                        tournamentId: _tournamentId,
+                        ring: matId,
+                        lastSeq: _matLastRingSeq,
+                    });
                 }
                 // Fetch fresh state in case we missed updates while disconnected
                 loadInitialStateFromServer();
             });
 
-            socket.on('scoreboard:updated', ({ ring, state }) => {
+            // Sync server clock offset on subscribe ack
+            socket.on('subscribe:ack', ({ seq, serverTime }) => {
+                if (typeof serverTime === 'number') {
+                    _matServerOffset = serverTime - Date.now();
+                }
+                if (typeof seq === 'number') _matLastRingSeq = seq;
+            });
+
+            // Also sync on the server:time event sent on every new connection
+            socket.on('server:time', ({ serverTime }) => {
+                if (typeof serverTime === 'number') {
+                    _matServerOffset = serverTime - Date.now();
+                }
+            });
+
+            socket.on('scoreboard:updated', ({ ring, state, seq }) => {
                 if (parseInt(ring) !== matId) return;
+                if (typeof seq === 'number') _matLastRingSeq = seq;
                 _cache['scoreboard-state'] = JSON.stringify(state);
                 updateDisplay();
             });
 
             socket.on('disconnect', () => {
                 console.warn('[mat-display] WebSocket disconnected');
+                _showOfflineBanner();
+            });
+
+            socket.on('connect_error', () => {
+                _showOfflineBanner();
             });
         })();
 
@@ -331,9 +388,43 @@
                 bluePhoto.classList.add('hidden');
             }
 
-            const minutes = Math.floor((matData.timeRemaining || 120) / 60);
-            const seconds = (matData.timeRemaining || 120) % 60;
+            // Use server-anchored matchStartedAt for live countdown if timer is running.
+            // Falls back to the timeRemaining snapshot from the last state push.
+            let displaySeconds;
+            const state = JSON.parse(_cache['scoreboard-state'] || '{}');
+            if (state.matchStartedAt && state.timerRunning) {
+                const serverNow   = Date.now() + _matServerOffset;
+                const elapsed     = Math.floor((serverNow - new Date(state.matchStartedAt).getTime()) / 1000);
+                const duration    = state.matchDuration || 120;
+                displaySeconds    = Math.max(0, duration - elapsed);
+            } else {
+                displaySeconds = matData.timeRemaining != null ? matData.timeRemaining : 120;
+            }
+            const minutes = Math.floor(displaySeconds / 60);
+            const seconds = displaySeconds % 60;
             document.getElementById('tv-timer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            // Refresh timer display every second while running (server-clock driven)
+            if (state.timerRunning && !window._matTimerInterval) {
+                window._matTimerInterval = setInterval(() => {
+                    const s2 = JSON.parse(_cache['scoreboard-state'] || '{}');
+                    if (!s2.timerRunning || !s2.matchStartedAt) {
+                        clearInterval(window._matTimerInterval);
+                        window._matTimerInterval = null;
+                        return;
+                    }
+                    const sNow    = Date.now() + _matServerOffset;
+                    const elapsed2 = Math.floor((sNow - new Date(s2.matchStartedAt).getTime()) / 1000);
+                    const rem      = Math.max(0, (s2.matchDuration || 120) - elapsed2);
+                    const m2 = Math.floor(rem / 60);
+                    const s  = rem % 60;
+                    const el = document.getElementById('tv-timer');
+                    if (el) el.textContent = `${m2}:${s.toString().padStart(2, '0')}`;
+                }, 1000);
+            } else if (!state.timerRunning && window._matTimerInterval) {
+                clearInterval(window._matTimerInterval);
+                window._matTimerInterval = null;
+            }
 
             const winnerOverlay = document.getElementById('winner-overlay');
             if (matData.winner) {

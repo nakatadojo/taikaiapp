@@ -12,8 +12,15 @@ router.get('/:id/scoreboard-state',
 
 router.put('/:id/scoreboard-state',
   requireAuth,
-  requireTournamentPermission('operate_scoreboard'),
+  requireTournamentPermission('operate_scoreboard', { ring: req => req.body?.state?.ring }),
   scoreboardStateController.setScoreboardState
+);
+
+// Scoreboard audit log — append one action event
+router.post('/:id/scoreboard-actions',
+  requireAuth,
+  requireTournamentPermission('operate_scoreboard'),
+  scoreboardStateController.appendScoreboardAction
 );
 
 // Staging display settings — GET is public (TV/staging displays are unauthenticated)

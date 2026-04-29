@@ -1367,21 +1367,45 @@ let _socket = null;
 // after a reconnect.
 let _currentBracketId = null;
 
+// Server clock offset: window._serverClockOffset = serverTime - Date.now()
+// Used to anchor timers to server time rather than client clock.
+window._serverClockOffset = 0;
+
+// Last seen sequence number per room, for split-brain detection on reconnect.
+let _lastBracketSeq = 0;
+let _lastRingSeq    = 0;
+let _currentOperatorRing = null; // ring we've subscribed to for scoreboard updates
+
 function _initWebSocket() {
     if (_socket) return; // Already connected
     if (typeof io === 'undefined') return; // socket.io not loaded
 
-    _socket = io({ transports: ['websocket', 'polling'] });
+    _socket = io({
+        transports: ['websocket', 'polling'],
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 5000,
+        randomizationFactor: 0.5,
+    });
 
     _socket.on('connect', () => {
         _hideWsIndicator();
         // Flush any data that was queued while disconnected
         if (_pendingSyncKeys.size > 0) _flushPendingSyncs();
         // Re-subscribe to the bracket the operator has open (if any)
+        // Pass lastSeq so the server can replay any messages we missed
         if (currentTournamentId && _currentBracketId) {
             _socket.emit('subscribe:bracket', {
                 tournamentId: currentTournamentId,
                 bracketId: _currentBracketId,
+                lastSeq: _lastBracketSeq,
+            });
+        }
+        // Re-subscribe to scoreboard ring channel if operator has one active
+        if (currentTournamentId && _currentOperatorRing != null) {
+            _socket.emit('subscribe:ring', {
+                tournamentId: currentTournamentId,
+                ring: _currentOperatorRing,
+                lastSeq: _lastRingSeq,
             });
         }
         // Re-subscribe to competitors and divisions channels on reconnect
@@ -1389,6 +1413,39 @@ function _initWebSocket() {
             _socket.emit('subscribe:competitors', { tournamentId: currentTournamentId });
             _socket.emit('subscribe:divisions', { tournamentId: currentTournamentId });
         }
+        // Replay any unacked score actions queued during the disconnect
+        _replayUnackedScoreActions();
+    });
+
+    // Server time sync — compute clock offset on every connect
+    _socket.on('server:time', ({ serverTime }) => {
+        window._serverClockOffset = serverTime - Date.now();
+    });
+
+    // Subscribe acknowledgement — update seq + detect split-brain
+    _socket.on('subscribe:ack', ({ room, seq, serverTime }) => {
+        if (typeof serverTime === 'number') {
+            window._serverClockOffset = serverTime - Date.now();
+        }
+        if (room === 'bracket' && typeof seq === 'number') {
+            if (seq > _lastBracketSeq + 1 && _lastBracketSeq > 0) {
+                // Gap detected — server advanced while we were offline
+                _fetchFreshScoreboardState();
+            }
+            _lastBracketSeq = seq;
+        }
+        if (room === 'ring' && typeof seq === 'number') {
+            if (seq > _lastRingSeq + 1 && _lastRingSeq > 0) {
+                _fetchFreshScoreboardState();
+            }
+            _lastRingSeq = seq;
+        }
+    });
+
+    // Advisory lock warning — another operator already has this bracket open
+    _socket.on('operator:lock-warning', ({ bracketId, count, message }) => {
+        if (bracketId !== _currentBracketId) return;
+        _updatePresenceBanner(bracketId, count + 1, message);
     });
 
     _socket.on('disconnect', () => {
@@ -1402,8 +1459,9 @@ function _initWebSocket() {
 
     // When another device updates the bracket the operator is currently viewing,
     // update the local copy and re-render without requiring a manual refresh.
-    _socket.on('bracket:updated', ({ bracketId, bracket }) => {
+    _socket.on('bracket:updated', ({ bracketId, bracket, seq }) => {
         if (!bracket || bracketId !== _currentBracketId) return;
+        if (typeof seq === 'number') _lastBracketSeq = seq;
         // Cache the server version
         if (typeof bracket.__v === 'number') _setBracketVersion(bracketId, bracket.__v);
         const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
@@ -1491,6 +1549,103 @@ function _hideWsIndicator() {
     if (el) el.style.display = 'none';
 }
 
+// ── Sync confirmation toast ───────────────────────────────────────────────────
+
+function _showSyncConfirmation() {
+    let el = document.getElementById('_sync-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_sync-toast';
+        el.style.cssText = [
+            'position:fixed', 'bottom:44px', 'right:12px',
+            'padding:4px 10px', 'border-radius:6px',
+            'font-size:12px', 'font-weight:600', 'z-index:9999',
+            'pointer-events:none', 'transition:opacity 0.3s',
+        ].join(';');
+        document.body.appendChild(el);
+    }
+    el.style.background = '#22c55e';
+    el.style.color = '#fff';
+    el.textContent = '✓ Synced';
+    el.style.opacity = '1';
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = '0'; }, 1200);
+}
+
+function _showSyncError(msg) {
+    let el = document.getElementById('_sync-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_sync-toast';
+        el.style.cssText = [
+            'position:fixed', 'bottom:44px', 'right:12px',
+            'padding:4px 10px', 'border-radius:6px',
+            'font-size:12px', 'font-weight:600', 'z-index:9999',
+            'pointer-events:none',
+        ].join(';');
+        document.body.appendChild(el);
+    }
+    el.style.background = '#ef4444';
+    el.style.color = '#fff';
+    el.style.opacity = '1';
+    el.textContent = msg || '⚠ Sync failed — will retry';
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+// ── Split-brain: fetch fresh scoreboard state when seq gap detected ───────────
+
+async function _fetchFreshScoreboardState() {
+    if (!currentTournamentId || (typeof currentOperatorMat === 'undefined' || currentOperatorMat == null)) return;
+    try {
+        const resp = await fetch(
+            `/api/tournaments/${currentTournamentId}/scoreboard-state?ring=${currentOperatorMat}`,
+            { credentials: 'include' }
+        );
+        if (!resp.ok) return;
+        const { state } = await resp.json();
+        if (!state || !Object.keys(state).length) return;
+        const localRaw   = _msGet(_scopedKey('scoreboard-state')) || '{}';
+        if (JSON.stringify(state) !== localRaw) {
+            _showSyncError('⚠ Scores updated on another device — display refreshed');
+            _msSet(_scopedKey('scoreboard-state'), JSON.stringify(state));
+        }
+    } catch (err) {
+        console.warn('[split-brain] fetch failed:', err.message);
+    }
+}
+
+// ── Score action queue (sessionStorage) ──────────────────────────────────────
+// Backs undo and ensures unacked events are replayed on reconnect.
+
+function _scoreQueueKey() {
+    return `scoreQueue_${currentTournamentId || 'unknown'}_${currentOperatorMat ?? 'x'}`;
+}
+
+function _getScoreQueue() {
+    try { return JSON.parse(sessionStorage.getItem(_scoreQueueKey()) || '[]'); } catch { return []; }
+}
+
+function _setScoreQueue(q) {
+    try { sessionStorage.setItem(_scoreQueueKey(), JSON.stringify(q)); } catch {}
+}
+
+function _getDeviceId() {
+    let id = localStorage.getItem('_deviceId');
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem('_deviceId', id); }
+    return id;
+}
+
+function _replayUnackedScoreActions() {
+    const unacked = _getScoreQueue().filter(e => !e.acked);
+    if (unacked.length > 0) {
+        console.warn(`[queue] ${unacked.length} unacked score actions — re-syncing scoreboard state`);
+        _debouncedSync('scoreboard-state', _syncScoreboardStateToServer, 200);
+    }
+}
+
 /**
  * Called when the operator opens a bracket for scoring.
  * Subscribes the socket to that bracket's update channel.
@@ -1511,7 +1666,7 @@ function _wsSubscribeToBracket(bracketId) {
  * Show or hide the "another operator is on this bracket" presence warning.
  * count includes this operator, so count > 1 means someone else is also here.
  */
-function _updatePresenceBanner(bracketId, count) {
+function _updatePresenceBanner(bracketId, count, overrideMsg) {
     const bannerId = '_presence-banner';
     let el = document.getElementById(bannerId);
     if (count <= 1) {
@@ -1529,7 +1684,7 @@ function _updatePresenceBanner(bracketId, count) {
         ].join(';');
         document.body.appendChild(el);
     }
-    el.textContent = `⚠ ${count} operators on this bracket — coordinate before scoring`;
+    el.textContent = overrideMsg || `⚠ ${count} operators on this bracket — coordinate before scoring`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1553,14 +1708,26 @@ async function _syncScoreboardStateToServer() {
         if (matId != null) state.ring = matId;
     }
     try {
-        await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-state`, {
+        const resp = await fetch(`/api/tournaments/${currentTournamentId}/scoreboard-state`, {
             method: 'PUT', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ state }),
         });
+        if (resp.ok) {
+            // Mark all currently-queued actions as acked
+            const q = _getScoreQueue();
+            if (q.some(e => !e.acked)) {
+                _setScoreQueue(q.map(e => ({ ...e, acked: true })));
+            }
+            _showSyncConfirmation();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            _showSyncError(`⚠ Sync failed (${resp.status}${data.error ? ': ' + data.error : ''})`);
+        }
     } catch (err) {
         // Non-fatal — localStorage write already succeeded for same-device display
         console.warn('[sync] scoreboard-state server sync failed:', err.message);
+        _showSyncError('⚠ Sync failed — will retry when reconnected');
     }
 }
 
@@ -19061,8 +19228,21 @@ function generatePenaltyButtons(corner, org, rules, cornerTextColor) {
 function openOperatorScoreboard(matId, divisionName, eventId) {
 
     currentOperatorMat = matId;
+    _currentOperatorRing = matId; // track for WS ring subscription
     currentOperatorDivision = divisionName;
     currentOperatorEventId = eventId;
+
+    // Subscribe to this ring's scoreboard channel for split-brain detection
+    if (_socket && currentTournamentId) {
+        _socket.emit('subscribe:ring', {
+            tournamentId: currentTournamentId,
+            ring: matId,
+            lastSeq: _lastRingSeq,
+        });
+    }
+
+    // Clear matchStartedAt so it doesn't bleed from a previous match
+    window._matchStartedAt = null;
 
     // Get event type to determine scoreboard type
     const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
@@ -19508,6 +19688,7 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
                             <button class="btn btn-primary" onclick="operatorStartTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">▶ Start</button>
                             <button class="btn btn-secondary" onclick="operatorPauseTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">⏸ Pause</button>
                             <button class="btn btn-secondary" onclick="operatorResetTimer()" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px);">↺ Reset</button>
+                            <button class="btn btn-secondary" onclick="operatorUndoLastScore()" id="operator-undo-btn" title="Undo last score" style="font-size: clamp(11px, 1.2vw, 13px); padding: clamp(6px, 0.8vh, 10px); border-color: #f59e0b; color: #f59e0b;">↩ Undo</button>
                             <div style="display: flex; gap: 4px; margin-top: 2px;">
                                 <input id="operator-set-time-input" type="text" placeholder="M:SS"
                                        style="background: var(--bg-secondary); border: 1px solid var(--glass-border);
@@ -21377,14 +21558,43 @@ function selectOperatorCompetitor(corner) {
 function operatorAddScore(corner, points, techniqueType = 'generic') {
     const { org, rules } = getActiveRuleset();
 
-    // Add to score history
+    // Assign a stable ID so undo can remove the exact entry
+    const actionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random());
+
+    // Add to score history (in-memory display)
     operatorScoreHistory.push({
+        actionId,
         corner,
         points,
         techniqueType,
         timestamp: Date.now(),
-        time: operatorTimeRemaining
+        time: operatorTimeRemaining,
     });
+
+    // Persist to sessionStorage queue so undo and reconnect replay work
+    const qEntry = { actionId, corner, points, techniqueType, timestamp: Date.now(), time: operatorTimeRemaining, acked: false };
+    const q = _getScoreQueue();
+    q.push(qEntry);
+    _setScoreQueue(q);
+
+    // Non-blocking audit trail write to server
+    if (currentTournamentId) {
+        fetch(`/api/tournaments/${currentTournamentId}/scoreboard-actions`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bracketId:  window.currentBracketId  || null,
+                ring:       currentOperatorMat != null ? String(currentOperatorMat) : null,
+                actionType: 'score',
+                corner,
+                value:      points,
+                technique:  techniqueType,
+                deviceId:   _getDeviceId(),
+            }),
+        }).catch(err => console.warn('[audit] scoreboard-action POST failed:', err.message));
+    }
 
     // Update score with float-safe arithmetic
     if (corner === 'red') {
@@ -21587,6 +21797,70 @@ function updateScoreHistoryDisplay() {
     }).join('');
 }
 
+// ── Undo last score action ────────────────────────────────────────────────────
+
+function operatorUndoLastScore() {
+    if (operatorScoreHistory.length === 0) {
+        showMessage('Nothing to undo.', 'error');
+        return;
+    }
+    const last = operatorScoreHistory.pop();
+
+    // Reverse the score delta
+    if (last.corner === 'red') {
+        operatorRedScore = Math.max(0, parseFloat((operatorRedScore - last.points).toFixed(1)));
+        // Reverse technique counters
+        if (last.techniqueType === 'ippon'    && operatorIpponCountRed    > 0) operatorIpponCountRed--;
+        else if (last.techniqueType === 'waza-ari' && operatorWazaariCountRed > 0) operatorWazaariCountRed--;
+        else if (last.techniqueType === 'yuko'     && operatorYukoCountRed    > 0) operatorYukoCountRed--;
+        const el = document.getElementById('operator-red-score');
+        if (el) {
+            const { rules } = getActiveRuleset();
+            el.textContent = rules.scoring.isDecimal ? operatorRedScore.toFixed(1) : operatorRedScore;
+        }
+    } else {
+        operatorBlueScore = Math.max(0, parseFloat((operatorBlueScore - last.points).toFixed(1)));
+        if (last.techniqueType === 'ippon'    && operatorIpponCountBlue    > 0) operatorIpponCountBlue--;
+        else if (last.techniqueType === 'waza-ari' && operatorWazaariCountBlue > 0) operatorWazaariCountBlue--;
+        else if (last.techniqueType === 'yuko'     && operatorYukoCountBlue    > 0) operatorYukoCountBlue--;
+        const el = document.getElementById('operator-blue-score');
+        if (el) {
+            const { rules } = getActiveRuleset();
+            el.textContent = rules.scoring.isDecimal ? operatorBlueScore.toFixed(1) : operatorBlueScore;
+        }
+    }
+
+    // Remove from sessionStorage queue
+    const q = _getScoreQueue();
+    const idx = q.findLastIndex ? q.findLastIndex(e => e.actionId === last.actionId)
+                                : [...q].reverse().findIndex(e => e.actionId === last.actionId);
+    const realIdx = (idx !== -1 && !q.findLastIndex) ? q.length - 1 - idx : idx;
+    if (realIdx !== -1) q.splice(realIdx, 1);
+    _setScoreQueue(q);
+
+    // Audit log
+    if (currentTournamentId) {
+        fetch(`/api/tournaments/${currentTournamentId}/scoreboard-actions`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bracketId:  window.currentBracketId || null,
+                ring:       currentOperatorMat != null ? String(currentOperatorMat) : null,
+                actionType: 'undo',
+                corner:     last.corner,
+                value:      last.points,
+                technique:  last.techniqueType,
+                deviceId:   _getDeviceId(),
+            }),
+        }).catch(() => {});
+    }
+
+    updateScoreBreakdownDisplay();
+    updateScoreHistoryDisplay();
+    updateOperatorTVDisplay();
+    showMessage(`Undid: ${last.corner.toUpperCase()} ${last.techniqueType} (${last.points > 0 ? '+' : ''}${last.points})`);
+}
+
 // Format time helper
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -21720,6 +21994,10 @@ function updatePenaltyDisplay(corner) {
 
 function operatorStartTimer() {
     if (operatorTimerInterval) return; // Already running
+
+    // Anchor start time to server clock so display pages can compute timer independently
+    const serverNow = Date.now() + (window._serverClockOffset || 0);
+    window._matchStartedAt = new Date(serverNow).toISOString();
 
     const { org, rules } = getActiveRuleset();
     const atoshiBarakuTime = rules.timer.atoshiBaraku || 15;
@@ -24932,6 +25210,10 @@ function updateOperatorTVDisplay(winner = null) {
         // Timer state
         atoshiBaraku: operatorAtoshiBaraku,
         isOvertime: operatorIsOvertime,
+        timerRunning: !!operatorTimerInterval,
+        matchDuration: operatorMatchDuration,
+        matchStartedAt: window._matchStartedAt || null,
+        serverTimeOffset: window._serverClockOffset || 0,
 
         // Score breakdown
         redIpponCount: operatorIpponCountRed,
