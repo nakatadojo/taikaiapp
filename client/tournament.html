@@ -1759,6 +1759,7 @@
         if (currentUser) {
             nav.innerHTML = `
                 <a href="/" class="navbar-link">Directory</a>
+                <a href="/account.html" class="nav-auth-btn nav-auth-ghost" style="text-decoration:none;">My Account</a>
                 <span class="nav-user-name">${esc(currentUser.first_name || currentUser.email)}</span>
                 <button class="nav-auth-btn nav-auth-ghost" onclick="handleLogout()">Log Out</button>
             `;
