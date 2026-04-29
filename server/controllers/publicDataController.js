@@ -23,8 +23,9 @@ async function getPublicCompetitors(req, res, next) {
     }
 
     const { rows } = await pool.query(
-      `SELECT first_name, last_name, academy_name, events FROM (
+      `SELECT comp_id, first_name, last_name, academy_name, events FROM (
          SELECT
+           cp.id::text               AS comp_id,
            cp.first_name, cp.last_name, cp.academy_name,
            array_agg(DISTINCT te.name) FILTER (WHERE te.name IS NOT NULL) AS events
          FROM registrations r
@@ -37,18 +38,46 @@ async function getPublicCompetitors(req, res, next) {
          UNION ALL
 
          SELECT
-           (data->>'firstName') AS first_name,
-           (data->>'lastName')  AS last_name,
-           (data->>'club')      AS academy_name,
-           ARRAY[]::text[]      AS events
-         FROM tournament_director_competitors
+           tdc.id::text             AS comp_id,
+           (data->>'firstName')     AS first_name,
+           (data->>'lastName')      AS last_name,
+           (data->>'club')          AS academy_name,
+           ARRAY[]::text[]          AS events
+         FROM tournament_director_competitors tdc
          WHERE tournament_id = $1
        ) combined
        ORDER BY last_name, first_name`,
       [tournamentId]
     );
 
-    res.json({ competitors: rows });
+    // Build division lookup from generated_divisions JSONB
+    const tRow = await pool.query('SELECT generated_divisions FROM tournaments WHERE id = $1', [tournamentId]);
+    const genDivisions = tRow.rows[0]?.generated_divisions || {};
+    const divisionMap = {}; // competitorId → division name
+    for (const eventData of Object.values(genDivisions)) {
+      const generated = eventData?.generated || eventData || {};
+      for (const [divName, divComps] of Object.entries(generated)) {
+        const list = Array.isArray(divComps) ? divComps : (divComps?.competitors || []);
+        for (const comp of list) {
+          if (comp?.id) {
+            if (!divisionMap[String(comp.id)]) divisionMap[String(comp.id)] = [];
+            if (!divisionMap[String(comp.id)].includes(divName)) {
+              divisionMap[String(comp.id)].push(divName);
+            }
+          }
+        }
+      }
+    }
+
+    const competitors = rows.map(r => ({
+      first_name: r.first_name,
+      last_name:  r.last_name,
+      academy_name: r.academy_name,
+      events:     r.events,
+      divisions:  divisionMap[r.comp_id] || [],
+    }));
+
+    res.json({ competitors });
   } catch (err) {
     next(err);
   }

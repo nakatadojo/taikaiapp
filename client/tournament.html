@@ -818,6 +818,7 @@
     .competitor-row:last-child { border-bottom: none; }
     .competitor-name { font-weight: 500; }
     .competitor-academy { font-size: 13px; color: var(--text-dim); }
+    .competitor-divisions { font-size: 11px; color: var(--accent, #e74c3c); margin-top: 2px; font-weight: 500; }
     .competitor-events-list { font-size: 12px; color: var(--text-dim); margin-left: auto; }
 
     /* ── Sponsor Cards ─────────────────────────────────────────────── */
@@ -3143,6 +3144,7 @@ function renderCompetitors(list) {
             <div>
                 <div class="competitor-name">${esc(c.first_name)} ${esc(c.last_name)}</div>
                 ${c.academy_name ? `<div class="competitor-academy">${esc(c.academy_name)}</div>` : ''}
+                ${c.divisions && c.divisions.length > 0 ? `<div class="competitor-divisions">${c.divisions.map(d => esc(d)).join(' &middot; ')}</div>` : ''}
             </div>
             ${c.events ? `<div class="competitor-events-list">${c.events.map(e => esc(e)).join(', ')}</div>` : ''}
         </div>
