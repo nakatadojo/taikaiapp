@@ -5545,12 +5545,19 @@ function loadCompetitors(skipSync = false) {
             if (eventNames.length > 0) eventsHtml = eventNames.join('<br>');
         }
 
-        // Compute pricing on the fly if not stored (e.g. pay-later public registrations)
-        let pricingTotal = comp.pricing?.total;
+        // Compute pricing on the fly if not stored (e.g. pay-later registrations or director-added)
+        let pricingTotal = comp.pricing?.total ?? null;
         if (pricingTotal == null && comp.events?.length > 0) {
             const _et = db.load('eventTypes');
             const _t  = getCurrentTournament();
             pricingTotal = calculatePricingBreakdown(comp.events, _et, _t)?.total ?? null;
+        }
+        // Last-resort fallback for pay-later competitors added without event data:
+        // show the tournament base price so the director knows how much to collect.
+        if (pricingTotal == null && (comp.paymentStatus === 'pay_later' || comp.payment_status === 'pay_later')) {
+            const _t = getCurrentTournament();
+            const base = _t?.pricing?.basePrice ?? _t?.base_event_price;
+            if (base != null) pricingTotal = parseFloat(base) || 0;
         }
         const totalDue = pricingTotal != null ? formatPrice(pricingTotal, getTournamentCurrency()) : '-';
         const paymentBadge = getPaymentStatusBadge(comp.paymentStatus || 'unpaid');
@@ -9269,6 +9276,21 @@ function closeDivisionTreeModal() {
             if (!allDiv[eventId]) allDiv[eventId] = { generated: {} };
             allDiv[eventId].templates = templates;
             _msSet(_scopedKey('divisions'), JSON.stringify(allDiv));
+        }
+
+        // Flush any pending debounced tree save immediately so the tree persists
+        // even if the user closes the modal within the 1.5s debounce window.
+        if (_saveTreeToServer._t) {
+            clearTimeout(_saveTreeToServer._t);
+            _saveTreeToServer._t = null;
+        }
+        const tree = builder.getTree();
+        if (tree && currentTournamentId) {
+            fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}/tree`, {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tree }),
+            }).catch(e => console.warn('[dtb] flush-on-close save failed:', e.message));
         }
     }
 

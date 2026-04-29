@@ -544,6 +544,7 @@
         </div>
       `;
       document.body.appendChild(overlay);
+      overlay.dataset.open = 'true';
       this._currentSplitType = 'gender';
       this._renderSplitBody('gender');
     }
@@ -901,6 +902,7 @@
           </div>
         </div>`;
       document.body.appendChild(overlay);
+      overlay.dataset.open = 'true';
       // Focus the label field immediately
       setTimeout(() => document.getElementById('dtb-edit-label')?.focus(), 50);
     }
@@ -1015,6 +1017,7 @@
           </div>
         </div>`;
       document.body.appendChild(overlay);
+      overlay.dataset.open = 'true';
     }
 
     // -- Generate Divisions ----------------------------------------
@@ -1048,6 +1051,7 @@
           </div>
         </div>`;
       document.body.appendChild(overlay);
+      overlay.dataset.open = 'true';
     }
 
     async _doGenerate() {
@@ -1062,6 +1066,15 @@
           body: JSON.stringify({ criteriaTemplates: templates }),
         });
       } catch (e) { console.warn('[dtb] template sync failed:', e); }
+
+      // 1b. Also save the tree structure so it persists for future sessions.
+      try {
+        await fetch(`/api/tournaments/${currentTournamentId}/events/${this.eventId}/tree`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tree: this.tree }),
+        });
+      } catch (e) { console.warn('[dtb] tree save failed:', e); }
 
       // 2. Update local divisions storage so generateDivisions() can find templates
       if (typeof _msGet === 'function' && typeof _msSet === 'function' && typeof _scopedKey === 'function') {
