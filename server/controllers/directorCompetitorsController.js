@@ -74,8 +74,22 @@ async function deleteCompetitor(req, res, next) {
     const owned = await tournamentQueries.isOwnedBy(tournamentId, req.user.id);
     if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 
-    const deleted = await DirectorCompetitorQueries.remove(competitorId, tournamentId);
-    if (!deleted) return res.status(404).json({ error: 'Competitor not found' });
+    let deleted = await DirectorCompetitorQueries.remove(competitorId, tournamentId);
+
+    // If not found in director table, try cancelling the registration row
+    // (registration-source competitors have profile_id or id = competitorId)
+    if (!deleted) {
+      const { rows } = await pool.query(
+        `UPDATE registrations SET status = 'cancelled'
+         WHERE tournament_id = $1
+           AND (profile_id = $2 OR id = $2)
+           AND status != 'cancelled'
+         RETURNING id, payment_status`,
+        [tournamentId, competitorId]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Competitor not found' });
+      deleted = { id: rows[0].id, approved: false, is_test: false, source: 'registration' };
+    }
 
     // Refund credit if this was an approved real competitor.
     // Pass null for registrationId — director competitors have no row in the
