@@ -6,8 +6,8 @@
  *    which ring numbers a staff member can operate
  */
 
-exports.up = async (pool) => {
-  await pool.query(`
+exports.up = (pgm) => {
+  pgm.sql(`
     CREATE TABLE IF NOT EXISTS scoreboard_actions (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -20,24 +20,26 @@ exports.up = async (pool) => {
       technique     TEXT,
       timestamp     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       device_id     TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_scoreboard_actions_tournament
-      ON scoreboard_actions (tournament_id);
-
-    CREATE INDEX IF NOT EXISTS idx_scoreboard_actions_tournament_ring
-      ON scoreboard_actions (tournament_id, ring);
+    )
   `);
 
-  await pool.query(`
+  pgm.sql(`
+    CREATE INDEX IF NOT EXISTS idx_scoreboard_actions_tournament
+      ON scoreboard_actions (tournament_id)
+  `);
+
+  pgm.sql(`
+    CREATE INDEX IF NOT EXISTS idx_scoreboard_actions_tournament_ring
+      ON scoreboard_actions (tournament_id, ring)
+  `);
+
+  pgm.sql(`
     ALTER TABLE tournament_members
-      ADD COLUMN IF NOT EXISTS assigned_rings JSONB DEFAULT NULL;
+      ADD COLUMN IF NOT EXISTS assigned_rings JSONB DEFAULT NULL
   `);
 };
 
-exports.down = async (pool) => {
-  await pool.query(`DROP TABLE IF EXISTS scoreboard_actions;`);
-  await pool.query(`
-    ALTER TABLE tournament_members DROP COLUMN IF EXISTS assigned_rings;
-  `);
+exports.down = (pgm) => {
+  pgm.sql(`DROP TABLE IF EXISTS scoreboard_actions`);
+  pgm.sql(`ALTER TABLE tournament_members DROP COLUMN IF EXISTS assigned_rings`);
 };

@@ -1,12 +1,12 @@
-exports.up = async (pool) => {
-  await pool.query(`
+exports.up = (pgm) => {
+  pgm.sql(`
     ALTER TABLE tournaments
       RENAME COLUMN director_instructors TO director_coaches;
   `);
 };
 
-exports.down = async (pool) => {
-  await pool.query(`
+exports.down = (pgm) => {
+  pgm.sql(`
     ALTER TABLE tournaments
       RENAME COLUMN director_coaches TO director_instructors;
   `);
