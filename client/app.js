@@ -987,8 +987,34 @@ async function _hydrateEventTypesFromServer() {
         const res = await fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' });
         if (!res.ok) return;
         const data = await res.json();
-        const serverEvents = data.tournament?.events || data.events || [];
+        const serverT = data.tournament || data;
+        const serverEvents = serverT?.events || [];
         if (!serverEvents.length) return;
+
+        // Keep currency and pricing in the tournaments cache so getTournamentCurrency()
+        // always reflects the server value without requiring a visit to the info tab.
+        if (serverT?.id) {
+            const ts = db.load('tournaments');
+            const idx = ts.findIndex(t => String(t.id) === String(serverT.id));
+            const patch = {
+                currency:   serverT.currency   || null,
+                weightUnit: serverT.weight_unit || null,
+                weight_unit: serverT.weight_unit || null,
+                pricing: {
+                    basePrice:  serverT.base_event_price  != null ? parseFloat(serverT.base_event_price)  : null,
+                    addOnPrice: serverT.addon_event_price != null ? parseFloat(serverT.addon_event_price) : null,
+                },
+                base_event_price:  serverT.base_event_price,
+                addon_event_price: serverT.addon_event_price,
+            };
+            if (idx >= 0) {
+                ts[idx] = { ...ts[idx], ...patch };
+            } else {
+                ts.push({ id: serverT.id, name: serverT.name, ...patch });
+            }
+            db.save('tournaments', ts);
+        }
+
         const mapped = serverEvents.map(e => ({
             id: e.id,
             name: e.name,
