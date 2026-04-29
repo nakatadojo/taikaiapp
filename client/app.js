@@ -6183,18 +6183,9 @@ async function approveCompetitor(id) {
     if (res.status === 400) {
         const data = await res.json().catch(() => ({}));
         if (data.code === 'STALE_LOCAL_ID') {
-            // Local data has old timestamp IDs — find the stale record by name,
-            // reload from server, then retry with the real UUID.
-            const stale = db.load('competitors').find(c => String(c.id) === String(id));
             await _loadCompetitorsFromServer();
-            if (stale) {
-                const fresh = db.load('competitors').find(c =>
-                    String(c.firstName) === String(stale.firstName) &&
-                    String(c.lastName)  === String(stale.lastName)
-                );
-                if (fresh) return approveCompetitor(fresh.id);
-            }
-            showMessage('Data out of date — please refresh the page and try again.', 'error');
+            renderCompetitors();
+            showMessage('Competitor list refreshed. Please click Approve again.', 'info');
         } else {
             showMessage(data.error || 'Could not approve competitor.', 'error');
         }

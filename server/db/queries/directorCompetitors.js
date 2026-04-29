@@ -98,8 +98,12 @@ async function getAll(tournamentId) {
     // Director-added competitors: events array comes from raw_data spread below.
     ...(Array.isArray(r.event_ids) && r.event_ids.length > 0 ? { events: r.event_ids } : {}),
     // Preserve any extra fields stored in raw_data (director-added only).
-    // approved/bracket_placed are real columns so they survive the spread safely.
     ...(r.raw_data && typeof r.raw_data === 'object' ? r.raw_data : {}),
+    // Re-assert DB primary key last — raw_data may contain a legacy timestamp id
+    // from before the new table was introduced; the PK (UUID) must always win.
+    id:              r.id,
+    approved:        r.approved,
+    bracket_placed:  r.bracket_placed,
   }));
 }
 
