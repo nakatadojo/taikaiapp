@@ -10459,6 +10459,8 @@ function showDivisionBuilder(templateId = null, eventId = null) {
     // Clear form
     document.getElementById('template-name').value = '';
     document.getElementById('template-match-duration').value = '';
+    const _btEl = document.getElementById('template-bracket-type');
+    if (_btEl) _btEl.value = '';
 
     // Clear criteria
     const criteriaList = document.getElementById('criteria-list');
@@ -10524,6 +10526,8 @@ function loadTemplateForEditing(templateId) {
     // Populate template fields
     document.getElementById('template-name').value = template.name || '';
     document.getElementById('template-match-duration').value = template.matchDuration ? (template.matchDuration / 60) : '';
+    const btEl = document.getElementById('template-bracket-type');
+    if (btEl) btEl.value = template.bracketType || '';
 
     // Load criteria
     if (template.criteria && template.criteria.length > 0) {
@@ -10897,12 +10901,15 @@ function saveDivisionTemplate() {
     // Read match duration (stored in seconds, input in minutes)
     const matchDurationMinutes = parseFloat(document.getElementById('template-match-duration').value);
 
+    const bracketType = document.getElementById('template-bracket-type')?.value || null;
+
     // Create template object
     const template = {
         id: currentTemplateId || generateUniqueId(),
         name: templateName,
         criteria: criteria,
         matchDuration: matchDurationMinutes ? Math.round(matchDurationMinutes * 60) : null,
+        bracketType: bracketType || undefined,
         createdAt: currentTemplateId ? undefined : new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
@@ -12262,15 +12269,21 @@ function showBracketGenerator() {
         }
     }
 
-    // Always hide the template dropdown — all divisions are shown at once (Feature 2)
-    const templateSelect = document.getElementById('bracket-template-select');
-    if (templateSelect?.closest('.form-group')) templateSelect.closest('.form-group').style.display = 'none';
+    // If no event-level bracketType, check if the event's templates share a common bracketType
+    const bracketTypeSelect2 = document.getElementById('bracket-type');
+    if (bracketTypeSelect2 && !bracketTypeSelect2.value) {
+        const templates = eventData.templates || [];
+        const templateTypes = [...new Set(templates.map(t => t.bracketType).filter(Boolean))];
+        if (templateTypes.length === 1) bracketTypeSelect2.value = templateTypes[0];
+    }
 
     // Show all generated divisions in the checklist
     const generated = eventData.generated || {};
     const generatedNames = Object.keys(generated).filter(n => n !== '__unassigned__');
     document.getElementById('bracket-division-checklist').innerHTML = '';
-    document.getElementById('bracket-division-checklist-group').style.display = 'none';
+    // bracket-division-checklist-group is always visible in new layout — just reset it
+    const _clg = document.getElementById('bracket-division-checklist-group');
+    if (_clg) _clg.style.display = '';
 
     // Reset filters
     const filterSearch = document.getElementById('division-filter-search');
@@ -12282,6 +12295,10 @@ function showBracketGenerator() {
 
     // Auto-populate match duration based on event age groups
     _autoPopulateMatchDuration(eventId);
+
+    // Sync pill UI to reflect auto-selected values
+    _syncBrkPills();
+    _updateBrkSelectedCount();
 
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
@@ -12324,10 +12341,14 @@ function _populateBracketChecklist(names, generated) {
     const total = names.filter(n => n !== '__unassigned__').length;
     const withComps = names.filter(n => n !== '__unassigned__' && (generated[n] || []).filter(c => c.approved !== false).length >= 2).length;
     const progress = document.getElementById('bracket-division-progress');
-    if (progress) progress.textContent = `— ${total} total, ${withComps} ready`;
+    if (progress) progress.textContent = `${total} total · ${withComps} ready`;
 
-    // Apply flagging for current bracket type
+    // Wire checkbox changes to the generate-button counter
+    checklist.addEventListener('change', _updateBrkSelectedCount);
+
+    // Apply flagging + update button counter
     _updateBracketDivisionFlags();
+    _updateBrkSelectedCount();
 }
 
 /**
@@ -12550,60 +12571,122 @@ function hideBracketGenerator() {
 function updateBracketTypeOptions() {
     const scoreboardSelect = document.getElementById('bracket-scoreboard-type');
     const bracketTypeSelect = document.getElementById('bracket-type');
-
     if (!scoreboardSelect || !bracketTypeSelect) return;
 
-    // Prefer data-base-type attribute (works for both named configs with numeric ids and base-type values)
     const selectedOpt = scoreboardSelect.selectedOptions[0];
     const baseType = selectedOpt?.getAttribute('data-base-type') || scoreboardSelect.value || '';
 
-    if (!baseType) {
-        bracketTypeSelect.innerHTML = `
-            <option value="">Select Bracket Type</option>
-            <option value="single-elimination">Single Elimination</option>
-            <option value="double-elimination">Double Elimination</option>
-            <option value="round-robin">Round Robin</option>
-            <option value="pool-play">Pool Play</option>
-            <option value="ranking-list">Ranking List (Kata/Kobudo)</option>
-        `;
-        return;
+    // Format definitions: { value, label, default? }
+    let formats;
+    if (baseType === 'kumite') {
+        formats = [
+            { value: 'single-elimination', label: 'Single Elimination', default: true },
+            { value: 'double-elimination', label: 'Double Elimination' },
+            { value: 'repechage',          label: 'Repechage' },
+            { value: 'round-robin',        label: 'Round Robin' },
+            { value: 'round-robin-pools',  label: 'Round Robin + Elim' },
+        ];
+    } else if (baseType === 'kata-flags') {
+        formats = [
+            { value: 'aau-kata-flags',     label: 'AAU Sequential Queue', default: true },
+            { value: 'single-elimination', label: 'Single Elimination' },
+            { value: 'double-elimination', label: 'Double Elimination' },
+            { value: 'repechage',          label: 'Repechage' },
+            { value: 'round-robin',        label: 'Round Robin' },
+        ];
+    } else if (baseType === 'kata-points' || baseType === 'kobudo') {
+        formats = [
+            { value: 'ranking-list',  label: 'Ranking List', default: true },
+            { value: 'round-robin',   label: 'Round Robin' },
+        ];
+    } else {
+        formats = [
+            { value: 'single-elimination', label: 'Single Elimination', default: true },
+            { value: 'double-elimination', label: 'Double Elimination' },
+            { value: 'round-robin',        label: 'Round Robin' },
+            { value: 'pool-play',          label: 'Pool Play' },
+            { value: 'ranking-list',       label: 'Ranking List' },
+        ];
     }
 
-    let options = '';
-    if (baseType === 'kumite') {
-        options = `
-            <option value="">Select Bracket Type</option>
-            <option value="single-elimination">Single Elimination (Recommended)</option>
-            <option value="double-elimination">Double Elimination</option>
-            <option value="repechage">Repechage</option>
-            <option value="round-robin">Round Robin</option>
-            <option value="round-robin-pools">Round Robin + Elimination</option>
-        `;
-    } else if (baseType === 'kata-flags') {
-        options = `
-            <option value="">Select Bracket Type</option>
-            <option value="aau-kata-flags">AAU Sequential Queue (Official AAU Format)</option>
-            <option value="single-elimination">Single Elimination</option>
-            <option value="double-elimination">Double Elimination</option>
-            <option value="repechage">Repechage</option>
-            <option value="round-robin">Round Robin</option>
-        `;
-    } else if (baseType === 'kata-points' || baseType === 'kobudo') {
-        options = `
-            <option value="">Select Bracket Type</option>
-            <option value="ranking-list">Ranking List (Recommended)</option>
-            <option value="round-robin">Round Robin</option>
-        `;
-    } else {
-        options = `
-            <option value="">Select Bracket Type</option>
-            <option value="single-elimination">Single Elimination</option>
-            <option value="double-elimination">Double Elimination</option>
-            <option value="round-robin">Round Robin</option>
-            <option value="ranking-list">Ranking List</option>
-        `;
+    // Rebuild hidden select
+    bracketTypeSelect.innerHTML = formats
+        .map(f => `<option value="${f.value}">${f.label}</option>`)
+        .join('');
+
+    // Auto-select the default format
+    const prevValue = bracketTypeSelect.value;
+    const defaultFormat = formats.find(f => f.default);
+    bracketTypeSelect.value = prevValue && formats.find(f => f.value === prevValue)
+        ? prevValue
+        : (defaultFormat?.value || formats[0].value);
+
+    // Rebuild format pills
+    const pillsEl = document.getElementById('brk-format-pills');
+    if (pillsEl) {
+        pillsEl.innerHTML = formats.map(f =>
+            `<button type="button" class="brk-pill${bracketTypeSelect.value === f.value ? ' active' : ''}"
+                     data-value="${f.value}" onclick="_setBrkFormat('${f.value}')">
+                ${f.label}
+             </button>`
+        ).join('');
     }
-    bracketTypeSelect.innerHTML = options;
+
+    _updateBracketDivisionFlags();
+}
+
+/** Set competition-type pill + hidden select, then refresh format pills. */
+function _setBrkCompType(value) {
+    const sel = document.getElementById('bracket-scoreboard-type');
+    if (sel) {
+        // Match by value or data-base-type (handles named-config numeric IDs)
+        const opt = sel.querySelector(`option[value="${value}"]`)
+                 || sel.querySelector(`option[data-base-type="${value}"]`);
+        if (opt) sel.value = opt.value;
+        else sel.value = value;
+    }
+    document.querySelectorAll('#brk-comp-pills .brk-pill').forEach(p =>
+        p.classList.toggle('active', p.dataset.value === value)
+    );
+    updateBracketTypeOptions();
+}
+
+/** Set bracket-format pill + hidden select, then re-flag divisions. */
+function _setBrkFormat(value) {
+    const sel = document.getElementById('bracket-type');
+    if (sel) sel.value = value;
+    document.querySelectorAll('#brk-format-pills .brk-pill').forEach(p =>
+        p.classList.toggle('active', p.dataset.value === value)
+    );
+    _updateBracketDivisionFlags();
+    _updateBrkSelectedCount();
+}
+
+/** Sync pill active states from the current hidden-select values (called after auto-select). */
+function _syncBrkPills() {
+    const compVal = document.getElementById('bracket-scoreboard-type')?.value || '';
+    const fmtVal  = document.getElementById('bracket-type')?.value || '';
+    // Comp pills — match by value or data-base-type
+    document.querySelectorAll('#brk-comp-pills .brk-pill').forEach(p =>
+        p.classList.toggle('active',
+            p.dataset.value === compVal ||
+            document.querySelector(`#bracket-scoreboard-type option[value="${compVal}"]`)
+                ?.getAttribute('data-base-type') === p.dataset.value
+        )
+    );
+    // Format pills
+    document.querySelectorAll('#brk-format-pills .brk-pill').forEach(p =>
+        p.classList.toggle('active', p.dataset.value === fmtVal)
+    );
+}
+
+/** Update the "Generate Brackets for N Division(s)" submit button. */
+function _updateBrkSelectedCount() {
+    const checked = document.querySelectorAll('#bracket-division-checklist input[type="checkbox"]:checked').length;
+    const countEl  = document.getElementById('brk-selected-count');
+    const pluralEl = document.getElementById('brk-selected-plural');
+    if (countEl)  countEl.textContent  = checked;
+    if (pluralEl) pluralEl.textContent = checked === 1 ? '' : 's';
 }
 
 /** Read the MM:SS picker and return total seconds. */

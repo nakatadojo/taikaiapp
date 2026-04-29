@@ -533,6 +533,21 @@
       animation:dtb-fadein .2s ease;pointer-events:none;
     }
     @keyframes dtb-fadein { from{opacity:0;transform:translateX(-50%) translateY(8px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+    /* ── Bracket generator — 5-step layout ───────────────────────────── */
+    .brk-step { padding: 14px 0; border-bottom: 1px solid var(--glass-border); }
+    .brk-step:last-of-type { border-bottom: none; }
+    .brk-step-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .brk-step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .brk-step-title { font-weight: 600; font-size: 14px; }
+    .brk-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .brk-pill { padding: 7px 15px; border-radius: 20px; border: 2px solid var(--glass-border); background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 13px; font-weight: 500; transition: border-color .15s, background .15s; }
+    .brk-pill:hover { border-color: var(--accent); }
+    .brk-pill.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .brk-pill:disabled { opacity: .4; cursor: default; }
+
+    /* ── Division builder modal (when opened from Events / Divisions tab) */
+    #division-builder { margin-top: 16px; }
     </style>
 
     <!-- PWA -->
@@ -1631,112 +1646,187 @@
 
                     <div id="divisions-container"></div>
 
+                    <!-- Division Builder (hidden by default, shown via showDivisionBuilder()) -->
+                    <div id="division-builder" class="glass-panel hidden">
+                        <h3 id="builder-title">New Division Template</h3>
+
+                        <div style="background:var(--bg-secondary);padding:16px;border-radius:10px;margin-bottom:16px;">
+                            <div class="form-group">
+                                <label for="template-name">Template Name *</label>
+                                <input type="text" id="template-name" placeholder="e.g., Kids Kata, Adult Kumite" required
+                                       style="width:100%;padding:12px;border-radius:10px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                            </div>
+                            <div class="form-group">
+                                <label for="template-match-duration">Match Duration (minutes)</label>
+                                <input type="number" id="template-match-duration" min="0.5" max="10" step="0.5" placeholder="Use global default"
+                                       style="width:100%;padding:12px;border-radius:10px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                                <p class="hint">Leave blank to use the global duration setting.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="template-bracket-type">Default Bracket Format</label>
+                                <select id="template-bracket-type"
+                                        style="width:100%;padding:12px;border-radius:10px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                                    <option value="">Use event default</option>
+                                    <option value="single-elimination">Single Elimination</option>
+                                    <option value="double-elimination">Double Elimination</option>
+                                    <option value="repechage">Repechage</option>
+                                    <option value="round-robin">Round Robin</option>
+                                    <option value="round-robin-pools">Round Robin + Elimination</option>
+                                    <option value="ranking-list">Ranking List (Kata / Kobudo)</option>
+                                </select>
+                                <p class="hint">Pre-selected when you open Generate Brackets for this template's divisions.</p>
+                            </div>
+                        </div>
+
+                        <div class="criteria-builder">
+                            <h4>Division Criteria</h4>
+                            <p class="hint">Divisions are created by splitting competitors in this order.</p>
+                            <div style="background:var(--bg-secondary);padding:12px;border-radius:10px;margin-bottom:12px;">
+                                <label for="preset-selector" style="font-size:13px;display:block;margin-bottom:6px;">Load from Preset (optional)</label>
+                                <select id="preset-selector" onchange="loadDivisionPreset()"
+                                        style="width:100%;padding:10px;border-radius:8px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                                    <option value="">-- Select WKF / AAU Preset --</option>
+                                    <optgroup label="WKF Kumite – Cadet (14-15)">
+                                        <option value="wkf-kumite-cadet-male">Cadet Male (14-15)</option>
+                                        <option value="wkf-kumite-cadet-female">Cadet Female (14-15)</option>
+                                    </optgroup>
+                                    <optgroup label="WKF Kumite – Junior (16-17)">
+                                        <option value="wkf-kumite-junior-male">Junior Male (16-17)</option>
+                                        <option value="wkf-kumite-junior-female">Junior Female (16-17)</option>
+                                    </optgroup>
+                                    <optgroup label="WKF Kumite – Senior (18+)">
+                                        <option value="wkf-kumite-senior-male">Senior Male (18+)</option>
+                                        <option value="wkf-kumite-senior-female">Senior Female (18+)</option>
+                                    </optgroup>
+                                    <optgroup label="AAU Kumite – Youth (12-13)">
+                                        <option value="aau-youth-male">Youth Male (12-13)</option>
+                                        <option value="aau-youth-female">Youth Female (12-13)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div id="criteria-list"></div>
+                            <button class="btn btn-secondary" type="button" onclick="addCriteria()">+ Add Criteria</button>
+                        </div>
+
+                        <div class="form-actions" style="margin-top:16px;">
+                            <button class="btn btn-primary" type="button" onclick="saveDivisionTemplate()">Save Template</button>
+                            <button class="btn btn-secondary" type="button" onclick="hideDivisionBuilder()">Cancel</button>
+                        </div>
+                    </div>
+
                     <!-- Bracket Generator Modal -->
                     <div id="bracket-generator-modal" class="modal hidden">
-                        <div class="modal-content" style="max-width: 600px;">
-                            <h2>Generate Brackets</h2>
+                        <div class="modal-content" style="max-width:620px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                                <h2 style="margin:0;">Generate Brackets</h2>
+                                <button type="button" class="btn btn-secondary btn-small" onclick="hideBracketGenerator()">✕ Cancel</button>
+                            </div>
                             <form id="bracket-generator-form" onsubmit="generateBrackets(event)">
-                                <div class="form-group">
-                                    <label for="bracket-template-select">Template</label>
-                                    <select id="bracket-template-select"
-                                            onchange="onBracketTemplateChange()"
-                                            style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                        <option value="">Select a template</option>
-                                    </select>
-                                </div>
 
-                                <div class="form-group" id="bracket-division-checklist-group" style="display: none;">
-                                    <label>Divisions <span id="bracket-division-progress" style="font-weight: normal; font-size: 0.85em; color: var(--text-secondary);"></span></label>
-                                    <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
+                                <!-- Step 1: Divisions -->
+                                <div class="brk-step">
+                                    <div class="brk-step-hdr">
+                                        <span class="brk-step-num">1</span>
+                                        <span class="brk-step-title">Which divisions?</span>
+                                        <span id="bracket-division-progress" style="margin-left:auto;font-size:12px;color:var(--text-secondary);"></span>
+                                    </div>
+                                    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
                                         <input type="text" id="division-filter-search" placeholder="Filter divisions..."
                                                oninput="_filterBracketChecklist()"
-                                               style="flex: 1; min-width: 120px; padding: 8px 10px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border); font-size: 0.9em;">
-                                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.9em; cursor: pointer; white-space: nowrap;">
-                                            <input type="checkbox" id="division-filter-has-comps" onchange="_filterBracketChecklist()"> Has Competitors
+                                               style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;">
+                                        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
+                                            <input type="checkbox" id="division-filter-has-comps" onchange="_filterBracketChecklist()"> Has competitors
                                         </label>
                                     </div>
-                                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                    <div style="display:flex;gap:8px;margin-bottom:8px;">
                                         <button type="button" class="btn btn-small btn-secondary" onclick="setBracketDivisionChecks(true)">Select All</button>
                                         <button type="button" class="btn btn-small btn-secondary" onclick="setBracketDivisionChecks(false)">Deselect All</button>
                                     </div>
-                                    <div id="bracket-division-checklist"
-                                         style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--glass-border); max-height: 220px; overflow-y: auto;">
+                                    <!-- bracket-division-checklist-group kept for JS compat -->
+                                    <div id="bracket-division-checklist-group">
+                                        <div id="bracket-division-checklist"
+                                             style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--glass-border);max-height:200px;overflow-y:auto;">
+                                        </div>
                                     </div>
-                                    <p class="hint">Uncheck any divisions you don't want to generate a bracket for.</p>
                                 </div>
 
-                                <div class="form-group">
-                                    <label for="bracket-scoreboard-type">Scoreboard Configuration *</label>
-                                    <select id="bracket-scoreboard-type" required onchange="updateBracketTypeOptions()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                        <option value="">Select Scoreboard Configuration</option>
-                                    </select>
-                                    <p class="hint">Select which scoreboard configuration to use for this bracket.</p>
+                                <!-- Step 2: Competition type -->
+                                <div class="brk-step">
+                                    <div class="brk-step-hdr">
+                                        <span class="brk-step-num">2</span>
+                                        <span class="brk-step-title">Competition type</span>
+                                    </div>
+                                    <!-- Hidden select — generateBrackets() reads this value -->
+                                    <select id="bracket-scoreboard-type" class="hidden" onchange="updateBracketTypeOptions()"></select>
+                                    <div class="brk-pills" id="brk-comp-pills">
+                                        <button type="button" class="brk-pill" data-value="kumite"      onclick="_setBrkCompType('kumite')">🥋 Kumite</button>
+                                        <button type="button" class="brk-pill" data-value="kata-flags"  onclick="_setBrkCompType('kata-flags')">🚩 Kata Flags</button>
+                                        <button type="button" class="brk-pill" data-value="kata-points" onclick="_setBrkCompType('kata-points')">🎯 Kata Points</button>
+                                        <button type="button" class="brk-pill" data-value="kobudo"      onclick="_setBrkCompType('kobudo')">⚔️ Kobudo</button>
+                                    </div>
                                 </div>
 
-                                <div class="form-group">
-                                    <label for="bracket-type">Bracket Type *</label>
-                                    <select id="bracket-type" required onchange="_updateBracketDivisionFlags()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                        <option value="">Select Bracket Type</option>
-                                        <option value="single-elimination">Single Elimination</option>
-                                        <option value="double-elimination">Double Elimination</option>
-                                        <option value="repechage">Repechage</option>
-                                        <option value="round-robin">Round Robin</option>
-                                        <option value="pool-play">Pool Play</option>
-                                        <option value="round-robin-pools">Round Robin + Elimination</option>
-                                    </select>
-                                    <p class="hint">Available options depend on selected scoreboard configuration.</p>
-                                    <div id="bracket-flags-summary" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.4); border-radius: 8px; align-items: center; gap: 8px; font-size: 0.88em;">
-                                        <span id="bracket-flags-msg" style="flex: 1; color: #f5a623;"></span>
+                                <!-- Step 3: Bracket format -->
+                                <div class="brk-step">
+                                    <div class="brk-step-hdr">
+                                        <span class="brk-step-num">3</span>
+                                        <span class="brk-step-title">Bracket format</span>
+                                    </div>
+                                    <!-- Hidden select — generateBrackets() reads this value -->
+                                    <select id="bracket-type" class="hidden" onchange="_updateBracketDivisionFlags()"></select>
+                                    <div class="brk-pills" id="brk-format-pills">
+                                        <!-- Populated by updateBracketTypeOptions() -->
+                                    </div>
+                                    <div id="bracket-flags-summary" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.4);border-radius:8px;align-items:center;gap:8px;font-size:0.88em;">
+                                        <span id="bracket-flags-msg" style="flex:1;color:#f5a623;"></span>
                                         <button type="button" class="btn btn-small btn-secondary" onclick="_uncheckFlaggedDivisions()">Uncheck Flagged</button>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
-                                    <label for="seeding-method">Seeding Method</label>
-                                    <select id="seeding-method" required onchange="_onSeedingMethodChange()" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                        <option value="random">Random Seeding</option>
-                                        <option value="ordered">Ordered by Registration</option>
-                                        <option value="rank">Seeded by Rank (Higher ranks first)</option>
-                                        <option value="age">Seeded by Age (Younger first)</option>
-                                        <option value="country">Seeded by Country (Separate countries)</option>
-                                        <option value="club">Seeded by Dojo (Separate dojos)</option>
-                                        <option value="previous-results">Previous Results (by placement)</option>
+                                <!-- Step 4: Seeding -->
+                                <div class="brk-step">
+                                    <div class="brk-step-hdr">
+                                        <span class="brk-step-num">4</span>
+                                        <span class="brk-step-title">Seeding</span>
+                                    </div>
+                                    <select id="seeding-method" onchange="_onSeedingMethodChange()"
+                                            style="width:100%;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                                        <option value="random">Random</option>
+                                        <option value="ordered">Ordered by registration</option>
+                                        <option value="rank">By rank (higher ranks first)</option>
+                                        <option value="age">By age (younger first)</option>
+                                        <option value="country">By country (separate countries)</option>
+                                        <option value="club">By dojo (separate dojos)</option>
+                                        <option value="previous-results">Previous results (by placement)</option>
                                     </select>
                                     <p class="hint" id="seeding-method-hint" style="margin-top:4px;"></p>
                                 </div>
 
-                                <div class="form-group">
-                                    <label>Match Duration</label>
-                                    <div style="display:flex; align-items:center; gap:8px;">
+                                <!-- Step 5: Match duration -->
+                                <div class="brk-step">
+                                    <div class="brk-step-hdr">
+                                        <span class="brk-step-num">5</span>
+                                        <span class="brk-step-title">Match duration</span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;">
                                         <input type="number" id="match-duration-mins" min="0" max="10" value="2"
-                                               style="width:70px; padding:12px; border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); text-align:center;">
+                                               style="width:70px;padding:10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);text-align:center;">
                                         <span style="color:var(--text-secondary);">min</span>
                                         <input type="number" id="match-duration-secs" min="0" max="59" value="0"
-                                               style="width:70px; padding:12px; border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--glass-border); text-align:center;">
+                                               style="width:70px;padding:10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);text-align:center;">
                                         <span style="color:var(--text-secondary);">sec</span>
                                     </div>
                                     <p class="hint" id="match-duration-hint" style="margin-top:4px;"></p>
                                 </div>
 
-                                <div class="form-group">
-                                    <label for="mat-assignment">Mat Assignment (Optional)</label>
-                                    <select id="mat-assignment" style="width: 100%; padding: 12px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                        <option value="">Assign Later</option>
-                                        <option value="1">Mat 1</option>
-                                        <option value="2">Mat 2</option>
-                                        <option value="3">Mat 3</option>
-                                        <option value="4">Mat 4</option>
-                                        <option value="5">Mat 5</option>
-                                        <option value="6">Mat 6</option>
-                                    </select>
-                                    <p class="hint">Assign this bracket to a specific competition mat/ring</p>
+                                <!-- Single generate button -->
+                                <div style="margin-top:8px;">
+                                    <button type="submit" class="btn btn-primary"
+                                            style="width:100%;padding:14px;font-size:15px;font-weight:600;">
+                                        Generate Brackets for <span id="brk-selected-count">0</span> Division<span id="brk-selected-plural">s</span>
+                                    </button>
                                 </div>
 
-                                <div class="form-actions">
-                                    <button type="submit" class="btn btn-primary">Generate Bracket</button>
-                                    <button type="button" class="btn btn-success" onclick="generateBracketsForAllDivisions()">Generate for All Divisions in Event</button>
-                                    <button type="button" class="btn btn-secondary" onclick="hideBracketGenerator()">Cancel</button>
-                                </div>
                             </form>
                         </div>
                     </div>
