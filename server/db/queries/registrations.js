@@ -67,9 +67,9 @@ async function createCompetitorRegistration({
 }
 
 /**
- * Create an instructor registration.
+ * Create a coach registration.
  */
-async function createInstructorRegistration({
+async function createCoachRegistration({
   tournamentId, firstName, lastName, rank, club, email, phone, userId, source,
 }) {
   const result = await pool.query(
@@ -81,7 +81,7 @@ async function createInstructorRegistration({
       tournamentId || null,
       userId || null,
       JSON.stringify({
-        type: 'instructor', firstName, lastName, rank, club, email, phone, source,
+        type: 'coach', firstName, lastName, rank, club, email, phone, source,
       }),
     ]
   );
@@ -361,7 +361,7 @@ async function findById(registrationId) {
 
 module.exports = {
   createCompetitorRegistration,
-  createInstructorRegistration,
+  createCoachRegistration,
   createClubRegistration,
   getRegistrationsForTournament,
   getPaginatedRegistrationsForTournament,

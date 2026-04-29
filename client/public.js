@@ -653,11 +653,11 @@ document.getElementById('public-competitor-form')?.addEventListener('submit', as
     }
 });
 
-// Instructor registration (API-backed)
-document.getElementById('public-instructor-form')?.addEventListener('submit', async (e) => {
+// Coach registration (API-backed)
+document.getElementById('public-coach-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const instructor = {
+    const coach = {
         firstName: document.getElementById('pub-inst-firstName').value,
         lastName: document.getElementById('pub-inst-lastName').value,
         rank: document.getElementById('pub-inst-rank').value,
@@ -672,16 +672,16 @@ document.getElementById('public-instructor-form')?.addEventListener('submit', as
     submitBtn.textContent = 'Submitting...';
 
     try {
-        const res = await fetch('/api/registrations/instructor', {
+        const res = await fetch('/api/registrations/coach', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(instructor),
+            body: JSON.stringify(coach),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-        showSuccessMessage('Instructor registration submitted successfully!');
+        showSuccessMessage('Coach registration submitted successfully!');
         closeRegistrationForm();
         e.target.reset();
     } catch (err) {

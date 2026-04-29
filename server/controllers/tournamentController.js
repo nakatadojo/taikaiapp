@@ -856,12 +856,12 @@ module.exports = {
   syncOfficials,
   getStaff,
   syncStaff,
-  getInstructors,
-  syncInstructors,
+  getCoaches,
+  syncCoaches,
   setPaymentMode,
 };
 
-// ── Director Officials / Staff / Instructors ──────────────────────────────────
+// ── Director Officials / Staff / Coaches ─────────────────────────────────────
 
 async function getOfficials(req, res, next) {
   try {
@@ -897,19 +897,19 @@ async function syncStaff(req, res, next) {
   } catch (err) { next(err); }
 }
 
-async function getInstructors(req, res, next) {
+async function getCoaches(req, res, next) {
   try {
-    const instructors = await tournamentQueries.getDirectorInstructors(req.params.id);
-    res.json({ instructors });
+    const coaches = await tournamentQueries.getDirectorCoaches(req.params.id);
+    res.json({ coaches });
   } catch (err) { next(err); }
 }
 
-async function syncInstructors(req, res, next) {
+async function syncCoaches(req, res, next) {
   try {
     const owned = await tournamentQueries.isOwnedBy(req.params.id, req.user.id);
     if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
-    const { instructors } = req.body;
-    await tournamentQueries.syncDirectorInstructors(req.params.id, instructors || []);
+    const { coaches } = req.body;
+    await tournamentQueries.syncDirectorCoaches(req.params.id, coaches || []);
     res.json({ ok: true });
   } catch (err) { next(err); }
 }

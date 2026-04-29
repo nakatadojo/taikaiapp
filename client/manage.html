@@ -659,7 +659,7 @@
                     <div class="nav-group-label">Tournament</div>
                     <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
                     <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
-                    <button class="nav-btn" data-view="instructors"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
+                    <button class="nav-btn" data-view="coaches"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
                     <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> Officials</button>
                     <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> Staff</button>
                     <button class="nav-btn" data-view="teams"><i data-lucide="users-round" class="nav-icon"></i> Teams</button>
@@ -865,9 +865,9 @@
                         <div class="workflow-step">
                             <div class="step-number">1</div>
                             <div class="step-content">
-                                <h4>Register Instructors & Dojos</h4>
-                                <p>Add instructors with dojo logos first</p>
-                                <button class="btn btn-secondary btn-small" onclick="navigateTo('instructors')">Go to Instructors</button>
+                                <h4>Register Coaches & Dojos</h4>
+                                <p>Add coaches with dojo logos first</p>
+                                <button class="btn btn-secondary btn-small" onclick="navigateTo('coaches')">Go to Coaches</button>
                             </div>
                         </div>
                         <div class="workflow-step">
@@ -1208,28 +1208,28 @@
             </section>
 
             <!-- Coaches View -->
-            <section id="instructors-view" class="view">
+            <section id="coaches-view" class="view">
                 <h2>Coaches</h2>
                 <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-                    <button class="btn btn-primary" onclick="showInstructorForm()">+ Add Coach</button>
-                    <button class="btn btn-danger btn-small" onclick="clearAllInstructors()">🗑️ Clear All Coaches</button>
+                    <button class="btn btn-primary" onclick="showCoachForm()">+ Add Coach</button>
+                    <button class="btn btn-danger btn-small" onclick="clearAllCoaches()">🗑️ Clear All Coaches</button>
                 </div>
 
-                <div id="instructor-form-container" class="glass-panel hidden">
+                <div id="coach-form-container" class="glass-panel hidden">
                     <h3>Coach Registration</h3>
-                    <form id="instructor-form">
+                    <form id="coach-form">
                         <div class="form-grid">
                             <div class="form-group">
-                                <label for="instructorFirstName">First Name *</label>
-                                <input type="text" id="instructorFirstName" required>
+                                <label for="coachFirstName">First Name *</label>
+                                <input type="text" id="coachFirstName" required>
                             </div>
                             <div class="form-group">
-                                <label for="instructorLastName">Last Name *</label>
-                                <input type="text" id="instructorLastName" required>
+                                <label for="coachLastName">Last Name *</label>
+                                <input type="text" id="coachLastName" required>
                             </div>
                             <div class="form-group">
-                                <label for="instructorRank">Rank/Dan *</label>
-                                <select id="instructorRank" required>
+                                <label for="coachRank">Rank/Dan *</label>
+                                <select id="coachRank" required>
                                     <option value="">Select Rank</option>
                                     <option value="1st Dan">1st Dan</option>
                                     <option value="2nd Dan">2nd Dan</option>
@@ -1242,36 +1242,36 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="instructorClub">Dojo Name *</label>
-                                <input type="text" id="instructorClub" required>
+                                <label for="coachClub">Dojo Name *</label>
+                                <input type="text" id="coachClub" required>
                             </div>
                             <div class="form-group">
-                                <label for="instructorEmail">Email *</label>
-                                <input type="email" id="instructorEmail" required>
+                                <label for="coachEmail">Email *</label>
+                                <input type="email" id="coachEmail" required>
                             </div>
                             <div class="form-group">
-                                <label for="instructorPhone">Phone</label>
-                                <input type="tel" id="instructorPhone">
+                                <label for="coachPhone">Phone</label>
+                                <input type="tel" id="coachPhone">
                             </div>
                             <div class="form-group">
-                                <label for="instructor-club-logo">Dojo Logo (optional)</label>
-                                <input type="file" id="instructor-club-logo" accept="image/*">
-                                <div id="instructor-club-logo-preview" class="photo-preview hidden">
-                                    <img id="instructor-club-logo-preview-img" alt="Preview">
-                                    <button type="button" class="btn btn-small btn-danger" onclick="clearInstructorClubLogo()">Remove</button>
+                                <label for="coach-club-logo">Dojo Logo (optional)</label>
+                                <input type="file" id="coach-club-logo" accept="image/*">
+                                <div id="coach-club-logo-preview" class="photo-preview hidden">
+                                    <img id="coach-club-logo-preview-img" alt="Preview">
+                                    <button type="button" class="btn btn-small btn-danger" onclick="clearCoachClubLogo()">Remove</button>
                                 </div>
                             </div>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">Save Coach</button>
-                            <button type="button" class="btn btn-secondary" onclick="hideInstructorForm()">Cancel</button>
+                            <button type="button" class="btn btn-secondary" onclick="hideCoachForm()">Cancel</button>
                         </div>
                     </form>
                 </div>
 
                 <div class="table-container">
-                    <input type="text" id="instructor-search" placeholder="Search coaches..." onkeyup="filterInstructors()">
-                    <table id="instructors-table">
+                    <input type="text" id="coach-search" placeholder="Search coaches..." onkeyup="filterCoaches()">
+                    <table id="coaches-table">
                         <thead>
                             <tr>
                                 <th>Name</th>
@@ -1282,7 +1282,7 @@
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="instructors-tbody"></tbody>
+                        <tbody id="coaches-tbody"></tbody>
                     </table>
                 </div>
             </section>

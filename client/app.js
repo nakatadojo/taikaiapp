@@ -65,7 +65,7 @@
  * │                  │          │   - teamCode: string, team code if team event       │
  * │                  │          │   - teamName: string, team name (NEW 2026-02-14)   │
  * │                  │          │   - age: deprecated, use dateOfBirth               │
- * │ instructors      │ Array    │ [{id, firstName, lastName, club, ...}]             │
+ * │ coaches          │ Array    │ [{id, firstName, lastName, club, ...}]             │
  * │ clubs            │ Array    │ [{id, name, country, logo, createdAt}]             │
  * │                  │          │   - country: optional (NEW 2026-02-13)             │
  * │ templates        │ Array    │ [{id, name, criteria}]                             │
@@ -199,7 +199,7 @@ function _replaceEventId(oldId, newId) {
 // ── Tournament-Scoped Storage ───────────────────────────────────────────────
 // Keys that should be isolated per tournament to prevent cross-tournament data corruption.
 const _SCOPED_KEYS = new Set([
-    'competitors', 'instructors', 'clubs', 'templates', 'mats', 'matches',
+    'competitors', 'coaches', 'clubs', 'templates', 'mats', 'matches',
     'eventTypes', 'divisions', 'matSchedule', 'matScoreboards', 'brackets',
     'teams', 'results', 'scoreboardConfig', 'scoreboardSettings', 'scoreboardConfigs',
     'certificateTemplate', 'certificateConfig', 'publicSiteConfig',
@@ -438,7 +438,7 @@ class Database {
 
     init() {
         // Array-based tables (competitors handled in-memory)
-        const arrayTables = ['instructors', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
+        const arrayTables = ['coaches', 'clubs', 'templates', 'mats', 'matches', 'tournaments', 'eventTypes'];
         for (const table of arrayTables) {
             const key = (table === 'tournaments') ? table : _scopedKey(table);
             if (!_msGet(key)) {
@@ -1066,11 +1066,11 @@ async function _hydrateEventTypesFromServer() {
     }
 }
 
-// ── Officials / Staff / Instructors Server Sync ───────────────────────────────
+// ── Officials / Staff / Coaches Server Sync ───────────────────────────────────
 
 let _officialsSyncTimer = null;
 let _staffSyncTimer = null;
-let _instructorsSyncTimer = null;
+let _coachesSyncTimer = null;
 
 function _queueOfficialsSync() {
     clearTimeout(_officialsSyncTimer);
@@ -1112,25 +1112,25 @@ async function _syncStaffToServer() {
     } catch (e) { console.warn('[sync] staff failed:', e.message); }
 }
 
-function _queueInstructorsSync() {
-    clearTimeout(_instructorsSyncTimer);
-    _instructorsSyncTimer = setTimeout(_syncInstructorsToServer, 3000);
+function _queueCoachesSync() {
+    clearTimeout(_coachesSyncTimer);
+    _coachesSyncTimer = setTimeout(_syncCoachesToServer, 3000);
 }
 
-async function _syncInstructorsToServer() {
+async function _syncCoachesToServer() {
     if (!currentTournamentId) return;
     try {
-        const instructors = db.load('instructors').filter(i => !i.tournamentId || i.tournamentId === currentTournamentId);
-        await fetch(`/api/tournaments/${currentTournamentId}/instructors/sync`, {
+        const coaches = db.load('coaches').filter(i => !i.tournamentId || i.tournamentId === currentTournamentId);
+        await fetch(`/api/tournaments/${currentTournamentId}/coaches/sync`, {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instructors }),
+            body: JSON.stringify({ coaches }),
         });
-    } catch (e) { console.warn('[sync] instructors failed:', e.message); }
+    } catch (e) { console.warn('[sync] coaches failed:', e.message); }
 }
 
 /**
- * Load manually-added officials, staff, and instructors from server on tournament init.
+ * Load manually-added officials, staff, and coaches from server on tournament init.
  * Server wins over stale localStorage data.
  */
 async function _loadPersonnelFromServer() {
@@ -1139,7 +1139,7 @@ async function _loadPersonnelFromServer() {
         const [offRes, stfRes, insRes] = await Promise.all([
             fetch(`/api/tournaments/${currentTournamentId}/officials`, { credentials: 'include' }),
             fetch(`/api/tournaments/${currentTournamentId}/staff`, { credentials: 'include' }),
-            fetch(`/api/tournaments/${currentTournamentId}/instructors`, { credentials: 'include' }),
+            fetch(`/api/tournaments/${currentTournamentId}/coaches`, { credentials: 'include' }),
         ]);
         if (offRes.ok) {
             const { officials } = await offRes.json();
@@ -1150,8 +1150,8 @@ async function _loadPersonnelFromServer() {
             if (Array.isArray(staff) && staff.length) db.save('staffMembers', staff);
         }
         if (insRes.ok) {
-            const { instructors } = await insRes.json();
-            if (Array.isArray(instructors) && instructors.length) db.save('instructors', instructors);
+            const { coaches } = await insRes.json();
+            if (Array.isArray(coaches) && coaches.length) db.save('coaches', coaches);
         }
     } catch (e) { console.warn('[sync] load personnel failed:', e.message); }
 }
@@ -2157,7 +2157,7 @@ function switchTournament() {
                 'schedule':                () => { displayMats(); loadMatSchedule(); },
                 'events':                  () => { loadEventTypes(); loadEventTypeSelector(); },
                 'clubs':                   () => loadClubs(),
-                'instructors':             () => loadInstructors(),
+                'coaches':                 () => loadCoaches(),
                 'officials':               () => loadOfficials(),
                 'staff':                   () => loadStaff(),
                 'results':                 () => loadResults(),
@@ -2365,7 +2365,7 @@ loadTournamentSelector();
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
                 if (typeof loadStaff === 'function') loadStaff();
-                if (typeof loadInstructors === 'function') loadInstructors();
+                if (typeof loadCoaches === 'function') loadCoaches();
             });
             _loadTeamsFromServer();
             _loadBracketsFromServer().then(() => {
@@ -3002,7 +3002,7 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         // Load data for the view
         if (view === 'dashboard') loadDashboard();
         if (view === 'competitors') loadCompetitors();
-        if (view === 'instructors') loadInstructors();
+        if (view === 'coaches') loadCoaches();
         if (view === 'clubs') loadClubs();
         if (view === 'events') {
             loadEventTypes();
@@ -7842,87 +7842,87 @@ function filterClubs() {
     });
 }
 
-// Instructor Management
-let currentInstructorClubLogoData = null;
+// Coach Management
+let currentCoachClubLogoData = null;
 
-function showInstructorForm() {
-    document.getElementById('instructor-form-container').classList.remove('hidden');
+function showCoachForm() {
+    document.getElementById('coach-form-container').classList.remove('hidden');
     loadClubDropdown();
 }
 
-function hideInstructorForm() {
-    const container = document.getElementById('instructor-form-container');
+function hideCoachForm() {
+    const container = document.getElementById('coach-form-container');
     if (container) container.classList.add('hidden');
     // Reset all form fields
-    const form = document.getElementById('instructor-form');
+    const form = document.getElementById('coach-form');
     if (form) form.reset();
-    clearInstructorClubLogo();
+    clearCoachClubLogo();
 }
 
-// Instructor club logo preview
-document.getElementById('instructor-club-logo')?.addEventListener('change', function(e) {
+// Coach club logo preview
+document.getElementById('coach-club-logo')?.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {
         const reader = new FileReader();
         reader.onload = function(event) {
-            currentInstructorClubLogoData = event.target.result;
-            const preview = document.getElementById('instructor-club-logo-preview-img');
+            currentCoachClubLogoData = event.target.result;
+            const preview = document.getElementById('coach-club-logo-preview-img');
             if (preview) {
-                preview.src = currentInstructorClubLogoData;
-                document.getElementById('instructor-club-logo-preview').classList.remove('hidden');
+                preview.src = currentCoachClubLogoData;
+                document.getElementById('coach-club-logo-preview').classList.remove('hidden');
             }
         };
         reader.readAsDataURL(file);
     }
 });
 
-function clearInstructorClubLogo() {
-    currentInstructorClubLogoData = null;
-    const input = document.getElementById('instructor-club-logo');
-    const preview = document.getElementById('instructor-club-logo-preview');
+function clearCoachClubLogo() {
+    currentCoachClubLogoData = null;
+    const input = document.getElementById('coach-club-logo');
+    const preview = document.getElementById('coach-club-logo-preview');
     if (input) input.value = '';
     if (preview) preview.classList.add('hidden');
 }
 
-// Instructor form - only add listener if element exists
-const instructorForm = document.getElementById('instructor-form');
-if (instructorForm) {
-    instructorForm.addEventListener('submit', (e) => {
+// Coach form - only add listener if element exists
+const coachForm = document.getElementById('coach-form');
+if (coachForm) {
+    coachForm.addEventListener('submit', (e) => {
         e.preventDefault();
 
-        const clubName = document.getElementById('instructorClub').value;
+        const clubName = document.getElementById('coachClub').value;
 
-        const instructor = {
-            firstName: document.getElementById('instructorFirstName').value,
-            lastName: document.getElementById('instructorLastName').value,
-            rank: document.getElementById('instructorRank').value,
+        const coach = {
+            firstName: document.getElementById('coachFirstName').value,
+            lastName: document.getElementById('coachLastName').value,
+            rank: document.getElementById('coachRank').value,
             club: clubName,
-            email: document.getElementById('instructorEmail').value,
-            phone: document.getElementById('instructorPhone').value || null,
+            email: document.getElementById('coachEmail').value,
+            phone: document.getElementById('coachPhone').value || null,
             registrationDate: new Date().toISOString()
         };
 
         // Save club data with logo
-        if (currentInstructorClubLogoData) {
-            saveClubData(clubName, currentInstructorClubLogoData);
+        if (currentCoachClubLogoData) {
+            saveClubData(clubName, currentCoachClubLogoData);
         }
 
-        db.add('instructors', instructor);
-        _syncInstructorsToServer().catch(e => console.warn('[instructors] sync failed:', e.message));
+        db.add('coaches', coach);
+        _syncCoachesToServer().catch(e => console.warn('[coaches] sync failed:', e.message));
         showMessage('Coach registered successfully!');
-        hideInstructorForm();
-        loadInstructors();
+        hideCoachForm();
+        loadCoaches();
         loadClubDropdown(); // Refresh club dropdown for competitors
-        currentInstructorClubLogoData = null;
+        currentCoachClubLogoData = null;
     });
 }
 
-async function loadInstructors() {
-    const tbody = document.getElementById('instructors-tbody');
+async function loadCoaches() {
+    const tbody = document.getElementById('coaches-tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const instructors = db.load('instructors');
+    const coaches = db.load('coaches');
     // Also add server-approved coaches who are not already in the local list
     const serverCoaches = [];
     if (currentTournamentId) {
@@ -7932,7 +7932,7 @@ async function loadInstructors() {
                 const data = await res.json();
                 const approved = (data.members || []).filter(m => m.role === 'coach' && m.status === 'approved');
                 for (const m of approved) {
-                    if (!instructors.find(i => i.memberId === m.id)) {
+                    if (!coaches.find(i => i.memberId === m.id)) {
                         serverCoaches.push({ id: `reg_${m.id}`, firstName: m.first_name, lastName: m.last_name, rank: '', club: '', email: m.email || '', phone: '', memberId: m.id, source: 'registered' });
                     }
                 }
@@ -7940,52 +7940,52 @@ async function loadInstructors() {
         } catch(e) { /* offline */ }
     }
 
-    const all = [...instructors, ...serverCoaches];
-    all.forEach(instructor => {
+    const all = [...coaches, ...serverCoaches];
+    all.forEach(coach => {
         const tr = document.createElement('tr');
-        const registeredBadge = instructor.source === 'registered'
+        const registeredBadge = coach.source === 'registered'
             ? `<span style="font-size:0.7rem;background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.35);border-radius:20px;padding:1px 6px;margin-left:6px;">✓ Registered</span>` : '';
         tr.innerHTML = `
-            <td>${instructor.firstName} ${instructor.lastName}${registeredBadge}</td>
-            <td>${instructor.rank || '-'}</td>
-            <td>${instructor.club || '-'}</td>
-            <td>${instructor.email}</td>
-            <td>${instructor.phone || '-'}</td>
+            <td>${coach.firstName} ${coach.lastName}${registeredBadge}</td>
+            <td>${coach.rank || '-'}</td>
+            <td>${coach.club || '-'}</td>
+            <td>${coach.email}</td>
+            <td>${coach.phone || '-'}</td>
             <td>
-                ${instructor.source !== 'registered' ? `<button class="btn btn-small btn-danger" onclick="deleteInstructor(${instructor.id})">Delete</button>` : '<span style="font-size:0.75rem;color:var(--text-secondary);">Via registration</span>'}
+                ${coach.source !== 'registered' ? `<button class="btn btn-small btn-danger" onclick="deleteCoach(${coach.id})">Delete</button>` : '<span style="font-size:0.75rem;color:var(--text-secondary);">Via registration</span>'}
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-async function deleteInstructor(id) {
-    if (!await showConfirm('Are you sure you want to delete this instructor?')) return;
-    db.delete('instructors', id);
-    _syncInstructorsToServer().catch(e => console.warn('[instructors] sync failed:', e.message));
-    loadInstructors();
+async function deleteCoach(id) {
+    if (!await showConfirm('Are you sure you want to delete this coach?')) return;
+    db.delete('coaches', id);
+    _syncCoachesToServer().catch(e => console.warn('[coaches] sync failed:', e.message));
+    loadCoaches();
     loadClubDropdown(); // Refresh club dropdown
     showMessage('Coach deleted successfully!');
 }
 
-async function clearAllInstructors() {
-    const instructorCount = db.load('instructors').length;
-    if (instructorCount === 0) { showMessage('No coaches to delete.', 'error'); return; }
+async function clearAllCoaches() {
+    const coachCount = db.load('coaches').length;
+    if (coachCount === 0) { showMessage('No coaches to delete.', 'error'); return; }
     if (!await showConfirm(
-        `Delete all <strong>${instructorCount}</strong> coach${instructorCount !== 1 ? 'es' : ''} and all dojos permanently?<br><br>This action cannot be undone.`,
+        `Delete all <strong>${coachCount}</strong> coach${coachCount !== 1 ? 'es' : ''} and all dojos permanently?<br><br>This action cannot be undone.`,
         { confirmText: 'Delete All', danger: true }
     )) return;
-    db.clear('instructors');
+    db.clear('coaches');
     db.clear('clubs');
-    loadInstructors();
+    loadCoaches();
     loadClubDropdown();
     loadDashboard();
-    showMessage('All instructors and dojos have been deleted!');
+    showMessage('All coaches and dojos have been deleted!');
 }
 
-function filterInstructors() {
-    const searchTerm = document.getElementById('instructor-search').value.toLowerCase();
-    const rows = document.querySelectorAll('#instructors-tbody tr');
+function filterCoaches() {
+    const searchTerm = document.getElementById('coach-search').value.toLowerCase();
+    const rows = document.querySelectorAll('#coaches-tbody tr');
 
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
@@ -8013,7 +8013,7 @@ function updateClubSelects() {
     const clubs = db.load('clubs');
     const selects = [
         document.getElementById('club'),
-        document.getElementById('instructorClub')
+        document.getElementById('coachClub')
     ].filter(Boolean); // Filter out null elements
 
     selects.forEach(select => {
@@ -8031,8 +8031,8 @@ function updateClubSelects() {
     });
 }
 
-// Instructor Management
-// Duplicate instructor form functions removed - using the ones at line ~1124 with club dropdown loading
+// Coach Management
+// Duplicate coach form functions removed - using the ones above with club dropdown loading
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -28529,10 +28529,10 @@ window.addEventListener('load', () => {
 
         if (isJudge) {
             // Judges see: Dashboard, Scoreboards, Brackets, Schedule, Results
-            viewsToHide = ['competitors', 'clubs', 'instructors'];
+            viewsToHide = ['competitors', 'clubs', 'coaches'];
         } else if (isStaff) {
             // Staff sees: Dashboard, Schedule, Results
-            viewsToHide = ['competitors', 'clubs', 'instructors', 'scoreboards', 'brackets'];
+            viewsToHide = ['competitors', 'clubs', 'coaches', 'scoreboards', 'brackets'];
         }
 
         viewsToHide.forEach(view => {

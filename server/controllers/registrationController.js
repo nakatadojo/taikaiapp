@@ -188,10 +188,10 @@ async function registerCompetitor(req, res, next) {
 }
 
 /**
- * POST /api/registrations/instructor
- * Public instructor registration.
+ * POST /api/registrations/coach
+ * Public coach registration.
  */
-async function registerInstructor(req, res, next) {
+async function registerCoach(req, res, next) {
   try {
     const { firstName, lastName, rank, club, email, phone, tournamentId } = req.body;
 
@@ -199,7 +199,7 @@ async function registerInstructor(req, res, next) {
       return res.status(400).json({ error: 'First name and last name are required' });
     }
 
-    const registration = await registrationQueries.createInstructorRegistration({
+    const registration = await registrationQueries.createCoachRegistration({
       tournamentId,
       firstName, lastName, rank, club, email, phone,
       userId: req.user?.id || null,
@@ -207,7 +207,7 @@ async function registerInstructor(req, res, next) {
     });
 
     res.status(201).json({
-      message: 'Instructor registration submitted successfully',
+      message: 'Coach registration submitted successfully',
       registration: { id: registration.id },
     });
   } catch (err) {
@@ -279,7 +279,7 @@ async function getRegistrations(req, res, next) {
       const notes = typeof r.notes === 'string' ? JSON.parse(r.notes) : (r.notes || {});
 
       // Skip non-competitor registrations (instructor, club)
-      if (notes.type === 'instructor' || notes.type === 'club') {
+      if (notes.type === 'coach' || notes.type === 'instructor' || notes.type === 'club') {
         return {
           id: r.id,
           type: notes.type,
@@ -1506,7 +1506,7 @@ async function getPaginatedRegistrations(req, res, next) {
     // Re-use the same mapping logic as getRegistrations
     const competitors = rows.map(r => {
       const notes = typeof r.notes === 'string' ? JSON.parse(r.notes) : (r.notes || {});
-      if (notes.type === 'instructor' || notes.type === 'club') {
+      if (notes.type === 'coach' || notes.type === 'instructor' || notes.type === 'club') {
         return {
           id: r.id, type: notes.type, ...notes,
           tournamentId: r.tournament_id,
@@ -1558,7 +1558,7 @@ async function getPaginatedRegistrations(req, res, next) {
 
 module.exports = {
   registerCompetitor,
-  registerInstructor,
+  registerCoach,
   registerClub,
   getRegistrations,
   getPaginatedRegistrations,

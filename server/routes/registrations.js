@@ -47,7 +47,8 @@ router.post('/validate-discount',
 
 // Public registration endpoints (optional auth — links user if logged in)
 router.post('/competitor', optionalAuth, registrationController.registerCompetitor);
-router.post('/instructor', optionalAuth, registrationController.registerInstructor);
+router.post('/coach', optionalAuth, registrationController.registerCoach);
+router.post('/instructor', optionalAuth, registrationController.registerCoach); // backward-compat alias
 router.post('/club', optionalAuth, registrationController.registerClub);
 
 // Admin sync endpoint (full list — kept for backward compatibility)

@@ -225,7 +225,7 @@ router.get('/:id/clubs', requireAuth, requireTournamentPermission('read_data'), 
 // POST /api/tournaments/:id/clubs/sync — owner or approved staff
 router.post('/:id/clubs/sync', requireAuth, requireTournamentOwner, tournamentController.syncClubs);
 
-// ── Director Officials / Staff / Instructors (JSONB sync) ────────────────────
+// ── Director Officials / Staff / Coaches (JSONB sync) ────────────────────────
 
 // GET /api/tournaments/:id/officials — staff can read
 router.get('/:id/officials', requireAuth, requireTournamentPermission('read_data'), tournamentController.getOfficials);
@@ -239,11 +239,11 @@ router.get('/:id/staff', requireAuth, requireTournamentPermission('read_data'), 
 // POST /api/tournaments/:id/staff/sync — owner only
 router.post('/:id/staff/sync', requireAuth, requireTournamentOwner, tournamentController.syncStaff);
 
-// GET /api/tournaments/:id/instructors — staff can read
-router.get('/:id/instructors', requireAuth, requireTournamentPermission('read_data'), tournamentController.getInstructors);
+// GET /api/tournaments/:id/coaches — staff can read
+router.get('/:id/coaches', requireAuth, requireTournamentPermission('read_data'), tournamentController.getCoaches);
 
-// POST /api/tournaments/:id/instructors/sync — owner only
-router.post('/:id/instructors/sync', requireAuth, requireTournamentOwner, tournamentController.syncInstructors);
+// POST /api/tournaments/:id/coaches/sync — owner only
+router.post('/:id/coaches/sync', requireAuth, requireTournamentOwner, tournamentController.syncCoaches);
 
 // ── Director Discount Codes ──────────────────────────────────────────────
 const discountQueries = require('../db/queries/discounts');

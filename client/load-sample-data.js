@@ -16,8 +16,8 @@ function loadSampleData() {
         { id: 8, name: 'Spirit Karate', city: 'Berlin', country: 'Germany', email: 'info@spiritkarate.de' }
     ];
 
-    // Sample instructors
-    const instructors = [
+    // Sample coaches
+    const coaches = [
         { id: 1, firstName: 'Sensei', lastName: 'Yamamoto', rank: '7th Dan', club: 'Rising Sun Karate', email: 'yamamoto@risingsun.jp', phone: '+81-3-1234-5678' },
         { id: 2, firstName: 'Master', lastName: 'Chen', rank: '6th Dan', club: 'Dragon Dojo', email: 'chen@dragondojo.com', phone: '+1-310-555-0101' },
         { id: 3, firstName: 'Sensei', lastName: 'Smith', rank: '5th Dan', club: 'Eagle Dojo', email: 'smith@eagledojo.uk', phone: '+44-20-7946-0958' },
@@ -155,7 +155,7 @@ function loadSampleData() {
 
     // Save all data
     localStorage.setItem('clubs', JSON.stringify(clubs));
-    localStorage.setItem('instructors', JSON.stringify(instructors));
+    localStorage.setItem('coaches', JSON.stringify(coaches));
     localStorage.setItem('competitors', JSON.stringify(competitors));
     localStorage.setItem('templates', JSON.stringify([template]));
     localStorage.setItem('mats', JSON.stringify(mats));
@@ -163,7 +163,7 @@ function loadSampleData() {
     localStorage.setItem('divisions', JSON.stringify({}));
     localStorage.setItem('matScoreboards', JSON.stringify({}));
 
-    alert('✅ Sample data loaded successfully!\\n\\n• 100 Competitors\\n• 8 Dojos\\n• 4 Instructors\\n• 1 Division Template\\n• 4 Mats\\n• 20 Scheduled Matches\\n\\nRefresh the page to see the data!');
+    alert('✅ Sample data loaded successfully!\\n\\n• 100 Competitors\\n• 8 Dojos\\n• 4 Coaches\\n• 1 Division Template\\n• 4 Mats\\n• 20 Scheduled Matches\\n\\nRefresh the page to see the data!');
 }
 
 // Auto-load on page load if no data exists

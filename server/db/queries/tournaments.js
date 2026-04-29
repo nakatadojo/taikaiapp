@@ -705,7 +705,7 @@ async function syncDirectorClubs(tournamentId, clubs) {
   );
 }
 
-// ── Director Officials / Staff / Instructors (JSONB) ─────────────────────────
+// ── Director Officials / Staff / Coaches (JSONB) ─────────────────────────────
 
 async function getDirectorOfficials(tournamentId) {
   const { rows } = await pool.query(
@@ -737,18 +737,18 @@ async function syncDirectorStaff(tournamentId, staff) {
   );
 }
 
-async function getDirectorInstructors(tournamentId) {
+async function getDirectorCoaches(tournamentId) {
   const { rows } = await pool.query(
-    'SELECT director_instructors FROM tournaments WHERE id = $1',
+    'SELECT director_coaches FROM tournaments WHERE id = $1',
     [tournamentId]
   );
-  return rows[0]?.director_instructors || [];
+  return rows[0]?.director_coaches || [];
 }
 
-async function syncDirectorInstructors(tournamentId, instructors) {
+async function syncDirectorCoaches(tournamentId, coaches) {
   await pool.query(
-    'UPDATE tournaments SET director_instructors = $1::jsonb WHERE id = $2',
-    [JSON.stringify(instructors || []), tournamentId]
+    'UPDATE tournaments SET director_coaches = $1::jsonb WHERE id = $2',
+    [JSON.stringify(coaches || []), tournamentId]
   );
 }
 
@@ -781,6 +781,6 @@ module.exports = {
   syncDirectorOfficials,
   getDirectorStaff,
   syncDirectorStaff,
-  getDirectorInstructors,
-  syncDirectorInstructors,
+  getDirectorCoaches,
+  syncDirectorCoaches,
 };
