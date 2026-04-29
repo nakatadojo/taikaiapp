@@ -827,6 +827,11 @@
                         <button id="type-btn-ranking-list" class="btn btn-secondary" onclick="operatorSwitchScoreboardType('ranking-list')" style="font-size: 12px; padding: 4px 10px;" disabled>📋 Ranking List</button>
                     </div>
 
+                    <!-- Offline warning — shown when WS drops while operator has a scoreboard open -->
+                    <div id="_operator-offline-banner" style="display:none; background:#f59e0b; color:#000; padding:10px 16px; border-radius:8px; font-size:14px; font-weight:700; text-align:center; flex-shrink:0; margin-bottom:8px; letter-spacing:0.01em;">
+                        ⚠ Connection lost — scores are queued. Do not close this tab.
+                    </div>
+
                     <div id="operator-scoreboard-content" style="flex: 1; min-height: 0; overflow-y: auto;"></div>
                 </div>
             </div>
@@ -1777,6 +1782,8 @@
                                     <div class="brk-pills" id="brk-format-pills">
                                         <!-- Populated by updateBracketTypeOptions() -->
                                     </div>
+                                    <!-- Source hint — shown when format was auto-filled from templates -->
+                                    <div id="brk-format-hint" style="min-height:18px;margin-top:4px;"></div>
                                     <div id="bracket-flags-summary" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.4);border-radius:8px;align-items:center;gap:8px;font-size:0.88em;">
                                         <span id="bracket-flags-msg" style="flex:1;color:#f5a623;"></span>
                                         <button type="button" class="btn btn-small btn-secondary" onclick="_uncheckFlaggedDivisions()">Uncheck Flagged</button>
@@ -3071,7 +3078,10 @@
             <!-- ===== CHECK-IN VIEW ===== -->
             <section id="checkin-view" class="view">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-                    <h2>Check-In</h2>
+                    <div>
+                        <h2 style="margin:0;">Check-In</h2>
+                        <div id="ci-last-updated" style="font-size:11px;color:var(--text-secondary);margin-top:2px;"></div>
+                    </div>
                     <button class="btn btn-secondary btn-small" onclick="loadCheckinView()">🔄 Refresh</button>
                 </div>
 
@@ -3524,7 +3534,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=3"></script>
+    <script src="/app.js?v=4"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)

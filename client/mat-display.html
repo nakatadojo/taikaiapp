@@ -191,6 +191,26 @@
             }
         }
 
+        // ── HTTP polling fallback (cross-device, works without WS auth) ────────
+        // Keeps display alive even when the TV device has no auth cookie
+        // and the WebSocket connection gets rejected server-side.
+        if (_tournamentId && matId != null) {
+            setInterval(async () => {
+                try {
+                    const res = await fetch(
+                        `/api/tournaments/${_tournamentId}/scoreboard-state?ring=${matId}`
+                    );
+                    if (res.ok) {
+                        const { state } = await res.json();
+                        if (state && Object.keys(state).length > 0) {
+                            _cache['scoreboard-state'] = JSON.stringify(state);
+                            updateDisplay();
+                        }
+                    }
+                } catch(e) { /* network glitch — next tick will retry */ }
+            }, 750);
+        }
+
         // ── WebSocket connection (cross-device updates) ─────────────────────
         let _matLastRingSeq = 0;
         let _matServerOffset = 0; // ms: serverTime - Date.now(), synced on every subscribe:ack

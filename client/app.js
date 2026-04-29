@@ -1376,6 +1376,7 @@ let _lastBracketSeq = 0;
 let _lastRingSeq    = 0;
 let _currentOperatorRing    = null; // ring we've subscribed to for scoreboard updates
 let _lockHeartbeatInterval  = null; // setInterval handle for mat lock keepalive
+let _checkinPollInterval    = null; // setInterval handle for check-in auto-refresh
 
 function _initWebSocket() {
     if (_socket) return; // Already connected
@@ -1390,6 +1391,7 @@ function _initWebSocket() {
 
     _socket.on('connect', () => {
         _hideWsIndicator();
+        _hideOperatorOfflineBanner();
         // Flush any data that was queued while disconnected
         if (_pendingSyncKeys.size > 0) _flushPendingSyncs();
         // Re-subscribe to the bracket the operator has open (if any)
@@ -1452,6 +1454,7 @@ function _initWebSocket() {
     _socket.on('disconnect', () => {
         console.warn('[ws] Disconnected');
         _showWsIndicator('Reconnecting...');
+        if (currentOperatorMat != null) _showOperatorOfflineBanner();
     });
 
     _socket.on('connect_error', () => {
@@ -1531,6 +1534,16 @@ function _initWebSocket() {
         _msSet(_scopedKey('divisions'), JSON.stringify(generatedDivisions));
         if (typeof loadDivisionsView === 'function') loadDivisionsView();
     });
+}
+
+function _showOperatorOfflineBanner() {
+    const el = document.getElementById('_operator-offline-banner');
+    if (el) el.style.display = 'block';
+}
+
+function _hideOperatorOfflineBanner() {
+    const el = document.getElementById('_operator-offline-banner');
+    if (el) el.style.display = 'none';
 }
 
 function _showWsIndicator(msg) {
@@ -1888,6 +1901,8 @@ async function _syncDivisionsToServer() {
         if (allDivisions[eventId]?.generated) {
             generatedDivisions[eventId] = {
                 generated: allDivisions[eventId].generated,
+                // Include manual overrides so director corrections survive page reload / device switch
+                ...(allDivisions[eventId].manual != null ? { manual: allDivisions[eventId].manual } : {}),
                 updatedAt: allDivisions[eventId].updatedAt,
             };
         }
@@ -5116,6 +5131,7 @@ function autoUpdateBracketsAfterRegistration(competitor) {
     const updatedNames = [];
     const lockedNames  = [];
 
+    const updatedKeys = [];
     Object.entries(brackets).forEach(([key, bracket]) => {
         const divName = bracket.divisionName || bracket.division;
         const eventId = String(bracket.eventId);
@@ -5140,11 +5156,12 @@ function autoUpdateBracketsAfterRegistration(competitor) {
         if (!newBracket) return;
 
         brackets[key] = newBracket;
+        updatedKeys.push(key);
         updatedNames.push(divName);
     });
 
     if (updatedNames.length > 0) {
-        saveBrackets(brackets);
+        saveBrackets(brackets, updatedKeys);
         _debouncedSync('brackets', _syncBracketsToServer, 2000);
         showToast(`📋 Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
     }
@@ -5177,6 +5194,7 @@ function _autoReshuffleBracketsForCompetitor(competitor) {
     if (competitorDivisions.size === 0) return;
 
     const updatedNames = [];
+    const updatedKeys2 = [];
     const lockedNames  = [];
 
     Object.entries(brackets).forEach(([key, bracket]) => {
@@ -5198,11 +5216,12 @@ function _autoReshuffleBracketsForCompetitor(competitor) {
         if (!newBracket) return;
 
         brackets[key] = newBracket;
+        updatedKeys2.push(key);
         updatedNames.push(divName);
     });
 
     if (updatedNames.length > 0) {
-        saveBrackets(brackets);
+        saveBrackets(brackets, updatedKeys2);
         _debouncedSync('brackets', _syncBracketsToServer, 2000);
         showToast(`Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
     }
@@ -12154,12 +12173,22 @@ function deleteCriteria() {
 function showBracketGenerator() {
     const modal = document.getElementById('bracket-generator-modal');
     const eventSelector = document.getElementById('division-event-selector');
-    const eventId = eventSelector?.value;
 
+    // If opened from the Brackets tab the divisions selector may not be set.
+    // Fall back to bracket-event-filter, then to the first event with generated divisions.
+    let eventId = eventSelector?.value;
+    if (!eventId) {
+        eventId = document.getElementById('bracket-event-filter')?.value;
+    }
+    if (!eventId) {
+        const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        eventId = Object.keys(allDivisions).find(id => allDivisions[id]?.generated) || '';
+    }
+    // Sync the selector so the rest of the function uses the resolved value
+    if (eventId && eventSelector) eventSelector.value = eventId;
 
     if (!eventId) {
-        console.error('No event ID selected');
-        showMessage('Please select an event type first', 'error');
+        showMessage('Please generate divisions first (go to Divisions tab)', 'error');
         return;
     }
 
@@ -12271,11 +12300,24 @@ function showBracketGenerator() {
 
     // If no event-level bracketType, check if the event's templates share a common bracketType
     const bracketTypeSelect2 = document.getElementById('bracket-type');
+    const _templateBracketTypes = [...new Set((eventData.templates || []).map(t => t.bracketType).filter(Boolean))];
     if (bracketTypeSelect2 && !bracketTypeSelect2.value) {
-        const templates = eventData.templates || [];
-        const templateTypes = [...new Set(templates.map(t => t.bracketType).filter(Boolean))];
-        if (templateTypes.length === 1) bracketTypeSelect2.value = templateTypes[0];
+        if (_templateBracketTypes.length === 1) bracketTypeSelect2.value = _templateBracketTypes[0];
     }
+
+    // Show a hint when the format was auto-filled from division templates
+    (() => {
+        const hint = document.getElementById('brk-format-hint');
+        if (!hint) return;
+        const finalVal = bracketTypeSelect2?.value;
+        if (_templateBracketTypes.length > 1) {
+            hint.innerHTML = '<span style="color:#f59e0b;font-size:12px;">⚠ Divisions have mixed bracket types across templates — confirm your selection</span>';
+        } else if (_templateBracketTypes.length === 1 && _templateBracketTypes[0] === finalVal && !eventType?.bracketType) {
+            hint.innerHTML = '<span style="color:var(--text-secondary);font-size:12px;">Pre-filled from division templates</span>';
+        } else {
+            hint.innerHTML = '';
+        }
+    })();
 
     // Show all generated divisions in the checklist
     const generated = eventData.generated || {};
@@ -12658,6 +12700,9 @@ function _setBrkFormat(value) {
     document.querySelectorAll('#brk-format-pills .brk-pill').forEach(p =>
         p.classList.toggle('active', p.dataset.value === value)
     );
+    // Clear the auto-fill hint once the director makes a manual choice
+    const hint = document.getElementById('brk-format-hint');
+    if (hint) hint.innerHTML = '';
     _updateBracketDivisionFlags();
     _updateBrkSelectedCount();
 }
@@ -17383,11 +17428,32 @@ function _computeCheckinStats() {
     return { total, checked_in: checkedIn, missing, on_mat: onMat };
 }
 
+async function _refreshCheckinStatus() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/checkin`, { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            _checkinData = data.competitors || [];
+            _renderCheckinStats(_computeCheckinStats());
+            _renderCheckinList();
+            // Update "last refreshed" timestamp
+            const ts = document.getElementById('ci-last-updated');
+            if (ts) ts.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+        }
+    } catch(e) { /* silent — next poll will retry */ }
+}
+
 async function loadCheckinView() {
     if (!currentTournamentId) {
         document.getElementById('ci-list-competitors').innerHTML = '<p class="hint" style="padding:16px;">No tournament selected.</p>';
         return;
     }
+
+    // Restart auto-refresh polling (20 s) whenever the check-in view opens
+    clearInterval(_checkinPollInterval);
+    _checkinPollInterval = setInterval(_refreshCheckinStatus, 20000);
+
     // Reset stale state from any previous tournament before loading fresh data
     _checkinData = [];
     _checkinDirectorData = [];
@@ -19464,6 +19530,9 @@ function openOperatorScoreboard(matId, divisionName, eventId) {
     // Fire-and-forget: scoreboard opens immediately; if another operator holds
     // the lock the blocker overlay is rendered once the async check returns.
     _acquireMatLock(matId);
+
+    // If we're already offline when the scoreboard opens, show the banner immediately
+    if (_socket && !_socket.connected) _showOperatorOfflineBanner();
 
     // Get event type to determine scoreboard type
     const eventTypes = JSON.parse(_msGet(_scopedKey('eventTypes')) || '[]');
@@ -23681,14 +23750,16 @@ function openRankingListScoreboard(matId, divisionName, eventId, bracket, scoreb
     if (bracket.status === 'upcoming') { bracket.status = 'pending'; _migratedEntries = true; }
     if (_migratedEntries) {
         const _allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        let _migratedBid = null;
         for (const _bid in _allBrackets) {
             if ((_allBrackets[_bid].division || _allBrackets[_bid].divisionName) === (bracket.division || bracket.divisionName)
                 && String(_allBrackets[_bid].eventId) === String(bracket.eventId)) {
                 _allBrackets[_bid] = bracket;
+                _migratedBid = _bid;
                 break;
             }
         }
-        saveBrackets(_allBrackets);
+        saveBrackets(_allBrackets, _migratedBid ? [_migratedBid] : null);
         _debouncedSync('brackets', _syncBracketsToServer, 2000);
     }
 
@@ -24072,6 +24143,7 @@ function closeOperatorScoreboard() {
     // Release mat lock (best effort — also fires on beforeunload via sendBeacon)
     _releaseMatLock(currentOperatorMat);
     _clearMatLockBlocker();
+    _hideOperatorOfflineBanner();
 
     // Cancel any auto-advance countdown
     cancelAutoAdvance();

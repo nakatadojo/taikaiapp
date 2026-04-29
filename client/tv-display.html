@@ -154,6 +154,23 @@
             });
         })();
 
+        // ── HTTP polling fallback (cross-device, works without WS auth) ────────
+        // Polls every 750 ms so display devices (TV, projector) that aren't
+        // authenticated get live updates even when the WebSocket auth fails.
+        if (_tournamentId && _selectedRing) {
+            setInterval(async () => {
+                try {
+                    const res = await fetch(
+                        `/api/tournaments/${_tournamentId}/scoreboard-state?ring=${_selectedRing}`
+                    );
+                    if (res.ok) {
+                        const { state } = await res.json();
+                        if (state && Object.keys(state).length > 0) updateDisplay(state);
+                    }
+                } catch(e) { /* network glitch — next tick will retry */ }
+            }, 750);
+        }
+
         // ── BroadcastChannel (kept as same-device fallback) ─────────────────
         const _bc = (() => { try { return new BroadcastChannel('taikai-display'); } catch(e) { return null; } })();
         if (_bc) {

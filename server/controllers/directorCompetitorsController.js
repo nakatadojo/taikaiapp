@@ -119,9 +119,17 @@ async function deleteCompetitor(req, res, next) {
  * Hard-blocks with 402 if the director has insufficient credits.
  * Test competitors: free, no credit check.
  */
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function approveCompetitor(req, res, next) {
   try {
     const { id: tournamentId, competitorId } = req.params;
+    if (!_UUID_RE.test(competitorId)) {
+      return res.status(400).json({
+        error: 'Invalid competitor ID. Please refresh the page — your local data may be out of date.',
+        code: 'STALE_LOCAL_ID',
+      });
+    }
     const owned = await tournamentQueries.isOwnedBy(tournamentId, req.user.id);
     if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 

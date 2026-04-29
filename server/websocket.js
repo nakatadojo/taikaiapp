@@ -101,6 +101,10 @@ function initWebSocket(httpServer) {
   io = new Server(httpServer, {
     cors: { origin: false },
     transports: ['websocket', 'polling'],
+    // Keep connections alive through Railway's nginx proxy (60 s idle timeout).
+    // 10 s ping interval ensures the connection is never idle long enough to drop.
+    pingInterval: 10000,
+    pingTimeout:   5000,
   });
 
   // ── Authentication gate ────────────────────────────────────────────────────
