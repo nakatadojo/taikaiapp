@@ -57,6 +57,13 @@ function normalizeRank(r) {
           azul:'6th kyu', morada:'5th kyu', cafe:'3rd kyu', café:'3rd kyu', negra:'1st dan' }[c]
       ])
     ),
+    // Compound labels from division templates (belt group names chosen on registration form)
+    'blanca-naranja':    '10th kyu', // white–orange group → treat as white for matching
+    'amarilla-naranja':  '9th kyu',  // yellow–orange
+    'verde-azul':        '7th kyu',  // green–blue
+    'verde-negra':       '7th kyu',  // green–black (team kata)
+    'color-azul':        '10th kyu', // any color up to blue (team kumite)
+    'cafe-negra':        '3rd kyu',  // brown–black (team kumite)
   };
   return colorToKyu[s] || s;
 }
@@ -234,4 +241,4 @@ function assignDivision(profile, templates, tournamentDate, tournamentWeightUnit
   return null;
 }
 
-module.exports = { assignDivision, calculateAge };
+module.exports = { assignDivision, calculateAge, normalizeRank };

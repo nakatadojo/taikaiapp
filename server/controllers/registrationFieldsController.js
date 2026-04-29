@@ -1,4 +1,12 @@
 const pool = require('../db/pool');
+const { normalizeRank } = require('../services/divisionAssignment');
+
+const RANK_ORDER = [
+  '10th kyu','9th kyu','8th kyu','7th kyu','6th kyu','5th kyu',
+  '4th kyu','3rd kyu','2nd kyu','1st kyu',
+  '1st dan','2nd dan','3rd dan','4th dan','5th dan',
+  '6th dan','7th dan','8th dan','9th dan','10th dan',
+];
 
 /**
  * GET /api/tournaments/:id/registration-fields
@@ -94,6 +102,15 @@ async function getRegistrationFields(req, res, next) {
         }
       }
     }
+
+    // Sort belt options from weakest to strongest using normalizeRank
+    beltRankOptions.sort((a, b) => {
+      const ai = RANK_ORDER.indexOf(normalizeRank(a));
+      const bi = RANK_ORDER.indexOf(normalizeRank(b));
+      const as = ai === -1 ? 999 : ai;
+      const bs = bi === -1 ? 999 : bi;
+      return as - bs;
+    });
 
     return res.json({
       showExperienceLevel,
