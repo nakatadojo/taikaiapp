@@ -291,12 +291,13 @@ function saveBrackets(brackets, changedIds) {
         console.error('[saveBrackets] Failed to save brackets to in-memory store. Server sync will still be attempted.', e);
         showMessage('Warning: local storage is full. Brackets will be saved to the server but may not persist offline.', 'warning');
     }
-    // Mark which brackets are dirty so the debounced sync only sends what changed.
+    // Mark which brackets are dirty so the on-completion sync only sends what changed.
     // If changedIds is not provided, mark all brackets dirty (safe fallback).
     const toMark = changedIds && changedIds.length > 0 ? changedIds : Object.keys(brackets);
     for (const id of toMark) _dirtyBracketIds.add(id);
-    // Auto-persist every match update to server so other devices see live state
-    _debouncedSync('brackets', _syncBracketsToServer, 2000);
+    // Scoreboard operations are saved locally only; DB write happens when a match is
+    // completed (via _publishBracket) or when the full bracket finishes
+    // (_autoSyncIfBracketComplete). The sendBeacon on beforeunload acts as a safety net.
 }
 
 /**
@@ -5544,22 +5545,34 @@ function loadCompetitors(skipSync = false) {
             if (eventNames.length > 0) eventsHtml = eventNames.join('<br>');
         }
 
-        const totalDue = comp.pricing?.total != null ? formatPrice(comp.pricing.total, getTournamentCurrency()) : '-';
+        // Compute pricing on the fly if not stored (e.g. pay-later public registrations)
+        let pricingTotal = comp.pricing?.total;
+        if (pricingTotal == null && comp.events?.length > 0) {
+            const _et = db.load('eventTypes');
+            const _t  = getCurrentTournament();
+            pricingTotal = calculatePricingBreakdown(comp.events, _et, _t)?.total ?? null;
+        }
+        const totalDue = pricingTotal != null ? formatPrice(pricingTotal, getTournamentCurrency()) : '-';
         const paymentBadge = getPaymentStatusBadge(comp.paymentStatus || 'unpaid');
 
         const testBadge = comp.is_test
             ? `<span style="background:rgba(245,158,11,0.2);color:#f59e0b;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-right:5px;vertical-align:middle;">TEST</span>`
             : '';
 
-        // Approval status — show toggle for any director-managed competitor
-        // (director-added, smoothcomp-import, csv-import, etc.).
-        // Stripe/public registrations are always treated as approved.
+        // Approval status — director-managed competitors AND pay-later public
+        // registrations both need an explicit approve step to flow into brackets.
         const isDirectorManaged = comp.source !== 'registration';
-        const isApproved = comp.approved === true || comp.source === 'registration';
+        const isPayLaterReg = comp.source === 'registration' && comp.paymentStatus === 'pay_later';
+        const needsApprovalUI = isDirectorManaged || isPayLaterReg;
+        // Pay-later registrations are auto-approved in the DB, but we track whether
+        // the director has explicitly confirmed them via comp.directorApproved.
+        const isApproved = isPayLaterReg
+            ? comp.directorApproved === true
+            : (comp.approved === true || comp.source === 'registration');
         const isBracketLocked = comp.bracket_placed === true && !comp.is_test;
 
-        let approvalCell = '-'; // public registrations: no toggle needed
-        if (isDirectorManaged) {
+        let approvalCell = '-';
+        if (needsApprovalUI) {
             if (isApproved) {
                 const lockIcon = isBracketLocked ? ' 🔒' : '';
                 const unapproveBtn = isBracketLocked
@@ -5824,7 +5837,12 @@ async function approveCompetitor(id) {
     // Update local cache
     const all = db.load('competitors');
     const idx = all.findIndex(c => String(c.id) === String(id));
-    if (idx !== -1) { all[idx].approved = true; db.save('competitors', all); }
+    if (idx !== -1) {
+        all[idx].approved = true;
+        // For pay-later registrations track director confirmation separately
+        if (all[idx].source === 'registration') all[idx].directorApproved = true;
+        db.save('competitors', all);
+    }
     loadCompetitors(true);
     loadDashboard();
     // Server auto-assign broadcast will update divisions; also reload locally
@@ -10607,6 +10625,26 @@ let _divisionOpInProgress = false;
  * Blocked if any brackets exist for the selected event (director must delete them first).
  * Requires two confirmations. Warns that manually moved competitors will be re-assigned.
  */
+async function syncAllDivisions() {
+    if (!currentTournamentId) return;
+    const btn = document.getElementById('sync-divisions-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/divisions/auto-assign`, {
+            method: 'POST', credentials: 'include',
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Sync failed');
+        await _loadDivisionsFromServer();
+        if (typeof loadDivisionsView === 'function') loadDivisionsView();
+        showMessage('Competitors synced to divisions.', 'success');
+    } catch (err) {
+        showMessage(err.message || 'Could not sync divisions.', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Sync Competitors → Divisions'; }
+    }
+}
+
 async function resyncDivisions() {
     if (!currentTournamentId) return;
 
@@ -20148,9 +20186,13 @@ function kataFlagsDeclareWinner() {
         handleRepechageWinnerDeclaration(bracket, match, winner, loser_competitor);
     }
 
-    // Save updated bracket to localStorage immediately
+    // Save updated bracket locally and immediately publish match result to server
     saveBrackets(brackets, [window.currentBracketId]);
     _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
+
+    // Immediately persist the completed match to DB (on-completion write pattern)
+    _publishBracket(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId], null)
+        .catch(err => console.error('[kata-flags] Failed to publish match result:', err));
 
     // Append to server-side audit log (fire-and-forget)
     _logMatchResult({
@@ -22574,9 +22616,13 @@ async function kataFlagsMarkAbsent(absentCorner) {
         handleRepechageWinnerDeclaration(bracket, bracketMatch, winner, loser);
     }
 
-    // Save updated bracket
-    saveBrackets(brackets);
+    // Save updated bracket locally and immediately publish match result to server
+    saveBrackets(brackets, [window.currentBracketId]);
     _autoSyncIfBracketComplete(brackets[window.currentBracketId]);
+
+    // Immediately persist the completed match to DB (on-completion write pattern)
+    _publishBracket(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId], null)
+        .catch(err => console.error('[kata-flags default_win] Failed to publish match result:', err));
 
     // Save to results/history
     const results = JSON.parse(_msGet(_scopedKey('results')) || '[]');

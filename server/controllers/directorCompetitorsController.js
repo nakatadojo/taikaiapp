@@ -116,8 +116,14 @@ async function approveCompetitor(req, res, next) {
 
     // Fetch the competitor to determine if real or test
     const allCompetitors = await DirectorCompetitorQueries.getAll(tournamentId);
-    const competitor = allCompetitors.find(c => String(c.id) === String(competitorId) && c.source === 'director');
+    const competitor = allCompetitors.find(c => String(c.id) === String(competitorId));
     if (!competitor) return res.status(404).json({ error: 'Competitor not found' });
+
+    // Pay-later public registrations: no credit deduction needed — just run auto-assign
+    if (competitor.source === 'registration') {
+      runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign for pay-later failed:', e.message));
+      return res.json({ competitor, source: 'registration' });
+    }
 
     if (competitor.approved) {
       return res.status(409).json({ error: 'Competitor is already approved' });
