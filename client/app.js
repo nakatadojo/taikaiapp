@@ -142,6 +142,8 @@ let _pendingDeletions   = new Set(); // IDs to delete on Save
 
 // Division edit mode state
 let _divisionEditMode = false;
+let _scheduleEditMode = false;
+let _scheduleDraft = null;
 
 // Cache for registration fields fetched from the server (avoids re-fetching on every modal open)
 let _registrationFields = null;
@@ -16622,6 +16624,7 @@ function getMatScheduleKey() {
 }
 
 function loadMatScheduleData() {
+    if (_scheduleEditMode && _scheduleDraft !== null) return _scheduleDraft;
     const key = getMatScheduleKey();
     let data = JSON.parse(_msGet(key) || 'null');
 
@@ -16639,12 +16642,57 @@ function loadMatScheduleData() {
 }
 
 function saveMatScheduleData(data) {
+    if (_scheduleEditMode) {
+        _scheduleDraft = data;
+        return; // hold in draft — display pages see nothing until Save
+    }
     const key = getMatScheduleKey();
     _msSet(key, JSON.stringify(data));
     // Also update the scoped key (passthrough to localStorage for staging-display.html)
     _msSet(_scopedKey('matSchedule'), JSON.stringify(data));
     // Immediately sync — no debounce to eliminate race window
     _syncScheduleToServer().catch(e => console.warn('[schedule] mat-schedule sync failed:', e.message));
+}
+
+function enterScheduleEditMode() {
+    _scheduleDraft = JSON.parse(JSON.stringify(loadMatScheduleData()));
+    _scheduleEditMode = true;
+    document.getElementById('sched-view-actions').style.display = 'none';
+    document.getElementById('sched-edit-actions').style.display = 'flex';
+    document.getElementById('sched-edit-btn').style.display = 'none';
+    document.getElementById('num-mats').removeAttribute('disabled');
+    document.getElementById('update-mats-btn').removeAttribute('disabled');
+    loadScheduleGrid();
+}
+
+function cancelScheduleEdit() {
+    _scheduleDraft = null;
+    _scheduleEditMode = false;
+    document.getElementById('sched-view-actions').style.display = 'flex';
+    document.getElementById('sched-edit-actions').style.display = 'none';
+    document.getElementById('sched-edit-btn').style.display = '';
+    document.getElementById('num-mats').setAttribute('disabled', 'true');
+    document.getElementById('update-mats-btn').setAttribute('disabled', 'true');
+    loadScheduleGrid();
+}
+
+async function saveScheduleChanges() {
+    if (!_scheduleEditMode) return;
+    const draft = _scheduleDraft || {};
+    _scheduleEditMode = false;
+    _scheduleDraft = null;
+    // Write to localStorage — this triggers BroadcastChannel to display pages
+    const key = getMatScheduleKey();
+    _msSet(key, JSON.stringify(draft));
+    _msSet(_scopedKey('matSchedule'), JSON.stringify(draft));
+    // Single server sync
+    await _syncScheduleToServer().catch(e => console.warn('[schedule] save failed:', e.message));
+    document.getElementById('sched-view-actions').style.display = 'flex';
+    document.getElementById('sched-edit-actions').style.display = 'none';
+    document.getElementById('sched-edit-btn').style.display = '';
+    document.getElementById('num-mats').setAttribute('disabled', 'true');
+    document.getElementById('update-mats-btn').setAttribute('disabled', 'true');
+    loadScheduleGrid();
 }
 
 function migrateMatScheduleData(oldData) {
@@ -18590,6 +18638,7 @@ function removeFromSchedule(matId, slotIndex) {
 }
 
 function initializeDragAndDrop() {
+    if (!_scheduleEditMode) return; // locked in view mode
     // Make unassigned pool items draggable
     document.querySelectorAll('.division-item').forEach(item => {
         item.addEventListener('dragstart', handleScheduleDragStart);

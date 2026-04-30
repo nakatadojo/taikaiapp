@@ -1971,8 +1971,8 @@
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <div class="form-group" style="margin: 0; display: flex; align-items: center; gap: 12px;">
                                 <label for="num-mats" style="margin: 0;">Number of Mats:</label>
-                                <input type="number" id="num-mats" min="1" max="20" value="2" style="width: 80px; padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
-                                <button class="btn btn-primary" onclick="updateMats()">Update Mats</button>
+                                <input type="number" id="num-mats" min="1" max="20" value="2" disabled style="width: 80px; padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <button id="update-mats-btn" class="btn btn-primary" onclick="updateMats()" disabled>Update Mats</button>
                             </div>
                         </div>
                     </div>
@@ -2048,12 +2048,15 @@
                                 <select id="schedule-event-filter" onchange="loadScheduleGrid()" style="padding: 6px 12px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border); font-size: 13px;">
                                     <option value="">All Events</option>
                                 </select>
-                                <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">
-                                    ⚡ Auto-Schedule All
-                                </button>
-                                <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">
-                                    🗑️ Clear All Schedules
-                                </button>
+                                <span id="sched-view-actions" style="display:flex;gap:8px;align-items:center;">
+                                    <button id="sched-edit-btn" class="btn btn-secondary btn-small" onclick="enterScheduleEditMode()">Edit Schedule</button>
+                                </span>
+                                <span id="sched-edit-actions" style="display:none;gap:8px;align-items:center;">
+                                    <button class="btn btn-secondary btn-small" onclick="autoScheduleDivisions()">⚡ Auto-Schedule All</button>
+                                    <button class="btn btn-danger btn-small" onclick="clearAllSchedules()">🗑️ Clear All Schedules</button>
+                                    <button class="btn btn-primary btn-small" onclick="saveScheduleChanges()">Save Changes</button>
+                                    <button class="btn btn-secondary btn-small" onclick="cancelScheduleEdit()">Cancel</button>
+                                </span>
                                 <button class="btn btn-small" id="schedule-publish-btn" onclick="toggleSchedulePublished()" style="background:var(--accent);color:#fff;">
                                     <span id="schedule-publish-label">Publish Schedule</span>
                                 </button>
@@ -3542,7 +3545,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=8"></script>
+    <script src="/app.js?v=9"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)
