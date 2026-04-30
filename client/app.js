@@ -1489,6 +1489,15 @@ function _initWebSocket() {
 
     // Server pushes this after every auto-assign run (registration, approval, add/edit competitor).
     // Reload divisions so the director sees fresh groupings without pressing "Regenerate".
+    // Server regenerated brackets after auto-assign — reload from DB so client
+    // always has the authoritative bracket without any client-side regen.
+    _socket.on('brackets:server-updated', ({ bracketIds }) => {
+        if (!bracketIds || bracketIds.length === 0) return;
+        _loadBracketsFromServer().then(() => {
+            if (typeof loadBrackets === 'function') loadBrackets();
+        }).catch(e => console.warn('[ws] brackets:server-updated reload failed:', e.message));
+    });
+
     _socket.on('divisions:updated', ({ generatedDivisions }) => {
         if (!generatedDivisions || typeof generatedDivisions !== 'object') return;
         const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');

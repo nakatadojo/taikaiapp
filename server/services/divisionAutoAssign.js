@@ -10,7 +10,9 @@
 const pool = require('../db/pool');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const DivisionQueries = require('../db/queries/divisions');
+const BracketQueries  = require('../db/queries/brackets');
 const { assignDivision } = require('./divisionAssignment');
+const { regenerateBracketFromSettings, bracketHasScoredMatches } = require('./bracketGenerator');
 
 // Debounce auto-assign per tournament so rapid concurrent saves (e.g. five staff
 // adding competitors simultaneously) coalesce into a single DB write + WS push.
@@ -173,6 +175,67 @@ async function runAutoAssign(tournamentId, io = null) {
   }
 
   await DivisionQueries.upsert(tournamentId, updatedDivisions);
+
+  // ── Server-side bracket update ─────────────────────────────────────────────
+  // For every division that gained competitors, regenerate unstarted brackets
+  // directly in the DB. This ensures a fresh page load always shows correct
+  // brackets without requiring any client-side WS magic.
+  try {
+    const existingBrackets = await BracketQueries.getAll(tournamentId);
+    const updatedBracketIds = [];
+
+    for (const row of existingBrackets) {
+      const eventId   = String(row.event_id);
+      const divName   = row.division_name;
+      const existing  = row.data;          // already parsed by pg (jsonb column)
+
+      // Skip if no matching division in the updated set
+      const evData = updatedDivisions[eventId];
+      if (!evData) continue;
+
+      const rawDiv  = evData.generated?.[divName];
+      const divComps = Array.isArray(rawDiv) ? rawDiv : (rawDiv?.competitors || []);
+      if (divComps.length < 2) continue;
+
+      // Skip if bracket already has scored matches
+      if (bracketHasScoredMatches(existing)) continue;
+
+      // Skip if competitor list is identical (no change)
+      const existingIds = new Set([
+        ...(existing.competitors || []),
+        ...(existing.matches || []).flatMap(m => [m.redCorner, m.blueCorner]),
+        ...(existing.winners  || []).flatMap(m => [m.redCorner, m.blueCorner]),
+      ].filter(Boolean).map(c => String(c.id)));
+
+      const newIds = new Set(divComps.map(c => String(c.id)));
+      const hasChanges = divComps.some(c => !existingIds.has(String(c.id)))
+                      || [...existingIds].some(id => !newIds.has(id));
+      if (!hasChanges) continue;
+
+      const newBracket = regenerateBracketFromSettings(existing, divComps);
+      if (!newBracket) continue;
+
+      await BracketQueries.upsert({
+        id:           row.id,
+        tournamentId,
+        eventId:      row.event_id,
+        divisionName: divName,
+        bracketType:  row.bracket_type,
+        data:         newBracket,
+      });
+      updatedBracketIds.push(row.id);
+    }
+
+    if (updatedBracketIds.length > 0 && io) {
+      io.to(`tournament:${tournamentId}:divisions`).emit('brackets:server-updated', {
+        tournamentId,
+        bracketIds: updatedBracketIds,
+      });
+    }
+  } catch (bracketErr) {
+    // Non-fatal — divisions are saved, bracket update is best-effort
+    console.warn('[auto-assign] bracket update failed:', bracketErr.message);
+  }
 
   // Push live update so every connected director sees the new division without refreshing.
   if (io) {
