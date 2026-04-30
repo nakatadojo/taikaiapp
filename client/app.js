@@ -1011,6 +1011,8 @@ async function _hydrateEventTypesFromServer() {
                 currency:   serverT.currency   || null,
                 weightUnit: serverT.weight_unit || null,
                 weight_unit: serverT.weight_unit || null,
+                published:  !!serverT.published,
+                registration_open: !!serverT.registration_open,
                 pricing: {
                     basePrice:  serverT.base_event_price  != null ? parseFloat(serverT.base_event_price)  : null,
                     addOnPrice: serverT.addon_event_price != null ? parseFloat(serverT.addon_event_price) : null,
@@ -2957,147 +2959,174 @@ function renderReadinessChecklist() {
     // ── Check-in progress ──────────────────────────────────────────────────
     const checkedInCount = realCompetitors.filter(c => c.checkedIn || c.checked_in).length;
 
+    const divisionsReviewed = _msGet(_scopedKey('divisionsReviewed')) === '1';
+
     // ── Build checklist items ──────────────────────────────────────────────
+    // Items with _header:true render as section dividers and are excluded from scoring.
+    // Items with dayOf:true are "day-before" tasks — excluded from the main pass/fail
+    // count so the director doesn't feel blocked during the registration period.
+
+    const nonDefault = eventTypes.filter(et => !et.isDefault);
+    const missingTrees = nonDefault.filter(et =>
+        _msGet(_scopedKey(`divTreeBuilt_${et.id}`)) !== '1'
+    );
+
+    const certTemplate = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
+    const certConfig   = JSON.parse(_msGet(_scopedKey('certificateConfig'))   || 'null');
+    const hasTemplate  = !!(certTemplate?.data || certTemplate?.dataUrl);
+    const enabledTags  = certConfig?.tags
+        ? Object.values(certConfig.tags).filter(t => t.enabled).length : 0;
+
     const checks = [
+        // ── Section: Registration Setup ───────────────────────────────────
+        { _header: true, label: 'Registration Setup' },
         {
-            label:   'Tournament published',
-            detail:  tournament?.published ? 'Open for registration' : 'Not visible to public',
-            ok:      !!tournament?.published,
-            link:    null, // Settings are on the director.html tournament page, not this tab
-            linkLabel: null,
+            label:     'Tournament published',
+            detail:    tournament?.published ? 'Open for registration' : 'Not visible to public',
+            ok:        !!tournament?.published,
+            link:      'settings',
+            linkLabel: 'Go to Settings',
         },
         {
-            label:   'Event types configured',
-            detail:  eventTypes.length > 0
+            label:     'Event types configured',
+            detail:    eventTypes.length > 0
                 ? `${eventTypes.length} event type${eventTypes.length !== 1 ? 's' : ''}`
                 : 'No event types created',
-            ok:      eventTypes.length > 0,
-            link:    'events',
+            ok:        eventTypes.length > 0,
+            link:      'events',
             linkLabel: 'Go to Events',
         },
-        (() => {
-            // Division tree check — every non-default event needs a tree with ≥1 split
-            const nonDefault = eventTypes.filter(et => !et.isDefault);
-            if (nonDefault.length === 0) {
-                return {
-                    label:   'Division trees',
-                    detail:  'No events created yet',
-                    ok:      false,
-                    link:    'events',
-                    linkLabel: 'Go to Events',
-                };
-            }
-            const missing = nonDefault.filter(et =>
-                _msGet(_scopedKey(`divTreeBuilt_${et.id}`)) !== '1'
-            );
-            return {
-                label:   'Division trees',
-                detail:  missing.length === 0
-                    ? `All ${nonDefault.length} event${nonDefault.length !== 1 ? 's' : ''} have division trees`
-                    : missing.length === nonDefault.length
-                        ? 'No division trees built yet'
-                        : `${missing.length} event${missing.length !== 1 ? 's' : ''} missing: ${missing.map(e => e.name).join(', ')}`,
-                ok:      missing.length === 0,
-                link:    'divisions',
-                linkLabel: 'Go to Divisions',
-            };
-        })(),
         {
-            label:   'Competitors registered',
-            detail:  realCompetitors.length >= 2
+            label:     'Division trees built',
+            detail:    nonDefault.length === 0
+                ? 'No events created yet'
+                : missingTrees.length === 0
+                    ? `All ${nonDefault.length} event${nonDefault.length !== 1 ? 's' : ''} have division trees`
+                    : missingTrees.length === nonDefault.length
+                        ? 'No division trees built yet'
+                        : `Missing: ${missingTrees.map(e => e.name).join(', ')}`,
+            ok:        nonDefault.length > 0 && missingTrees.length === 0,
+            link:      'divisions',
+            linkLabel: 'Go to Divisions',
+        },
+
+        // ── Section: Competitors ──────────────────────────────────────────
+        { _header: true, label: 'Competitors' },
+        {
+            label:     'Competitors registered',
+            detail:    realCompetitors.length >= 2
                 ? `${realCompetitors.length} competitor${realCompetitors.length !== 1 ? 's' : ''} registered`
                 : realCompetitors.length === 1
                     ? '1 competitor — need at least 2'
                     : 'No competitors registered',
-            ok:      realCompetitors.length >= 2,
-            link:    'competitors',
+            ok:        realCompetitors.length >= 2,
+            link:      'competitors',
             linkLabel: 'Go to Competitors',
         },
         {
-            label:   'Divisions generated',
-            detail:  competingEvents.length === 0
+            label:     'Payments resolved',
+            detail:    unpaidCount === 0
+                ? 'All competitors paid or waived'
+                : `${unpaidCount} competitor${unpaidCount !== 1 ? 's' : ''} with unresolved payment`,
+            ok:        unpaidCount === 0,
+            link:      'competitors',
+            linkLabel: 'View Competitors',
+        },
+        {
+            label:     'Divisions generated',
+            detail:    competingEvents.length === 0
                 ? 'No events with competitors yet'
                 : divisionsOk
                     ? `All ${competingEvents.length} event${competingEvents.length !== 1 ? 's' : ''} have divisions`
                     : `${divisionsCoverage} events have divisions`,
-            ok:      divisionsOk,
-            link:    'divisions',
+            ok:        divisionsOk,
+            link:      'divisions',
             linkLabel: 'Go to Divisions',
         },
+
+        // ── Section: Day-Before Preparation ──────────────────────────────
+        { _header: true, label: 'Day-Before Preparation' },
         {
-            label:   'Payments resolved',
-            detail:  unpaidCount === 0
-                ? 'All competitors paid or waived'
-                : `${unpaidCount} competitor${unpaidCount !== 1 ? 's' : ''} with unresolved payment`,
-            ok:      unpaidCount === 0,
-            link:    'competitors',
-            linkLabel: 'View Competitors',
+            label:     'Division adjustments reviewed',
+            detail:    divisionsReviewed
+                ? 'Divisions confirmed — ready for brackets'
+                : 'Review division rosters and make any adjustments before publishing brackets',
+            ok:        divisionsReviewed,
+            link:      null,
+            linkLabel: null,
+            _action:   !divisionsReviewed ? `_msSet(_scopedKey('divisionsReviewed'),'1');renderReadinessChecklist()` : null,
+            _actionLabel: 'Mark Reviewed',
         },
         {
-            label:   'Schedule published',
-            detail:  window._schedulePublished ? 'Schedule is live' : 'Schedule not yet published',
-            ok:      !!window._schedulePublished,
-            link:    'schedule',
+            label:     'Brackets created',
+            detail:    bracketCount > 0
+                ? `${bracketCount} bracket${bracketCount !== 1 ? 's' : ''} created`
+                : 'Generate brackets for each division',
+            ok:        bracketCount > 0,
+            link:      'brackets',
+            linkLabel: 'Go to Brackets',
+        },
+        {
+            label:     'Schedule published',
+            detail:    window._schedulePublished ? 'Schedule is live' : 'Schedule not yet published',
+            ok:        !!window._schedulePublished,
+            link:      'schedule',
             linkLabel: 'Go to Schedule',
         },
         {
-            label:   'Brackets created',
-            detail:  bracketCount > 0
-                ? `${bracketCount} bracket${bracketCount !== 1 ? 's' : ''} created`
-                : 'No brackets created yet',
-            ok:      bracketCount > 0,
-            link:    'bracket',
-            linkLabel: 'Go to Brackets',
+            label:     'Certificate template',
+            detail:    !hasTemplate
+                ? 'No certificate template uploaded'
+                : enabledTags === 0
+                    ? 'Template uploaded — merge tags not configured'
+                    : `Template ready, ${enabledTags} tag${enabledTags !== 1 ? 's' : ''} configured`,
+            ok:        hasTemplate && enabledTags > 0,
+            link:      'settings-certificates',
+            linkLabel: 'Go to Certificates',
         },
-        (() => {
-            const certTemplate = JSON.parse(_msGet(_scopedKey('certificateTemplate')) || 'null');
-            const certConfig   = JSON.parse(_msGet(_scopedKey('certificateConfig'))   || 'null');
-            const hasTemplate  = !!(certTemplate?.data || certTemplate?.dataUrl);
-            const enabledTags  = certConfig?.tags
-                ? Object.values(certConfig.tags).filter(t => t.enabled).length : 0;
-            return {
-                label:     'Certificate template',
-                detail:    !hasTemplate
-                    ? 'No certificate template uploaded'
-                    : enabledTags === 0
-                        ? 'Template uploaded — merge tags not yet configured'
-                        : `Template ready, ${enabledTags} tag${enabledTags !== 1 ? 's' : ''} configured`,
-                ok:        hasTemplate && enabledTags > 0,
-                link:      'settings-certificates',
-                linkLabel: 'Go to Certificates',
-            };
-        })(),
     ];
 
-    const passedCount = checks.filter(c => c.ok).length;
-    const pct         = Math.round((passedCount / checks.length) * 100);
+    const scorableChecks = checks.filter(c => !c._header);
+    const passedCount = scorableChecks.filter(c => c.ok).length;
+    const pct         = Math.round((passedCount / scorableChecks.length) * 100);
 
     // ── Render progress bar ────────────────────────────────────────────────
     const bar   = document.getElementById('readiness-bar');
     const score = document.getElementById('readiness-score');
     if (bar)   bar.style.width = `${pct}%`;
-    if (bar)   bar.style.background = pct === 100 ? '#22c55e' : pct >= 57 ? '#f59e0b' : '#ef4444';
-    if (score) score.textContent = `${passedCount} / ${checks.length} complete`;
+    if (bar)   bar.style.background = pct === 100 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+    if (score) score.textContent = `${passedCount} / ${scorableChecks.length} complete`;
 
     // ── Render item rows ───────────────────────────────────────────────────
     panel.innerHTML = checks.map(c => {
+        if (c._header) {
+            return `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+                        color:var(--text-secondary);padding:12px 4px 4px;margin-top:4px;">${c.label}</div>`;
+        }
         const icon     = c.ok
             ? `<span style="color:#22c55e;font-size:16px;flex-shrink:0;">✓</span>`
             : `<span style="color:#ef4444;font-size:16px;flex-shrink:0;">✕</span>`;
-        const linkHtml = (!c.ok && c.link)
+        const actionHtml = !c.ok && c._action
             ? `<button class="btn btn-small btn-secondary" style="margin-left:auto;flex-shrink:0;"
-                       onclick="navigateTo('${c.link}')">${c.linkLabel}</button>`
-            : '';
+                       onclick="${c._action}">${c._actionLabel}</button>`
+            : !c.ok && c.link
+                ? `<button class="btn btn-small btn-secondary" style="margin-left:auto;flex-shrink:0;"
+                           onclick="navigateTo('${c.link}')">${c.linkLabel}</button>`
+                : '';
         return `
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary);">
                 ${icon}
                 <div style="flex:1;min-width:0;">
-                    <div style="font-size:13px;font-weight:600;${c.ok ? '' : 'color:var(--text-primary);'}">${c.label}</div>
+                    <div style="font-size:13px;font-weight:600;">${c.label}</div>
                     <div style="font-size:12px;color:var(--text-secondary);">${c.detail}</div>
                 </div>
-                ${linkHtml}
+                ${actionHtml}
             </div>`;
     }).join('');
+}
+
+function resetDivisionsReviewed() {
+    _msSet(_scopedKey('divisionsReviewed'), '0');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -10683,6 +10712,8 @@ function validateDivisionSizes(divisions, template) {
     } else if (viableDivisions > 0) {
         showMessage(`✓ ${viableDivisions} viable division${viableDivisions !== 1 ? 's' : ''} generated successfully!`, 'success');
     }
+    // Reset "divisions reviewed" flag so director re-confirms after any regeneration
+    resetDivisionsReviewed();
 }
 
 // Division Builder Functions
