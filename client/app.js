@@ -2479,7 +2479,7 @@ function switchTournament() {
         if (activeView) {
             const viewName = activeView.id.replace(/-view$/, '');
             const viewLoaders = {
-                'divisions':               () => { loadEventTypeSelector(); loadTemplateSelector(); loadDivisions(); },
+                'divisions':               () => { loadEventTypeSelector(); loadTemplateSelector(); _loadDivisionsFromServer().then(() => loadDivisions()); },
                 'brackets':                () => loadBrackets(),
                 'schedule':                () => { displayMats(); loadMatSchedule(); },
                 'events':                  () => { loadEventTypes(); loadEventTypeSelector(); },
