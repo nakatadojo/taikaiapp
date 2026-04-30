@@ -2703,6 +2703,8 @@ loadTournamentSelector();
             _loadMatScoreboardsFromServer().catch(e => console.warn('[sync] Mat scoreboards load:', e.message));
             // Auto-load schedule (matSchedule + scheduleSettings) from server
             _loadScheduleFromServer().catch(e => console.warn('[sync] Schedule load:', e.message));
+            // Restore view from URL hash after auth + tournament are ready
+            _activateViewFromHash();
         });
     }
 
@@ -3394,6 +3396,9 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         if (view === 'teams') {
             loadTeamsDashboard();
         }
+        // Reflect active view in URL hash so the page is bookmarkable and
+        // browser back/forward works. Preserve the ?t= query param.
+        history.pushState(null, '', location.search + '#' + view);
     });
 });
 
@@ -3414,6 +3419,16 @@ function navigateTo(viewName) {
         btn.click();
     }
 }
+
+// Restore the active view from the URL hash (#viewname).
+// Called on initial load (after auth) and on browser back/forward.
+function _activateViewFromHash() {
+    const view = location.hash.slice(1);
+    if (view && document.querySelector(`[data-view="${view}"]`)) {
+        navigateTo(view);
+    }
+}
+window.addEventListener('popstate', _activateViewFromHash);
 
 // Message Display
 function showMessage(message, type = 'success') {
