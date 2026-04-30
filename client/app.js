@@ -3441,15 +3441,7 @@ function navigateTo(viewName) {
 // Called on initial load (after auth) and on browser back/forward.
 function _activateViewFromHash() {
     const view = location.hash.slice(1);
-    if (!view) return;
-    if (view.startsWith('open-tree-')) {
-        const eventId = view.slice('open-tree-'.length);
-        if (eventId && typeof openDivisionTreeModal === 'function') {
-            openDivisionTreeModal(eventId);
-        }
-        return;
-    }
-    if (document.querySelector(`[data-view="${view}"]`)) {
+    if (view && document.querySelector(`[data-view="${view}"]`)) {
         navigateTo(view);
     }
 }
@@ -31416,14 +31408,4 @@ function _urlBase64ToUint8Array(base64String) {
         outputArray[i] = rawData.charCodeAt(i);
     }
     return outputArray;
-}
-
-
-// Navigate to the standalone divisions page (MPA).
-function _navToDivisions() {
-    if (currentTournamentId) {
-        location.href = `/director/tournaments/${currentTournamentId}/divisions`;
-        return false;
-    }
-    return false;
 }
