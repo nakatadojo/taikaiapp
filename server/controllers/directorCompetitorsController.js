@@ -305,6 +305,122 @@ async function _findStartedDivisionForCompetitor(competitor, tournamentId, tourn
 }
 
 /**
+ * POST /api/tournaments/:id/competitors/batch-update
+ *
+ * Batch approve/unapprove/delete in one call so auto-assign runs once.
+ * Body: { approveIds: [], unapproveIds: [], deleteIds: [] }
+ */
+async function batchUpdateCompetitors(req, res, next) {
+  try {
+    const tournamentId = req.params.id;
+    const owned = await tournamentQueries.isOwnedBy(tournamentId, req.user.id);
+    if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
+
+    const tournament = await tournamentQueries.findById(tournamentId);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const { approveIds = [], unapproveIds = [], deleteIds = [] } = req.body;
+    const directorId = tournament.created_by;
+
+    const allCompetitors = await DirectorCompetitorQueries.getAll(tournamentId);
+    const byId = id => allCompetitors.find(c => String(c.id) === String(id));
+
+    const errors = [];
+    let creditsUsed = 0;
+
+    // ── 1. Deletions ─────────────────────────────────────────────────────────
+    for (const id of deleteIds) {
+      const result = await DirectorCompetitorQueries.remove(id, tournamentId);
+      if (result) broadcastCompetitorUpdate(tournamentId, 'delete', { id });
+    }
+
+    // ── 2. Unapprovals ───────────────────────────────────────────────────────
+    for (const id of unapproveIds) {
+      const comp = byId(id);
+      if (!comp) continue;
+      if (comp.source === 'registration') continue; // pay-later handled separately
+      const result = await DirectorCompetitorQueries.unapprove(id, tournamentId);
+      if (!result) continue;
+      if (result.error === 'BRACKET_LOCKED') {
+        errors.push({ id, error: 'bracket_locked', name: `${comp.firstName} ${comp.lastName}` });
+        continue;
+      }
+      // Refund credit for real unapproved competitors
+      if (!comp.is_test && comp.approved) {
+        await creditQueries.refundCredit(directorId, tournamentId, null,
+          `Unapproval: ${comp.firstName} ${comp.lastName}`);
+      }
+      broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: false });
+    }
+
+    // ── 3. Approvals ─────────────────────────────────────────────────────────
+    // Filter to real unapproved director-managed competitors that need credits
+    const toApproveReal = approveIds
+      .map(byId).filter(Boolean)
+      .filter(c => c.source !== 'registration' && !c.is_test && !c.approved);
+
+    if (toApproveReal.length > 0) {
+      const balance = await creditQueries.getBalance(directorId);
+      if (balance < toApproveReal.length) {
+        return res.status(402).json({
+          error: `Not enough credits. Need ${toApproveReal.length}, have ${balance}.`,
+          code: 'INSUFFICIENT_CREDITS',
+          balance,
+          needed: toApproveReal.length,
+        });
+      }
+    }
+
+    for (const id of approveIds) {
+      const comp = byId(id);
+      if (!comp) continue;
+
+      // Pay-later registrations: no credit, just mark approved
+      if (comp.source === 'registration') {
+        broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: true });
+        continue;
+      }
+      if (comp.approved) continue; // already approved, skip
+
+      const updated = await DirectorCompetitorQueries.approve(id, tournamentId);
+      if (!updated) continue;
+
+      if (!comp.is_test) {
+        const deductResult = await creditQueries.deductForRegistration(
+          directorId, 1, tournamentId, [null],
+          `Approval: ${comp.firstName} ${comp.lastName}`
+        );
+        if (!deductResult.success) {
+          await DirectorCompetitorQueries.unapprove(id, tournamentId);
+          errors.push({ id, error: 'insufficient_credits', name: `${comp.firstName} ${comp.lastName}` });
+          continue;
+        }
+        creditsUsed++;
+      }
+      broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: true });
+    }
+
+    // ── 4. Single auto-assign run ─────────────────────────────────────────────
+    runAutoAssign(tournamentId).catch(e =>
+      console.warn('[batch] auto-assign failed:', e.message)
+    );
+
+    const newBalance = creditsUsed > 0
+      ? await creditQueries.getBalance(directorId)
+      : undefined;
+
+    res.json({
+      message: 'Batch update complete',
+      approved: approveIds.length,
+      unapproved: unapproveIds.length,
+      deleted: deleteIds.length,
+      errors,
+      ...(newBalance !== undefined ? { newCreditBalance: newBalance } : {}),
+    });
+  } catch (err) { next(err); }
+}
+
+/**
  * Return true if any match in the bracket data has recorded scores or results.
  */
 function _bracketHasScores(data) {
@@ -368,4 +484,4 @@ async function _sendCompetitorInvite({ competitor, tournamentId, addedByUserId }
   });
 }
 
-module.exports = { getCompetitors, addCompetitor, updateCompetitor, deleteCompetitor, approveCompetitor, unapproveCompetitor };
+module.exports = { getCompetitors, addCompetitor, updateCompetitor, deleteCompetitor, approveCompetitor, unapproveCompetitor, batchUpdateCompetitors };

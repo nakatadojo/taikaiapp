@@ -123,10 +123,35 @@ async function runAutoAssign(tournamentId) {
       };
     }
 
+    // Re-apply manual overrides (director moves/removes) on top of fresh assignments.
+    // override can be a string (legacy) or { target, note } object.
+    const prevManual = (currentDivisions[String(event.id)] || {}).manual || {};
+    for (const [compId, override] of Object.entries(prevManual)) {
+      const targetDiv = typeof override === 'string' ? override : override?.target;
+      let movedComp = null;
+      for (const divKey of Object.keys(generated)) {
+        const divData = generated[divKey];
+        const comps = Array.isArray(divData) ? divData : (divData?.competitors || []);
+        const idx = comps.findIndex(c => String(c.id) === String(compId));
+        if (idx !== -1) {
+          movedComp = comps.splice(idx, 1)[0];
+          if (comps.length === 0 && divKey !== '__unassigned__') delete generated[divKey];
+          break;
+        }
+      }
+      if (!targetDiv || !movedComp || targetDiv === '__removed__') continue;
+      if (!generated[targetDiv]) {
+        generated[targetDiv] = { name: targetDiv, competitors: [], createdAt: new Date().toISOString() };
+      }
+      const targetComps = Array.isArray(generated[targetDiv]) ? generated[targetDiv] : (generated[targetDiv].competitors);
+      targetComps.push(movedComp);
+    }
+
     updatedDivisions[String(event.id)] = {
       ...currentDivisions[String(event.id)],
       templates,
       generated,
+      ...(Object.keys(prevManual).length > 0 ? { manual: prevManual } : {}),
       updatedAt: new Date().toISOString(),
     };
   }

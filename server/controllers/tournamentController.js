@@ -46,8 +46,13 @@ async function getDirectory(req, res, next) {
  * Public callers (unauthenticated or non-owners) only see published tournaments.
  * The tournament owner and super_admins can see unpublished drafts.
  */
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function getTournament(req, res, next) {
   try {
+    if (!_UUID_RE.test(req.params.id)) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
     const tournament = await tournamentQueries.findByIdWithEvents(req.params.id);
     if (!tournament) {
       return res.status(404).json({ error: 'Tournament not found' });

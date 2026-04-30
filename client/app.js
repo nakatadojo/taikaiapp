@@ -134,6 +134,15 @@ function generateUniqueId() {
 let currentTournamentId = null;
 const _dtbInstances = {}; // { eventId: DivisionTreeBuilder }
 
+// Competitor list edit mode state
+let _competitorEditMode = false;
+let _pendingApprovals   = new Set(); // IDs to approve on Save
+let _pendingUnapprovals = new Set(); // IDs to unapprove on Save
+let _pendingDeletions   = new Set(); // IDs to delete on Save
+
+// Division edit mode state
+let _divisionEditMode = false;
+
 // Cache for registration fields fetched from the server (avoids re-fetching on every modal open)
 let _registrationFields = null;
 
@@ -982,7 +991,7 @@ function _syncApprovedStatusInDivisions(freshCompetitors) {
  * Server data replaces localStorage so we have canonical UUIDs and latest state.
  */
 async function _hydrateEventTypesFromServer() {
-    if (!currentTournamentId) return;
+    if (!currentTournamentId || !_isServerTournamentId(currentTournamentId)) return;
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}`, { credentials: 'include' });
         if (!res.ok) return;
@@ -2132,7 +2141,7 @@ async function _loadScoreboardConfigFromServer() {
 
 // ── Public Site Config Server Sync ────────────────────────────────────────
 async function _syncPublicSiteConfigToServer(config) {
-    if (!currentTournamentId) return;
+    if (!currentTournamentId || !_isServerTournamentId(currentTournamentId)) return;
     try {
         await fetch(`/api/tournaments/${currentTournamentId}`, {
             method: 'PUT',
@@ -2146,7 +2155,7 @@ async function _syncPublicSiteConfigToServer(config) {
 }
 
 async function _loadPublicSiteConfigFromServer() {
-    if (!currentTournamentId) return;
+    if (!currentTournamentId || !_isServerTournamentId(currentTournamentId)) return;
     try {
         const res = await fetch(`/api/tournaments/${currentTournamentId}`, {
             credentials: 'include',
@@ -5969,17 +5978,49 @@ function loadCompetitors(skipSync = false) {
             : (comp.approved === true || comp.source === 'registration');
         const isBracketLocked = comp.bracket_placed === true && !comp.is_test;
 
-        let approvalCell = '-';
-        if (needsApprovalUI) {
-            if (isApproved) {
-                const lockIcon = isBracketLocked ? ' 🔒' : '';
-                const unapproveBtn = isBracketLocked
-                    ? `<button class="btn btn-small btn-secondary" disabled title="Competitor is in a bracket — delete the bracket first">Approved${lockIcon}</button>`
-                    : `<button class="btn btn-small btn-secondary" onclick="unapproveCompetitor('${comp.id}')">Approved ✓</button>`;
-                approvalCell = unapproveBtn;
+        let approvalCell, actionsCell;
+
+        if (_competitorEditMode) {
+            // ── Edit mode: toggleable approve + delete ──────────────────────
+            if (needsApprovalUI) {
+                const isPendingApprove   = _pendingApprovals.has(String(comp.id));
+                const isPendingUnapprove = _pendingUnapprovals.has(String(comp.id));
+                const effectiveApproved  = isApproved
+                    ? !isPendingUnapprove
+                    : isPendingApprove;
+
+                if (isBracketLocked) {
+                    approvalCell = `<button class="btn btn-small btn-secondary" disabled title="In a bracket — delete bracket first">Approved 🔒</button>`;
+                } else if (effectiveApproved) {
+                    approvalCell = `<button class="btn btn-small btn-secondary" onclick="togglePendingApproval('${comp.id}', true)" title="Click to unapprove">Approved ✓</button>`;
+                } else {
+                    approvalCell = `<button class="btn btn-small btn-primary" onclick="togglePendingApproval('${comp.id}', false)">Approve</button>`;
+                }
             } else {
-                approvalCell = `<button class="btn btn-small btn-primary" onclick="approveCompetitor('${comp.id}')">Approve</button>`;
+                approvalCell = '-';
             }
+
+            const isPendingDelete = _pendingDeletions.has(String(comp.id));
+            actionsCell = `
+                <button class="btn btn-small" onclick="editCompetitor('${comp.id}')" title="View / edit profile">View</button>
+                <button class="btn btn-small btn-danger${isPendingDelete ? ' btn-danger-active' : ''}"
+                    onclick="togglePendingDeletion('${comp.id}')"
+                    title="${isPendingDelete ? 'Click to cancel deletion' : 'Mark for deletion'}">
+                    ${isPendingDelete ? 'Undo Delete' : 'Delete'}
+                </button>`;
+        } else {
+            // ── View mode: read-only status badge + View button ─────────────
+            if (needsApprovalUI) {
+                if (isApproved) {
+                    const lockIcon = isBracketLocked ? ' 🔒' : '';
+                    approvalCell = `<span class="badge badge-success">Approved${lockIcon}</span>`;
+                } else {
+                    approvalCell = `<span class="badge badge-warning">Pending</span>`;
+                }
+            } else {
+                approvalCell = `<span class="badge badge-success">Registered</span>`;
+            }
+            actionsCell = `<button class="btn btn-small" onclick="editCompetitor('${comp.id}')">View</button>`;
         }
 
         tr.innerHTML = `
@@ -5994,10 +6035,7 @@ function loadCompetitors(skipSync = false) {
             <td style="font-size: 13px; font-weight: 600;">${totalDue}</td>
             <td style="cursor: pointer;" onclick="togglePaymentStatus(${comp.id})">${paymentBadge}</td>
             <td>${approvalCell}</td>
-            <td>
-                ${(comp.source !== 'registration' && !comp.is_test) ? `<button class="btn btn-small" onclick="editCompetitor('${comp.id}')">Edit</button>` : ''}
-                <button class="btn btn-small btn-danger" onclick="deleteCompetitor('${comp.id}')">Delete</button>
-            </td>
+            <td>${actionsCell}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -6005,6 +6043,124 @@ function loadCompetitors(skipSync = false) {
     // Update competitor selects for scoreboard
     updateCompetitorSelects();
 }
+
+// ── Competitor list edit mode ─────────────────────────────────────────────────
+
+function enterCompetitorEditMode() {
+    _competitorEditMode = true;
+    _pendingApprovals.clear();
+    _pendingUnapprovals.clear();
+    _pendingDeletions.clear();
+    const toolbar = document.getElementById('competitor-edit-toolbar');
+    const editBtn = document.getElementById('competitor-edit-btn');
+    if (toolbar) toolbar.style.display = 'flex';
+    if (editBtn) editBtn.style.display = 'none';
+    loadCompetitors(true);
+}
+
+function cancelCompetitorEdit() {
+    _competitorEditMode = false;
+    _pendingApprovals.clear();
+    _pendingUnapprovals.clear();
+    _pendingDeletions.clear();
+    const toolbar = document.getElementById('competitor-edit-toolbar');
+    const editBtn = document.getElementById('competitor-edit-btn');
+    if (toolbar) toolbar.style.display = 'none';
+    if (editBtn) editBtn.style.display = '';
+    loadCompetitors(true);
+}
+
+function togglePendingApproval(id, currentlyApproved) {
+    const sid = String(id);
+    if (currentlyApproved) {
+        // Currently approved → mark for unapproval
+        if (_pendingUnapprovals.has(sid)) _pendingUnapprovals.delete(sid);
+        else _pendingUnapprovals.add(sid);
+        _pendingApprovals.delete(sid);
+    } else {
+        // Currently unapproved → mark for approval
+        if (_pendingApprovals.has(sid)) _pendingApprovals.delete(sid);
+        else _pendingApprovals.add(sid);
+        _pendingUnapprovals.delete(sid);
+    }
+    loadCompetitors(true);
+}
+
+function togglePendingDeletion(id) {
+    const sid = String(id);
+    if (_pendingDeletions.has(sid)) _pendingDeletions.delete(sid);
+    else _pendingDeletions.add(sid);
+    loadCompetitors(true);
+}
+
+async function saveCompetitorBatch() {
+    if (!currentTournamentId) return;
+    const approveIds   = [..._pendingApprovals];
+    const unapproveIds = [..._pendingUnapprovals];
+    const deleteIds    = [..._pendingDeletions];
+
+    if (approveIds.length + unapproveIds.length + deleteIds.length === 0) {
+        cancelCompetitorEdit();
+        return;
+    }
+
+    const saveBtn = document.querySelector('#competitor-edit-toolbar .btn-primary');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/competitors/batch-update`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approveIds, unapproveIds, deleteIds }),
+        });
+
+        if (res.status === 402) {
+            const data = await res.json().catch(() => ({}));
+            showMessage(
+                `Not enough credits. Need ${data.needed ?? approveIds.length}, have ${data.balance ?? 0}. ` +
+                `Purchase credits from the Credits section.`,
+                'error'
+            );
+            return;
+        }
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showMessage(data.error || 'Save failed — please try again.', 'error');
+            return;
+        }
+
+        const data = await res.json();
+        if (data.newCreditBalance !== undefined) _refreshCreditBadge(data.newCreditBalance);
+
+        // Report any partial errors (e.g. bracket-locked unapprovals)
+        if (data.errors?.length) {
+            const locked = data.errors.filter(e => e.error === 'bracket_locked').map(e => e.name);
+            if (locked.length) showMessage(`Note: ${locked.join(', ')} could not be unapproved — already in a bracket.`, 'error');
+        }
+
+        // Exit edit mode and reload from server
+        _competitorEditMode = false;
+        _pendingApprovals.clear();
+        _pendingUnapprovals.clear();
+        _pendingDeletions.clear();
+        const toolbar = document.getElementById('competitor-edit-toolbar');
+        const editBtn = document.getElementById('competitor-edit-btn');
+        if (toolbar) toolbar.style.display = 'none';
+        if (editBtn) editBtn.style.display = '';
+
+        await _loadCompetitorsFromServer();
+        loadCompetitors(true);
+        loadDashboard();
+        showMessage(`Saved. ${data.approved} approved, ${data.deleted} deleted.`, 'success');
+    } catch (err) {
+        showMessage('Save failed — please try again.', 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function deleteCompetitor(id) {
     if (!currentTournamentId) return;
@@ -6116,6 +6272,33 @@ function _removeCompetitorFromBrackets(deletedId) {
  * Mirrors generateDivisions() logic but takes an explicit eventId list,
  * skips UI toasts, and does not require the hidden event selector to be set.
  */
+
+/**
+ * Re-apply manual overrides (director moves/removes) on top of a freshly
+ * generated divisions map.  `generated` is mutated in-place.
+ * `manual` = { competitorId: targetDivisionName | '__removed__' }
+ */
+function _applyManualOverrides(generated, manual) {
+    if (!manual) return;
+    for (const [compId, override] of Object.entries(manual)) {
+        // override can be a string (legacy) or { target, note } object
+        const targetDiv = typeof override === 'string' ? override : override?.target;
+        if (!targetDiv) continue;
+        let movedComp = null;
+        for (const divKey of Object.keys(generated)) {
+            const comps = generated[divKey];
+            if (!Array.isArray(comps)) continue;
+            const idx = comps.findIndex(c =>
+                String(c.id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`) === String(compId)
+            );
+            if (idx !== -1) { [movedComp] = comps.splice(idx, 1); break; }
+        }
+        if (!movedComp || targetDiv === '__removed__') continue;
+        if (!Array.isArray(generated[targetDiv])) generated[targetDiv] = [];
+        generated[targetDiv].push(movedComp);
+    }
+}
+
 function _silentlyRegenerateDivisionsForEvents(eventIds) {
     if (!eventIds || eventIds.length === 0) return;
     if (!currentTournamentId) return;
@@ -6170,6 +6353,7 @@ function _silentlyRegenerateDivisionsForEvents(eventIds) {
             );
         });
 
+        _applyManualOverrides(generatedDivisions, eventData.manual);
         allDivisions[eventId] = {
             ...eventData,
             generated: generatedDivisions,
@@ -8882,7 +9066,13 @@ function loadEventTypeCards() {
     nonDefault.forEach(evt => {
         const evtData   = allDivisions[evt.id];
         const generated = evtData?.generated || {};
-        const divCount  = Object.keys(generated).length;
+        // Show total defined divisions (template leaves) as the primary count.
+        // Fall back to generated keys when no tree template exists yet.
+        const templates = evtData?.templates || [];
+        const isTreeTpl = templates.length > 0
+            && typeof templates[0].name === 'string'
+            && typeof templates[0].id   === 'string';
+        const divCount  = isTreeTpl ? templates.length : Object.keys(generated).length;
         const compCount = Object.values(generated).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
 
         const card = document.createElement('div');
@@ -11085,6 +11275,51 @@ async function syncAllDivisions() {
     }
 }
 
+// ── Division edit mode ────────────────────────────────────────────────────────
+
+function loadDivisionsView() {
+    if (typeof loadEventTypeCards === 'function') loadEventTypeCards();
+    if (typeof loadDivisions === 'function') loadDivisions();
+}
+
+function enterDivisionEditMode() {
+    _divisionEditMode = true;
+    document.getElementById('div-view-actions').style.display = 'none';
+    document.getElementById('div-edit-actions').style.display = '';
+    document.getElementById('div-edit-btn').style.display = 'none';
+    loadDivisions();
+}
+
+function cancelDivisionEdit() {
+    _divisionEditMode = false;
+    document.getElementById('div-view-actions').style.display = '';
+    document.getElementById('div-edit-actions').style.display = 'none';
+    document.getElementById('div-edit-btn').style.display = '';
+    // Reload from server to discard local changes
+    _loadDivisionsFromServer().then(() => loadDivisions());
+}
+
+async function saveDivisionChanges() {
+    const saveBtn = document.querySelector('#div-edit-actions .btn-primary');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+    try {
+        await _syncDivisionsToServer();
+        _divisionEditMode = false;
+        document.getElementById('div-view-actions').style.display = '';
+        document.getElementById('div-edit-actions').style.display = 'none';
+        document.getElementById('div-edit-btn').style.display = '';
+        await _loadDivisionsFromServer();
+        loadDivisions();
+        showMessage('Division changes saved.', 'success');
+    } catch (e) {
+        showMessage('Save failed — please try again.', 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function resyncDivisions() {
     if (!currentTournamentId) return;
 
@@ -11118,6 +11353,16 @@ async function resyncDivisions() {
         { confirmText: 'Yes, Re-sync', danger: true }
     );
     if (!confirmed2) return;
+
+    // Clear manual overrides for this event so the re-sync is truly fresh
+    if (eventId) {
+        const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        if (allDivisions[eventId]?.manual) {
+            delete allDivisions[eventId].manual;
+            _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
+            await _syncDivisionsToServer();
+        }
+    }
 
     await triggerServerAutoAssign();
 }
@@ -11256,10 +11501,14 @@ function generateDivisions() {
     // Validate division sizes and warn user
     validateDivisionSizes(generatedDivisions, eventData.templates[0]);
 
-    // Store the generated divisions under this event (preserve templates)
+    // Re-apply any manual overrides (director moves/removes) on the fresh assignments
+    _applyManualOverrides(generatedDivisions, eventData.manual);
+
+    // Store the generated divisions under this event (preserve templates + manual overrides)
     allDivisions[eventId] = {
-        templates: eventData.templates, // Preserve templates
+        templates: eventData.templates,
         generated: generatedDivisions,
+        ...(eventData.manual ? { manual: eventData.manual } : {}),
         updatedAt: new Date().toISOString()
     };
 
@@ -11497,23 +11746,29 @@ function loadDivisions() {
                     const sheet = document.createElement('div');
                     sheet.className = 'division-sheet';
                     const cId = (c) => c.id || c._id || `${c.firstName}_${c.lastName}_${c.dateOfBirth}`;
+                const _legacyManualOverrides = eventData.manual || {};
                 const tableRows = divCompetitors.map(comp => {
+                    const cid2 = cId(comp);
                     const isPending = comp.approved === false;
                     const pendingBadge = isPending ? ' <span style="background:#f59e0b;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;vertical-align:middle;">Pending</span>' : '';
+                    const ov2 = _legacyManualOverrides[cid2];
+                    const note2 = ov2?.note || null;
+                    const noteBadge2 = note2 ? ` <span title="${_escapeHtml(note2)}" style="cursor:help;font-size:11px;color:var(--accent);margin-left:4px;">&#x24D8;</span>` : '';
+                    const actionCell2 = _divisionEditMode
+                        ? `<button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cid2}')" title="Move to another division">Move</button>
+                           <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${cid2}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                           <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${cid2}')" title="Remove from this division" style="margin-left:4px;">Remove</button>`
+                        : '';
                     return `
                         <tr style="${isPending ? 'opacity:0.7;' : ''}">
-                            <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}</td>
+                            <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}${noteBadge2}</td>
                             <td>${getDisplayAge(comp)}</td>
                             <td>${comp.gender || '-'}</td>
                             <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                             <td>${comp.rank || '-'}</td>
                             <td>${comp.club || '-'}</td>
                             <td>${getCountryFallback(comp)}</td>
-                            <td style="white-space:nowrap;">
-                                <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Move to another division">Move</button>
-                                <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
-                                <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${cId(comp)}')" title="Remove from this division" style="margin-left:4px;">Remove</button>
-                            </td>
+                            <td style="white-space:nowrap;">${actionCell2}</td>
                         </tr>`;
                 }).join('');
                     sheet.innerHTML = `
@@ -11590,23 +11845,32 @@ function loadDivisions() {
         sheet.className = 'division-sheet';
 
         const compId = (comp) => comp.id || comp._id || `${comp.firstName}_${comp.lastName}_${comp.dateOfBirth}`;
+        const manualOverrides = eventData.manual || {};
         let tableRows = competitors.map(comp => {
+            const cid = compId(comp);
             const isPending = comp.approved === false;
             const pendingBadge = isPending ? ' <span style="background:#f59e0b;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;vertical-align:middle;">Pending</span>' : '';
+            // Show override note if competitor was manually placed
+            const override = manualOverrides[cid];
+            const overrideNote = override?.note || (typeof override === 'object' ? null : null);
+            const noteBadge = overrideNote
+                ? ` <span title="${_escapeHtml(overrideNote)}" style="cursor:help;font-size:11px;color:var(--accent);margin-left:4px;" aria-label="Override note">&#x24D8;</span>`
+                : '';
+            const actionCell = _divisionEditMode
+                ? `<button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${cid}')" title="Move to another division">Move</button>
+                   <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${cid}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
+                   <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${cid}')" title="Remove from this division" style="margin-left:4px;">Remove</button>`
+                : '';
             return `
             <tr style="${isPending ? 'opacity:0.7;' : ''}">
-                <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}</td>
+                <td>${comp.firstName || '?'} ${comp.lastName || '?'}${pendingBadge}${noteBadge}</td>
                 <td>${getDisplayAge(comp)}</td>
                 <td>${comp.gender || '-'}</td>
                 <td>${comp.weight != null ? comp.weight + ' ' + getTournamentWeightUnit() : '-'}</td>
                 <td>${comp.rank || '-'}</td>
                 <td>${comp.club || '-'}</td>
                 <td>${getCompetitorCountry(comp)}</td>
-                <td style="white-space:nowrap;">
-                    <button class="btn btn-small" onclick="showMoveCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Move to another division">Move</button>
-                    <button class="btn btn-small btn-secondary" onclick="showCopyCompetitorModal('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Copy to another division" style="margin-left:4px;">Copy</button>
-                    <button class="btn btn-small btn-danger" onclick="removeCompetitorFromDivision('${_escapeHtml(divisionName)}','${compId(comp)}')" title="Remove from this division" style="margin-left:4px;">Remove</button>
-                </td>
+                <td style="white-space:nowrap;">${actionCell}</td>
             </tr>`;
         }).join('');
 
@@ -11691,7 +11955,7 @@ function showMoveCompetitorModal(fromDivision, competitorId) {
             <p style="margin:0 0 16px 0;font-size:14px;color:var(--text-secondary,#aaa);">
                 Move <strong>${_escapeHtml(compName)}</strong> from <em>${_escapeHtml(fromDivision)}</em>
             </p>
-            <div style="margin-bottom:16px;">
+            <div style="margin-bottom:12px;">
                 <label style="display:block;margin-bottom:6px;font-size:13px;">Target Division</label>
                 <select id="move-comp-target" class="form-input" style="width:100%;">
                     ${otherDivs.map(d => {
@@ -11699,6 +11963,10 @@ function showMoveCompetitorModal(fromDivision, competitorId) {
                         return `<option value="${_escapeHtml(d)}">${_escapeHtml(d)} (${cnt})</option>`;
                     }).join('')}
                 </select>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;margin-bottom:6px;font-size:13px;">Reason <span style="color:var(--text-secondary);font-weight:400;">(optional — shown in brackets)</span></label>
+                <input id="move-comp-note" class="form-input" type="text" placeholder="e.g. Weighed in at 68 kg" style="width:100%;">
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button class="btn btn-secondary" onclick="document.getElementById('move-comp-overlay').remove()">Cancel</button>
@@ -11738,9 +12006,16 @@ function executeCompetitorMove(fromDivision, competitorId) {
     if (!Array.isArray(divisions[target])) divisions[target] = [];
     divisions[target].push(moved);
 
-    // Save back and immediately sync to server — manual moves must be atomic
+    // Record manual override (with optional note) so auto-assign won't revert this move
+    const note = document.getElementById('move-comp-note')?.value?.trim() || null;
+    if (!eventData.manual) eventData.manual = {};
+    eventData.manual[competitorId] = note ? { target, note } : target;
+
+    // Save back; sync immediately unless in edit mode (user clicks Save to commit)
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _syncDivisionsToServer().catch(e => console.warn('[divisions] move-competitor sync failed:', e.message));
+    if (!_divisionEditMode) {
+        _syncDivisionsToServer().catch(e => console.warn('[divisions] move-competitor sync failed:', e.message));
+    }
 
     // Close modal and refresh
     const overlay = document.getElementById('move-comp-overlay');
@@ -11875,6 +12150,9 @@ async function removeCompetitorFromDivision(divisionName, competitorId) {
         // Move to Unassigned bucket
         if (!Array.isArray(eventData.generated['__unassigned__'])) eventData.generated['__unassigned__'] = [];
         if (comp) eventData.generated['__unassigned__'].push(comp);
+        // Record override so auto-assign keeps them in unassigned
+        if (!eventData.manual) eventData.manual = {};
+        eventData.manual[String(comp?.id || competitorId)] = '__unassigned__';
         showToast(`${compName} moved to Unassigned`, 'success');
     } else if (choice === 'delete') {
         // Delete from the tournament entirely
@@ -11884,7 +12162,9 @@ async function removeCompetitorFromDivision(divisionName, competitorId) {
 
     allDivisions[eventId] = eventData;
     _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
-    _syncDivisionsToServer().catch(e => console.warn('[divisions] remove-competitor sync failed:', e.message));
+    if (!_divisionEditMode) {
+        _syncDivisionsToServer().catch(e => console.warn('[divisions] remove-competitor sync failed:', e.message));
+    }
     loadDivisions();
 }
 

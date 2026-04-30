@@ -198,6 +198,9 @@ router.get('/:id/competitors', requireAuth, requireTournamentPermission('read_da
 // POST /api/tournaments/:id/competitors/sync — keep for legacy sendBeacon (must be before /:competitorId)
 router.post('/:id/competitors/sync', requireAuth, requireTournamentOwner, tournamentController.syncCompetitors);
 
+// POST /api/tournaments/:id/competitors/batch-update — batch approve/unapprove/delete
+router.post('/:id/competitors/batch-update', requireAuth, directorCompetitorsController.batchUpdateCompetitors);
+
 // POST /api/tournaments/:id/competitors — add a single competitor
 router.post('/:id/competitors', requireAuth, directorCompetitorsController.addCompetitor);
 

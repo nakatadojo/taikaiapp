@@ -1150,8 +1150,18 @@
                     </form>
                 </div>
 
+                <!-- Edit mode toolbar -->
+                <div id="competitor-edit-toolbar" style="display:none; align-items:center; gap:10px; margin-bottom:12px; padding:12px 16px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); border-radius:8px;">
+                    <span style="font-size:13px; color:var(--text-secondary); flex:1;">Select competitors to approve or delete, then save.</span>
+                    <button class="btn btn-primary" onclick="saveCompetitorBatch()">Save Changes</button>
+                    <button class="btn btn-secondary" onclick="cancelCompetitorEdit()">Cancel</button>
+                </div>
+
                 <div class="table-container">
-                    <input type="text" id="competitor-search" placeholder="Search competitors..." onkeyup="filterCompetitors()">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                        <input type="text" id="competitor-search" placeholder="Search competitors..." onkeyup="filterCompetitors()" style="flex:1; margin-bottom:0;">
+                        <button id="competitor-edit-btn" class="btn btn-secondary btn-small" onclick="enterCompetitorEditMode()" style="white-space:nowrap;">Edit List</button>
+                    </div>
                     <table id="competitors-table">
                         <thead>
                             <tr>
@@ -1640,13 +1650,22 @@
 
                     <!-- Actions bar -->
                     <div class="glass-panel" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;margin-top:0;border-top:none;border-radius:0 0 var(--radius) var(--radius);">
-                        <button class="btn btn-secondary" onclick="showBracketGenerator()">&#x1F4CA; Generate Brackets</button>
-                        <button class="btn btn-secondary" id="resync-divisions-btn" onclick="resyncDivisions()" title="Rebuild all division assignments from tree criteria">&#x21BA; Re-sync Divisions</button>
-                        <button class="btn btn-danger" onclick="deleteDivisions()">Delete Divisions</button>
-                        <label class="checkbox-label" style="margin-left:auto;">
-                            <input type="checkbox" id="hide-empty-divisions" checked onchange="renderDivisions()">
+                        <!-- View mode -->
+                        <span id="div-view-actions" style="display:contents;">
+                            <button class="btn btn-secondary" onclick="showBracketGenerator()">&#x1F4CA; Generate Brackets</button>
+                            <button class="btn btn-secondary" id="resync-divisions-btn" onclick="resyncDivisions()" title="Clear all manual moves and rebuild from the division criteria tree">&#x21BA; Re-generate from Criteria</button>
+                            <button class="btn btn-danger" onclick="deleteDivisions()">Delete Divisions</button>
+                        </span>
+                        <!-- Edit mode (hidden by default) -->
+                        <span id="div-edit-actions" style="display:none;">
+                            <button class="btn btn-primary" onclick="saveDivisionChanges()" style="margin-right:6px;">Save Changes</button>
+                            <button class="btn btn-secondary" onclick="cancelDivisionEdit()">Cancel</button>
+                        </span>
+                        <label class="checkbox-label" style="margin-left:auto;margin-right:8px;">
+                            <input type="checkbox" id="hide-empty-divisions" onchange="renderDivisions()">
                             Show only divisions with competitors
                         </label>
+                        <button id="div-edit-btn" class="btn btn-secondary btn-small" onclick="enterDivisionEditMode()">Edit Divisions</button>
                     </div>
 
                     <div id="divisions-container"></div>
@@ -3523,7 +3542,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=7"></script>
+    <script src="/app.js?v=8"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)
