@@ -12,6 +12,21 @@ const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const DivisionQueries = require('../db/queries/divisions');
 const { assignDivision } = require('./divisionAssignment');
 
+// Debounce auto-assign per tournament so rapid concurrent saves (e.g. five staff
+// adding competitors simultaneously) coalesce into a single DB write + WS push.
+const _pending = new Map();
+
+function scheduleAutoAssign(tournamentId, io = null, delayMs = 500) {
+  if (_pending.has(tournamentId)) clearTimeout(_pending.get(tournamentId));
+  const handle = setTimeout(() => {
+    _pending.delete(tournamentId);
+    runAutoAssign(tournamentId, io).catch(e =>
+      console.warn(`[auto-assign] scheduled run failed for ${tournamentId}:`, e.message)
+    );
+  }, delayMs);
+  _pending.set(tournamentId, handle);
+}
+
 /**
  * Run auto-assign for a tournament.
  * Loads all competitors and event templates, assigns competitors to divisions,
@@ -169,4 +184,4 @@ async function runAutoAssign(tournamentId, io = null) {
   return updatedDivisions;
 }
 
-module.exports = { runAutoAssign };
+module.exports = { runAutoAssign, scheduleAutoAssign };

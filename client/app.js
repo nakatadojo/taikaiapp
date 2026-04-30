@@ -156,7 +156,6 @@ const _authReady = window._authReady = new Promise(r => { _resolveAuthReady = r;
 // ── Server Persistence Helpers ───────────────────────────────────────────────
 // Competitors are kept in-memory only — never written to localStorage.
 let _inMemoryCompetitors = [];
-let _competitorsSyncTimer = null;
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Flush any pending competitors sync before the page unloads (navigation / reload)
@@ -853,14 +852,6 @@ async function _deleteEventTypeFromServer(eventId) {
 
 // ── Competitor / Club Server Sync ─────────────────────────────────────────────
 
-/**
- * Queue a debounced full-replace sync of competitors + clubs to the server.
- */
-function _queueCompetitorsSync() {
-    clearTimeout(_competitorsSyncTimer);
-    _competitorsSyncTimer = setTimeout(_syncCompetitorsToServer, 1000);
-}
-
 async function _syncClubsToServer() {
     if (!currentTournamentId) return;
     const clubs = db.load('clubs');
@@ -878,39 +869,6 @@ async function _syncClubsToServer() {
     }
 }
 
-async function _syncCompetitorsToServer() {
-    if (!currentTournamentId) return false;
-    setSyncIndicator('syncing');
-    try {
-        const [compRes, clubsRes] = await Promise.all([
-            fetch(`/api/tournaments/${currentTournamentId}/competitors/sync`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ competitors: db.load('competitors') }),
-            }),
-            fetch(`/api/tournaments/${currentTournamentId}/clubs/sync`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ clubs: db.load('clubs') }),
-            }),
-        ]);
-        if (compRes.status === 401 || clubsRes.status === 401) {
-            setSyncIndicator('error');
-            showMessage('Your session has expired. Please refresh the page and log in again.', 'error');
-            return false;
-        }
-        if (!compRes.ok) throw new Error(`competitors sync HTTP ${compRes.status}`);
-        if (!clubsRes.ok) throw new Error(`clubs sync HTTP ${clubsRes.status}`);
-        setSyncIndicator('ok');
-        return true;
-    } catch (e) {
-        setSyncIndicator('error');
-        console.warn('[sync] competitors/clubs failed:', e.message);
-        return false;
-    }
-}
 
 /**
  * Load competitors and clubs from the server on tournament init.
