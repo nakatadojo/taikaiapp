@@ -73,21 +73,41 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function _buildNav() {
     const id = state.tournamentId;
-    const base = `/director/tournaments/${id}`;
+    const m = `/director/tournaments/${id}/manage`;
     const links = {
-        'nav-dashboard':   `${base}/manage`,
-        'nav-competitors': `${base}/manage#competitors`,
-        'nav-clubs':       `${base}/manage#clubs`,
-        'nav-divisions':   `${base}/divisions`,
-        'nav-brackets':    `${base}/manage#brackets`,
-        'nav-schedule':    `${base}/manage#schedule`,
-        'nav-checkin':     `${base}/manage#checkin`,
-        'nav-results':     `${base}/manage#results`,
+        'nav-dashboard':   m,
+        'nav-competitors': `${m}#competitors`,
+        'nav-clubs':       `${m}#clubs`,
+        'nav-coaches':     `${m}#coaches`,
+        'nav-officials':   `${m}#officials`,
+        'nav-staff':       `${m}#staff`,
+        'nav-teams':       `${m}#teams`,
+        'nav-divisions':   `/director/tournaments/${id}/divisions`,
+        'nav-brackets':    `${m}#brackets`,
+        'nav-schedule':    `${m}#schedule`,
+        'nav-staging':     `${m}#staging`,
+        'nav-checkin':     `${m}#checkin`,
+        'nav-results':     `${m}#results`,
+        'nav-medical':     `${m}#medical-incidents`,
+        'nav-analytics':   `${m}#judge-analytics`,
+        'nav-settings':    `${m}#settings`,
     };
-    for (const [id, href] of Object.entries(links)) {
-        const el = document.getElementById(id);
+    for (const [elId, href] of Object.entries(links)) {
+        const el = document.getElementById(elId);
         if (el) el.href = href;
     }
+
+    // Load user info for sidebar footer
+    fetch('/api/auth/me', { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+            const user = data.user || data;
+            const name = document.getElementById('user-name');
+            const avatar = document.getElementById('user-avatar');
+            if (name && user.first_name) name.textContent = `${user.first_name} ${user.last_name || ''}`.trim();
+            if (avatar && user.first_name) avatar.textContent = user.first_name[0].toUpperCase();
+        })
+        .catch(() => {});
 }
 
 // ── Data fetching ──────────────────────────────────────────────────────────
@@ -176,12 +196,14 @@ function renderEventCards() {
         card.className = 'glass-panel stat-card div-evt-card' +
             (String(evt.id) === String(state.activeEventId) ? ' active' : '');
         card.dataset.eventId = evt.id;
+        const manageBase = `/director/tournaments/${state.tournamentId}/manage`;
         card.innerHTML = `
             <h3>${_esc(evt.name)}</h3>
             <div class="stat-number">${divCount}</div>
             <div class="div-evt-card-sub">${compCount} competitor${compCount !== 1 ? 's' : ''}</div>
             <div class="div-evt-card-actions">
                 <button class="btn btn-secondary btn-small" onclick="viewEventDivisions('${_esc(String(evt.id))}')">View</button>
+                <a class="btn btn-primary btn-small" href="${manageBase}#divisions-tree-${_esc(String(evt.id))}">Edit Tree</a>
             </div>
         `;
         grid.appendChild(card);

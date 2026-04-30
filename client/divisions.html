@@ -12,24 +12,6 @@
     <style>
     body { visibility: hidden; }
 
-    /* ── Sidebar styles (copied from manage.html) ── */
-    .sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:900; }
-    .sidebar-overlay.active { display:block; }
-    @media(max-width:768px) {
-        .sidebar { transform:translateX(-100%); transition:transform 0.25s; }
-        .sidebar.open { transform:translateX(0); }
-    }
-    .back-to-tournaments { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); text-decoration:none; margin-top:8px; padding:5px 8px; border-radius:6px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.03); transition:all 0.15s; }
-    .back-to-tournaments:hover { color:var(--text-primary); background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.25); }
-    .nav-btn { display:flex; align-items:center; gap:8px; width:100%; background:none; border:none; color:var(--text-secondary); padding:10px 14px; border-radius:8px; cursor:pointer; font-size:14px; text-align:left; text-decoration:none; transition:background 0.15s,color 0.15s; }
-    .nav-btn:hover { background:rgba(255,255,255,0.05); color:var(--text-primary); }
-    .nav-btn.active { background:rgba(var(--primary-rgb,99,102,241),0.15); color:var(--primary); font-weight:600; }
-    .nav-icon { width:16px; height:16px; flex-shrink:0; }
-    .nav-group { margin-bottom:4px; }
-    .nav-group-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); padding:8px 14px 4px; }
-    .hamburger-btn { display:none; position:fixed; top:12px; left:12px; z-index:1000; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px; cursor:pointer; color:var(--text-primary); }
-    @media(max-width:768px) { .hamburger-btn { display:flex; align-items:center; justify-content:center; } }
-
     /* ── Divisions-specific styles ── */
     .div-evt-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin-top:12px; }
     .div-evt-card { cursor:default; padding:16px; }
@@ -70,31 +52,47 @@
 <div class="app-layout">
     <aside class="sidebar" id="app-sidebar">
         <div class="sidebar-header">
-            <div id="taikai-logo-target"></div>
+            <img data-taikai-logo alt="Taikai" style="height:36px;width:auto;">
         </div>
         <nav id="main-nav">
             <div class="nav-group">
-                <a id="nav-dashboard" class="nav-btn" href="#"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</a>
+                <a id="nav-dashboard" class="nav-btn" href="#"><i data-lucide="layout-dashboard" class="nav-icon"></i> <span data-i18n="nav_dashboard">Dashboard</span></a>
             </div>
             <div class="nav-group">
-                <div class="nav-group-label">Tournament</div>
-                <a id="nav-competitors" class="nav-btn" href="#"><i data-lucide="users" class="nav-icon"></i> Competitors</a>
-                <a id="nav-clubs" class="nav-btn" href="#"><i data-lucide="home" class="nav-icon"></i> Dojos</a>
-                <a id="nav-divisions" class="nav-btn active" href="#"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</a>
-                <a id="nav-brackets" class="nav-btn" href="#"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</a>
-                <a id="nav-schedule" class="nav-btn" href="#"><i data-lucide="calendar" class="nav-icon"></i> Schedule</a>
-                <a id="nav-checkin" class="nav-btn" href="#"><i data-lucide="scan-line" class="nav-icon"></i> Check-In</a>
-                <a id="nav-results" class="nav-btn" href="#"><i data-lucide="trophy" class="nav-icon"></i> Results</a>
+                <div class="nav-group-label" data-i18n="nav_group_tournament">Tournament</div>
+                <a id="nav-competitors" class="nav-btn" href="#"><i data-lucide="users" class="nav-icon"></i> <span data-i18n="nav_competitors">Competitors</span></a>
+                <a id="nav-clubs" class="nav-btn" href="#"><i data-lucide="home" class="nav-icon"></i> <span data-i18n="nav_dojos">Dojos</span></a>
+                <a id="nav-coaches" class="nav-btn" href="#"><i data-lucide="user-check" class="nav-icon"></i> <span data-i18n="nav_coaches">Coaches</span></a>
+                <a id="nav-officials" class="nav-btn" href="#"><i data-lucide="shield" class="nav-icon"></i> <span data-i18n="nav_officials">Officials</span></a>
+                <a id="nav-staff" class="nav-btn" href="#"><i data-lucide="hard-hat" class="nav-icon"></i> <span data-i18n="nav_staff">Staff</span></a>
+                <a id="nav-teams" class="nav-btn" href="#"><i data-lucide="users-round" class="nav-icon"></i> <span data-i18n="nav_teams">Teams</span></a>
+                <a id="nav-divisions" class="nav-btn active" href="#"><i data-lucide="clipboard-list" class="nav-icon"></i> <span data-i18n="nav_divisions">Divisions</span></a>
+                <a id="nav-brackets" class="nav-btn" href="#"><i data-lucide="git-branch" class="nav-icon"></i> <span data-i18n="nav_brackets">Brackets</span></a>
+                <a id="nav-schedule" class="nav-btn" href="#"><i data-lucide="calendar" class="nav-icon"></i> <span data-i18n="nav_schedule">Schedule</span></a>
+                <a id="nav-staging" class="nav-btn" href="#"><i data-lucide="layout-list" class="nav-icon"></i> <span data-i18n="nav_staging">Staging</span></a>
+                <a id="nav-checkin" class="nav-btn" href="#"><i data-lucide="scan-line" class="nav-icon"></i> <span data-i18n="nav_checkin">Check-In</span></a>
+                <a id="nav-results" class="nav-btn" href="#"><i data-lucide="trophy" class="nav-icon"></i> <span data-i18n="nav_results">Results</span></a>
+                <a id="nav-medical" class="nav-btn" href="#"><i data-lucide="heart-pulse" class="nav-icon"></i> <span data-i18n="nav_medical">Medical Log</span></a>
+                <a id="nav-analytics" class="nav-btn" href="#"><i data-lucide="bar-chart-3" class="nav-icon"></i> <span data-i18n="nav_judge_analytics">Judge Analytics</span></a>
             </div>
-            <div class="nav-group">
-                <div class="nav-group-label">Account</div>
-                <a href="/account.html" class="nav-btn"><i data-lucide="circle-user-round" class="nav-icon"></i> My Account</a>
+            <div class="nav-group" id="account-nav-group">
+                <div class="nav-group-label" data-i18n="nav_group_account">Account</div>
+                <a href="/account.html" class="nav-btn" style="text-decoration:none;"><i data-lucide="circle-user-round" class="nav-icon"></i> <span data-i18n="nav_my_account">My Account</span></a>
+            </div>
+            <div class="nav-group" id="settings-nav-group">
+                <div class="nav-group-label" data-i18n="nav_group_admin">Admin</div>
+                <a id="nav-settings" class="nav-btn" href="#"><i data-lucide="settings-2" class="nav-icon"></i> <span data-i18n="nav_settings">Settings</span></a>
             </div>
         </nav>
         <div class="sidebar-footer">
-            <a id="back-to-tournaments-link" href="/director/tournaments" class="back-to-tournaments">
-                <i data-lucide="arrow-left" style="width:14px;height:14px;"></i> All Tournaments
-            </a>
+            <div id="user-menu" class="user-menu">
+                <div class="user-menu-info">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-details">
+                        <span class="user-name" id="user-name">—</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </aside>
 
@@ -231,7 +229,7 @@
 </div>
 
 <script src="/toast.js"></script>
-<script src="/divisions-page.js"></script>
+<script src="/divisions-page.js?v=2"></script>
 
 <style>
   #gt-box.gt-open { display:block !important; }
