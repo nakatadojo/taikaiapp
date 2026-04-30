@@ -3036,11 +3036,6 @@ function setupTabs(t) {
         }
     }
 
-    // Coaches, judges, staff visibility is not director-configurable — always show
-    if (document.getElementById('tab-btn-coaches')) document.getElementById('tab-btn-coaches').style.display = '';
-    if (document.getElementById('tab-btn-judges')) document.getElementById('tab-btn-judges').style.display = '';
-    if (document.getElementById('tab-btn-staff')) document.getElementById('tab-btn-staff').style.display = '';
-
     // Show registration buttons when registration is open
     const regOpen = t.registration_open;
     ['btn-add-competitor', 'btn-register-coach', 'btn-register-judge', 'btn-register-staff'].forEach(id => {

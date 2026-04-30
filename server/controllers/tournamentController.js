@@ -237,7 +237,7 @@ async function updateTournament(req, res, next) {
       slug, description, city, state, venueName, venueAddress,
       published, organizationName, contactEmail, registrationDeadline,
       sanctioningBody, collectTshirtSizes, registrationSettings, timezone,
-      currency, weightUnit, publicSiteConfig,
+      currency, weightUnit, publicSiteConfig, sectionVisibility,
     } = req.body;
 
     const updates = {};
@@ -273,6 +273,12 @@ async function updateTournament(req, res, next) {
         return res.status(400).json({ error: 'registrationSettings must be an object' });
       }
       updates.registration_settings = JSON.stringify(registrationSettings);
+    }
+    if (sectionVisibility !== undefined) {
+      if (typeof sectionVisibility !== 'object' || sectionVisibility === null) {
+        return res.status(400).json({ error: 'sectionVisibility must be an object' });
+      }
+      updates.section_visibility = JSON.stringify(sectionVisibility);
     }
 
     // Handle slug update with uniqueness check

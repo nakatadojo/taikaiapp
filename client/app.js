@@ -27508,12 +27508,37 @@ function showTournamentEditForm() {
                 </select>
             </div>
             <div class="form-group">
-                <label class="form-label">Visibility</label>
+                <label class="form-label">Contact Email</label>
+                <input type="email" id="ti-edit-contact-email" class="form-input" value="${_escapeHtml(t.contact_email || '')}" placeholder="director@example.com">
+                <p class="hint" style="margin-top:4px;">Shown on the public tournament page. If blank, defaults to your account email.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tournament Published</label>
                 <select id="ti-edit-published" class="form-input">
                     <option value="false" ${!t.published ? 'selected' : ''}>Draft — not visible to public</option>
-                    <option value="true" ${t.published ? 'selected' : ''}>Published — open to public</option>
+                    <option value="true" ${t.published ? 'selected' : ''}>Published — open for registration</option>
                 </select>
-                <p class="hint" style="margin-top:4px;">Draft tournaments are hidden from public registration pages until published.</p>
+                <p class="hint" style="margin-top:4px;">Draft tournaments are hidden from the public directory until published.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Public Page — What's Visible</label>
+                <p class="hint" style="margin-bottom:8px;">Control what the public sees on the tournament page. Turn sections on as the event gets closer.</p>
+                ${[
+                    ['vis-competitors', 'competitors', 'Competitors list'],
+                    ['vis-coaches',     'coaches',     'Coaches'],
+                    ['vis-officials',   'judges',      'Officials / Judges'],
+                    ['vis-staff',       'staff',       'Staff'],
+                    ['vis-divisions',   'divisions',   'Divisions with competitor counts'],
+                    ['vis-schedule',    'schedule',    'Mat Schedule'],
+                    ['vis-brackets',    'brackets',    'Live Brackets (only shown while scoring)'],
+                    ['vis-results',     'results',     'Results (publish when awards are complete)'],
+                ].map(([id, key, label]) => {
+                    const checked = (t.section_visibility || {})[key] !== false ? 'checked' : '';
+                    return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:8px 12px;background:var(--glass,rgba(255,255,255,0.04));border:1px solid var(--glass-border,rgba(255,255,255,0.08));border-radius:6px;margin-bottom:6px;">
+                        <input type="checkbox" id="${id}" ${checked} style="width:16px;height:16px;accent-color:var(--accent,#dc2626);flex-shrink:0;">
+                        <span>${label}</span>
+                    </label>`;
+                }).join('')}
             </div>
             <div class="form-group">
                 <label class="form-label">Registration Options</label>
@@ -27544,6 +27569,14 @@ async function saveTournamentEdit() {
     const weightUnit = document.getElementById('ti-edit-weight-unit')?.value || undefined;
     const published = document.getElementById('ti-edit-published')?.value === 'true';
     const allowPayLater = document.getElementById('ti-edit-allow-pay-later')?.checked || false;
+    const contactEmail = document.getElementById('ti-edit-contact-email')?.value.trim() || undefined;
+
+    const visKeys = ['competitors', 'coaches', 'judges', 'staff', 'divisions', 'schedule', 'brackets', 'results'];
+    const sectionVisibility = {};
+    visKeys.forEach(key => {
+        const el = document.getElementById(`vis-${key}`);
+        if (el) sectionVisibility[key] = el.checked;
+    });
 
     // Merge allowPayLater into existing registration_settings
     const tournaments = db.load('tournaments');
@@ -27561,7 +27594,7 @@ async function saveTournamentEdit() {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, currency, weightUnit, published, registrationSettings }),
+            body: JSON.stringify({ name, date, location, sanctioningBody, timezone, currency, weightUnit, published, registrationSettings, contactEmail, sectionVisibility }),
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -27585,6 +27618,8 @@ async function saveTournamentEdit() {
                 weight_unit: saved.weight_unit,
                 published: saved.published,
                 registration_settings: saved.registration_settings || {},
+                contact_email: saved.contact_email,
+                section_visibility: saved.section_visibility || {},
             };
             db.save('tournaments', savedTournaments);
         }
