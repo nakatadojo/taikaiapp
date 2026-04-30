@@ -11355,22 +11355,15 @@ async function resyncDivisions() {
         return;
     }
 
-    // Warning 1
-    const confirmed1 = await showConfirm(
-        `<strong>Re-sync Divisions</strong><br><br>` +
-        `This will rebuild all divisions from the current tree criteria. ` +
-        `<strong>Competitors that were manually moved to different divisions will be returned to their tree-assigned positions.</strong> ` +
-        `All manual changes will be lost.<br><br>Continue?`,
-        { confirmText: 'Continue', danger: true }
+    const confirmed = await showConfirm(
+        `<strong>Recalculate Divisions</strong><br><br>` +
+        `This is only needed if you have made changes to the division criteria tree (age bands, weight classes, etc.). ` +
+        `Competitors are assigned to divisions automatically when they register — you do not need this button for normal registrations.<br><br>` +
+        `<strong>Note:</strong> Any competitors you manually moved to a different division will be returned to their criteria-assigned position.<br><br>` +
+        `Do you want to continue?`,
+        { confirmText: 'Recalculate', danger: false }
     );
-    if (!confirmed1) return;
-
-    // Warning 2
-    const confirmed2 = await showConfirm(
-        `<strong>Are you sure?</strong><br><br>This cannot be undone.`,
-        { confirmText: 'Yes, Re-sync', danger: true }
-    );
-    if (!confirmed2) return;
+    if (!confirmed) return;
 
     // Clear manual overrides for this event so the re-sync is truly fresh
     if (eventId) {
