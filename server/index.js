@@ -221,6 +221,9 @@ app.get('/waiver', (req, res) => {
 app.get('/staff', (req, res) => {
   res.sendFile('staff.html', sendOpts);
 });
+app.get('/judge', (req, res) => {
+  res.sendFile('judge.html', sendOpts);
+});
 app.get('/feedback', (req, res) => {
   res.sendFile('feedback.html', sendOpts);
 });

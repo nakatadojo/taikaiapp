@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { requireTournamentOwner } = require('../middleware/tournament');
+const { requireTournamentOwner } = require('../middleware/tournamentOwner');
 const judgeController = require('../controllers/judgeController');
 
 // ── Director routes (owner only) ──────────────────────────────────────────────
@@ -33,5 +33,8 @@ router.post('/:id/judge-assignments/:assignmentId/sit', requireAuth, judgeContro
 
 // POST /:id/judge-assignments/:assignmentId/stand — judge stands up (relieved)
 router.post('/:id/judge-assignments/:assignmentId/stand', requireAuth, judgeController.standUp);
+
+// POST /:id/judge-votes — judge submits a vote or score
+router.post('/:id/judge-votes', requireAuth, judgeController.submitVote);
 
 module.exports = router;

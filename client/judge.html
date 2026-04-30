@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Judge Device — Taikai</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg:          #0f0f14;
+      --bg2:         #1a1a24;
+      --bg3:         #22222e;
+      --accent:      #dc2626;
+      --text:        #ffffff;
+      --muted:       rgba(255,255,255,0.5);
+      --dim:         rgba(255,255,255,0.2);
+      --border:      rgba(255,255,255,0.08);
+      --glass:       rgba(255,255,255,0.05);
+      --green:       #22c55e;
+      --yellow:      #f59e0b;
+      --red-flag:    #dc2626;
+      --white-flag:  #f8fafc;
+      --radius:      16px;
+      --radius-sm:   10px;
+    }
+    html, body {
+      height: 100%; background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none;
+    }
+
+    /* ─── Screens ─── */
+    .screen { display: none; min-height: 100vh; }
+    .screen.active { display: flex; flex-direction: column; }
+
+    /* ─── Loading ─── */
+    #screen-loading {
+      align-items: center; justify-content: center;
+    }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Login prompt ─── */
+    #screen-login {
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    .login-card {
+      width: 100%; max-width: 380px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 24px;
+      text-align: center;
+    }
+    .login-card .logo { font-size: 28px; font-weight: 900; letter-spacing: 4px; color: var(--accent); margin-bottom: 8px; }
+    .login-card h2 { font-size: 20px; margin-bottom: 8px; }
+    .login-card p { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+    .btn-primary {
+      display: block; width: 100%; padding: 14px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: var(--radius-sm);
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      text-decoration: none; text-align: center;
+    }
+    .btn-primary:hover { background: #b91c1c; }
+
+    /* ─── Tournament picker ─── */
+    #screen-tournament {
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    .tournament-card {
+      width: 100%; max-width: 400px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 24px;
+    }
+    .tournament-card h2 { font-size: 20px; margin-bottom: 6px; }
+    .tournament-card p { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    .input-group { margin-bottom: 14px; }
+    .input-group label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .input-group input {
+      width: 100%; padding: 12px 14px; background: var(--bg3);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      color: var(--text); font-size: 15px; outline: none; transition: border-color 0.2s;
+    }
+    .input-group input:focus { border-color: rgba(255,255,255,0.25); }
+
+    /* ─── Main judge view ─── */
+    #screen-main { padding: 0; }
+
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px;
+      background: rgba(15,15,20,0.9); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10; backdrop-filter: blur(16px);
+    }
+    .top-bar .logo { font-size: 18px; font-weight: 900; letter-spacing: 3px; color: var(--accent); }
+    .top-bar .user-name { font-size: 13px; color: var(--muted); }
+
+    .main-content { flex: 1; padding: 20px 16px 120px; }
+    .section-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 12px;
+    }
+
+    /* ─── Assignment cards ─── */
+    .assignment-card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 16px; margin-bottom: 12px;
+    }
+    .assignment-card.is-seated { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.04); }
+    .assignment-card.is-relieved { opacity: 0.5; }
+
+    .card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .mat-badge {
+      font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    }
+    .mat-badge span { font-size: 12px; font-weight: 500; color: var(--muted); display: block; }
+    .status-pill {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 4px 10px; border-radius: 20px;
+    }
+    .status-pill.assigned  { background: rgba(255,255,255,0.08); color: var(--muted); }
+    .status-pill.seated    { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-pill.active    { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .status-pill.relieved  { background: rgba(245,158,11,0.12); color: var(--yellow); }
+    .status-pill.complete  { background: var(--glass); color: var(--dim); }
+
+    .card-meta { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 2px; }
+    .meta-value { font-size: 14px; font-weight: 600; }
+
+    .card-actions { display: flex; gap: 10px; }
+    .btn-sit {
+      flex: 1; padding: 12px; border-radius: var(--radius-sm);
+      background: var(--green); color: #fff; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn-sit:hover { opacity: 0.85; }
+    .btn-sit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-stand {
+      flex: 1; padding: 12px; border-radius: var(--radius-sm);
+      background: var(--yellow); color: #000; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn-stand:hover { opacity: 0.85; }
+    .btn-stand:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-score {
+      flex: 1; padding: 12px; border-radius: var(--radius-sm);
+      background: #6366f1; color: #fff; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn-score:hover { opacity: 0.85; }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ─── Scoring modal (full-screen bottom sheet) ─── */
+    .score-sheet-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
+    }
+    .score-sheet-backdrop.open { display: block; }
+    .score-sheet {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 51;
+      background: var(--bg2); border-top: 1px solid var(--border);
+      border-radius: 24px 24px 0 0;
+      padding: 8px 20px 40px;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .score-sheet.open { transform: translateY(0); }
+    .sheet-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 8px auto 20px; }
+    .sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .sheet-title { font-size: 18px; font-weight: 700; }
+    .sheet-close {
+      width: 32px; height: 32px; border-radius: 50%; background: var(--glass);
+      border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px; color: var(--muted);
+    }
+    .sheet-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+    /* ─── Mode tabs ─── */
+    .mode-tabs { display: flex; gap: 8px; background: var(--bg3); padding: 4px; border-radius: var(--radius-sm); margin-bottom: 24px; }
+    .mode-tab {
+      flex: 1; padding: 10px; border-radius: 8px; border: none;
+      background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-tab.active { background: var(--bg2); color: var(--text); }
+
+    /* ─── Match ref ─── */
+    .match-ref-row { margin-bottom: 20px; }
+    .match-ref-row label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); display: block; margin-bottom: 6px; }
+    .match-ref-row input {
+      width: 100%; padding: 10px 12px; background: var(--bg3);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      color: var(--text); font-size: 14px; outline: none;
+    }
+    .match-ref-row input:focus { border-color: rgba(255,255,255,0.25); }
+
+    /* ─── Hantei flags ─── */
+    #panel-hantei { display: none; }
+    #panel-hantei.active { display: block; }
+    .flag-row { display: flex; gap: 12px; margin-bottom: 16px; }
+    .flag-btn {
+      flex: 1; height: 100px; border-radius: var(--radius); border: 3px solid transparent;
+      font-size: 20px; font-weight: 800; cursor: pointer; transition: all 0.15s;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    }
+    .flag-btn .flag-icon { font-size: 36px; line-height: 1; }
+    .flag-btn.flag-aka {
+      background: var(--red-flag); color: #fff; border-color: var(--red-flag);
+    }
+    .flag-btn.flag-shiro {
+      background: var(--white-flag); color: #111; border-color: #d1d5db;
+    }
+    .flag-btn.selected { transform: scale(1.03); box-shadow: 0 0 0 3px white; }
+    .flag-btn.flag-aka.selected { box-shadow: 0 0 0 3px #fca5a5; }
+    .flag-btn.flag-shiro.selected { box-shadow: 0 0 0 3px #6366f1; }
+    .flag-legend { display: flex; gap: 12px; margin-bottom: 20px; }
+    .flag-legend-item { flex: 1; text-align: center; font-size: 12px; color: var(--muted); }
+
+    /* ─── Kata numerical ─── */
+    #panel-kata { display: none; }
+    #panel-kata.active { display: block; }
+    .score-display {
+      text-align: center; margin-bottom: 20px;
+    }
+    .score-display .score-value {
+      font-size: 72px; font-weight: 900; letter-spacing: -2px; line-height: 1;
+      color: var(--text); font-variant-numeric: tabular-nums;
+    }
+    .score-display .score-range { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .score-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .pad-btn {
+      height: 60px; border-radius: var(--radius-sm);
+      background: var(--bg3); border: 1px solid var(--border);
+      color: var(--text); font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .pad-btn:hover { background: rgba(255,255,255,0.1); }
+    .pad-btn:active { background: rgba(255,255,255,0.15); }
+    .pad-btn.large-step { color: #818cf8; }
+    .pad-btn.reset-btn { color: var(--muted); }
+
+    /* ─── Submit ─── */
+    .btn-submit {
+      display: block; width: 100%; padding: 16px;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: var(--radius-sm); font-size: 18px; font-weight: 800;
+      cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .btn-submit:hover { opacity: 0.85; }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ─── Toast ─── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--bg2); border: 1px solid var(--border);
+      padding: 10px 20px; border-radius: 32px;
+      font-size: 14px; font-weight: 600; z-index: 100;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+    #toast.success { border-color: var(--green); color: var(--green); }
+    #toast.error   { border-color: #ef4444; color: #ef4444; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="screen-loading" class="screen active">
+  <div class="spinner"></div>
+  <div style="color:var(--muted);font-size:14px;">Loading…</div>
+</div>
+
+<!-- Not authenticated -->
+<div id="screen-login" class="screen">
+  <div class="login-card">
+    <div class="logo">TAIKAI</div>
+    <h2>Judge Sign-In Required</h2>
+    <p>You must be signed in to use the judge device.</p>
+    <a id="login-link" class="btn-primary" href="/register">Sign In</a>
+  </div>
+</div>
+
+<!-- Tournament picker (no tournamentId in URL) -->
+<div id="screen-tournament" class="screen">
+  <div class="tournament-card">
+    <h2>Enter Tournament</h2>
+    <p>Paste the tournament ID from the link your director sent you.</p>
+    <div class="input-group">
+      <label>Tournament ID</label>
+      <input type="text" id="tournament-id-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+    </div>
+    <button class="btn-primary" onclick="enterTournament()">Continue</button>
+  </div>
+</div>
+
+<!-- Main judge view -->
+<div id="screen-main" class="screen">
+  <div class="top-bar">
+    <div class="logo">TAIKAI</div>
+    <div class="user-name" id="user-display"></div>
+  </div>
+
+  <div class="main-content">
+    <div class="section-title" id="tournament-label"></div>
+    <div id="assignments-container">
+      <div class="empty-state">
+        <div class="spinner"></div>
+        <p style="color:var(--muted);margin-top:12px;">Loading assignments…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scoring bottom sheet -->
+<div id="score-backdrop" class="score-sheet-backdrop" onclick="closeScoreSheet()"></div>
+<div id="score-sheet" class="score-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div class="sheet-title" id="sheet-title">Score</div>
+    <button class="sheet-close" onclick="closeScoreSheet()">✕</button>
+  </div>
+
+  <div class="match-ref-row">
+    <label>Match / Call Reference (optional)</label>
+    <input type="text" id="match-ref-input" placeholder="e.g. Kata-Adult-Black-3" autocomplete="off">
+  </div>
+
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tab-hantei" onclick="setMode('hantei')">🚩 Hantei</button>
+    <button class="mode-tab" id="tab-kata" onclick="setMode('kata')">🔢 Kata Score</button>
+  </div>
+
+  <!-- Hantei flags -->
+  <div id="panel-hantei" class="active">
+    <div class="flag-row">
+      <button class="flag-btn flag-aka" id="flag-aka" onclick="selectFlag('aka')">
+        <span class="flag-icon">🚩</span>
+        <span>AKA</span>
+      </button>
+      <button class="flag-btn flag-shiro" id="flag-shiro" onclick="selectFlag('shiro')">
+        <span class="flag-icon">🏳️</span>
+        <span>SHIRO</span>
+      </button>
+    </div>
+    <div class="flag-legend">
+      <div class="flag-legend-item">Red competitor</div>
+      <div class="flag-legend-item">White competitor</div>
+    </div>
+  </div>
+
+  <!-- Kata numerical -->
+  <div id="panel-kata">
+    <div class="score-display">
+      <div class="score-value" id="kata-score-display">7.0</div>
+      <div class="score-range">Range: 0.0 — 10.0</div>
+    </div>
+    <div class="score-pad">
+      <button class="pad-btn large-step" onclick="adjustScore(-1.0)">−1.0</button>
+      <button class="pad-btn reset-btn" onclick="resetScore()">Reset</button>
+      <button class="pad-btn large-step" onclick="adjustScore(+1.0)">+1.0</button>
+      <button class="pad-btn" onclick="adjustScore(-0.1)">−0.1</button>
+      <div></div>
+      <button class="pad-btn" onclick="adjustScore(+0.1)">+0.1</button>
+    </div>
+  </div>
+
+  <button class="btn-submit" id="submit-vote-btn" onclick="submitVote()">Submit</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ─── State ────────────────────────────────────────────────────────────────
+  let _me = null;
+  let _tournamentId = null;
+  let _assignments = [];
+  let _activeAssignmentId = null;
+  let _scoreMode = 'hantei'; // 'hantei' | 'kata'
+  let _flagVote = null;      // 'aka' | 'shiro' | null
+  let _kataScore = 7.0;
+  let _voteStartTime = null;
+
+  const CHAIR_LABELS = {
+    shushin: 'Shushin (Center)',
+    judge1: 'Judge 1',
+    judge2: 'Judge 2',
+    judge3: 'Judge 3',
+    judge4: 'Judge 4',
+  };
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  (async function boot() {
+    // 1. Auth check
+    try {
+      const r = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!r.ok) throw new Error('not authed');
+      _me = await r.json();
+    } catch {
+      show('login');
+      // Redirect back here after login
+      document.getElementById('login-link').href =
+        '/register?redirect=' + encodeURIComponent(location.href);
+      return;
+    }
+
+    // 2. Tournament from URL
+    const params = new URLSearchParams(location.search);
+    _tournamentId = params.get('t');
+    if (!_tournamentId) {
+      show('tournament');
+      return;
+    }
+
+    // 3. Load assignments
+    await loadAssignments();
+  })();
+
+  // ─── Screen helpers ───────────────────────────────────────────────────────
+  function show(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+  }
+
+  function enterTournament() {
+    const val = document.getElementById('tournament-id-input').value.trim();
+    if (!val) return;
+    _tournamentId = val;
+    const url = new URL(location.href);
+    url.searchParams.set('t', val);
+    history.replaceState(null, '', url.toString());
+    loadAssignments();
+  }
+
+  // ─── Assignments ──────────────────────────────────────────────────────────
+  async function loadAssignments() {
+    show('loading');
+    try {
+      const r = await fetch(`/api/tournaments/${_tournamentId}/my-assignments`, {
+        credentials: 'include',
+      });
+      if (r.status === 404) {
+        showToast('Tournament not found.', 'error');
+        show('tournament');
+        return;
+      }
+      if (!r.ok) throw new Error(r.statusText);
+      const data = await r.json();
+      _assignments = data.assignments || [];
+    } catch (e) {
+      showToast('Could not load assignments.', 'error');
+      show('tournament');
+      return;
+    }
+
+    // Update header
+    const displayName = _me.firstName
+      ? (_me.firstName + ' ' + (_me.lastName || '')).trim()
+      : (_me.email || '');
+    document.getElementById('user-display').textContent = displayName;
+    document.getElementById('tournament-label').textContent =
+      'Your Assignments — ' + (_assignments[0]?.tournament_name || _tournamentId.slice(0, 8));
+
+    renderAssignments();
+    show('main');
+  }
+
+  function renderAssignments() {
+    const container = document.getElementById('assignments-container');
+    if (!_assignments.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <h3>No Assignments</h3>
+          <p>You have no judge assignments for this tournament yet.<br>Contact your tournament director.</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = _assignments.map(a => {
+      const isSeated  = a.status === 'seated' || a.status === 'active';
+      const isDone    = a.status === 'relieved' || a.status === 'complete';
+      const isAssigned = a.status === 'assigned';
+      const cardClass = isSeated ? 'is-seated' : isDone ? 'is-relieved' : '';
+
+      const timeRange = (a.scheduled_from || a.scheduled_until)
+        ? `${a.scheduled_from || '—'} – ${a.scheduled_until || '—'}`
+        : 'All day';
+
+      return `
+        <div class="assignment-card ${cardClass}" id="card-${a.id}">
+          <div class="card-top">
+            <div class="mat-badge">
+              Mat ${a.mat_id}
+              <span>${CHAIR_LABELS[a.chair] || a.chair}</span>
+            </div>
+            <span class="status-pill ${a.status}">${a.status}</span>
+          </div>
+          <div class="card-meta">
+            <div class="meta-item">
+              <span class="meta-label">Time</span>
+              <span class="meta-value">${timeRange}</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            ${isAssigned ? `
+              <button class="btn-sit" onclick="sit('${a.id}')">Sit</button>
+            ` : ''}
+            ${isSeated ? `
+              <button class="btn-score" onclick="openScoreSheet('${a.id}')">Score</button>
+              <button class="btn-stand" onclick="stand('${a.id}')">Stand Up</button>
+            ` : ''}
+            ${isDone ? `
+              <span style="color:var(--muted);font-size:13px;padding:12px 0;">
+                ${a.status === 'relieved' ? 'You have been relieved — thank you!' : 'Complete'}
+              </span>
+            ` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ─── Sit ──────────────────────────────────────────────────────────────────
+  async function sit(assignmentId) {
+    const btn = document.querySelector(`#card-${assignmentId} .btn-sit`);
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(
+        `/api/tournaments/${_tournamentId}/judge-assignments/${assignmentId}/sit`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      const data = await r.json();
+      // Update local
+      const idx = _assignments.findIndex(a => a.id === assignmentId);
+      if (idx >= 0) _assignments[idx] = { ..._assignments[idx], ...data.assignment };
+      renderAssignments();
+      showToast('Seated — you are now active on Mat ' + data.assignment.mat_id, 'success');
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showToast(e.message || 'Could not sit.', 'error');
+    }
+  }
+
+  // ─── Stand Up ────────────────────────────────────────────────────────────
+  async function stand(assignmentId) {
+    const btn = document.querySelector(`#card-${assignmentId} .btn-stand`);
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch(
+        `/api/tournaments/${_tournamentId}/judge-assignments/${assignmentId}/stand`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      const data = await r.json();
+      const idx = _assignments.findIndex(a => a.id === assignmentId);
+      if (idx >= 0) _assignments[idx] = { ..._assignments[idx], ...data.assignment };
+      renderAssignments();
+      showToast('Relieved — you are standing up.', 'success');
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      showToast(e.message || 'Could not stand.', 'error');
+    }
+  }
+
+  // ─── Score Sheet ─────────────────────────────────────────────────────────
+  function openScoreSheet(assignmentId) {
+    _activeAssignmentId = assignmentId;
+    const a = _assignments.find(x => x.id === assignmentId);
+    document.getElementById('sheet-title').textContent =
+      'Mat ' + a.mat_id + ' — ' + (CHAIR_LABELS[a.chair] || a.chair);
+    document.getElementById('match-ref-input').value = '';
+    _flagVote = null;
+    _kataScore = 7.0;
+    _voteStartTime = Date.now();
+    setMode('hantei');
+    updateFlagUI();
+    updateKataUI();
+    document.getElementById('score-backdrop').classList.add('open');
+    document.getElementById('score-sheet').classList.add('open');
+  }
+
+  function closeScoreSheet() {
+    document.getElementById('score-backdrop').classList.remove('open');
+    document.getElementById('score-sheet').classList.remove('open');
+    _activeAssignmentId = null;
+    _voteStartTime = null;
+  }
+
+  function setMode(mode) {
+    _scoreMode = mode;
+    document.getElementById('tab-hantei').classList.toggle('active', mode === 'hantei');
+    document.getElementById('tab-kata').classList.toggle('active', mode === 'kata');
+    document.getElementById('panel-hantei').classList.toggle('active', mode === 'hantei');
+    document.getElementById('panel-kata').classList.toggle('active', mode === 'kata');
+  }
+
+  // ─── Hantei ───────────────────────────────────────────────────────────────
+  function selectFlag(vote) {
+    _flagVote = _flagVote === vote ? null : vote; // toggle off
+    updateFlagUI();
+  }
+
+  function updateFlagUI() {
+    document.getElementById('flag-aka').classList.toggle('selected', _flagVote === 'aka');
+    document.getElementById('flag-shiro').classList.toggle('selected', _flagVote === 'shiro');
+  }
+
+  // ─── Kata numerical ───────────────────────────────────────────────────────
+  function adjustScore(delta) {
+    _kataScore = Math.round((_kataScore + delta) * 10) / 10;
+    _kataScore = Math.max(0, Math.min(10, _kataScore));
+    updateKataUI();
+  }
+
+  function resetScore() {
+    _kataScore = 7.0;
+    updateKataUI();
+  }
+
+  function updateKataUI() {
+    document.getElementById('kata-score-display').textContent = _kataScore.toFixed(1);
+  }
+
+  // ─── Submit vote ─────────────────────────────────────────────────────────
+  async function submitVote() {
+    const btn = document.getElementById('submit-vote-btn');
+    if (_scoreMode === 'hantei' && !_flagVote) {
+      showToast('Select AKA or SHIRO first.', 'error');
+      return;
+    }
+    const assignment = _assignments.find(a => a.id === _activeAssignmentId);
+    if (!assignment) return;
+
+    const vote = _scoreMode === 'hantei' ? _flagVote : String(_kataScore.toFixed(1));
+    const matchRef = document.getElementById('match-ref-input').value.trim() || null;
+    const durationSeconds = _voteStartTime
+      ? Math.round((Date.now() - _voteStartTime) / 100) / 10
+      : null;
+
+    btn.disabled = true;
+    try {
+      const r = await fetch(`/api/tournaments/${_tournamentId}/judge-votes`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId: assignment.id,
+          matchRef,
+          vote,
+          voteDurationSeconds: durationSeconds,
+          scoreType: _scoreMode,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+      closeScoreSheet();
+      showToast(
+        _scoreMode === 'hantei'
+          ? 'Vote recorded: ' + vote.toUpperCase()
+          : 'Score recorded: ' + _kataScore.toFixed(1),
+        'success'
+      );
+      // Reset timer for next vote
+      _voteStartTime = Date.now();
+    } catch (e) {
+      showToast(e.message || 'Submit failed.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ─── Toast ────────────────────────────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = ''; }, 3000);
+  }
+</script>
+</body>
+</html>

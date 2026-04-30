@@ -1,5 +1,6 @@
 const JudgeAssignmentQueries = require('../db/queries/judgeAssignments');
 const { broadcastJudgeEvent } = require('../websocket');
+const pool = require('../db/pool');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,67 @@ async function getMyAssignments(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── Judge device: submit vote / score ─────────────────────────────────────────
+
+async function submitVote(req, res, next) {
+  try {
+    const { id: tournamentId } = req.params;
+    const { assignmentId, matchRef, vote, voteDurationSeconds, scoreType } = req.body;
+
+    if (!vote) return res.status(400).json({ error: 'vote is required' });
+
+    // Resolve assignment for denormalized judge_name and mat context
+    let judgeName = req.user.firstName
+      ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
+      : req.user.email;
+    let divisionName = null;
+
+    if (assignmentId) {
+      const a = await JudgeAssignmentQueries.getById(assignmentId);
+      if (a) {
+        judgeName = a.official_name;
+        divisionName = matchRef || null;
+      }
+    }
+
+    const matchId = matchRef || `manual-${Date.now()}`;
+
+    const { rows } = await pool.query(
+      `INSERT INTO judge_votes
+         (tournament_id, match_id, division_name, judge_user_id, judge_name,
+          vote, vote_duration_seconds)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        tournamentId,
+        matchId,
+        divisionName,
+        req.user.id,
+        judgeName,
+        vote,
+        voteDurationSeconds || null,
+      ]
+    );
+
+    // Broadcast vote to the mat channel so director sees it in real time
+    if (assignmentId) {
+      const a = await JudgeAssignmentQueries.getById(assignmentId);
+      if (a) {
+        broadcastJudgeEvent(tournamentId, a.mat_id, 'judge:vote', {
+          voteId: rows[0].id,
+          chair: a.chair,
+          officialName: a.official_name,
+          vote,
+          scoreType: scoreType || 'hantei',
+          matchRef: matchId,
+        });
+      }
+    }
+
+    res.status(201).json({ voteId: rows[0].id });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getAssignments,
   createAssignment,
@@ -167,4 +229,5 @@ module.exports = {
   standUp,
   getPanelStatus,
   getMyAssignments,
+  submitVote,
 };
