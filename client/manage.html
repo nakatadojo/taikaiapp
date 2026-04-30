@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/styles.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="/taikai-logo.js"></script>
+    <script src="/i18n.js"></script>
     <style>
     /* Prevent flash of login screen on refresh — revealed after auth resolves */
     body { visibility: hidden; }
@@ -668,22 +669,22 @@
 
             <nav id="main-nav" class="hidden">
                 <div class="nav-group">
-                    <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</button>
+                    <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> <span data-i18n="nav_dashboard">Dashboard</span></button>
                 </div>
                 <div class="nav-group">
                     <div class="nav-group-label">Tournament</div>
-                    <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> Competitors</button>
+                    <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> <span data-i18n="nav_competitors">Competitors</span></button>
                     <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
                     <button class="nav-btn" data-view="coaches"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
-                    <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> Officials</button>
-                    <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> Staff</button>
+                    <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> <span data-i18n="nav_officials">Officials</span></button>
+                    <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> <span data-i18n="nav_staff">Staff</span></button>
                     <button class="nav-btn" data-view="teams"><i data-lucide="users-round" class="nav-icon"></i> Teams</button>
-                    <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</button>
-                    <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</button>
-                    <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> Schedule</button>
-                    <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> Staging</button>
-                    <button class="nav-btn" data-view="checkin"><i data-lucide="scan-line" class="nav-icon"></i> Check-In</button>
-                    <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> Results</button>
+                    <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> <span data-i18n="nav_divisions">Divisions</span></button>
+                    <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> <span data-i18n="nav_brackets">Brackets</span></button>
+                    <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> <span data-i18n="nav_schedule">Schedule</span></button>
+                    <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> <span data-i18n="nav_staging">Staging</span></button>
+                    <button class="nav-btn" data-view="checkin"><i data-lucide="scan-line" class="nav-icon"></i> <span data-i18n="nav_checkin">Check-In</span></button>
+                    <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> <span data-i18n="nav_results">Results</span></button>
                     <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
                     <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
                 </div>
@@ -3544,7 +3545,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=10"></script>
+    <script src="/app.js?v=11"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)
