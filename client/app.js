@@ -3688,13 +3688,10 @@ function _applyRegistrationFieldsToDirectorForm(fields) {
         }
     }
 
-    // Show/hide weight field; update unit label
+    // Weight is always visible in the director form — update unit label only
     const weightEl = document.getElementById('weight');
     if (weightEl) {
-        const weightGroup = weightEl.closest('.form-group');
-        if (weightGroup) {
-            fields.showWeight ? weightGroup.classList.remove('hidden') : weightGroup.classList.add('hidden');
-        }
+        weightEl.closest('.form-group')?.classList.remove('hidden');
         const unitLabel = document.getElementById('weight-label-unit');
         if (unitLabel && fields.weightUnit) unitLabel.textContent = `(${fields.weightUnit})`;
     }
