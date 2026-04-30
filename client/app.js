@@ -1487,12 +1487,22 @@ function _initWebSocket() {
     _socket.on('divisions:updated', ({ generatedDivisions }) => {
         if (!generatedDivisions || typeof generatedDivisions !== 'object') return;
         const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+
+        // Track divisions that gained competitors so we can reshuffle their brackets
+        const grownDivisions = new Set();
+
         Object.keys(generatedDivisions).forEach(eventId => {
             if (!currentDivisions[eventId]) currentDivisions[eventId] = { templates: [], generated: {} };
             const rawGenerated = generatedDivisions[eventId]?.generated || {};
+            const oldGenerated = currentDivisions[eventId].generated || {};
             const normalized = {};
             for (const [divName, divData] of Object.entries(rawGenerated)) {
                 normalized[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
+                // Detect growth: more competitors than before
+                const oldLen = (oldGenerated[divName] || []).length;
+                if (normalized[divName].length > oldLen) {
+                    grownDivisions.add(`${eventId}::${divName}`);
+                }
             }
             currentDivisions[eventId].generated = normalized;
             if (generatedDivisions[eventId]?.templates) {
@@ -1500,6 +1510,12 @@ function _initWebSocket() {
             }
         });
         _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+
+        // Reshuffle unstarted brackets for any division that just gained competitors
+        if (grownDivisions.size > 0) {
+            _reshuffleBracketsForGrownDivisions(grownDivisions);
+        }
+
         if (typeof loadDivisionsView === 'function') loadDivisionsView();
         if (typeof loadDivisions === 'function') loadDivisions();
     });
@@ -5253,6 +5269,49 @@ function _autoReshuffleBracketsForCompetitor(competitor) {
         saveBrackets(brackets, updatedKeys2);
         _debouncedSync('brackets', _syncBracketsToServer, 2000);
         showToast(`Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
+    }
+    if (lockedNames.length > 0) {
+        showToast(`Division already started — bracket not updated: ${lockedNames.join(', ')}`, 'warning');
+    }
+}
+
+// Called from the divisions:updated WebSocket handler when a division gains competitors.
+function _reshuffleBracketsForGrownDivisions(grownDivisions) {
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    const brackets     = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    if (Object.keys(brackets).length === 0) return;
+
+    const updatedKeys  = [];
+    const updatedNames = [];
+    const lockedNames  = [];
+
+    Object.entries(brackets).forEach(([key, bracket]) => {
+        const divName = bracket.divisionName || bracket.division;
+        const eventId = String(bracket.eventId);
+        if (!grownDivisions.has(`${eventId}::${divName}`)) return;
+
+        if (bracketHasScoredMatches(bracket)) {
+            lockedNames.push(divName);
+            return;
+        }
+
+        const allDivComps    = allDivisions[eventId]?.generated?.[divName] || [];
+        const approvedComps  = allDivComps.filter(c => c.approved !== false);
+        if (approvedComps.length < 2) return;
+
+        const newBracket = regenerateBracketFromSettings(bracket, approvedComps);
+        if (!newBracket) return;
+
+        brackets[key] = newBracket;
+        updatedKeys.push(key);
+        updatedNames.push(divName);
+    });
+
+    if (updatedKeys.length > 0) {
+        saveBrackets(brackets, updatedKeys);
+        _debouncedSync('brackets', _syncBracketsToServer, 2000);
+        showToast(`Bracket${updatedNames.length > 1 ? 's' : ''} updated: ${updatedNames.join(', ')}`, 'success');
+        if (typeof loadBrackets === 'function') loadBrackets();
     }
     if (lockedNames.length > 0) {
         showToast(`Division already started — bracket not updated: ${lockedNames.join(', ')}`, 'warning');
