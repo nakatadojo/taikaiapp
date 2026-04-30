@@ -166,10 +166,15 @@ window.addEventListener('beforeunload', () => {
     const blob = (data) => new Blob([JSON.stringify(data)], { type: 'application/json' });
     // Clubs
     navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/clubs/sync`, blob({ clubs: db.load('clubs') }));
-    // Brackets — flush whatever is in the in-memory store so no match result is lost on tab close
-    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
-    if (Object.keys(brackets).length > 0) {
-        navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/brackets/sync`, blob({ brackets }));
+    // Brackets — only beacon brackets we know we dirtied; sending all would clobber other operators
+    // who changed brackets we loaded but didn't touch.
+    const _beaconBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const _beaconDirty = [..._dirtyBracketIds];
+    if (_beaconDirty.length > 0) {
+        const _dirtyOnly = Object.fromEntries(_beaconDirty.filter(id => _beaconBrackets[id]).map(id => [id, _beaconBrackets[id]]));
+        if (Object.keys(_dirtyOnly).length > 0) {
+            navigator.sendBeacon(`/api/tournaments/${currentTournamentId}/brackets/sync`, blob({ brackets: _dirtyOnly }));
+        }
     }
     // Divisions — flush any auto-assigned or manually edited divisions
     const divisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
@@ -1303,11 +1308,10 @@ async function _syncBracketsToServer() {
     const allBrackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
 
     // Only sync brackets that have been modified since the last confirmed write.
-    // Falls back to syncing all brackets if the dirty set is empty (e.g. on first load).
+    // Return early if nothing is dirty — avoids clobbering other operators' concurrent changes.
     let dirtyIds = [..._dirtyBracketIds];
-    const brackets = dirtyIds.length > 0
-        ? Object.fromEntries(dirtyIds.filter(id => allBrackets[id]).map(id => [id, allBrackets[id]]))
-        : allBrackets;
+    if (dirtyIds.length === 0) return;
+    const brackets = Object.fromEntries(dirtyIds.filter(id => allBrackets[id]).map(id => [id, allBrackets[id]]));
 
     if (Object.keys(brackets).length === 0) return;
 
