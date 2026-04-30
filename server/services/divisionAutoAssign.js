@@ -25,6 +25,7 @@ function scheduleAutoAssign(tournamentId, io = null, delayMs = 500) {
     );
   }, delayMs);
   _pending.set(tournamentId, handle);
+  return Promise.resolve();
 }
 
 /**
