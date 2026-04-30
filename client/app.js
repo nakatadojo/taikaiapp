@@ -11336,6 +11336,59 @@ async function saveDivisionChanges() {
     }
 }
 
+function addCustomDivision() {
+    const eventSelector = document.getElementById('division-event-selector');
+    const eventId = eventSelector?.value;
+    if (!eventId) { showToast('Select an event first', 'error'); return; }
+
+    let overlay = document.getElementById('add-division-overlay');
+    if (overlay) overlay.remove();
+    overlay = document.createElement('div');
+    overlay.id = 'add-division-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+        <div style="background:var(--bg-secondary,#1a1a24);border:1px solid var(--glass-border,#333);border-radius:12px;padding:24px;max-width:400px;width:90%;color:var(--text-primary,#fff);">
+            <h3 style="margin:0 0 8px 0;font-size:16px;">Add Division</h3>
+            <p style="margin:0 0 16px 0;font-size:13px;color:var(--text-secondary,#aaa);">
+                Creates an empty group. Use this for walk-ins, exhibitions, or any group that doesn't fit the criteria tree.
+            </p>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;margin-bottom:6px;font-size:13px;">Division Name</label>
+                <input id="add-division-name" class="form-input" type="text" placeholder="e.g. Open Division, Exhibition" style="width:100%;" autofocus>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="document.getElementById('add-division-overlay').remove()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmAddCustomDivision('${eventId}')">Add</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    setTimeout(() => document.getElementById('add-division-name')?.focus(), 50);
+    document.getElementById('add-division-name')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') confirmAddCustomDivision(eventId);
+    });
+}
+
+function confirmAddCustomDivision(eventId) {
+    const name = document.getElementById('add-division-name')?.value.trim();
+    if (!name) { showToast('Please enter a division name', 'error'); return; }
+
+    const allDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+    if (!allDivisions[eventId]) allDivisions[eventId] = { templates: [], generated: {} };
+    if (!allDivisions[eventId].generated) allDivisions[eventId].generated = {};
+
+    if (allDivisions[eventId].generated[name] !== undefined) {
+        showToast(`A division named "${name}" already exists`, 'error');
+        return;
+    }
+
+    allDivisions[eventId].generated[name] = [];
+    _msSet(_scopedKey('divisions'), JSON.stringify(allDivisions));
+    document.getElementById('add-division-overlay')?.remove();
+    loadDivisions();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function resyncDivisions() {
