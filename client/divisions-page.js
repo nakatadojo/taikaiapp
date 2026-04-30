@@ -38,7 +38,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch { /* network error — show page anyway, API calls will fail gracefully */ }
 
         if (!authOk) {
-            location.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
+            // No standalone login page — manage has an inline auth gate
+            location.replace(`/director/tournaments/${state.tournamentId}/manage`);
             return;
         }
 
