@@ -279,7 +279,8 @@ async function startServer() {
   }
 
   const httpServer = createServer(app);
-  initWebSocket(httpServer);
+  const io = initWebSocket(httpServer);
+  app.set('io', io);
 
   httpServer.listen(PORT, () => {
     console.log(`Taikai by Kimesoft running on http://localhost:${PORT}`);
