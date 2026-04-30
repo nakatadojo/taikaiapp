@@ -24,39 +24,48 @@ const state = {
 // ── Boot ───────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Extract tournament ID from URL: /director/tournaments/:id/divisions
-    const match = location.pathname.match(/\/director\/tournaments\/([^/]+)\/divisions/);
-    if (!match) { location.replace('/director/tournaments'); return; }
-    state.tournamentId = match[1];
-
-    // Auth check
     try {
-        const r = await fetch('/api/auth/me', { credentials: 'include' });
-        if (!r.ok) { location.replace(`/login?next=${encodeURIComponent(location.pathname)}`); return; }
-    } catch {
-        location.replace('/login');
-        return;
+        // Extract tournament ID from URL: /director/tournaments/:id/divisions
+        const match = location.pathname.match(/\/director\/tournaments\/([^/]+)\/divisions/);
+        if (!match) { location.replace('/director/tournaments'); return; }
+        state.tournamentId = match[1];
+
+        // Auth check
+        let authOk = false;
+        try {
+            const r = await fetch('/api/auth/me', { credentials: 'include' });
+            authOk = r.ok;
+        } catch { /* network error — show page anyway, API calls will fail gracefully */ }
+
+        if (!authOk) {
+            location.replace(`/login?next=${encodeURIComponent(location.pathname)}`);
+            return;
+        }
+
+        // Wire sidebar navigation links
+        _buildNav();
+
+        // Load logo
+        if (typeof window.renderTaikaiLogo === 'function') {
+            window.renderTaikaiLogo(document.getElementById('taikai-logo-target'));
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Fetch everything fresh — each function handles its own errors
+        await Promise.all([
+            _fetchTournament(),
+            _fetchDivisions(),
+            _fetchCompetitors(),
+        ]);
+
+        // Render
+        renderEventCards();
+    } catch (err) {
+        console.error('[divisions] boot error:', err);
+    } finally {
+        // Always reveal the body — prevents the permanent dark screen
+        document.body.style.visibility = '';
     }
-
-    // Wire sidebar navigation links
-    _buildNav();
-
-    // Load logo
-    if (typeof window.renderTaikaiLogo === 'function') {
-        window.renderTaikaiLogo(document.getElementById('taikai-logo-target'));
-    }
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-
-    // Fetch everything fresh
-    await Promise.all([
-        _fetchTournament(),
-        _fetchDivisions(),
-        _fetchCompetitors(),
-    ]);
-
-    // Render
-    renderEventCards();
-    document.body.style.visibility = '';
 });
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -83,33 +92,44 @@ function _buildNav() {
 // ── Data fetching ──────────────────────────────────────────────────────────
 
 async function _fetchTournament() {
-    const res = await fetch(`/api/tournaments/${state.tournamentId}`, { credentials: 'include' });
-    if (!res.ok) return;
-    const { tournament } = await res.json();
-    state.tournament = tournament;
-    state.weightUnit = tournament.weight_unit || 'kg';
+    try {
+        const res = await fetch(`/api/tournaments/${state.tournamentId}`, { credentials: 'include' });
+        if (!res.ok) return;
+        const { tournament } = await res.json();
+        if (!tournament) return;
+        state.tournament = tournament;
+        state.weightUnit = tournament.weight_unit || 'kg';
 
-    // Update page chrome
-    document.title = `Divisions – ${tournament.name} – TAIKAI`;
-    const badge = document.getElementById('tournament-name-badge');
-    if (badge) badge.textContent = tournament.name;
+        document.title = `Divisions – ${tournament.name} – TAIKAI`;
+        const badge = document.getElementById('tournament-name-badge');
+        if (badge) badge.textContent = tournament.name;
 
-    // Non-default events (the ones that have divisions)
-    state.eventTypes = (tournament.events || []).filter(e => !e.is_default);
+        state.eventTypes = (tournament.events || []).filter(e => !e.is_default);
+    } catch (err) {
+        console.warn('[divisions] fetchTournament failed:', err.message);
+    }
 }
 
 async function _fetchDivisions() {
-    const res = await fetch(`/api/tournaments/${state.tournamentId}/divisions`, { credentials: 'include' });
-    if (!res.ok) return;
-    const { generatedDivisions } = await res.json();
-    state.divisions = _normalizeDivisions(generatedDivisions || {});
+    try {
+        const res = await fetch(`/api/tournaments/${state.tournamentId}/divisions`, { credentials: 'include' });
+        if (!res.ok) return;
+        const { generatedDivisions } = await res.json();
+        state.divisions = _normalizeDivisions(generatedDivisions || {});
+    } catch (err) {
+        console.warn('[divisions] fetchDivisions failed:', err.message);
+    }
 }
 
 async function _fetchCompetitors() {
-    const res = await fetch(`/api/tournaments/${state.tournamentId}/competitors`, { credentials: 'include' });
-    if (!res.ok) return;
-    const { competitors } = await res.json();
-    state.competitors = competitors || [];
+    try {
+        const res = await fetch(`/api/tournaments/${state.tournamentId}/competitors`, { credentials: 'include' });
+        if (!res.ok) return;
+        const { competitors } = await res.json();
+        state.competitors = competitors || [];
+    } catch (err) {
+        console.warn('[divisions] fetchCompetitors failed:', err.message);
+    }
 }
 
 // Normalize server format: each division value may be {name, competitors, createdAt} or plain array
