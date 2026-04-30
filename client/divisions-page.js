@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('[divisions] boot error:', err);
     } finally {
         // Always reveal the body — prevents the permanent dark screen
-        document.body.style.visibility = '';
+        document.body.style.visibility = 'visible';
     }
 });
 
