@@ -2822,7 +2822,6 @@ function loadDashboard() {
     const allCompetitors = db.load('competitors');
     const events = db.load('eventTypes') || [];
     const divisions = db.load('divisions');
-    const matches = db.load('matches');
 
     // Filter by current tournament
     const competitors = currentTournamentId
@@ -2832,19 +2831,26 @@ function loadDashboard() {
     document.getElementById('stat-competitors').textContent = competitors.length;
     document.getElementById('stat-events').textContent = events.length;
 
-    // Count divisions across all event types
+    // Count divisions that actually have at least one competitor assigned
     let totalDivisions = 0;
     Object.values(divisions).forEach(eventData => {
         if (eventData && eventData.generated) {
-            // New nested structure: { criteria, generated: { divisionName: [competitors] } }
-            totalDivisions += Object.keys(eventData.generated).length;
+            Object.values(eventData.generated).forEach(comps => {
+                if (Array.isArray(comps) && comps.length > 0) totalDivisions++;
+            });
         } else if (Array.isArray(eventData)) {
-            // Legacy array structure
             totalDivisions += eventData.length;
         }
     });
     document.getElementById('stat-divisions').textContent = totalDivisions;
-    document.getElementById('stat-matches').textContent = matches.length;
+
+    // Count total division slots placed on any mat in the schedule
+    const matSchedule = loadMatScheduleData();
+    let totalScheduled = 0;
+    Object.values(matSchedule).forEach(entries => {
+        if (Array.isArray(entries)) totalScheduled += entries.length;
+    });
+    document.getElementById('stat-matches').textContent = totalScheduled;
 
     // Financial summary
     let totalRevenue = 0;
