@@ -24036,7 +24036,7 @@ function announceWinnerOnTV() {
     }, 10000);
 }
 
-function operatorNextAfterWin() {
+async function operatorNextAfterWin() {
     // Clear countdown if still running
     if (window._winnerCountdownInterval) {
         clearInterval(window._winnerCountdownInterval);
