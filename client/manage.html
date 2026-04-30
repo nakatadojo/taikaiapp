@@ -945,14 +945,21 @@
                     Showing competitors for: [Tournament Name]
                 </div>
 
-                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
                     <button class="btn btn-primary" onclick="showCompetitorForm()">+ Add Competitor</button>
                     <button class="btn btn-secondary" onclick="triggerCSVImport()">📥 Import CSV</button>
-                    <button class="btn btn-secondary btn-small" onclick="downloadCSVTemplate()" title="Download a pre-filled template that matches the import format">⬇ CSV Template</button>
+                    <button class="btn btn-secondary" onclick="downloadCSVTemplate()" title="Download a pre-filled template that matches the import format">⬇ CSV Template</button>
                     <input type="file" id="csv-import-file" accept=".csv" style="display:none;">
-<button class="btn btn-secondary" onclick="openTestDataModal()">🧪 Generate Test Data</button>
-                    <button class="btn btn-secondary btn-small" onclick="clearTestData()" title="Remove only test competitors">🗑 Clear Test Data</button>
-                    <button class="btn btn-danger btn-small" onclick="clearAllCompetitors()">🗑️ Clear All</button>
+                    <span id="comp-view-actions" style="display:flex;gap:12px;align-items:center;">
+                        <button class="btn btn-secondary" onclick="enterCompetitorEditMode()">Edit List</button>
+                    </span>
+                    <span id="comp-edit-actions" style="display:none;gap:12px;align-items:center;">
+                        <button class="btn btn-secondary" onclick="openTestDataModal()">🧪 Generate Test Data</button>
+                        <button class="btn btn-secondary" onclick="clearTestData()" title="Remove only test competitors">🗑 Clear Test Data</button>
+                        <button class="btn btn-danger" onclick="clearAllCompetitors()">🗑️ Clear All</button>
+                        <button id="comp-save-btn" class="btn btn-primary" onclick="saveCompetitorBatch()">Save Changes</button>
+                        <button class="btn btn-secondary" onclick="cancelCompetitorEdit()">Cancel</button>
+                    </span>
                 </div>
 
                 <!-- CSV Import Modal -->
@@ -1150,17 +1157,9 @@
                     </form>
                 </div>
 
-                <!-- Edit mode toolbar -->
-                <div id="competitor-edit-toolbar" style="display:none; align-items:center; gap:10px; margin-bottom:12px; padding:12px 16px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); border-radius:8px;">
-                    <span style="font-size:13px; color:var(--text-secondary); flex:1;">Select competitors to approve or delete, then save.</span>
-                    <button class="btn btn-primary" onclick="saveCompetitorBatch()">Save Changes</button>
-                    <button class="btn btn-secondary" onclick="cancelCompetitorEdit()">Cancel</button>
-                </div>
-
                 <div class="table-container">
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
                         <input type="text" id="competitor-search" placeholder="Search competitors..." onkeyup="filterCompetitors()" style="flex:1; margin-bottom:0;">
-                        <button id="competitor-edit-btn" class="btn btn-secondary btn-small" onclick="enterCompetitorEditMode()" style="white-space:nowrap;">Edit List</button>
                     </div>
                     <table id="competitors-table">
                         <thead>
@@ -3545,7 +3544,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=9"></script>
+    <script src="/app.js?v=10"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)

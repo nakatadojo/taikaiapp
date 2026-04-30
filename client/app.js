@@ -5981,10 +5981,10 @@ function enterCompetitorEditMode() {
     _pendingApprovals.clear();
     _pendingUnapprovals.clear();
     _pendingDeletions.clear();
-    const toolbar = document.getElementById('competitor-edit-toolbar');
-    const editBtn = document.getElementById('competitor-edit-btn');
-    if (toolbar) toolbar.style.display = 'flex';
-    if (editBtn) editBtn.style.display = 'none';
+    const viewActions = document.getElementById('comp-view-actions');
+    const editActions = document.getElementById('comp-edit-actions');
+    if (viewActions) viewActions.style.display = 'none';
+    if (editActions) editActions.style.display = 'flex';
     loadCompetitors(true);
 }
 
@@ -5993,10 +5993,10 @@ function cancelCompetitorEdit() {
     _pendingApprovals.clear();
     _pendingUnapprovals.clear();
     _pendingDeletions.clear();
-    const toolbar = document.getElementById('competitor-edit-toolbar');
-    const editBtn = document.getElementById('competitor-edit-btn');
-    if (toolbar) toolbar.style.display = 'none';
-    if (editBtn) editBtn.style.display = '';
+    const viewActions = document.getElementById('comp-view-actions');
+    const editActions = document.getElementById('comp-edit-actions');
+    if (viewActions) viewActions.style.display = 'flex';
+    if (editActions) editActions.style.display = 'none';
     loadCompetitors(true);
 }
 
@@ -6034,7 +6034,7 @@ async function saveCompetitorBatch() {
         return;
     }
 
-    const saveBtn = document.querySelector('#competitor-edit-toolbar .btn-primary');
+    const saveBtn = document.getElementById('comp-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
     try {
@@ -6074,10 +6074,10 @@ async function saveCompetitorBatch() {
         _pendingApprovals.clear();
         _pendingUnapprovals.clear();
         _pendingDeletions.clear();
-        const toolbar = document.getElementById('competitor-edit-toolbar');
-        const editBtn = document.getElementById('competitor-edit-btn');
-        if (toolbar) toolbar.style.display = 'none';
-        if (editBtn) editBtn.style.display = '';
+        const viewActions = document.getElementById('comp-view-actions');
+        const editActions = document.getElementById('comp-edit-actions');
+        if (viewActions) viewActions.style.display = 'flex';
+        if (editActions) editActions.style.display = 'none';
 
         await _loadCompetitorsFromServer();
         loadCompetitors(true);
@@ -7999,8 +7999,8 @@ async function clearAllCompetitors() {
 
     // Step 2: typing confirmation for the irreversible action
     if (!await showTypingConfirm(
-        `You are about to delete <strong>${totalCount} competitor${totalCount !== 1 ? 's' : ''}</strong> and all associated matches. This cannot be undone.`,
-        'DELETE'
+        `You are about to delete <strong>${totalCount} competitor${totalCount !== 1 ? 's' : ''}</strong> and all associated data. This cannot be undone.`,
+        'DELETEALL'
     )) return;
     {
             // Clear competitors
