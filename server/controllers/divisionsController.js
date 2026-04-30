@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const DivisionQueries = require('../db/queries/divisions');
-const { runAutoAssign } = require('../services/divisionAutoAssign');
+const { runAutoAssign, scheduleAutoAssign } = require('../services/divisionAutoAssign');
 
 async function getDivisions(req, res, next) {
   try {
@@ -47,6 +47,9 @@ async function syncTemplates(req, res, next) {
 
     const result = await DivisionQueries.upsertTemplates(eventId, templatesWithIds);
     res.json({ criteriaTemplates: result?.criteria_templates || [] });
+
+    // Trigger division re-assignment so the DB is always current after a template save.
+    scheduleAutoAssign(tournamentId, req.app.get('io'));
   } catch (err) { next(err); }
 }
 
@@ -65,7 +68,7 @@ async function autoAssignDivisions(req, res, next) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const generatedDivisions = await runAutoAssign(tournamentId);
+    const generatedDivisions = await runAutoAssign(tournamentId, req.app.get('io'));
     res.json({ generatedDivisions });
   } catch (err) { next(err); }
 }
@@ -85,6 +88,9 @@ async function syncTree(req, res, next) {
 
     const result = await DivisionQueries.upsertTree(eventId, tree || null);
     res.json({ tree: result?.division_tree || null });
+
+    // Re-assign divisions whenever the tree structure changes.
+    scheduleAutoAssign(tournamentId, req.app.get('io'));
   } catch (err) { next(err); }
 }
 

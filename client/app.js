@@ -31409,3 +31409,13 @@ function _urlBase64ToUint8Array(base64String) {
     }
     return outputArray;
 }
+
+
+// Navigate to the standalone divisions page (MPA).
+function _navToDivisions() {
+    if (currentTournamentId) {
+        location.href = `/director/tournaments/${currentTournamentId}/divisions`;
+        return false;
+    }
+    return false;
+}

@@ -241,6 +241,11 @@ app.get('/director/tournaments/:id/manage', (req, res) => {
   res.sendFile('manage.html', sendOpts);
 });
 
+// Standalone divisions page (MPA)
+app.get('/director/tournaments/:id/divisions', (req, res) => {
+  res.sendFile('divisions.html', sendOpts);
+});
+
 // /tournaments/:slug — Serve public tournament page
 app.get('/tournaments/:slug', (req, res) => {
   res.sendFile('tournament.html', sendOpts);

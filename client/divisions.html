@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Divisions – TAIKAI</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/taikai-logo.js"></script>
+    <script src="/i18n.js"></script>
+    <style>
+    body { visibility: hidden; }
+
+    /* ── Sidebar styles (copied from manage.html) ── */
+    .sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:900; }
+    .sidebar-overlay.active { display:block; }
+    @media(max-width:768px) {
+        .sidebar { transform:translateX(-100%); transition:transform 0.25s; }
+        .sidebar.open { transform:translateX(0); }
+    }
+    .back-to-tournaments { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); text-decoration:none; margin-top:8px; padding:5px 8px; border-radius:6px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.03); transition:all 0.15s; }
+    .back-to-tournaments:hover { color:var(--text-primary); background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.25); }
+    .nav-btn { display:flex; align-items:center; gap:8px; width:100%; background:none; border:none; color:var(--text-secondary); padding:10px 14px; border-radius:8px; cursor:pointer; font-size:14px; text-align:left; text-decoration:none; transition:background 0.15s,color 0.15s; }
+    .nav-btn:hover { background:rgba(255,255,255,0.05); color:var(--text-primary); }
+    .nav-btn.active { background:rgba(var(--primary-rgb,99,102,241),0.15); color:var(--primary); font-weight:600; }
+    .nav-icon { width:16px; height:16px; flex-shrink:0; }
+    .nav-group { margin-bottom:4px; }
+    .nav-group-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); padding:8px 14px 4px; }
+    .hamburger-btn { display:none; position:fixed; top:12px; left:12px; z-index:1000; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px; cursor:pointer; color:var(--text-primary); }
+    @media(max-width:768px) { .hamburger-btn { display:flex; align-items:center; justify-content:center; } }
+
+    /* ── Divisions-specific styles ── */
+    .div-evt-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin-top:12px; }
+    .div-evt-card { cursor:default; padding:16px; }
+    .div-evt-card h3 { margin:0 0 6px; font-size:14px; }
+    .div-evt-card .stat-number { font-size:28px; font-weight:700; color:var(--primary); }
+    .div-evt-card-sub { font-size:12px; color:var(--text-secondary); margin-top:2px; }
+    .div-evt-card-actions { display:flex; gap:6px; margin-top:12px; }
+    .div-evt-card.active { border-color:var(--primary); }
+    .div-evt-empty { color:var(--text-secondary); font-style:italic; }
+    .division-sheet { margin-bottom:16px; border:1px solid var(--glass-border); border-radius:10px; overflow:hidden; }
+    .division-header { padding:10px 16px; background:rgba(255,255,255,0.04); font-weight:600; font-size:14px; display:flex; align-items:center; justify-content:space-between; }
+    .division-content { overflow-x:auto; }
+    .division-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .division-table th { padding:8px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary); border-bottom:1px solid var(--glass-border); background:rgba(255,255,255,0.02); }
+    .division-table td { padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.04); }
+    .division-table tr:last-child td { border-bottom:none; }
+    .division-table tr:hover td { background:rgba(255,255,255,0.02); }
+    #msg-area { min-height:0; }
+
+    /* ── brk-step (bracket generator) ── */
+    .brk-step { margin-bottom:16px; padding:14px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--glass-border); }
+    .brk-step-hdr { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .brk-step-num { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--primary); color:#fff; font-weight:700; font-size:13px; flex-shrink:0; }
+    .brk-step-title { font-weight:600; font-size:14px; }
+    .brk-pills { display:flex; flex-wrap:wrap; gap:8px; }
+    .brk-pill { padding:8px 14px; border-radius:20px; border:1px solid var(--glass-border); background:var(--bg-primary); color:var(--text-secondary); cursor:pointer; font-size:13px; transition:all 0.15s; }
+    .brk-pill.selected { border-color:var(--primary); background:rgba(var(--primary-rgb,99,102,241),0.15); color:var(--primary); font-weight:600; }
+    </style>
+</head>
+<body>
+
+<button class="hamburger-btn" id="hamburger-btn" aria-label="Toggle navigation menu" onclick="toggleMobileSidebar()">
+    <i data-lucide="menu" style="width:20px;height:20px;"></i>
+</button>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+<div class="app-layout">
+    <aside class="sidebar" id="app-sidebar">
+        <div class="sidebar-header">
+            <div id="taikai-logo-target"></div>
+        </div>
+        <nav id="main-nav">
+            <div class="nav-group">
+                <a id="nav-dashboard" class="nav-btn" href="#"><i data-lucide="layout-dashboard" class="nav-icon"></i> Dashboard</a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-label">Tournament</div>
+                <a id="nav-competitors" class="nav-btn" href="#"><i data-lucide="users" class="nav-icon"></i> Competitors</a>
+                <a id="nav-clubs" class="nav-btn" href="#"><i data-lucide="home" class="nav-icon"></i> Dojos</a>
+                <a id="nav-divisions" class="nav-btn active" href="#"><i data-lucide="clipboard-list" class="nav-icon"></i> Divisions</a>
+                <a id="nav-brackets" class="nav-btn" href="#"><i data-lucide="git-branch" class="nav-icon"></i> Brackets</a>
+                <a id="nav-schedule" class="nav-btn" href="#"><i data-lucide="calendar" class="nav-icon"></i> Schedule</a>
+                <a id="nav-checkin" class="nav-btn" href="#"><i data-lucide="scan-line" class="nav-icon"></i> Check-In</a>
+                <a id="nav-results" class="nav-btn" href="#"><i data-lucide="trophy" class="nav-icon"></i> Results</a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-label">Account</div>
+                <a href="/account.html" class="nav-btn"><i data-lucide="circle-user-round" class="nav-icon"></i> My Account</a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <a id="back-to-tournaments-link" href="/director/tournaments" class="back-to-tournaments">
+                <i data-lucide="arrow-left" style="width:14px;height:14px;"></i> All Tournaments
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div id="msg-area"></div>
+
+        <section class="view active" id="divisions-view">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+                <h2 id="page-title" style="margin:0;">Divisions</h2>
+                <span id="tournament-name-badge" style="font-size:13px;color:var(--text-secondary);"></span>
+            </div>
+            <p class="hint">Select an event type to view or configure its divisions.</p>
+
+            <select id="division-event-selector" class="hidden"></select>
+
+            <div id="division-event-cards" class="div-evt-grid"></div>
+
+            <div id="division-template-container" class="hidden">
+
+                <div class="glass-panel" style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:0;border-radius:var(--radius) var(--radius) 0 0;">
+                    <span id="div-viewing-label" style="font-weight:600;font-size:15px;flex:1;"></span>
+                    <button class="btn btn-secondary btn-small" onclick="closeDivisionsView()">&#x2715; Close</button>
+                </div>
+
+                <div class="glass-panel" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;margin-top:0;border-top:none;border-radius:0 0 var(--radius) var(--radius);">
+                    <span id="div-view-actions" style="display:contents;">
+                        <button class="btn btn-secondary" onclick="showBracketGenerator()">&#x1F4CA; Generate Brackets</button>
+                        <button class="btn btn-secondary" id="resync-divisions-btn" onclick="resyncDivisions()">&#x21BA; Recalculate</button>
+                        <button class="btn btn-danger" onclick="deleteDivisions()">Delete Divisions</button>
+                    </span>
+                    <span id="div-edit-actions" style="display:none;">
+                        <button class="btn btn-secondary" onclick="addCustomDivision()" style="margin-right:6px;">+ Add Division</button>
+                        <button class="btn btn-primary" onclick="saveDivisionChanges()" style="margin-right:6px;">Save Changes</button>
+                        <button class="btn btn-secondary" onclick="cancelDivisionEdit()">Cancel</button>
+                    </span>
+                    <label class="checkbox-label" style="margin-left:auto;margin-right:8px;">
+                        <input type="checkbox" id="hide-empty-divisions" onchange="renderDivisions()">
+                        Show only divisions with competitors
+                    </label>
+                    <button id="div-edit-btn" class="btn btn-secondary btn-small" onclick="enterDivisionEditMode()">Edit Divisions</button>
+                </div>
+
+                <div id="divisions-container"></div>
+
+            </div><!-- /division-template-container -->
+        </section>
+
+        <!-- Bracket Generator Modal -->
+        <div id="bracket-generator-modal" class="modal hidden">
+            <div class="modal-content" style="max-width:620px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h2 style="margin:0;">Generate Brackets</h2>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="hideBracketGenerator()">✕ Cancel</button>
+                </div>
+                <form id="bracket-generator-form" onsubmit="generateBrackets(event)">
+                    <div class="brk-step">
+                        <div class="brk-step-hdr">
+                            <span class="brk-step-num">1</span>
+                            <span class="brk-step-title">Which divisions?</span>
+                            <span id="bracket-division-progress" style="margin-left:auto;font-size:12px;color:var(--text-secondary);"></span>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+                            <input type="text" id="division-filter-search" placeholder="Filter divisions…" oninput="_filterBracketChecklist()"
+                                   style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);font-size:13px;">
+                            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;">
+                                <input type="checkbox" id="division-filter-has-comps" onchange="_filterBracketChecklist()"> Has competitors
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-bottom:8px;">
+                            <button type="button" class="btn btn-small btn-secondary" onclick="setBracketDivisionChecks(true)">Select All</button>
+                            <button type="button" class="btn btn-small btn-secondary" onclick="setBracketDivisionChecks(false)">Deselect All</button>
+                        </div>
+                        <div id="bracket-division-checklist" style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--glass-border);max-height:200px;overflow-y:auto;"></div>
+                    </div>
+
+                    <div class="brk-step">
+                        <div class="brk-step-hdr"><span class="brk-step-num">2</span><span class="brk-step-title">Competition type</span></div>
+                        <select id="bracket-scoreboard-type" class="hidden" onchange="updateBracketTypeOptions()"></select>
+                        <div class="brk-pills" id="brk-comp-pills">
+                            <button type="button" class="brk-pill" data-value="kumite"      onclick="_setBrkCompType('kumite')">🥋 Kumite</button>
+                            <button type="button" class="brk-pill" data-value="kata-flags"  onclick="_setBrkCompType('kata-flags')">🚩 Kata Flags</button>
+                            <button type="button" class="brk-pill" data-value="kata-points" onclick="_setBrkCompType('kata-points')">🎯 Kata Points</button>
+                            <button type="button" class="brk-pill" data-value="kobudo"      onclick="_setBrkCompType('kobudo')">⚔️ Kobudo</button>
+                        </div>
+                    </div>
+
+                    <div class="brk-step">
+                        <div class="brk-step-hdr"><span class="brk-step-num">3</span><span class="brk-step-title">Bracket format</span></div>
+                        <select id="bracket-type" class="hidden" onchange="_updateBracketDivisionFlags()"></select>
+                        <div class="brk-pills" id="brk-format-pills"></div>
+                        <div id="brk-format-hint" style="min-height:18px;margin-top:4px;"></div>
+                        <div id="bracket-flags-summary" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.4);border-radius:8px;align-items:center;gap:8px;font-size:0.88em;">
+                            <span id="bracket-flags-msg" style="flex:1;color:#f5a623;"></span>
+                            <button type="button" class="btn btn-small btn-secondary" onclick="_uncheckFlaggedDivisions()">Uncheck Flagged</button>
+                        </div>
+                    </div>
+
+                    <div class="brk-step">
+                        <div class="brk-step-hdr"><span class="brk-step-num">4</span><span class="brk-step-title">Seeding</span></div>
+                        <select id="seeding-method" onchange="_onSeedingMethodChange()"
+                                style="width:100%;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);">
+                            <option value="random">Random</option>
+                            <option value="ordered">Ordered by registration</option>
+                            <option value="rank">By rank (higher ranks first)</option>
+                            <option value="age">By age (younger first)</option>
+                            <option value="country">By country (separate countries)</option>
+                            <option value="club">By dojo (separate dojos)</option>
+                        </select>
+                        <p class="hint" id="seeding-method-hint" style="margin-top:4px;"></p>
+                    </div>
+
+                    <div class="brk-step">
+                        <div class="brk-step-hdr"><span class="brk-step-num">5</span><span class="brk-step-title">Match duration</span></div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <input type="number" id="match-duration-mins" min="0" max="10" value="2"
+                                   style="width:70px;padding:10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);text-align:center;">
+                            <span style="color:var(--text-secondary);">min</span>
+                            <input type="number" id="match-duration-secs" min="0" max="59" value="0"
+                                   style="width:70px;padding:10px;border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--glass-border);text-align:center;">
+                            <span style="color:var(--text-secondary);">sec</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:8px;">
+                        <button type="submit" class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;font-weight:600;">
+                            Generate Brackets for <span id="brk-selected-count">0</span> Division<span id="brk-selected-plural">s</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script src="/toast.js"></script>
+<script src="/divisions-page.js"></script>
+
+<style>
+  #gt-box.gt-open { display:block !important; }
+  .goog-te-gadget { font-size:0 !important; }
+  .goog-te-gadget select { font-size:13px !important; border-radius:6px !important;
+    background:var(--bg-primary,#111) !important; color:var(--text-primary,#fff) !important;
+    border:1px solid var(--glass-border,rgba(255,255,255,0.2)) !important; padding:4px 6px !important; cursor:pointer; }
+  .goog-logo-link, .goog-te-gadget span { display:none !important; }
+</style>
+<script>
+  function googleTranslateElementInit() {
+    new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+  }
+</script>
+<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
+</body>
+</html>
