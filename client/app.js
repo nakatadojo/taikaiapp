@@ -1493,41 +1493,6 @@ function _initWebSocket() {
         _updatePresenceBanner(bracketId, count);
     });
 
-    // Real-time competitor updates from other devices via the per-record API
-    _socket.on('competitors:updated', ({ action, competitor }) => {
-        const all = db.load('competitors');
-        if (action === 'add') {
-            // Only add if not already in cache (avoid duplicating our own push)
-            if (!all.find(c => String(c.id) === String(competitor.id))) {
-                const normalized = {
-                    ...competitor,
-                    firstName:   competitor.firstName   ?? competitor.first_name   ?? '',
-                    lastName:    competitor.lastName    ?? competitor.last_name    ?? '',
-                    dateOfBirth: competitor.dateOfBirth ?? competitor.date_of_birth ?? null,
-                    tournamentId: currentTournamentId,
-                };
-                all.push(normalized);
-                db.save('competitors', all);
-                if (typeof loadCompetitors === 'function') loadCompetitors(true);
-                if (typeof loadDashboard === 'function') loadDashboard();
-            }
-        } else if (action === 'update') {
-            const idx = all.findIndex(c => String(c.id) === String(competitor.id));
-            if (idx !== -1) {
-                all[idx] = { ...all[idx], ...competitor, tournamentId: currentTournamentId };
-                db.save('competitors', all);
-                if (typeof loadCompetitors === 'function') loadCompetitors(true);
-            }
-        } else if (action === 'delete') {
-            const filtered = all.filter(c => String(c.id) !== String(competitor.id));
-            if (filtered.length !== all.length) {
-                db.save('competitors', filtered);
-                if (typeof loadCompetitors === 'function') loadCompetitors(true);
-                if (typeof loadDashboard === 'function') loadDashboard();
-            }
-        }
-    });
-
     // Real-time bulk test-data clear from server
     _socket.on('competitors:test-cleared', ({ tournamentId: tid }) => {
         if (tid !== currentTournamentId) return;
@@ -1537,31 +1502,6 @@ function _initWebSocket() {
         });
     });
 
-    // Real-time division updates after server auto-assign
-    _socket.on('divisions:updated', ({ generatedDivisions }) => {
-        if (!currentTournamentId) return;
-        // Normalize server format { divName: { name, competitors, createdAt } } →
-        // client format { divName: [...competitors] } so card counts render correctly.
-        const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
-        Object.keys(generatedDivisions).forEach(eventId => {
-            const raw = generatedDivisions[eventId];
-            if (!raw) return;
-            const rawGenerated = raw.generated || raw;
-            const normalizedGenerated = {};
-            for (const [divName, divData] of Object.entries(rawGenerated)) {
-                normalizedGenerated[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
-            }
-            currentDivisions[eventId] = {
-                ...currentDivisions[eventId],
-                ...(raw.templates ? { templates: raw.templates } : {}),
-                generated: normalizedGenerated,
-                updatedAt: raw.updatedAt,
-            };
-        });
-        _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
-        if (typeof loadDivisionsView === 'function') loadDivisionsView();
-        if (typeof loadEventTypeCards === 'function') loadEventTypeCards();
-    });
 }
 
 function _showOperatorOfflineBanner() {

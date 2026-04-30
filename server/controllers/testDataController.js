@@ -1,5 +1,5 @@
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
-const { broadcastCompetitorUpdate, getIO } = require('../websocket');
+const { getIO } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
 const { runAutoAssign } = require('../services/divisionAutoAssign');
 const pool = require('../db/pool');
@@ -101,7 +101,6 @@ async function generateTestData(req, res, next) {
       // Auto-approve test competitors immediately — no credits needed
       const approved = await DirectorCompetitorQueries.approve(c.id, tournamentId);
       const withApproval = { ...c, approved: true };
-      broadcastCompetitorUpdate(tournamentId, 'add', withApproval);
       created.push(withApproval);
     }
 

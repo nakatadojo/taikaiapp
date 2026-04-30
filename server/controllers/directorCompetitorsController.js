@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const creditQueries = require('../db/queries/credits');
-const { broadcastCompetitorUpdate } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
 const pool = require('../db/pool');
 const { sendCompetitorInviteEmail } = require('../email');
@@ -27,7 +26,6 @@ async function addCompetitor(req, res, next) {
     }
 
     const created = await DirectorCompetitorQueries.create(tournamentId, competitor, is_test || false);
-    broadcastCompetitorUpdate(tournamentId, 'add', created);
     res.status(201).json({ competitor: created });
 
     // Fire-and-forget: immediately place competitor into their division
@@ -60,7 +58,6 @@ async function updateCompetitor(req, res, next) {
       return res.status(403).json({ error: 'Test competitors cannot be edited' });
     }
 
-    broadcastCompetitorUpdate(tournamentId, 'update', result);
     res.json({ competitor: result });
 
     // Re-assign in case criteria-relevant fields (rank, age, weight) changed
@@ -106,7 +103,6 @@ async function deleteCompetitor(req, res, next) {
       }
     }
 
-    broadcastCompetitorUpdate(tournamentId, 'delete', { id: competitorId });
     res.json({ message: 'Competitor deleted', id: competitorId });
   } catch (err) { next(err); }
 }
@@ -196,7 +192,6 @@ async function approveCompetitor(req, res, next) {
         });
       }
 
-      broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: true });
       // Refresh divisions so approved status propagates immediately
       runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
       return res.json({ competitor: updated, newCreditBalance: deductResult.newBalance });
@@ -206,7 +201,6 @@ async function approveCompetitor(req, res, next) {
     const updated = await DirectorCompetitorQueries.approve(competitorId, tournamentId);
     if (!updated) return res.status(404).json({ error: 'Competitor not found' });
 
-    broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: true });
     // Refresh divisions so approved status propagates immediately
     runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
     res.json({ competitor: updated });
@@ -252,11 +246,9 @@ async function unapproveCompetitor(req, res, next) {
         `Unapproval refund`
       );
       const newBalance = await creditQueries.getBalance(directorId);
-      broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: false });
       return res.json({ competitor: result, newCreditBalance: newBalance });
     }
 
-    broadcastCompetitorUpdate(tournamentId, 'update', { id: competitorId, approved: false });
     res.json({ competitor: result });
   } catch (err) { next(err); }
 }
@@ -330,8 +322,7 @@ async function batchUpdateCompetitors(req, res, next) {
 
     // ── 1. Deletions ─────────────────────────────────────────────────────────
     for (const id of deleteIds) {
-      const result = await DirectorCompetitorQueries.remove(id, tournamentId);
-      if (result) broadcastCompetitorUpdate(tournamentId, 'delete', { id });
+      await DirectorCompetitorQueries.remove(id, tournamentId);
     }
 
     // ── 2. Unapprovals ───────────────────────────────────────────────────────
@@ -350,7 +341,6 @@ async function batchUpdateCompetitors(req, res, next) {
         await creditQueries.refundCredit(directorId, tournamentId, null,
           `Unapproval: ${comp.firstName} ${comp.lastName}`);
       }
-      broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: false });
     }
 
     // ── 3. Approvals ─────────────────────────────────────────────────────────
@@ -377,7 +367,6 @@ async function batchUpdateCompetitors(req, res, next) {
 
       // Pay-later registrations: no credit, just mark approved
       if (comp.source === 'registration') {
-        broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: true });
         continue;
       }
       if (comp.approved) continue; // already approved, skip
@@ -397,7 +386,6 @@ async function batchUpdateCompetitors(req, res, next) {
         }
         creditsUsed++;
       }
-      broadcastCompetitorUpdate(tournamentId, 'update', { id, approved: true });
     }
 
     // ── 4. Single auto-assign run ─────────────────────────────────────────────

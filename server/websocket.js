@@ -244,21 +244,7 @@ function broadcastScoreboardUpdate(tournamentId, ring, state) {
   io.to(room).emit('scoreboard:updated', payload);
 }
 
-function broadcastCompetitorUpdate(tournamentId, action, competitor) {
-  if (!io) return;
-  io.to(`tournament:${tournamentId}:competitors`).emit('competitors:updated', {
-    action,
-    competitor,
-  });
-}
-
-function broadcastDivisionUpdate(tournamentId, generatedDivisions) {
-  if (!io) return;
-  io.to(`tournament:${tournamentId}:divisions`).emit('divisions:updated', { generatedDivisions });
-}
-
 module.exports = {
   initWebSocket, getIO,
   broadcastBracketUpdate, broadcastScoreboardUpdate,
-  broadcastCompetitorUpdate, broadcastDivisionUpdate,
 };

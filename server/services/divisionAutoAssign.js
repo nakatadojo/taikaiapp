@@ -4,14 +4,13 @@
  * Server-side division auto-assignment service.
  * Reads all competitors and event templates for a tournament,
  * assigns each competitor to the appropriate division, and saves to DB.
- * Also broadcasts the result via WebSocket.
+ * Directors load fresh division state on demand — no WS broadcast needed.
  */
 
 const pool = require('../db/pool');
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
 const DivisionQueries = require('../db/queries/divisions');
 const { assignDivision } = require('./divisionAssignment');
-const { broadcastDivisionUpdate } = require('../websocket');
 
 /**
  * Run auto-assign for a tournament.
@@ -156,15 +155,8 @@ async function runAutoAssign(tournamentId) {
     };
   }
 
-  // Save to DB
+  // Save to DB — directors load fresh state on demand, no WS broadcast
   await DivisionQueries.upsert(tournamentId, updatedDivisions);
-
-  // Broadcast to all connected devices (fire and forget)
-  try {
-    broadcastDivisionUpdate(tournamentId, updatedDivisions);
-  } catch (e) {
-    console.warn('[ws] broadcastDivisionUpdate failed:', e.message);
-  }
 
   return updatedDivisions;
 }
