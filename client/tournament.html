@@ -1282,10 +1282,11 @@
         // Status
         const status = getStatus(t);
 
-        // Hero background
+        // Hero background — prefer cover_image_url column, fall back to public_site_config.coverImage
         const heroBg = document.getElementById('hero-bg');
-        if (t.cover_image_url) {
-            heroBg.style.backgroundImage = `url('${t.cover_image_url}')`;
+        const heroCoverUrl = t.cover_image_url || t.public_site_config?.coverImage || null;
+        if (heroCoverUrl) {
+            heroBg.style.backgroundImage = `url('${heroCoverUrl}')`;
         } else {
             heroBg.classList.add('placeholder');
         }

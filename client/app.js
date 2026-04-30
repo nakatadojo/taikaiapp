@@ -2665,17 +2665,29 @@ loadTournamentSelector();
             // Hydrate from server — server is source of truth for all data.
             // _hydrateEventTypesFromServer also populates divisions[eventId].templates,
             // so _loadDivisionsFromServer (which loads generated groupings) must chain after it.
-            _hydrateEventTypesFromServer().then(() => {
+            // Wait for both event-types (templates) and competitors before regenerating divisions.
+            Promise.all([
+                _hydrateEventTypesFromServer(),
+                _loadCompetitorsFromServer(),
+            ]).then(() => {
                 loadCompetitors();
                 loadDashboard();
-                // Load generated divisions AFTER templates are hydrated from event types
                 return _loadDivisionsFromServer();
             }).then(() => {
+                // Re-run generation for any event that has server-side templates but whose
+                // generated_divisions may be stale (e.g. a competitor was approved on another
+                // device, or the server-side auto-assign ran since the last client visit).
+                const allDiv = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+                const eventsWithTreeTemplates = Object.keys(allDiv).filter(eid => {
+                    const tmpl = allDiv[eid]?.templates;
+                    return tmpl?.length > 0
+                        && typeof tmpl[0].id === 'string'
+                        && typeof tmpl[0].name === 'string';
+                });
+                if (eventsWithTreeTemplates.length > 0) {
+                    _silentlyRegenerateDivisionsForEvents(eventsWithTreeTemplates);
+                }
                 if (typeof loadDivisions === 'function') loadDivisions();
-            });
-            _loadCompetitorsFromServer().then(() => {
-                loadCompetitors();
-                loadDashboard(); // Refresh dashboard stats after competitors load from server
             });
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
@@ -9647,6 +9659,15 @@ function closeDivisionTreeModal() {
             if (!allDiv[eventId]) allDiv[eventId] = { generated: {} };
             allDiv[eventId].templates = templates;
             _msSet(_scopedKey('divisions'), JSON.stringify(allDiv));
+
+            // Save templates to server so runAutoAssign uses current criteria
+            if (currentTournamentId && _isServerEventId(eventId)) {
+                fetch(`/api/tournaments/${currentTournamentId}/events/${eventId}/templates/sync`, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ criteriaTemplates: templates }),
+                }).catch(e => console.warn('[dtb] template sync on close failed:', e.message));
+            }
         }
 
         // Flush any pending debounced tree save immediately so the tree persists
@@ -16604,7 +16625,7 @@ function formatMinutesToTime(totalMinutes) {
 }
 
 function loadMatSchedule() {
-    generateMats();
+    displayMats();
     loadMatSelects();
     loadCompetitorSelectsForMatches();
     loadSchedule();
@@ -26284,24 +26305,39 @@ function loadScoreboardSettings() {
  */
 
 // Mat Schedule Functions
-function updateMats() {
+async function updateMats() {
+    if (!currentTournamentId || !_isServerTournamentId(currentTournamentId)) {
+        showMessage('No server tournament selected', 'error');
+        return;
+    }
     const numMats = parseInt(document.getElementById('num-mats')?.value || 2);
+    if (numMats < 1 || numMats > 20) {
+        showMessage('Mat count must be between 1 and 20', 'error');
+        return;
+    }
     const existingMats = db.load('mats');
     const mats = [];
-
     for (let i = 1; i <= numMats; i++) {
-        // Preserve existing mat if it exists, otherwise create new one with default name
         const existingMat = existingMats.find(m => m.id === i);
-        mats.push({
-            id: i,
-            name: existingMat ? existingMat.name : `Mat ${i}`,
-            active: true
-        });
+        mats.push({ id: i, name: existingMat ? existingMat.name : `Mat ${i}`, active: true });
     }
-
-    db.save('mats', mats);
-    displayMats();
-    showMessage(`Updated to ${numMats} mats`);
+    try {
+        setSyncIndicator('syncing');
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/mats/sync`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mats }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setSyncIndicator('ok');
+        // Write to localStorage only after server confirms
+        _msSet(_scopedKey('mats'), JSON.stringify(mats));
+        displayMats();
+        showMessage(`Updated to ${numMats} mat${numMats !== 1 ? 's' : ''}`);
+    } catch (err) {
+        setSyncIndicator('error');
+        showMessage('Failed to save mats — please try again.', 'error');
+    }
 }
 
 function displayMats() {
@@ -26309,6 +26345,10 @@ function displayMats() {
     const grid = document.getElementById('mats-grid');
 
     if (!grid) return;
+
+    // Keep #num-mats in sync so generateMats() doesn't reset to default 2
+    const numInput = document.getElementById('num-mats');
+    if (numInput && mats.length > 0) numInput.value = mats.length;
 
     grid.innerHTML = '';
 
@@ -28381,9 +28421,6 @@ if (publicSiteForm) {
 
             const config = {
                 tournamentId: currentTournamentId || null,
-                tournamentName: document.getElementById('public-tournament-name')?.value || '',
-                tournamentDate: document.getElementById('public-tournament-date')?.value || '',
-                location: document.getElementById('public-location')?.value || '',
                 description: document.getElementById('public-description')?.value || '',
                 primaryColor: document.getElementById('public-primary-color')?.value || '#0071e3',
                 coverImage: coverImageUrl,
@@ -28418,24 +28455,12 @@ async function loadPublicSiteConfig() {
     }
     const config = JSON.parse(_msGet(_scopedKey('publicSiteConfig')) || '{}');
 
-    const nameInput = document.getElementById('public-tournament-name');
-    const dateInput = document.getElementById('public-tournament-date');
-    const locationInput = document.getElementById('public-location');
     const descInput = document.getElementById('public-description');
     const colorInput = document.getElementById('public-primary-color');
     const footerInput = document.getElementById('public-footer-text');
     const scheduleCheckbox = document.getElementById('public-show-schedule');
     const resultsCheckbox = document.getElementById('public-show-results');
 
-    if (config.tournamentName && nameInput) {
-        nameInput.value = config.tournamentName;
-    }
-    if (config.tournamentDate && dateInput) {
-        dateInput.value = config.tournamentDate;
-    }
-    if (config.location && locationInput) {
-        locationInput.value = config.location;
-    }
     if (config.description && descInput) {
         descInput.value = config.description;
     }
@@ -28467,6 +28492,13 @@ async function loadPublicSiteConfig() {
         if (logoImg) logoImg.src = config.logo;
         if (logoPreview) logoPreview.classList.remove('hidden');
     }
+
+    // Pre-populate shareable URL so it's visible without clicking Copy
+    const tournaments = db.load('tournaments');
+    const t = tournaments.find(t => String(t.id) === String(currentTournamentId));
+    const slug = t?.slug;
+    const urlInput = document.getElementById('public-site-url');
+    if (urlInput && slug) urlInput.value = `${window.location.origin}/tournaments/${slug}`;
 }
 
 function openPublicSite() {

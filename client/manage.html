@@ -1952,7 +1952,7 @@
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <div class="form-group" style="margin: 0; display: flex; align-items: center; gap: 12px;">
                                 <label for="num-mats" style="margin: 0;">Number of Mats:</label>
-                                <input type="number" id="num-mats" min="1" max="8" value="2" style="width: 80px; padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
+                                <input type="number" id="num-mats" min="1" max="20" value="2" style="width: 80px; padding: 8px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--glass-border);">
                                 <button class="btn btn-primary" onclick="updateMats()">Update Mats</button>
                             </div>
                         </div>
@@ -2771,21 +2771,10 @@
                 <h2>Public Website Customization</h2>
 
                 <div class="glass-panel">
-                    <h3>Tournament Information</h3>
+                    <h3>Appearance</h3>
+                    <p class="hint" style="margin-bottom:16px;">Tournament name, date, and location come from the <strong>Tournament Info</strong> tab.</p>
                     <form id="public-site-form">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="public-tournament-name">Tournament Name *</label>
-                                <input type="text" id="public-tournament-name" placeholder="e.g., International Karate Championship">
-                            </div>
-                            <div class="form-group">
-                                <label for="public-tournament-date">Date *</label>
-                                <input type="date" id="public-tournament-date">
-                            </div>
-                            <div class="form-group">
-                                <label for="public-location">Location *</label>
-                                <input type="text" id="public-location" placeholder="e.g., Los Angeles, CA">
-                            </div>
                             <div class="form-group">
                                 <label for="public-primary-color">Primary Color</label>
                                 <input type="color" id="public-primary-color" value="#0071e3">
@@ -3534,7 +3523,7 @@
     <script src="/toast.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="/division-tree.js"></script>
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=7"></script>
     <script>lucide.createIcons();</script>
     <script>
     // Auto-load tournament from URL path (/director/tournaments/:id/manage)
