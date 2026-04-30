@@ -150,13 +150,20 @@ async function findBySlug(slug) {
   );
   tournament.events = eResult.rows;
 
-  // Get competitor count
+  // Count both registration-sourced and director-added (non-test, approved) competitors
   const regResult = await pool.query(
-    `SELECT COUNT(DISTINCT profile_id)::int AS competitor_count
-     FROM registrations WHERE tournament_id = $1 AND status != 'cancelled'`,
+    `SELECT (
+       SELECT COUNT(DISTINCT profile_id)
+       FROM registrations
+       WHERE tournament_id = $1 AND status != 'cancelled'
+     ) + (
+       SELECT COUNT(*)
+       FROM tournament_director_competitors
+       WHERE tournament_id = $1 AND is_test = false AND approved = true
+     ) AS competitor_count`,
     [tournament.id]
   );
-  tournament.competitor_count = regResult.rows[0]?.competitor_count || 0;
+  tournament.competitor_count = parseInt(regResult.rows[0]?.competitor_count || 0, 10);
 
   return tournament;
 }
