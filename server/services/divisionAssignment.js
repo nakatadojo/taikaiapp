@@ -110,11 +110,18 @@ function matchCriteria(competitor, criteria) {
         break;
       }
 
-      case 'gender':
-        if ((competitor.gender || '').toLowerCase() === (range.value || '').toLowerCase()) {
+      case 'gender': {
+        const gNorm = g => {
+          const t = (g || '').toLowerCase().trim();
+          if (['male','boys','boy','men','man','m'].includes(t)) return 'male';
+          if (['female','girls','girl','women','woman','f'].includes(t)) return 'female';
+          return t;
+        };
+        if (gNorm(competitor.gender) === gNorm(range.value || range.label)) {
           return range.label;
         }
         break;
+      }
 
       case 'weight': {
         let weight = competitor.weight || 0;

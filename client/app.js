@@ -1531,8 +1531,27 @@ function _initWebSocket() {
     // Real-time division updates after server auto-assign
     _socket.on('divisions:updated', ({ generatedDivisions }) => {
         if (!currentTournamentId) return;
-        _msSet(_scopedKey('divisions'), JSON.stringify(generatedDivisions));
+        // Normalize server format { divName: { name, competitors, createdAt } } →
+        // client format { divName: [...competitors] } so card counts render correctly.
+        const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        Object.keys(generatedDivisions).forEach(eventId => {
+            const raw = generatedDivisions[eventId];
+            if (!raw) return;
+            const rawGenerated = raw.generated || raw;
+            const normalizedGenerated = {};
+            for (const [divName, divData] of Object.entries(rawGenerated)) {
+                normalizedGenerated[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
+            }
+            currentDivisions[eventId] = {
+                ...currentDivisions[eventId],
+                ...(raw.templates ? { templates: raw.templates } : {}),
+                generated: normalizedGenerated,
+                updatedAt: raw.updatedAt,
+            };
+        });
+        _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
         if (typeof loadDivisionsView === 'function') loadDivisionsView();
+        if (typeof loadEventTypeCards === 'function') loadEventTypeCards();
     });
 }
 
