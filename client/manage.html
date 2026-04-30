@@ -672,48 +672,48 @@
                     <button class="nav-btn active" data-view="dashboard"><i data-lucide="layout-dashboard" class="nav-icon"></i> <span data-i18n="nav_dashboard">Dashboard</span></button>
                 </div>
                 <div class="nav-group">
-                    <div class="nav-group-label">Tournament</div>
+                    <div class="nav-group-label" data-i18n="nav_group_tournament">Tournament</div>
                     <button class="nav-btn" data-view="competitors"><i data-lucide="users" class="nav-icon"></i> <span data-i18n="nav_competitors">Competitors</span></button>
-                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> Dojos</button>
-                    <button class="nav-btn" data-view="coaches"><i data-lucide="user-check" class="nav-icon"></i> Coaches</button>
+                    <button class="nav-btn" data-view="clubs"><i data-lucide="home" class="nav-icon"></i> <span data-i18n="nav_dojos">Dojos</span></button>
+                    <button class="nav-btn" data-view="coaches"><i data-lucide="user-check" class="nav-icon"></i> <span data-i18n="nav_coaches">Coaches</span></button>
                     <button class="nav-btn" data-view="officials"><i data-lucide="shield" class="nav-icon"></i> <span data-i18n="nav_officials">Officials</span></button>
                     <button class="nav-btn" data-view="staff"><i data-lucide="hard-hat" class="nav-icon"></i> <span data-i18n="nav_staff">Staff</span></button>
-                    <button class="nav-btn" data-view="teams"><i data-lucide="users-round" class="nav-icon"></i> Teams</button>
+                    <button class="nav-btn" data-view="teams"><i data-lucide="users-round" class="nav-icon"></i> <span data-i18n="nav_teams">Teams</span></button>
                     <button class="nav-btn" data-view="divisions"><i data-lucide="clipboard-list" class="nav-icon"></i> <span data-i18n="nav_divisions">Divisions</span></button>
                     <button class="nav-btn" data-view="brackets"><i data-lucide="git-branch" class="nav-icon"></i> <span data-i18n="nav_brackets">Brackets</span></button>
                     <button class="nav-btn" data-view="schedule"><i data-lucide="calendar" class="nav-icon"></i> <span data-i18n="nav_schedule">Schedule</span></button>
                     <button class="nav-btn" data-view="staging"><i data-lucide="layout-list" class="nav-icon"></i> <span data-i18n="nav_staging">Staging</span></button>
                     <button class="nav-btn" data-view="checkin"><i data-lucide="scan-line" class="nav-icon"></i> <span data-i18n="nav_checkin">Check-In</span></button>
                     <button class="nav-btn" data-view="results"><i data-lucide="trophy" class="nav-icon"></i> <span data-i18n="nav_results">Results</span></button>
-                    <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> Medical Log</button>
-                    <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> Judge Analytics</button>
+                    <button class="nav-btn" data-view="medical-incidents"><i data-lucide="heart-pulse" class="nav-icon"></i> <span data-i18n="nav_medical">Medical Log</span></button>
+                    <button class="nav-btn" data-view="judge-analytics"><i data-lucide="bar-chart-3" class="nav-icon"></i> <span data-i18n="nav_judge_analytics">Judge Analytics</span></button>
                 </div>
                 <div class="nav-group" id="academy-nav-group" style="display:none">
-                    <div class="nav-group-label">Dojo</div>
-                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> My Dojo</button>
+                    <div class="nav-group-label" data-i18n="nav_group_dojo">Dojo</div>
+                    <button class="nav-btn" data-view="academy" id="academy-nav-btn"><i data-lucide="school" class="nav-icon"></i> <span data-i18n="nav_my_dojo">My Dojo</span></button>
                 </div>
                 <div class="nav-group" id="account-nav-group">
-                    <div class="nav-group-label">Account</div>
-                    <a href="/account.html" class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:8px;"><i data-lucide="circle-user-round" class="nav-icon"></i> My Account</a>
+                    <div class="nav-group-label" data-i18n="nav_group_account">Account</div>
+                    <a href="/account.html" class="nav-btn" style="text-decoration:none;display:flex;align-items:center;gap:8px;"><i data-lucide="circle-user-round" class="nav-icon"></i> <span data-i18n="nav_my_account">My Account</span></a>
                 </div>
                 <div class="nav-group" id="settings-nav-group">
-                    <div class="nav-group-label">Admin</div>
+                    <div class="nav-group-label" data-i18n="nav_group_admin">Admin</div>
                     <button class="nav-settings-toggle" id="settings-toggle" onclick="toggleSettingsNav()">
-                        <i data-lucide="settings-2" class="nav-icon"></i> Settings
+                        <i data-lucide="settings-2" class="nav-icon"></i> <span data-i18n="nav_settings">Settings</span>
                         <i data-lucide="chevron-right" class="nav-chevron"></i>
                     </button>
                     <div class="nav-settings-children" id="settings-children">
-                        <button class="nav-sub-btn" data-view="settings-tournament-info">Tournament Info</button>
-                        <button class="nav-sub-btn" data-view="events">Event Types</button>
-                        <button class="nav-sub-btn" data-view="scoreboard-configs">Scoreboard Setup</button>
-                        <button class="nav-sub-btn" data-view="staging-settings">Staging Setup</button>
-                        <button class="nav-sub-btn" data-view="public-site">Public Site</button>
-                        <button class="nav-sub-btn" data-view="settings-pricing">Pricing</button>
-                        <button class="nav-sub-btn" data-view="settings-certificates">Certificates</button>
-                        <button class="nav-sub-btn" data-view="settings-sponsors">Sponsors</button>
-                        <button class="nav-sub-btn" data-view="settings-feedback">Feedback</button>
-                        <button class="nav-sub-btn" data-view="settings">Staff Roles</button>
-                        <button class="nav-sub-btn" data-view="settings-payment">Payment</button>
+                        <button class="nav-sub-btn" data-view="settings-tournament-info" data-i18n="nav_tournament_info">Tournament Info</button>
+                        <button class="nav-sub-btn" data-view="events" data-i18n="nav_event_types">Event Types</button>
+                        <button class="nav-sub-btn" data-view="scoreboard-configs" data-i18n="nav_scoreboard_setup">Scoreboard Setup</button>
+                        <button class="nav-sub-btn" data-view="staging-settings" data-i18n="nav_staging_setup">Staging Setup</button>
+                        <button class="nav-sub-btn" data-view="public-site" data-i18n="nav_public_site">Public Site</button>
+                        <button class="nav-sub-btn" data-view="settings-pricing" data-i18n="nav_pricing">Pricing</button>
+                        <button class="nav-sub-btn" data-view="settings-certificates" data-i18n="nav_certificates">Certificates</button>
+                        <button class="nav-sub-btn" data-view="settings-sponsors" data-i18n="nav_sponsors">Sponsors</button>
+                        <button class="nav-sub-btn" data-view="settings-feedback" data-i18n="nav_feedback">Feedback</button>
+                        <button class="nav-sub-btn" data-view="settings" data-i18n="nav_staff_roles">Staff Roles</button>
+                        <button class="nav-sub-btn" data-view="settings-payment" data-i18n="nav_payment">Payment</button>
                     </div>
                 </div>
             </nav>
