@@ -158,7 +158,7 @@ async function registerCompetitor(req, res, next) {
     res.status(201).json(response);
 
     // Fire-and-forget: place competitor into their division immediately on registration
-    runAutoAssign(tournamentId).catch(e => console.warn('[registration] auto-assign failed:', e.message));
+    runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[registration] auto-assign failed:', e.message));
 
     // Fire-and-forget: auto-create or link athlete profile
     if (registration.id) {

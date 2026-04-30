@@ -1524,6 +1524,28 @@ function _initWebSocket() {
         renderJudgeAssignmentsGrid();
     });
 
+    // Server pushes this after every auto-assign run (registration, approval, add/edit competitor).
+    // Reload divisions so the director sees fresh groupings without pressing "Regenerate".
+    _socket.on('divisions:updated', ({ generatedDivisions }) => {
+        if (!generatedDivisions || typeof generatedDivisions !== 'object') return;
+        const currentDivisions = JSON.parse(_msGet(_scopedKey('divisions')) || '{}');
+        Object.keys(generatedDivisions).forEach(eventId => {
+            if (!currentDivisions[eventId]) currentDivisions[eventId] = { templates: [], generated: {} };
+            const rawGenerated = generatedDivisions[eventId]?.generated || {};
+            const normalized = {};
+            for (const [divName, divData] of Object.entries(rawGenerated)) {
+                normalized[divName] = Array.isArray(divData) ? divData : (divData?.competitors || []);
+            }
+            currentDivisions[eventId].generated = normalized;
+            if (generatedDivisions[eventId]?.templates) {
+                currentDivisions[eventId].templates = generatedDivisions[eventId].templates;
+            }
+        });
+        _msSet(_scopedKey('divisions'), JSON.stringify(currentDivisions));
+        if (typeof loadDivisionsView === 'function') loadDivisionsView();
+        if (typeof loadDivisions === 'function') loadDivisions();
+    });
+
 }
 
 function _showOperatorOfflineBanner() {

@@ -187,6 +187,16 @@ function initWebSocket(httpServer) {
       _broadcastPresence(tournamentId, bracketId);
     });
 
+    socket.on('subscribe:divisions', ({ tournamentId }) => {
+      if (!tournamentId) return;
+      socket.join(`tournament:${tournamentId}:divisions`);
+    });
+
+    socket.on('subscribe:competitors', ({ tournamentId }) => {
+      if (!tournamentId) return;
+      socket.join(`tournament:${tournamentId}:competitors`);
+    });
+
     socket.on('operator:leave-bracket', ({ tournamentId, bracketId }) => {
       if (!tournamentId || !bracketId) return;
       const room = _presenceRoom(tournamentId, bracketId);

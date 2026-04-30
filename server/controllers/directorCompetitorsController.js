@@ -29,7 +29,7 @@ async function addCompetitor(req, res, next) {
     res.status(201).json({ competitor: created });
 
     // Fire-and-forget: immediately place competitor into their division
-    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after add failed:', e.message));
+    runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[director] auto-assign after add failed:', e.message));
 
     // Fire-and-forget: create passwordless account + send invite if email provided
     if (competitor.email && !is_test) {
@@ -61,7 +61,7 @@ async function updateCompetitor(req, res, next) {
     res.json({ competitor: result });
 
     // Re-assign in case criteria-relevant fields (rank, age, weight) changed
-    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after update failed:', e.message));
+    runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[director] auto-assign after update failed:', e.message));
   } catch (err) { next(err); }
 }
 
@@ -139,7 +139,7 @@ async function approveCompetitor(req, res, next) {
 
     // Pay-later public registrations: no credit deduction needed — just run auto-assign
     if (competitor.source === 'registration') {
-      runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign for pay-later failed:', e.message));
+      runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[director] auto-assign for pay-later failed:', e.message));
       return res.json({ competitor, source: 'registration' });
     }
 
@@ -193,7 +193,7 @@ async function approveCompetitor(req, res, next) {
       }
 
       // Refresh divisions so approved status propagates immediately
-      runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
+      runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
       return res.json({ competitor: updated, newCreditBalance: deductResult.newBalance });
     }
 
@@ -202,7 +202,7 @@ async function approveCompetitor(req, res, next) {
     if (!updated) return res.status(404).json({ error: 'Competitor not found' });
 
     // Refresh divisions so approved status propagates immediately
-    runAutoAssign(tournamentId).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
+    runAutoAssign(tournamentId, req.app.get('io')).catch(e => console.warn('[director] auto-assign after approve failed:', e.message));
     res.json({ competitor: updated });
   } catch (err) { next(err); }
 }
@@ -389,7 +389,7 @@ async function batchUpdateCompetitors(req, res, next) {
     }
 
     // ── 4. Single auto-assign run ─────────────────────────────────────────────
-    runAutoAssign(tournamentId).catch(e =>
+    runAutoAssign(tournamentId, req.app.get('io')).catch(e =>
       console.warn('[batch] auto-assign failed:', e.message)
     );
 

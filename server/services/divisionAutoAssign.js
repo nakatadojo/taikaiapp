@@ -15,12 +15,13 @@ const { assignDivision } = require('./divisionAssignment');
 /**
  * Run auto-assign for a tournament.
  * Loads all competitors and event templates, assigns competitors to divisions,
- * saves to DB, and broadcasts via WebSocket.
+ * saves to DB, and broadcasts via WebSocket if io is provided.
  *
  * @param {string} tournamentId
+ * @param {import('socket.io').Server|null} io  — pass to push live update to directors
  * @returns {Promise<Object>} updatedDivisions
  */
-async function runAutoAssign(tournamentId) {
+async function runAutoAssign(tournamentId, io = null) {
   const t = await pool.query('SELECT date, weight_unit FROM tournaments WHERE id = $1', [tournamentId]);
   if (!t.rows[0]) throw new Error('Tournament not found');
   const tournamentDate = t.rows[0].date;
@@ -155,8 +156,15 @@ async function runAutoAssign(tournamentId) {
     };
   }
 
-  // Save to DB — directors load fresh state on demand, no WS broadcast
   await DivisionQueries.upsert(tournamentId, updatedDivisions);
+
+  // Push live update so every connected director sees the new division without refreshing.
+  if (io) {
+    io.to(`tournament:${tournamentId}:divisions`).emit('divisions:updated', {
+      tournamentId,
+      generatedDivisions: updatedDivisions,
+    });
+  }
 
   return updatedDivisions;
 }
