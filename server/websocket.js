@@ -8,10 +8,8 @@
  * WebSocket upgrades happen on the same port as HTTP.
  *
  * Rooms used:
- *   tournament:{tournamentId}:bracket:{bracketId}   — bracket updates
- *   tournament:{tournamentId}:ring:{ring}:scoreboard — scoreboard updates
- *   tournament:{tournamentId}:competitors            — competitor CRUD events
- *   tournament:{tournamentId}:divisions              — division generation events
+ *   tournament:{tournamentId}:bracket:{bracketId}   — bracket updates (scoring operators, mat/TV displays)
+ *   tournament:{tournamentId}:ring:{ring}:scoreboard — scoreboard updates (TV/mat displays)
  *
  * Operator presence:
  *   _operatorPresence Map tracks which socket IDs are operating each bracket.
@@ -148,16 +146,6 @@ function initWebSocket(httpServer) {
         seq: currentSeq, serverTime: Date.now(),
       });
       _replaySince(socket, room, lastSeq);
-    });
-
-    socket.on('subscribe:competitors', ({ tournamentId }) => {
-      if (!tournamentId) return;
-      socket.join(`tournament:${tournamentId}:competitors`);
-    });
-
-    socket.on('subscribe:divisions', ({ tournamentId }) => {
-      if (!tournamentId) return;
-      socket.join(`tournament:${tournamentId}:divisions`);
     });
 
     // ── Operator presence ────────────────────────────────────────────────

@@ -1493,15 +1493,6 @@ function _initWebSocket() {
         _updatePresenceBanner(bracketId, count);
     });
 
-    // Real-time bulk test-data clear from server
-    _socket.on('competitors:test-cleared', ({ tournamentId: tid }) => {
-        if (tid !== currentTournamentId) return;
-        _loadCompetitorsFromServer().then(() => {
-            if (typeof loadCompetitors === 'function') loadCompetitors(true);
-            if (typeof loadDashboard === 'function') loadDashboard();
-        });
-    });
-
 }
 
 function _showOperatorOfflineBanner() {

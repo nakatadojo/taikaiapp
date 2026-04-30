@@ -1,5 +1,4 @@
 const DirectorCompetitorQueries = require('../db/queries/directorCompetitors');
-const { getIO } = require('../websocket');
 const tournamentQueries = require('../db/queries/tournaments');
 const { runAutoAssign } = require('../services/divisionAutoAssign');
 const pool = require('../db/pool');
@@ -118,11 +117,6 @@ async function clearTestData(req, res, next) {
     if (!owned) return res.status(403).json({ error: 'You do not own this tournament' });
 
     const count = await DirectorCompetitorQueries.clearTestData(tournamentId);
-
-    // Broadcast a bulk-delete event so all devices refresh
-    try {
-      getIO().to(`tournament:${tournamentId}:competitors`).emit('competitors:test-cleared', { tournamentId });
-    } catch (e) { /* ws not initialized */ }
 
     res.json({ deleted: count, message: `Cleared ${count} test competitor(s)` });
   } catch (err) { next(err); }
