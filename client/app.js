@@ -1386,6 +1386,7 @@ window._serverClockOffset = 0;
 let _lastBracketSeq = 0;
 let _lastRingSeq    = 0;
 let _currentOperatorRing    = null; // ring we've subscribed to for scoreboard updates
+let _judgeSubscribedMats    = new Set(); // mat IDs the director has subscribed to for judge updates
 let _lockHeartbeatInterval  = null; // setInterval handle for mat lock keepalive
 let _checkinPollInterval    = null; // setInterval handle for check-in auto-refresh
 
@@ -1422,10 +1423,11 @@ function _initWebSocket() {
                 lastSeq: _lastRingSeq,
             });
         }
-        // Re-subscribe to competitors and divisions channels on reconnect
-        if (currentTournamentId) {
-            _socket.emit('subscribe:competitors', { tournamentId: currentTournamentId });
-            _socket.emit('subscribe:divisions', { tournamentId: currentTournamentId });
+        // Re-subscribe to judge assignment channels for all mats we were watching
+        if (currentTournamentId && _judgeSubscribedMats.size > 0) {
+            _judgeSubscribedMats.forEach(matId => {
+                _socket.emit('subscribe:judges', { tournamentId: currentTournamentId, matId });
+            });
         }
         // Replay any unacked score actions queued during the disconnect
         _replayUnackedScoreActions();
@@ -1493,6 +1495,29 @@ function _initWebSocket() {
     _socket.on('operator:presence', ({ bracketId, count }) => {
         if (bracketId !== _currentBracketId) return;
         _updatePresenceBanner(bracketId, count);
+    });
+
+    // Judge assignment real-time updates (director's panel)
+    _socket.on('judge:seated', ({ assignment }) => {
+        const idx = _judgeAssignments.findIndex(a => a.id === assignment.id);
+        if (idx >= 0) _judgeAssignments[idx] = assignment;
+        else _judgeAssignments.push(assignment);
+        renderJudgeAssignmentsGrid();
+    });
+
+    _socket.on('judge:stood', ({ assignment }) => {
+        const idx = _judgeAssignments.findIndex(a => a.id === assignment.id);
+        if (idx >= 0) _judgeAssignments[idx] = assignment;
+        renderJudgeAssignmentsGrid();
+    });
+
+    _socket.on('mat:panel_status', ({ matId, panel }) => {
+        // Update status badges for the affected mat rows
+        panel.forEach(a => {
+            const idx = _judgeAssignments.findIndex(x => x.id === a.id);
+            if (idx >= 0) _judgeAssignments[idx] = { ..._judgeAssignments[idx], ...a };
+        });
+        renderJudgeAssignmentsGrid();
     });
 
 }
@@ -2434,7 +2459,7 @@ function switchTournament() {
                 'events':                  () => { loadEventTypes(); loadEventTypeSelector(); },
                 'clubs':                   () => loadClubs(),
                 'coaches':                 () => loadCoaches(),
-                'officials':               () => loadOfficials(),
+                'officials':               () => { loadOfficials(); loadJudgeAssignments(); },
                 'staff':                   () => loadStaff(),
                 'results':                 () => loadResults(),
                 'settings':                () => loadSettings(),
@@ -2652,6 +2677,7 @@ loadTournamentSelector();
             });
             _loadPersonnelFromServer().then(() => {
                 if (typeof loadOfficials === 'function') loadOfficials();
+                if (typeof loadJudgeAssignments === 'function') loadJudgeAssignments();
                 if (typeof loadStaff === 'function') loadStaff();
                 if (typeof loadCoaches === 'function') loadCoaches();
             });
@@ -3359,6 +3385,7 @@ document.querySelectorAll('.nav-btn, .nav-sub-btn').forEach(btn => {
         }
         if (view === 'officials') {
             loadOfficials();
+            loadJudgeAssignments();
         }
         if (view === 'staff') {
             loadStaff();
@@ -17470,6 +17497,237 @@ function deleteOfficialAssignment(officialId, index) {
 
 function closeOfficialAssignmentModal() {
     document.getElementById('official-assignment-modal').classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JUDGE MAT ASSIGNMENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CHAIR_LABELS = {
+    shushin: 'Shushin (Center)',
+    judge1:  'Judge 1',
+    judge2:  'Judge 2',
+    judge3:  'Judge 3',
+    judge4:  'Judge 4',
+};
+
+const STATUS_COLORS = {
+    assigned: 'var(--text-secondary)',
+    seated:   '#22c55e',
+    active:   '#6366f1',
+    relieved: '#f59e0b',
+    complete: 'var(--text-secondary)',
+};
+
+let _judgeAssignments = [];
+
+async function loadJudgeAssignments() {
+    if (!currentTournamentId) return;
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentId}/judge-assignments`, {
+            credentials: 'include',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        _judgeAssignments = data.assignments || [];
+        renderJudgeAssignmentsGrid();
+        // Subscribe to real-time updates for each mat that has assignments
+        if (_socket) {
+            const mats = new Set(_judgeAssignments.map(a => a.mat_id));
+            mats.forEach(matId => {
+                if (!_judgeSubscribedMats.has(matId)) {
+                    _judgeSubscribedMats.add(matId);
+                    _socket.emit('subscribe:judges', { tournamentId: currentTournamentId, matId });
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[judge-assignments] load failed:', e.message);
+    }
+}
+
+function renderJudgeAssignmentsGrid() {
+    const container = document.getElementById('judge-assignments-grid');
+    if (!container) return;
+
+    if (_judgeAssignments.length === 0) {
+        container.innerHTML = '<p class="hint" style="text-align:center;padding:20px 0;">No assignments yet. Add officials above.</p>';
+        return;
+    }
+
+    // Group by mat
+    const byMat = {};
+    for (const a of _judgeAssignments) {
+        if (!byMat[a.mat_id]) byMat[a.mat_id] = [];
+        byMat[a.mat_id].push(a);
+    }
+
+    const mats = Object.keys(byMat).sort((a, b) => Number(a) - Number(b));
+    container.innerHTML = mats.map(matId => {
+        const assignments = byMat[matId];
+        const rows = assignments.map(a => {
+            const statusColor = STATUS_COLORS[a.status] || 'var(--text-secondary)';
+            const timeRange = (a.scheduled_from || a.scheduled_until)
+                ? `${a.scheduled_from || '?'} – ${a.scheduled_until || '?'}`
+                : '—';
+            return `
+            <tr>
+                <td style="padding:8px 12px;font-weight:600;">${CHAIR_LABELS[a.chair] || a.chair}</td>
+                <td style="padding:8px 12px;">${_escapeHtml(a.official_name)}</td>
+                <td style="padding:8px 12px;color:var(--text-secondary);font-size:13px;">${timeRange}</td>
+                <td style="padding:8px 12px;">
+                    <span style="font-size:12px;font-weight:700;color:${statusColor};text-transform:uppercase;">
+                        ${a.status}
+                    </span>
+                    ${a.seated_at ? `<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">since ${new Date(a.seated_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+                </td>
+                <td style="padding:8px 12px;text-align:right;">
+                    <button class="btn btn-small btn-secondary" onclick="editJudgeAssignment('${a.id}')" style="margin-right:4px;">Edit</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteJudgeAssignment('${a.id}')">Remove</button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        return `
+        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);border-radius:10px;overflow:hidden;">
+            <div style="padding:12px 16px;background:rgba(255,255,255,0.05);border-bottom:1px solid var(--glass-border);font-weight:700;font-size:14px;">
+                Mat ${matId}
+                <span style="font-weight:400;font-size:12px;color:var(--text-secondary);margin-left:8px;">${assignments.length} judge${assignments.length !== 1 ? 's' : ''} assigned</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="background:rgba(255,255,255,0.02);font-size:12px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;">
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;">Chair</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;">Official</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;">Time Window</th>
+                        <th style="padding:6px 12px;text-align:left;font-weight:600;">Status</th>
+                        <th style="padding:6px 12px;text-align:right;font-weight:600;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+    }).join('');
+}
+
+function showJudgeAssignmentForm(assignmentId) {
+    const form = document.getElementById('judge-assignment-form');
+    const title = document.getElementById('judge-assignment-form-title');
+    form.classList.remove('hidden');
+
+    // Populate officials dropdown
+    const officialSel = document.getElementById('judge-assign-official');
+    const officials = db.load('officials') || [];
+    officialSel.innerHTML = '<option value="">Select official</option>' +
+        officials.map(o => `<option value="${o.id}" data-name="${_escapeHtml(o.firstName + ' ' + o.lastName)}">${_escapeHtml(o.firstName)} ${_escapeHtml(o.lastName)}</option>`).join('');
+
+    // Populate mats dropdown from schedule settings
+    const matSel = document.getElementById('judge-assign-mat');
+    const numMats = parseInt(document.getElementById('num-mats')?.value || '1', 10);
+    matSel.innerHTML = '<option value="">Select mat</option>' +
+        Array.from({ length: numMats }, (_, i) => `<option value="${i + 1}">Mat ${i + 1}</option>`).join('');
+
+    if (assignmentId) {
+        const a = _judgeAssignments.find(x => x.id === assignmentId);
+        if (!a) return;
+        title.textContent = 'Edit Assignment';
+        document.getElementById('judge-assignment-edit-id').value = a.id;
+        officialSel.value = a.user_id || '';
+        // Try to match by name if no user_id
+        if (!a.user_id) {
+            for (const opt of officialSel.options) {
+                if (opt.dataset.name === a.official_name) { opt.selected = true; break; }
+            }
+        }
+        matSel.value = a.mat_id;
+        document.getElementById('judge-assign-chair').value = a.chair;
+        document.getElementById('judge-assign-from').value = a.scheduled_from || '';
+        document.getElementById('judge-assign-until').value = a.scheduled_until || '';
+    } else {
+        title.textContent = 'New Assignment';
+        document.getElementById('judge-assignment-edit-id').value = '';
+        document.getElementById('judge-assign-from').value = '';
+        document.getElementById('judge-assign-until').value = '';
+        document.getElementById('judge-assign-chair').value = '';
+    }
+
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideJudgeAssignmentForm() {
+    document.getElementById('judge-assignment-form').classList.add('hidden');
+}
+
+async function saveJudgeAssignment() {
+    const editId    = document.getElementById('judge-assignment-edit-id').value;
+    const officialEl = document.getElementById('judge-assign-official');
+    const matId     = document.getElementById('judge-assign-mat').value;
+    const chair     = document.getElementById('judge-assign-chair').value;
+    const from      = document.getElementById('judge-assign-from').value;
+    const until     = document.getElementById('judge-assign-until').value;
+
+    const selectedOpt = officialEl.options[officialEl.selectedIndex];
+    const officialName = selectedOpt?.dataset?.name || selectedOpt?.text || '';
+    const userId = selectedOpt?.value || null;
+
+    if (!officialName || !matId || !chair) {
+        showMessage('Official, mat, and chair are required.', 'error');
+        return;
+    }
+
+    const body = {
+        officialName,
+        userId: userId || null,
+        matId: parseInt(matId, 10),
+        chair,
+        scheduledFrom:  from  || null,
+        scheduledUntil: until || null,
+    };
+
+    try {
+        const url    = editId
+            ? `/api/tournaments/${currentTournamentId}/judge-assignments/${editId}`
+            : `/api/tournaments/${currentTournamentId}/judge-assignments`;
+        const method = editId ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method,
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showMessage(err.error || 'Save failed.', 'error');
+            return;
+        }
+
+        hideJudgeAssignmentForm();
+        await loadJudgeAssignments();
+        showMessage(editId ? 'Assignment updated.' : 'Assignment created.', 'success');
+    } catch (e) {
+        showMessage('Save failed — please try again.', 'error');
+    }
+}
+
+function editJudgeAssignment(id) {
+    showJudgeAssignmentForm(id);
+}
+
+async function deleteJudgeAssignment(id) {
+    if (!confirm('Remove this judge assignment?')) return;
+    try {
+        const res = await fetch(
+            `/api/tournaments/${currentTournamentId}/judge-assignments/${id}`,
+            { method: 'DELETE', credentials: 'include' }
+        );
+        if (!res.ok) { showMessage('Delete failed.', 'error'); return; }
+        await loadJudgeAssignments();
+        showMessage('Assignment removed.', 'success');
+    } catch (e) {
+        showMessage('Delete failed — please try again.', 'error');
+    }
 }
 
 function showStaffAssignments(staffId) {

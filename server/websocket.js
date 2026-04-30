@@ -8,8 +8,9 @@
  * WebSocket upgrades happen on the same port as HTTP.
  *
  * Rooms used:
- *   tournament:{tournamentId}:bracket:{bracketId}   — bracket updates (scoring operators, mat/TV displays)
- *   tournament:{tournamentId}:ring:{ring}:scoreboard — scoreboard updates (TV/mat displays)
+ *   tournament:{tournamentId}:bracket:{bracketId}    — bracket updates (scoring operators, mat/TV displays)
+ *   tournament:{tournamentId}:ring:{ring}:scoreboard  — scoreboard updates (TV/mat displays)
+ *   tournament:{tournamentId}:mat:{matId}:judges      — judge sit/stand/panel events
  *
  * Operator presence:
  *   _operatorPresence Map tracks which socket IDs are operating each bracket.
@@ -136,6 +137,11 @@ function initWebSocket(httpServer) {
       _replaySince(socket, room, lastSeq);
     });
 
+    socket.on('subscribe:judges', ({ tournamentId, matId }) => {
+      if (!tournamentId || matId == null) return;
+      socket.join(`tournament:${tournamentId}:mat:${matId}:judges`);
+    });
+
     socket.on('subscribe:ring', ({ tournamentId, ring, lastSeq }) => {
       if (!tournamentId || ring == null) return;
       const room = `tournament:${tournamentId}:ring:${ring}:scoreboard`;
@@ -232,7 +238,15 @@ function broadcastScoreboardUpdate(tournamentId, ring, state) {
   io.to(room).emit('scoreboard:updated', payload);
 }
 
+function broadcastJudgeEvent(tournamentId, matId, eventName, payload) {
+  if (!io) return;
+  io.to(`tournament:${tournamentId}:mat:${matId}:judges`).emit(eventName, {
+    ...payload,
+    serverTime: Date.now(),
+  });
+}
+
 module.exports = {
   initWebSocket, getIO,
-  broadcastBracketUpdate, broadcastScoreboardUpdate,
+  broadcastBracketUpdate, broadcastScoreboardUpdate, broadcastJudgeEvent,
 };

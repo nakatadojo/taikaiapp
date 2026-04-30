@@ -164,6 +164,7 @@ app.use('/api/tournaments', require('./routes/sponsors'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/tournaments', require('./routes/feedback').tournamentRouter);
 app.use('/api/tournaments', require('./routes/judgeAnalytics'));
+app.use('/api/tournaments', require('./routes/judges'));
 app.use('/api/admin', require('./routes/judgeAnalyticsAdmin'));
 
 // ── Feature: Athlete Profiles ───────────────────────────────────────────────
