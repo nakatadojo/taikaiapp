@@ -339,10 +339,8 @@ function _autoSyncIfBracketComplete(bracket) {
         const rounds = bracket.rounds || [];
         complete = rounds.length > 0 && rounds.every(r => (r.performances || []).every(p => p.completed));
     }
-    if (complete) {
-        // Brief delay so localStorage write fully settles before sync reads it
-        setTimeout(() => window.syncResultsToServer(), 1000);
-    }
+    // Completion is handled by the operator via the publish modal in operatorNextAfterWin()
+    // Do not auto-sync results here — the operator must confirm before awards are updated.
 }
 
 /**
@@ -22614,9 +22612,7 @@ function checkAutoWin(org, rules) {
             const winner = operatorRedScore > operatorBlueScore ? 'red' : 'blue';
             operatorPauseTimer();
             setTimeout(() => {
-                if (confirm(`${pointLead}-point lead reached!\n\n${winner.toUpperCase()} leads ${operatorRedScore} - ${operatorBlueScore}.\n\nDeclare ${winner.toUpperCase()} as winner?`)) {
-                    operatorDeclareWinner(winner, { winMethod: 'points', winNote: `${pointLead}-point lead` });
-                }
+                showMercyRuleModal(winner, pointLead);
             }, 100);
         }
     } else if (org === 'aau') {
@@ -23361,6 +23357,72 @@ function showWinMethodModal(winnerName, cornerLabel) {
     });
 }
 
+/** Styled modal for mercy-rule (point-lead) confirmation — replaces native confirm(). */
+function showMercyRuleModal(winner, pointLead) {
+    const settings = JSON.parse(_msGet(_scopedKey('scoreboardSettings')) || '{}');
+    const redName = operatorRedCompetitor ? `${operatorRedCompetitor.firstName} ${operatorRedCompetitor.lastName}` : 'RED';
+    const blueName = operatorBlueCompetitor ? `${operatorBlueCompetitor.firstName} ${operatorBlueCompetitor.lastName}` : 'BLUE';
+    const winnerName = winner === 'red' ? redName : blueName;
+    const cornerLabel = winner === 'red' ? (settings.corner1Name || 'RED') : (settings.corner2Name || 'BLUE');
+    const winnerColor = winner === 'red' ? (settings.corner1Custom || '#ff453a') : (settings.corner2Custom || '#0a84ff');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.style.zIndex = '100001';
+    overlay.innerHTML = `
+        <div class="confirm-dialog" style="max-width: 440px; width: 90%; text-align: center;">
+            <div style="font-size: 40px; margin-bottom: 8px;">🏆</div>
+            <div style="font-size: 22px; font-weight: 700; color: ${winnerColor}; margin-bottom: 6px;">${winnerName}</div>
+            <div style="font-size: 15px; color: var(--text-secondary); margin-bottom: 4px;">wins by points</div>
+            <div style="font-size: 24px; font-weight: 700; margin: 12px 0; letter-spacing: 2px;">
+                ${operatorRedScore} — ${operatorBlueScore}
+            </div>
+            <div style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 20px;">${pointLead}-point lead reached</div>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" id="mercy-cancel">Resume Match</button>
+                <button class="confirm-btn confirm-ok" id="mercy-confirm" style="background: ${winnerColor};">Confirm Win</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#mercy-cancel').onclick = () => { overlay.remove(); };
+    overlay.querySelector('#mercy-confirm').onclick = () => {
+        overlay.remove();
+        operatorDeclareWinner(winner, { winMethod: 'points', winNote: `${pointLead}-point lead` });
+    };
+    setTimeout(() => overlay.querySelector('#mercy-confirm').focus(), 50);
+}
+
+/** Modal shown when the last match of a division completes — prompts operator to publish. */
+function showPublishResultsModal(bracketId, bracketData, divisionName) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.style.zIndex = '100001';
+        overlay.innerHTML = `
+            <div class="confirm-dialog" style="max-width: 440px; width: 90%; text-align: center;">
+                <div style="font-size: 36px; margin-bottom: 8px;">🏁</div>
+                <div style="font-size: 20px; font-weight: 700; margin-bottom: 6px;">Division Complete</div>
+                <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 20px;">
+                    All matches in <strong>${_escapeHtml(divisionName || 'this division')}</strong> are finished.<br>
+                    Publish results now? They will appear as pending on the awards side.
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel" id="pub-later">Later</button>
+                    <button class="confirm-btn confirm-ok" id="pub-now">Publish Results</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('#pub-later').onclick = () => cleanup(false);
+        overlay.querySelector('#pub-now').onclick  = () => cleanup(true);
+        setTimeout(() => overlay.querySelector('#pub-now').focus(), 50);
+    });
+}
+
 /**
  * Declare a winner for kumite match.
  * @param {string} corner - 'red' or 'blue'
@@ -23395,6 +23457,9 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
     }
 
     operatorPauseTimer();
+
+    // Save pre-declaration snapshot so Undo can restore it
+    window._preMatchBracketSnapshot = _msGet(_scopedKey('brackets'));
 
     // Save match result to bracket
     if (window.currentBracketId && window.currentMatchId) {
@@ -23541,17 +23606,23 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
         <div style="font-size: 16px; color: var(--text-secondary); margin-bottom: 12px;">
             ${winnerCornerName} Corner — Score: ${corner === 'red' ? operatorRedScore : operatorBlueScore} - ${corner === 'red' ? operatorBlueScore : operatorRedScore}
         </div>
-        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center;">
-            <button class="btn" id="announce-winner-tv-btn" onclick="announceWinnerOnTV()"
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+            <button class="btn" onclick="announceWinnerOnTV()"
                 style="font-size: 14px; padding: 8px 20px; background: #7c3aed; color: #fff; border: none; border-radius: 8px;">
                 📺 Announce on TV
             </button>
-            <button class="btn btn-primary" onclick="operatorNextAfterWin()" style="font-size: 14px; padding: 8px 24px;">
-                ${divisionComplete ? 'View Results →' : 'Next Match →'}
+            <button class="btn" onclick="operatorUndoMatch()"
+                style="font-size: 14px; padding: 8px 20px; background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid #fbbf24; border-radius: 8px;">
+                ↩ Undo
             </button>
-            <span id="_kumite-publish-status" style="font-size: 13px; color: #94a3b8; align-self: center;">Saving...</span>
-            <span style="font-size: 13px; color: var(--text-tertiary); align-self: center;">
-                Auto-advancing in <span id="winner-countdown">10</span>s
+            <button class="btn btn-primary" onclick="operatorNextAfterWin()" style="font-size: 14px; padding: 8px 24px;">
+                ${divisionComplete ? 'Publish Results →' : 'Next Match →'}
+            </button>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: center; align-items: center;">
+            <span id="_kumite-publish-status" style="font-size: 13px; color: #22c55e;">✓ Saved locally</span>
+            <span style="font-size: 13px; color: var(--text-tertiary);">
+                ${divisionComplete ? 'Division complete' : `Auto-advancing in <span id="winner-countdown">10</span>s`}
             </span>
         </div>
     `;
@@ -23574,25 +23645,28 @@ async function operatorDeclareWinner(corner, winMethodOverride) {
         scoreboardDiv.appendChild(resultPanel);
     }
 
-    // Immediately publish result to server (Smoothcomp publish-on-complete pattern)
-    const _kumitePublishEl = document.getElementById('_kumite-publish-status');
+    // Push bracket to server so live bracket display stays updated
     const _publishBid = window.currentBracketId;
     const _publishBracketData = JSON.parse(_msGet(_scopedKey('brackets')) || '{}')[_publishBid];
     if (_publishBracketData) {
-        _publishBracket(currentTournamentId, _publishBid, _publishBracketData, _kumitePublishEl);
+        _publishBracket(currentTournamentId, _publishBid, _publishBracketData, null);
     }
 
-    // Countdown and auto-advance
-    let countdown = 10;
-    const countdownEl = document.getElementById('winner-countdown');
-    const countdownInterval = setInterval(() => {
-        countdown--;
-        if (countdownEl) countdownEl.textContent = countdown;
-        if (countdown <= 0) {
-            clearInterval(countdownInterval);
-            operatorNextAfterWin();
-        }
-    }, 1000);
+    // Auto-advance countdown only when division is NOT complete
+    // (division complete path requires explicit publish confirmation)
+    let countdownInterval = null;
+    if (!divisionComplete) {
+        let countdown = 10;
+        const countdownEl = document.getElementById('winner-countdown');
+        countdownInterval = setInterval(() => {
+            countdown--;
+            if (countdownEl) countdownEl.textContent = countdown;
+            if (countdown <= 0) {
+                clearInterval(countdownInterval);
+                operatorNextAfterWin();
+            }
+        }, 1000);
+    }
 
     // Store the interval so operatorNextAfterWin can clear it
     window._winnerCountdownInterval = countdownInterval;
@@ -23953,11 +24027,70 @@ function operatorNextAfterWin() {
 
     const divisionComplete = checkBracketComplete(currentOperatorDivision, currentOperatorEventId);
     if (divisionComplete) {
+        // Find the bracket for this division to pass to the publish modal
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        let divBracketId = null, divBracketData = null;
+        for (const id in brackets) {
+            const b = brackets[id];
+            if ((b.division === currentOperatorDivision || b.divisionName === currentOperatorDivision) && b.eventId == currentOperatorEventId) {
+                divBracketId = id;
+                divBracketData = b;
+                break;
+            }
+        }
+
+        const confirmed = await showPublishResultsModal(divBracketId, divBracketData, currentOperatorDivision);
+        if (confirmed) {
+            // Push bracket to server (already done per-match, but ensure latest state is saved)
+            if (divBracketId && divBracketData) {
+                await _publishBracket(currentTournamentId, divBracketId, divBracketData, null);
+            }
+            // Sync results to awards queue (pending status)
+            if (typeof window.syncResultsToServer === 'function') {
+                await window.syncResultsToServer();
+            }
+        }
+
         const results = getDivisionResults(currentOperatorDivision, currentOperatorEventId);
         showDivisionCompleteCountdown(currentOperatorMat, currentOperatorDivision, currentOperatorEventId, results);
     } else {
         openOperatorScoreboard(currentOperatorMat, currentOperatorDivision, currentOperatorEventId);
     }
+}
+
+/**
+ * Undo the last match declaration.
+ * Restores the bracket from the pre-declaration snapshot, pushes the reverted
+ * bracket to the server, and returns the operator to the active scoring screen.
+ */
+async function operatorUndoMatch() {
+    if (!window._preMatchBracketSnapshot) {
+        showMessage('Nothing to undo', 'error');
+        return;
+    }
+
+    // Clear the countdown so it doesn't auto-advance while we're undoing
+    if (window._winnerCountdownInterval) {
+        clearInterval(window._winnerCountdownInterval);
+        window._winnerCountdownInterval = null;
+    }
+
+    // Restore bracket from snapshot
+    _msSet(_scopedKey('brackets'), window._preMatchBracketSnapshot);
+    window._preMatchBracketSnapshot = null;
+
+    // Push reverted bracket to server so live display is consistent
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const bid = window.currentBracketId;
+    if (bid && brackets[bid]) {
+        await _publishBracket(currentTournamentId, bid, brackets[bid], null);
+    }
+
+    // Clear pending TV winner
+    window._pendingTVWinner = null;
+
+    // Re-open the scoring screen for this match
+    openOperatorScoreboard(currentOperatorMat, currentOperatorDivision, currentOperatorEventId);
 }
 
 // showWinnerCelebration removed — celebration now shows on audience scoreboards only

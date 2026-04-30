@@ -806,6 +806,7 @@
     .tab-hamburger span { display: block; width: 20px; height: 2px; background: var(--text); margin: 4px 0; transition: 0.2s; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
     .tab-search { width: 100%; padding: 10px 14px; border: 1px solid var(--border, #333); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; margin-bottom: 16px; }
     .tab-loading, .tab-empty { text-align: center; padding: 40px 20px; color: var(--text-dim); font-size: 14px; }
     .mobile-tab-menu { display: none; background: var(--bg); border-bottom: 1px solid var(--border, #333); padding: 8px 24px; }
@@ -1004,6 +1005,9 @@
                     </div>
                 </div>
 
+                    <!-- Live Mats section — injected by loadMatCards() when schedule is published -->
+                    <div id="live-mats-section" style="display:none;"></div>
+
                 <!-- === COMPETITORS TAB === -->
                 <div class="tab-panel" id="panel-competitors">
                     <div class="section-card">
@@ -1108,6 +1112,34 @@
     </div>
 
 <script src="/toast.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+
+<!-- Mat Live Modal -->
+<div id="mat-live-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.85);align-items:flex-end;justify-content:center;padding:0;" onclick="if(event.target===this)closeMatModal()">
+    <div style="background:var(--bg-secondary,#1a1a1a);border-radius:20px 20px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding:0 0 env(safe-area-inset-bottom,0);">
+        <!-- Handle bar -->
+        <div style="display:flex;justify-content:center;padding:12px 0 4px;">
+            <div style="width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.2);"></div>
+        </div>
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 12px;">
+            <div>
+                <div id="mat-modal-title" style="font-size:18px;font-weight:700;"></div>
+                <div style="font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-top:2px;">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;animation:pulse 1.5s ease-in-out infinite;"></span>
+                    Live
+                </div>
+            </div>
+            <button onclick="closeMatModal()" style="background:rgba(255,255,255,0.08);border:none;color:var(--text-primary,#fff);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">×</button>
+        </div>
+        <!-- Scoreboard -->
+        <div id="mat-modal-scoreboard" style="padding:0 16px;">
+            <div style="text-align:center;padding:40px;color:var(--text-dim);">Connecting...</div>
+        </div>
+        <!-- Bracket status -->
+        <div id="mat-modal-bracket" style="padding:0 16px 24px;"></div>
+    </div>
+</div>
 <script>
 (function() {
     'use strict';
@@ -1320,6 +1352,7 @@
 
         // Set up tabs based on section_visibility
         setupTabs(t);
+        loadMatCards(t.id);
 
         // Show content
         document.getElementById('loading-state').style.display = 'none';
@@ -3130,32 +3163,7 @@ async function loadCompetitorsTab(tournamentId) {
     }
 }
 
-function renderCompetitors(list) {
-    const container = document.getElementById('competitors-container');
-    if (!list.length) {
-        container.innerHTML = '<div class="tab-empty">No competitors registered yet.</div>';
-        return;
-    }
-    container.innerHTML = list.map(c => `
-        <div class="competitor-row">
-            <div>
-                <div class="competitor-name">${esc(c.first_name)} ${esc(c.last_name)}</div>
-                ${c.academy_name ? `<div class="competitor-academy">${esc(c.academy_name)}</div>` : ''}
-                ${c.divisions && c.divisions.length > 0 ? `<div class="competitor-divisions">${c.divisions.map(d => esc(d)).join(' &middot; ')}</div>` : ''}
-            </div>
-            ${c.events ? `<div class="competitor-events-list">${c.events.map(e => esc(e)).join(', ')}</div>` : ''}
-        </div>
-    `).join('');
-}
-
-function filterCompetitors() {
-    const q = (document.getElementById('competitor-search').value || '').toLowerCase();
-    const filtered = allCompetitors.filter(c =>
-        (c.first_name + ' ' + c.last_name).toLowerCase().includes(q) ||
-        (c.academy_name || '').toLowerCase().includes(q)
-    );
-    renderCompetitors(filtered);
-}
+// renderCompetitors and filterCompetitors defined below in the live mats section
 
 // ── Coaches / Judges / Staff Tabs ────────────────────────────────────
 async function loadMembersTab(tournamentId, role, containerId) {
@@ -3580,6 +3588,277 @@ async function loadCustomTabs(tournamentId) {
 function esc(s) {
     if (!s) return '';
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Live Mat Cards ──────────────────────────────────────────────────────────
+let _publicSocket = null;
+let _publicScheduleData = null; // cached for competitor finder cross-reference
+
+async function loadMatCards(tournamentId) {
+    const section = document.getElementById('live-mats-section');
+    if (!section) return;
+    try {
+        const res = await fetch(`/api/tournaments/${tournamentId}/schedule/public`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.hidden || !data.published) return;
+
+        _publicScheduleData = data.schedule || {};
+        const matIds = Object.keys(_publicScheduleData).sort((a, b) => Number(a) - Number(b));
+        if (!matIds.length) return;
+
+        const cardsHTML = matIds.map(matId => {
+            const slots = (_publicScheduleData[matId] || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+            const active   = slots.find(s => s.status === 'in-progress');
+            const upcoming = slots.find(s => s.status === 'upcoming');
+            const current  = active || upcoming;
+            const allDone  = slots.length > 0 && slots.every(s => s.status === 'completed');
+            const matName  = `Mat ${matId}`;
+
+            const statusColor = active ? '#22c55e' : allDone ? '#94a3b8' : '#f59e0b';
+            const statusText  = active ? '● Live' : allDone ? 'Complete' : 'Waiting';
+
+            return `<div onclick="openMatModal(${matId}, '${esc(matName)}')"
+                style="cursor:pointer;padding:16px;background:var(--surface-alt,rgba(255,255,255,0.04));border:1px solid var(--border,#333);border-radius:12px;transition:border-color 0.2s;"
+                onmouseenter="this.style.borderColor='var(--accent,#c0392b)'"
+                onmouseleave="this.style.borderColor='var(--border,#333)'">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <div style="font-size:14px;font-weight:700;">${esc(matName)}</div>
+                    <div style="font-size:12px;font-weight:600;color:${statusColor};">${statusText}</div>
+                </div>
+                ${current ? `
+                    <div style="font-size:13px;font-weight:500;margin-bottom:2px;">${esc(current.division || '')}</div>
+                    ${current.estimatedStartTime ? `<div style="font-size:11px;color:var(--text-dim);">~${esc(current.estimatedStartTime)}</div>` : ''}
+                ` : allDone ? `<div style="font-size:12px;color:var(--text-dim);">All divisions complete</div>` : `<div style="font-size:12px;color:var(--text-dim);">No divisions scheduled</div>`}
+                <div style="font-size:11px;color:var(--accent,#c0392b);margin-top:10px;">Watch live →</div>
+            </div>`;
+        }).join('');
+
+        section.style.display = '';
+        section.innerHTML = `
+            <div class="section-card">
+                <div class="section-title">
+                    <div class="section-title-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+                    </div>
+                    Live Mats
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">${cardsHTML}</div>
+            </div>`;
+    } catch (e) { /* schedule not visible — section stays hidden */ }
+}
+
+// ── Mat Live Modal ──────────────────────────────────────────────────────────
+function openMatModal(matId, matName) {
+    const modal = document.getElementById('mat-live-modal');
+    if (!modal) return;
+    document.getElementById('mat-modal-title').textContent = matName;
+    document.getElementById('mat-modal-scoreboard').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">Connecting...</div>';
+    document.getElementById('mat-modal-bracket').innerHTML = '';
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    // Disconnect any existing socket
+    if (_publicSocket) { _publicSocket.disconnect(); _publicSocket = null; }
+
+    // Poll for state (works without auth cookie, no WS auth needed)
+    _startMatPolling(matId);
+
+    // Also open WS for lower-latency updates
+    if (typeof io !== 'undefined' && currentTournamentData?.id) {
+        _publicSocket = io({ transports: ['websocket', 'polling'], reconnectionDelay: 1000 });
+        _publicSocket.on('connect', () => {
+            _publicSocket.emit('subscribe:ring', { tournamentId: currentTournamentData.id, ring: matId });
+        });
+        _publicSocket.on('scoreboard:updated', ({ ring, state }) => {
+            if (parseInt(ring) !== parseInt(matId)) return;
+            renderPublicMiniScoreboard(state, matId);
+        });
+    }
+}
+
+let _matPollInterval = null;
+function _startMatPolling(matId) {
+    if (_matPollInterval) clearInterval(_matPollInterval);
+    const poll = async () => {
+        if (!currentTournamentData?.id) return;
+        try {
+            const res = await fetch(`/api/tournaments/${currentTournamentData.id}/scoreboard-state?ring=${matId}`);
+            if (res.ok) {
+                const { state } = await res.json();
+                renderPublicMiniScoreboard(state, matId);
+            }
+        } catch (e) {}
+    };
+    poll();
+    _matPollInterval = setInterval(poll, 1500);
+}
+
+function closeMatModal() {
+    if (_publicSocket) { _publicSocket.disconnect(); _publicSocket = null; }
+    if (_matPollInterval) { clearInterval(_matPollInterval); _matPollInterval = null; }
+    const modal = document.getElementById('mat-live-modal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function renderPublicMiniScoreboard(state, matId) {
+    const sb = document.getElementById('mat-modal-scoreboard');
+    if (!sb) return;
+
+    if (!state || !state.scoreboardType) {
+        sb.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">Waiting for match to start...</div>';
+        return;
+    }
+
+    if (state.scoreboardType === 'kumite' || state.scoreboardType === 'aau-kata-flags') {
+        const c1 = state.corner1Color || '#ff453a';
+        const c2 = state.corner2Color || '#0a84ff';
+        const c1Name = state.corner1Name || 'RED';
+        const c2Name = state.corner2Name || 'BLUE';
+        const redScore  = state.redScore  ?? 0;
+        const blueScore = state.blueScore ?? 0;
+        const timer = state.timer || state.timerDisplay || '';
+
+        sb.innerHTML = `
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);text-align:center;margin-bottom:12px;">${esc(state.divisionName || '')}</div>
+            <div style="display:flex;border-radius:12px;overflow:hidden;margin-bottom:${state.winner ? '0' : '4px'};">
+                <div style="flex:1;background:${c1};padding:16px 12px;text-align:center;">
+                    <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:4px;">${esc(c1Name)}</div>
+                    <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;line-height:1.2;">${esc(state.redName || c1Name)}</div>
+                    <div style="font-size:52px;font-weight:900;color:#fff;line-height:1;">${redScore}</div>
+                    ${state.redPenalties ? `<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">⚠ ${state.redPenalties}</div>` : ''}
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 14px;background:rgba(0,0,0,0.5);min-width:60px;">
+                    ${timer ? `<div style="font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;">${esc(timer)}</div><div style="font-size:9px;color:rgba(255,255,255,0.4);margin-top:2px;">TIME</div>` : '<div style="font-size:20px;color:#fff;">VS</div>'}
+                </div>
+                <div style="flex:1;background:${c2};padding:16px 12px;text-align:center;">
+                    <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:4px;">${esc(c2Name)}</div>
+                    <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;line-height:1.2;">${esc(state.blueName || c2Name)}</div>
+                    <div style="font-size:52px;font-weight:900;color:#fff;line-height:1;">${blueScore}</div>
+                    ${state.bluePenalties ? `<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">⚠ ${state.bluePenalties}</div>` : ''}
+                </div>
+            </div>
+            ${state.winner ? `<div style="text-align:center;padding:10px;font-size:15px;font-weight:700;color:#22c55e;background:rgba(34,197,94,0.1);border-radius:0 0 12px 12px;">🏆 ${esc(typeof state.winner === 'object' ? state.winner.name : state.winner)} wins</div>` : ''}`;
+
+    } else if (state.scoreboardType === 'kata') {
+        sb.innerHTML = `
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);text-align:center;margin-bottom:12px;">${esc(state.divisionName || '')}</div>
+            <div style="text-align:center;padding:20px;background:rgba(255,255,255,0.05);border-radius:12px;">
+                <div style="font-size:22px;font-weight:700;margin-bottom:4px;">${esc(state.competitorName || '—')}</div>
+                ${state.competitorClub ? `<div style="font-size:13px;color:var(--text-dim);">${esc(state.competitorClub)}</div>` : ''}
+                <div style="font-size:12px;color:var(--text-dim);margin-top:8px;">Competitor ${state.competitorNumber || 1} of ${state.totalCompetitors || '?'}</div>
+                ${state.roundLabel ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">${esc(state.roundLabel)}</div>` : ''}
+            </div>`;
+    } else {
+        sb.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">Waiting for match to start...</div>';
+        return;
+    }
+
+    renderPublicBracketStatus(matId);
+}
+
+async function renderPublicBracketStatus(matId) {
+    const bracketEl = document.getElementById('mat-modal-bracket');
+    if (!bracketEl || !currentTournamentData) return;
+
+    const schedule = (_publicScheduleData || {})[matId] || [];
+    const activeDivision = (schedule.find(s => s.status === 'in-progress') || schedule.find(s => s.status === 'upcoming'))?.division;
+    if (!activeDivision) return;
+
+    try {
+        const res = await fetch(`/api/tournaments/${currentTournamentData.id}/brackets/public`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const bracketsById = data.brackets || {};
+        const bracket = Object.values(bracketsById).find(b => b.divisionName === activeDivision || b.division === activeDivision);
+        if (!bracket) return;
+
+        const matches = [...(bracket.matches || []), ...(bracket.winners || []), ...(bracket.losers || [])];
+        const real      = matches.filter(m => m.status !== 'empty' && m.status !== 'bye' && (m.redCorner || m.blueCorner));
+        const completed = real.filter(m => m.status === 'completed').length;
+        const total     = real.length;
+        const remaining = total - completed;
+
+        bracketEl.innerHTML = `
+            <div style="margin-top:16px;padding:14px 16px;border-top:1px solid var(--border,#333);">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px;">
+                    Bracket — ${esc(activeDivision)}
+                </div>
+                <div style="display:flex;gap:20px;font-size:14px;">
+                    <div><span style="color:#22c55e;font-weight:700;">${completed}</span> <span style="color:var(--text-dim);">done</span></div>
+                    <div><span style="font-weight:700;">${remaining}</span> <span style="color:var(--text-dim);">remaining</span></div>
+                    <div><span style="font-weight:700;">${total}</span> <span style="color:var(--text-dim);">total</span></div>
+                </div>
+            </div>`;
+    } catch (e) {}
+}
+
+// ── Competitor Finder (enhanced search) ────────────────────────────────────
+function filterCompetitors() {
+    const q = (document.getElementById('competitor-search').value || '').trim().toLowerCase();
+    const filtered = q.length < 2 ? allCompetitors : allCompetitors.filter(c =>
+        (c.first_name + ' ' + c.last_name).toLowerCase().includes(q) ||
+        (c.academy_name || '').toLowerCase().includes(q)
+    );
+    renderCompetitors(filtered, q);
+}
+
+function renderCompetitors(list, query) {
+    const container = document.getElementById('competitors-container');
+    if (!list.length) {
+        container.innerHTML = query
+            ? '<div class="tab-empty">No competitors found.</div>'
+            : '<div class="tab-empty">No competitors registered yet.</div>';
+        return;
+    }
+
+    container.innerHTML = list.map(c => {
+        const scheduleInfo = query && query.length >= 2 ? buildCompetitorScheduleInfo(c) : null;
+        return `
+        <div class="competitor-row" style="${scheduleInfo ? 'padding-bottom:10px;' : ''}">
+            <div>
+                <div class="competitor-name">${esc(c.first_name)} ${esc(c.last_name)}</div>
+                ${c.academy_name ? `<div class="competitor-academy">${esc(c.academy_name)}</div>` : ''}
+                ${c.divisions && c.divisions.length > 0 ? `<div class="competitor-divisions">${c.divisions.map(d => esc(d)).join(' &middot; ')}</div>` : ''}
+                ${scheduleInfo ? scheduleInfo : ''}
+            </div>
+            ${c.events ? `<div class="competitor-events-list">${c.events.map(e => esc(e)).join(', ')}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function buildCompetitorScheduleInfo(competitor) {
+    if (!_publicScheduleData) return null;
+    const divisions = competitor.divisions || [];
+    if (!divisions.length) return null;
+
+    const results = [];
+    for (const [matId, slots] of Object.entries(_publicScheduleData)) {
+        for (const slot of slots) {
+            if (divisions.some(d => d === slot.division)) {
+                const isLive = slot.status === 'in-progress';
+                const isDone = slot.status === 'completed';
+                const time   = slot.estimatedStartTime;
+                const matName = `Mat ${matId}`;
+
+                const badge = isLive
+                    ? `<span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.4);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openMatModal(${matId},'${esc(matName)}')">● Live — ${esc(matName)}</span>`
+                    : isDone
+                    ? `<span style="color:var(--text-dim);font-size:11px;">✓ Complete on ${esc(matName)}</span>`
+                    : `<span style="font-size:11px;color:var(--text-dim);">${esc(matName)}${time ? ` · ~${esc(time)}` : ''}</span>`;
+
+                results.push(`<div style="margin-top:5px;display:flex;align-items:center;gap:6px;">${badge}</div>`);
+            }
+        }
+    }
+
+    if (!results.length) return null;
+    return `<div style="margin-top:6px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--border,#333);border-radius:8px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px;">📍 Schedule</div>
+        ${results.join('')}
+        <div style="font-size:10px;color:var(--text-dim);margin-top:6px;font-style:italic;">⚠ Times are estimates — tournaments may run early or late</div>
+    </div>`;
 }
 </script>
 
