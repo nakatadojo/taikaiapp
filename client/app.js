@@ -21196,6 +21196,9 @@ function kataFlagsDeclareWinner() {
         return;
     }
 
+    // Save snapshot before any bracket mutation so Undo can restore it
+    window._preMatchBracketSnapshot = _msGet(_scopedKey('brackets'));
+
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const bracket = brackets[window.currentBracketId];
 
@@ -21430,18 +21433,21 @@ function kataFlagsDeclareWinner() {
             <div style="font-size: 18px; color: var(--text-secondary); margin-bottom: 16px;">
                 ${winnerCorner} Corner: ${corner1Votes > corner2Votes ? corner1Votes : corner2Votes} flags vs ${corner1Votes > corner2Votes ? corner2Votes : corner1Votes} flags
             </div>
-            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
-                    ${divisionDone ? 'View Results →' : 'Next Match →'}
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 8px;">
+                <button class="btn" onclick="kataFlagsUndoMatch()"
+                    style="font-size: 14px; padding: 8px 20px; background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid #fbbf24; border-radius: 8px;">
+                    ↩ Undo
                 </button>
-                <span id="_kata-flags-publish-status" style="font-size: 13px; color: #94a3b8;">Saving...</span>
+                <button class="btn btn-primary" onclick="kataFlagsNextMatch()" style="font-size: 16px; padding: 12px 32px;">
+                    ${divisionDone ? 'Publish Results →' : 'Next Match →'}
+                </button>
             </div>
+            <div style="text-align: center; font-size: 13px; color: #22c55e;">✓ Saved locally</div>
         </div>
     `;
 
-    // Immediately publish result to server (Smoothcomp publish-on-complete pattern)
-    const _kfPublishEl = document.getElementById('_kata-flags-publish-status');
-    _publishBracket(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId], _kfPublishEl);
+    // Push bracket to server so live bracket display stays updated
+    _publishBracket(currentTournamentId, window.currentBracketId, brackets[window.currentBracketId], null);
 
     // Update TV display to show winner
     updateKataFlagsTVDisplayWinner(winner, corner1Votes, corner2Votes);
@@ -21518,13 +21524,36 @@ function kataFlagsNextMatch() {
     }
 
     if (divisionComplete) {
-        // Division is done — show results + countdown to next division
-        const results = getDivisionResults(kataFlagsDivisionName, kataFlagsEventId);
-        showDivisionCompleteCountdown(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId, results);
+        const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+        let divBracketId = null, divBracketData = null;
+        for (const id in brackets) {
+            const b = brackets[id];
+            if ((b.division === kataFlagsDivisionName || b.divisionName === kataFlagsDivisionName) && b.eventId == kataFlagsEventId) {
+                divBracketId = id; divBracketData = b; break;
+            }
+        }
+        showPublishResultsModal(divBracketId, divBracketData, kataFlagsDivisionName).then(async confirmed => {
+            if (confirmed) {
+                if (divBracketId && divBracketData) await _publishBracket(currentTournamentId, divBracketId, divBracketData, null);
+                if (typeof window.syncResultsToServer === 'function') await window.syncResultsToServer();
+            }
+            const results = getDivisionResults(kataFlagsDivisionName, kataFlagsEventId);
+            showDivisionCompleteCountdown(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId, results);
+        });
     } else {
-        // More matches remain — reload scoreboard with next match
         openOperatorScoreboard(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId);
     }
+}
+
+async function kataFlagsUndoMatch() {
+    if (!window._preMatchBracketSnapshot) { showMessage('Nothing to undo', 'error'); return; }
+    _msSet(_scopedKey('brackets'), window._preMatchBracketSnapshot);
+    window._preMatchBracketSnapshot = null;
+    window._kataFlagsDeclaring = false;
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    const bid = window.currentBracketId;
+    if (bid && brackets[bid]) await _publishBracket(currentTournamentId, bid, brackets[bid], null);
+    openOperatorScoreboard(kataFlagsMatId, kataFlagsDivisionName, kataFlagsEventId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -24398,6 +24427,9 @@ function submitKataScores(isFlags) {
         return;
     }
 
+    // Save snapshot before writing so Undo can restore it
+    window._preMatchBracketSnapshot = _msGet(_scopedKey('brackets'));
+
     let finalScore;
     if (isFlags) {
         finalScore = kataJudgeScores.filter(f => f === true).length;
@@ -24413,40 +24445,100 @@ function submitKataScores(isFlags) {
         const bracket = brackets[id];
         if ((bracket.division === currentOperatorDivision || bracket.divisionName === currentOperatorDivision) && bracket.eventId == currentOperatorEventId) {
             bracketId = id;
-
             const performance = bracket.rounds[currentKataRound.roundNumber - 1].performances[currentKataPerformanceIndex];
             performance.scores = [...kataJudgeScores];
             performance.totalScore = isFlags ? finalScore : kataJudgeScores.reduce((sum, s) => sum + s, 0);
             performance.averageScore = finalScore;
             performance.completed = true;
-
             saveBrackets(brackets);
             break;
         }
     }
 
-    showMessage(`Score recorded: ${finalScore.toFixed(isFlags ? 0 : 2)}`);
-
-    setTimeout(() => {
+    // Show undo overlay — operator has 8s to undo before auto-advance
+    _showKataPointsUndoOverlay(finalScore, isFlags, () => {
+        // Advance callback — runs after undo window expires or operator clicks Next
         currentKataPerformanceIndex++;
-
         if (currentKataPerformanceIndex < currentKataRound.performances.length) {
             openKataScoreboard(currentOperatorMat, currentOperatorDivision, currentOperatorEventId, brackets[bracketId], currentKataScoreboardType);
         } else {
-            // Round complete — check if the entire bracket is done
             const divisionComplete = checkBracketComplete(currentOperatorDivision, currentOperatorEventId);
             if (divisionComplete) {
-                showMessage('Division complete! All competitors have performed.');
-                setTimeout(() => {
+                let divBracketId = null, divBracketData = null;
+                for (const id in brackets) {
+                    const b = brackets[id];
+                    if ((b.division === currentOperatorDivision || b.divisionName === currentOperatorDivision) && b.eventId == currentOperatorEventId) {
+                        divBracketId = id; divBracketData = b; break;
+                    }
+                }
+                showPublishResultsModal(divBracketId, divBracketData, currentOperatorDivision).then(async confirmed => {
+                    if (confirmed) {
+                        if (divBracketId && divBracketData) await _publishBracket(currentTournamentId, divBracketId, divBracketData, null);
+                        if (typeof window.syncResultsToServer === 'function') await window.syncResultsToServer();
+                    }
                     const results = getDivisionResults(currentOperatorDivision, currentOperatorEventId);
                     showDivisionCompleteCountdown(currentOperatorMat, currentOperatorDivision, currentOperatorEventId, results);
-                }, 1500);
+                });
             } else {
                 showMessage('Round complete! All competitors have performed.');
                 closeOperatorScoreboard();
             }
         }
-    }, 1500);
+    });
+}
+
+function _showKataPointsUndoOverlay(score, isFlags, advanceFn) {
+    // Remove any existing overlay
+    document.getElementById('_kata-undo-overlay')?.remove();
+    if (window._kataUndoTimer) { clearTimeout(window._kataUndoTimer); window._kataUndoTimer = null; }
+
+    const overlay = document.createElement('div');
+    overlay.id = '_kata-undo-overlay';
+    overlay.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;gap:10px;align-items:center;background:rgba(17,24,39,0.97);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:12px 18px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+    overlay.innerHTML = `
+        <span style="font-size:14px;font-weight:600;color:#22c55e;">✓ Score: ${isFlags ? score : score.toFixed(2)}</span>
+        <span style="font-size:13px;color:var(--text-dim);">Next in <span id="_kata-undo-cd">8</span>s</span>
+        <button onclick="kataPointsUndoScore()" style="font-size:13px;padding:6px 14px;background:rgba(251,191,36,0.15);color:#fbbf24;border:1px solid #fbbf24;border-radius:8px;cursor:pointer;">↩ Undo</button>
+        <button onclick="window._kataUndoAdvance()" style="font-size:13px;padding:6px 14px;background:var(--accent,#dc2626);color:#fff;border:none;border-radius:8px;cursor:pointer;">Next →</button>
+    `;
+    document.body.appendChild(overlay);
+
+    let cd = 8;
+    const cdEl = () => document.getElementById('_kata-undo-cd');
+    const tick = setInterval(() => {
+        cd--;
+        const el = cdEl(); if (el) el.textContent = cd;
+        if (cd <= 0) { clearInterval(tick); window._kataUndoAdvance(); }
+    }, 1000);
+
+    window._kataUndoAdvance = () => {
+        clearInterval(tick);
+        overlay.remove();
+        window._kataUndoAdvance = null;
+        window._preMatchBracketSnapshot = null; // committed — clear snapshot
+        advanceFn();
+    };
+    window._kataUndoTimer = null; // kept as sentinel
+}
+
+async function kataPointsUndoScore() {
+    if (!window._preMatchBracketSnapshot) { showMessage('Nothing to undo', 'error'); return; }
+    // Cancel the advance timer
+    if (window._kataUndoAdvance) { window._kataUndoAdvance = null; }
+    document.getElementById('_kata-undo-overlay')?.remove();
+    // Restore bracket
+    _msSet(_scopedKey('brackets'), window._preMatchBracketSnapshot);
+    window._preMatchBracketSnapshot = null;
+    // Revert on server
+    const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
+    let bid = null;
+    for (const id in brackets) {
+        const b = brackets[id];
+        if ((b.division === currentOperatorDivision || b.divisionName === currentOperatorDivision) && b.eventId == currentOperatorEventId) { bid = id; break; }
+    }
+    if (bid && brackets[bid]) await _publishBracket(currentTournamentId, bid, brackets[bid], null);
+    // Re-open at same competitor
+    openKataScoreboard(currentOperatorMat, currentOperatorDivision, currentOperatorEventId, brackets[bid], currentKataScoreboardType);
 }
 
 function updateKataLeaderboard(bracket) {
