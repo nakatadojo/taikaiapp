@@ -98,10 +98,12 @@ function _buildNav() {
         .then(r => r.json())
         .then(data => {
             const user = data.user || data;
+            const menu = document.getElementById('user-menu');
             const name = document.getElementById('user-name');
             const avatar = document.getElementById('user-avatar');
             if (name && user.first_name) name.textContent = `${user.first_name} ${user.last_name || ''}`.trim();
             if (avatar && user.first_name) avatar.textContent = user.first_name[0].toUpperCase();
+            if (menu && user.first_name) menu.classList.remove('hidden');
         })
         .catch(() => {});
 }
@@ -199,7 +201,7 @@ function renderEventCards() {
             <div class="div-evt-card-sub">${compCount} competitor${compCount !== 1 ? 's' : ''}</div>
             <div class="div-evt-card-actions">
                 <button class="btn btn-secondary btn-small" onclick="viewEventDivisions('${_esc(String(evt.id))}')">View</button>
-                <a class="btn btn-primary btn-small" href="${manageBase}#divisions-tree-${_esc(String(evt.id))}">Edit Tree</a>
+                <a class="btn btn-primary btn-small" href="${manageBase}#open-tree-${_esc(String(evt.id))}">Edit Tree</a>
             </div>
         `;
         grid.appendChild(card);
