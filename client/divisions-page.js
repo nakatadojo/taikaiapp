@@ -46,10 +46,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Wire sidebar navigation links
         _buildNav();
 
-        // Load logo
-        if (typeof window.renderTaikaiLogo === 'function') {
-            window.renderTaikaiLogo(document.getElementById('taikai-logo-target'));
-        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
         // Fetch everything fresh — each function handles its own errors

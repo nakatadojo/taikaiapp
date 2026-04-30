@@ -8,9 +8,9 @@
  *   - Background Sync: queue failed POST/PUT /api/ requests and retry when online
  */
 
-const CACHE_NAME = 'tournament-v1';
-const STATIC_CACHE = 'tournament-static-v1';
-const API_CACHE = 'tournament-api-v1';
+const CACHE_NAME = 'tournament-v2';
+const STATIC_CACHE = 'tournament-static-v2';
+const API_CACHE = 'tournament-api-v2';
 const SYNC_TAG = 'tournament-sync';
 
 // Pages to pre-cache on install
