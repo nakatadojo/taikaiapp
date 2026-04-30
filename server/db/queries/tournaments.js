@@ -135,7 +135,8 @@ async function findBySlug(slug) {
     `SELECT t.*,
             u.first_name AS director_first_name,
             u.last_name AS director_last_name,
-            u.organization_name AS director_organization
+            u.organization_name AS director_organization,
+            u.email AS director_email
      FROM tournaments t
      LEFT JOIN users u ON u.id = t.created_by
      WHERE t.slug = $1`,
