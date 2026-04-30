@@ -1368,6 +1368,11 @@ function _initWebSocket() {
         _hideOperatorOfflineBanner();
         // Flush any data that was queued while disconnected
         if (_pendingSyncKeys.size > 0) _flushPendingSyncs();
+        // Always re-subscribe to competitors and divisions for this tournament
+        if (currentTournamentId) {
+            _socket.emit('subscribe:competitors', { tournamentId: currentTournamentId });
+            _socket.emit('subscribe:divisions', { tournamentId: currentTournamentId });
+        }
         // Re-subscribe to the bracket the operator has open (if any)
         // Pass lastSeq so the server can replay any messages we missed
         if (currentTournamentId && _currentBracketId) {
@@ -11417,22 +11422,25 @@ async function resyncDivisions() {
     // Check whether any brackets exist for this event
     const brackets = JSON.parse(_msGet(_scopedKey('brackets')) || '{}');
     const eventBrackets = Object.values(brackets).filter(b => String(b.eventId) === String(eventId));
-    if (eventBrackets.length > 0) {
-        showMessage(
-            `This event has ${eventBrackets.length} bracket(s). Delete all brackets for this event before re-syncing divisions.`,
-            'error'
-        );
-        return;
-    }
+    const lockedBrackets = eventBrackets.filter(b => bracketHasScoredMatches(b));
 
-    const confirmed = await showConfirm(
-        `<strong>Recalculate Divisions</strong><br><br>` +
+    let confirmMsg = `<strong>Recalculate Divisions</strong><br><br>` +
         `This is only needed if you have made changes to the division criteria tree (age bands, weight classes, etc.). ` +
         `Competitors are assigned to divisions automatically when they register — you do not need this button for normal registrations.<br><br>` +
-        `<strong>Note:</strong> Any competitors you manually moved to a different division will be returned to their criteria-assigned position.<br><br>` +
-        `Do you want to continue?`,
-        { confirmText: 'Recalculate', danger: false }
-    );
+        `<strong>Note:</strong> Any competitors you manually moved to a different division will be returned to their criteria-assigned position.<br><br>`;
+
+    if (eventBrackets.length > 0) {
+        if (lockedBrackets.length > 0) {
+            confirmMsg += `<strong>⚠️ ${lockedBrackets.length} bracket(s) have scored matches and will not be changed.</strong><br>` +
+                `${eventBrackets.length - lockedBrackets.length} unstarted bracket(s) will be regenerated with the updated competitor list.<br><br>`;
+        } else {
+            confirmMsg += `<strong>${eventBrackets.length} bracket(s) will be regenerated</strong> with the updated competitor list.<br><br>`;
+        }
+    }
+
+    confirmMsg += `Do you want to continue?`;
+
+    const confirmed = await showConfirm(confirmMsg, { confirmText: 'Recalculate', danger: false });
     if (!confirmed) return;
 
     // Clear manual overrides for this event so the re-sync is truly fresh
