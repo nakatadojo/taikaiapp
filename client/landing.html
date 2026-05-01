@@ -1308,7 +1308,12 @@
                     }),
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Signup failed');
+                if (!res.ok) {
+                    const msg = data.error
+                        || (Array.isArray(data.errors) && data.errors.map(e => e.msg).join(' · '))
+                        || 'Signup failed';
+                    throw new Error(msg);
+                }
                 successEl.textContent = 'Account created! Check your email to verify.';
                 successEl.style.cssText = 'display:block;color:var(--green,#22c55e);padding:10px;font-size:14px;text-align:center;';
                 await checkAuth();

@@ -66,7 +66,7 @@ router.get('/stats', async (req, res, next) => {
 
     // Recent tournaments (last 10)
     const recentTournaments = await pool.query(`
-      SELECT t.id, t.name, t.status, t.created_at,
+      SELECT t.id, t.name, t.published, t.created_at,
              u.first_name AS director_first_name, u.last_name AS director_last_name
       FROM tournaments t
       LEFT JOIN users u ON u.id = t.created_by
@@ -158,7 +158,7 @@ router.get('/users/:id', async (req, res, next) => {
 
     // Tournaments they created
     const tournaments = await pool.query(
-      `SELECT id, name, status, date, created_at,
+      `SELECT id, name, published, date, created_at,
               COALESCE((SELECT COUNT(DISTINCT profile_id) FROM registrations WHERE tournament_id = t.id AND status != 'cancelled'), 0)::int AS competitor_count
        FROM tournaments t WHERE created_by = $1 ORDER BY created_at DESC`,
       [user.id]
