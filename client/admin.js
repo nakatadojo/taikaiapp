@@ -333,6 +333,7 @@ async function viewUserDetail(userId) {
   const nameEl = document.getElementById('user-detail-name');
 
   panel.classList.remove('hidden');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   content.innerHTML = '<p class="hint">Loading...</p>';
 
   try {
